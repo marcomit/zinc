@@ -4,6 +4,11 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#define asVec(T)                                                               \
+  size_t len;                                                                  \
+  size_t size;                                                                 \
+  T *ptr;
+
 #define vec(T)                                                                 \
   struct {                                                                     \
     size_t len;                                                                \

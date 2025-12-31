@@ -3,27 +3,38 @@
 
 #include "zvec.h"
 #include <stddef.h>
-#define TOK_IDENT 256
 
 typedef enum {
-	TOK_LAST = TOK_IDENT - 1
+	TOK_LAST = 255
+
 #define DEF(id, str) ,id
+#define TOK_FLOWS
+#define TOK_TYPES
+#define TOK_DYN
+#define TOK_SYMBOLS
+
 #include "ztok.h"
+
+#undef TOK_FLOWS
+#undef TOK_TYPES
+#undef TOK_DYN
+#undef TOK_SYMBOLS
+
 #undef DEF
-} zcc_token;
+
+} ZTokenType;
+
 
 typedef struct {
-	zcc_token type;
+	ZTokenType type;
 	char *value;
-} zcc_Token;
+} ZToken;
 
 typedef struct {
-	char *program;
-	char *current;
-	vec(zcc_Token *) tokens;
-	size_t row, col;
-} lexer_t;
+	size_t current;
+	asVec(ZToken *);
+} ZTokens;
 
-lexer_t *ztokenize(char *);
+ZTokens *ztokenize(char *);
 
 #endif
