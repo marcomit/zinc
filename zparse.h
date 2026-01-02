@@ -12,60 +12,35 @@ typedef enum {
 } ZNodeType;
 
 typedef struct ZNode ZNode;
-typedef struct ZNodeExpr ZNodeExpr;
-typedef struct ZNodeStmt ZNodeStmt;
-typedef struct ZNodeBlock ZNodeBlock;
-typedef struct ZNodeIf ZNodeIf;
-typedef struct ZNodeVar ZNodeVar;
-typedef struct ZNodeBinary ZNodeBinary;
 
-struct ZNodeExpr {
+typedef struct ZNodeIf {
+	ZNode *cond;
+	ZNode *branchTrue; // Always present
+	ZNode *branchFalse; // Only if there is the else
+} ZNodeIf;
+
+typedef struct ZNodeWhile {
+	ZNode *cond;
+	ZNode *branch;
+} ZNodeWhile;
+
+typedef struct ZNodeExpr {
 	ZToken *tok;
-};
+} ZNodeExpr;
 
-struct ZNodeBinary {
-	ZToken *op;
-	ZNodeExpr *left;
-	ZNodeExpr *right;
-};
-
-struct ZNodeUnary {
-	ZToken *op;
-	ZNodeExpr *operand;
-};
-
-struct ZNodeVar {
-	ZToken *lvalue;
-	ZNodeExpr *rvalue;
-};
-
-struct ZNodeStmt {
-};
-
-struct ZNodeBlock {
-	vec(ZNodeStmt *) stmts;
-};
-
-struct ZNodeIf {
-	ZNodeExpr *cond;
-	ZNodeBlock *branchTrue;
-	ZNodeBlock *branchFalse;
-};
-
-struct ZNodeWhile {
-	ZNodeExpr *cond;
-	ZNodeBlock *branch;
-};
+typedef struct ZNodeBinary {
+	ZNode *left;
+	ZNode *operand;
+	ZNode *right;
+} ZNodeBinary;
 
 struct ZNode {
 	ZNodeType type;
 	union {
-		ZNodeExpr *expr;
-		ZNodeStmt *stmt;
-		ZNodeBlock *block;
 		ZNodeIf *ifNode;
 		ZNodeWhile *whileNode;
-		ZNodeVar *var;
+		ZNodeExpr *expr;
+		ZNodeBinary *binary;
 	};
 };
 

@@ -2,7 +2,10 @@
 #define ZLEX_H
 
 #include "zvec.h"
+
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 typedef enum {
 	TOK_LAST = 255
@@ -27,7 +30,11 @@ typedef enum {
 
 typedef struct {
 	ZTokenType type;
-	char *value;
+	union {
+		char *str;
+		int64_t integer;
+		bool boolean;
+	};
 } ZToken;
 
 typedef struct {
@@ -37,4 +44,5 @@ typedef struct {
 
 ZTokens *ztokenize(char *);
 
+void printTokens(ZTokens *);
 #endif

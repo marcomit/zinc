@@ -24,11 +24,13 @@ DEF(TOK_STRUCT, 		"struct")
 DEF(TOK_UNION, 			"union")
 DEF(TOK_TYPEDEF, 		"typedef")
 DEF(TOK_ENUM, 			"enum")
+DEF(TOK_ARROW,			"->")
 #endif
 
 #ifdef TOK_DYN
-DEF(TOK_STR_LIT, 				"string literal")
+DEF(TOK_STR_LIT, 		"string literal")
 DEF(TOK_INT_LIT, 		"int literal")
+DEF(TOK_BOOL_LIT, 	"boolean literal")
 DEF(TOK_IDENT,			"identifier")
 #endif
 
@@ -43,5 +45,7 @@ DEF(TOK_REF, 				"&")
 DEF(TOK_DEREF,			"*")
 DEF(TOK_PLUS,				"+")
 DEF(TOK_MINUS,			"-")
-DEF(TOK_ARROW,			"->")
+DEF(TOK_COMMA, 			",")
+DEF(TOK_EQ, 				"=")
+DEF(TOK_DOT,				".")
 #endif

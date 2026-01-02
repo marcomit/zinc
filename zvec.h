@@ -40,4 +40,14 @@
 
 #define vec_pop(v) ({ (v)->len > 0 ? (v)->ptr[--(v)->len] : (v)->ptr[0]; })
 
+#define vec_map(v, f)                                                          \
+  for (size_t i = 0; i < (v)->len; i++)                                        \
+    f((v)->ptr[i]);
+
+#define foreach(e, v)                                                          \
+  for (size_t i_##e = 0; i_##e < (v)->len; i_##e++)                            \
+    for (bool once_##e = true; once_##e; once_##e = false)                     \
+      for (__typeof__((v)->ptr[0]) e = (v)->ptr[i_##e]; once_##e;              \
+           once_##e = false)
+
 #endif

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "zlex.h"
+#include "zmem.h"
 
 char *readfile(const char *filename) {
 	FILE *fd = fopen(filename, "r");
@@ -24,6 +25,12 @@ int main(int argc, char **argv) {
 	}
 	char *program = readfile(argv[1]);
 	printf("PROGRAM:\n%s\n", program);
-	ztokenize(program);
+
+
+	allocator.init();
+
+	ZTokens *tokens = ztokenize(program);
+
+	allocator.close();
 	return 0;
 }
