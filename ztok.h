@@ -1,51 +1,73 @@
+/*
+ * Definition of tokens using the X macros trick.
+ * To categorize tokens we use bit flags
+ * in order to check if a token is of a specific category.
+ * Since there are ~50 tokens we set the flags from the 8th bit.
+ * TOK_FLOWS	: 1 << 8
+ * TOK_TYPES	: 1 << 9
+ * TOK_DYN 		: 1 << 10
+ * TOK_SYMBOLS: 1 << 11
+ */
+
+#ifndef TOK_MASKS
+#define TOK_FLOWS_MASK 		(1 << 8)
+#define TOK_TYPES_MASK 		(1 << 9)
+#define TOK_DYN_MASK 			(1 << 10)
+#define TOK_SYMBOLS_MASK 	(1 << 11)
+#define TOK_OPERATOR			(1 << 12)
+#endif
+
 #ifdef TOK_FLOWS
-DEF(TOK_IF, 				"if")
-DEF(TOK_ELSE, 			"else")
-DEF(TOK_WHILE, 			"while")
-DEF(TOK_FOR, 				"for")
-DEF(TOK_DO, 				"do")
-DEF(TOK_CONTINUE, 	"continue")
-DEF(TOK_BREAK, 			"break")
-DEF(TOK_RETURN, 		"return")
-DEF(TOK_GOTO, 			"goto")
-DEF(TOK_SWITCH, 		"switch")
-DEF(TOK_CASE, 			"case")
+DEF(TOK_IF, 				"if", 			TOK_FLOWS_MASK | 0x00)
+DEF(TOK_ELSE, 			"else", 		TOK_FLOWS_MASK | 0x01)
+DEF(TOK_WHILE, 			"while", 		TOK_FLOWS_MASK | 0x02)
+DEF(TOK_FOR, 				"for", 			TOK_FLOWS_MASK | 0x03)
+DEF(TOK_DO, 				"do", 			TOK_FLOWS_MASK | 0x04)
+DEF(TOK_CONTINUE, 	"continue", TOK_FLOWS_MASK | 0x05)
+DEF(TOK_BREAK, 			"break", 		TOK_FLOWS_MASK | 0x06)
+DEF(TOK_RETURN, 		"return", 	TOK_FLOWS_MASK | 0x07)
+DEF(TOK_GOTO, 			"goto", 		TOK_FLOWS_MASK | 0x08)
+DEF(TOK_SWITCH, 		"switch", 	TOK_FLOWS_MASK | 0x09)
+DEF(TOK_CASE, 			"case", 		TOK_FLOWS_MASK | 0x0A)
 #endif
 
 #ifdef TOK_TYPES
-DEF(TOK_VOID, 			"void")
-DEF(TOK_CHAR, 			"char")
-DEF(TOK_INT, 				"int")
-DEF(TOK_FLOAT, 			"float")
-DEF(TOK_DOUBLE, 		"double")
-DEF(TOK_SHORT, 			"short")
-DEF(TOK_LONG, 			"long")
-DEF(TOK_STRUCT, 		"struct")
-DEF(TOK_UNION, 			"union")
-DEF(TOK_TYPEDEF, 		"typedef")
-DEF(TOK_ENUM, 			"enum")
-DEF(TOK_ARROW,			"->")
+DEF(TOK_VOID, 			"void", 		TOK_TYPES_MASK | 0x0B)
+DEF(TOK_CHAR, 			"char",			TOK_TYPES_MASK | 0x0C)
+DEF(TOK_INT, 				"int", 			TOK_TYPES_MASK | 0x0D)
+DEF(TOK_FLOAT, 			"float", 		TOK_TYPES_MASK | 0x0E)
+DEF(TOK_DOUBLE, 		"double", 	TOK_TYPES_MASK | 0x0F)
+DEF(TOK_SHORT, 			"short", 		TOK_TYPES_MASK | 0x10)
+DEF(TOK_LONG, 			"long", 		TOK_TYPES_MASK | 0x11)
+DEF(TOK_STRUCT, 		"struct", 	TOK_TYPES_MASK | 0x12)
+DEF(TOK_UNION, 			"union", 		TOK_TYPES_MASK | 0x13)
+DEF(TOK_TYPEDEF, 		"typedef", 	TOK_TYPES_MASK | 0x14)
+DEF(TOK_ENUM, 			"enum", 		TOK_TYPES_MASK | 0x15)
 #endif
 
 #ifdef TOK_DYN
-DEF(TOK_STR_LIT, 		"string literal")
-DEF(TOK_INT_LIT, 		"int literal")
-DEF(TOK_BOOL_LIT, 	"boolean literal")
-DEF(TOK_IDENT,			"identifier")
+DEF(TOK_STR_LIT, 		"string literal", 	TOK_DYN_MASK | 0x16)
+DEF(TOK_INT_LIT, 		"int literal", 			TOK_DYN_MASK | 0x17)
+DEF(TOK_BOOL_LIT, 	"boolean literal", 	TOK_DYN_MASK | 0x18)
+DEF(TOK_IDENT,			"identifier",				TOK_DYN_MASK | 0x19)
 #endif
 
 #ifdef TOK_SYMBOLS
-DEF(TOK_LPAREN,			"(")
-DEF(TOK_RPAREN,			")")
-DEF(TOK_LBRACKET,		"{")
-DEF(TOK_RBRACKET,		"}")
-DEF(TOK_LSBRACKET,	"[")
-DEF(TOK_RSBRACKET,	"]")
-DEF(TOK_REF, 				"&")
-DEF(TOK_DEREF,			"*")
-DEF(TOK_PLUS,				"+")
-DEF(TOK_MINUS,			"-")
-DEF(TOK_COMMA, 			",")
-DEF(TOK_EQ, 				"=")
-DEF(TOK_DOT,				".")
+
+DEF(TOK_ARROW,			"->", 			TOK_SYMBOLS_MASK | 0x1A)
+DEF(TOK_EQEQ,				"==", 			TOK_SYMBOLS_MASK | 0x1B)
+DEF(TOK_LPAREN,			"(", 				TOK_SYMBOLS_MASK | 0x1C)
+DEF(TOK_RPAREN,			")", 				TOK_SYMBOLS_MASK | 0x1D)
+DEF(TOK_LBRACKET,		"{", 				TOK_SYMBOLS_MASK | 0x1F)
+DEF(TOK_RBRACKET,		"}", 				TOK_SYMBOLS_MASK | 0x20)
+DEF(TOK_LSBRACKET,	"[", 				TOK_SYMBOLS_MASK | 0x21)
+DEF(TOK_RSBRACKET,	"]", 				TOK_SYMBOLS_MASK | 0x22)
+DEF(TOK_REF, 				"&", 				TOK_SYMBOLS_MASK | 0x23)
+DEF(TOK_DEREF,			"*", 				TOK_OPERATOR | TOK_SYMBOLS_MASK | 0x24)
+DEF(TOK_PLUS,				"+", 				TOK_OPERATOR | TOK_SYMBOLS_MASK | 0x25)
+DEF(TOK_MINUS,			"-", 				TOK_OPERATOR | TOK_SYMBOLS_MASK | 0x26)
+DEF(TOK_DIV,				"/", 				TOK_OPERATOR | TOK_SYMBOLS_MASK | 0x27)
+DEF(TOK_COMMA, 			",", 				TOK_SYMBOLS_MASK | 0x28)
+DEF(TOK_EQ, 				"=", 				TOK_SYMBOLS_MASK | 0x29)
+DEF(TOK_DOT,				".", 				TOK_SYMBOLS_MASK | 0x2A)
 #endif

@@ -8,9 +8,8 @@
 #include <stdint.h>
 
 typedef enum {
-	TOK_LAST = 255
 
-#define DEF(id, str) ,id
+#define DEF(id, str, m) id = m,
 #define TOK_FLOWS
 #define TOK_TYPES
 #define TOK_DYN
@@ -38,8 +37,8 @@ typedef struct {
 } ZToken;
 
 typedef struct {
-	size_t current;
 	asVec(ZToken *);
+	int32_t current;
 } ZTokens;
 
 ZTokens *ztokenize(char *);

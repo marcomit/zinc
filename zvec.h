@@ -50,4 +50,11 @@
       for (__typeof__((v)->ptr[0]) e = (v)->ptr[i_##e]; once_##e;              \
            once_##e = false)
 
+
+typedef struct {
+	size_t length;
+	size_t capacity;
+	char data[];
+} VectorMetadata;
+
 #endif

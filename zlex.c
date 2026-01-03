@@ -29,7 +29,7 @@ typedef struct {
 } KeyboardEntry;
 
 static const char *tokens[] = {
-#define DEF(id, str) str,
+#define DEF(id, str, _) str,
 
 #define TOK_TYPES
 #define TOK_SYMBOLS
@@ -58,7 +58,7 @@ static uint32_t hashtoken(const char *buff, size_t len) {
 
 static void initKeywords() {
 	KeyboardEntry keywords[] = {
-		#define DEF(id, str) { str, id },
+		#define DEF(id, str, _) { str, id },
 
 		#define TOK_FLOWS
 		#define TOK_TYPES
@@ -139,6 +139,7 @@ static void next(lexer_t *l) {
 	} else {
 		l->col++;
 	}
+	l->current++;
 }
 
 static void error(lexer_t *l, const char *fmt, ...) {
@@ -150,29 +151,35 @@ static void error(lexer_t *l, const char *fmt, ...) {
 	fputc('\n', stderr);
 
 	va_end(args);
-	exit(1);
+	// exit(1);
 }
 
-static void parseString(lexer_t *l) {
-	if (*l->current != '"') return;
-	l->current++;
+static ZToken *parseString(lexer_t *l) {
+	if (*l->current != '"') return NULL;
+	next(l);
 
 	char *start = l->current;
 	while (*l->current && *l->current != '"') next(l);
 
-	if (!l->current) error(l, "Unterinated string %.10s", start);
+	if (!l->current) {
+		error(l, "Unterinated string %.10s", start);
+		return NULL;
+	}
 
 	int len = l->current - start - 1;
 	char *buff = allocator.alloc(len + 1);
 	buff[len] = 0;
 
-	ZToken *tok = createString(buff);
-	addToken(l, tok);
+	return createString(buff);
 }
 
 static ZToken *parseSymbol(lexer_t *l) {
-	switch(*l->current) {
-	#define DEF(id, str) case str[0]: l->current++; return createToken(id);
+	if (false) { }
+	#define DEF(id, str, _) else if(!strncmp(str, l->current, strlen(str))) { \
+		l->current += strlen(str);																							\
+		return createToken(id);																									\
+	}
+
 	#define TOK_SYMBOLS
 
 	#include "ztok.h"
@@ -180,22 +187,18 @@ static ZToken *parseSymbol(lexer_t *l) {
 	#undef TOK_SYMBOLS
 	#undef DEF
 	
-	default: 
-		error(l, "Unexpected token '%c'", *l->current);
-		break;
-	}
-			l->current++;
+	error(l, "Unexpected symbol near '%.5s'", l->current);
+
+	while (*l->current && !isspace(*l->current)) next(l);
 
 	return NULL;
 }
 
 static ZToken *parseInt(lexer_t *l) {
 	char *start = l->current;
-	if (!isdigit(*l->current) && *l->current != '-') return NULL;
-	bool negative = *l->current == '-';
+	if (!isdigit(*l->current)) return NULL;
 
-	if (negative) l->current++;
-	while (isdigit(*l->current)) l->current++;
+	while (isdigit(*l->current)) next(l);
 
 	long long value = strtoll(l->current, NULL, 10);
 	if (errno == ERANGE) error(l, "Invalid integer range %.10s", start);
@@ -207,7 +210,7 @@ static ZToken *parseLiteral(lexer_t *l) {
 	if (!isalpha(*l->current) && *l->current != '_') return NULL;
 
 	char *start = l->current;
-	while (isalpha(*l->current) || *l->current == '_') l->current++;
+	while (isalpha(*l->current) || *l->current == '_') next(l);
 
 	size_t len = l->current - start;
 	ZTokenType type = findKeyword(start, len);
@@ -221,9 +224,6 @@ static ZToken *parseLiteral(lexer_t *l) {
 
 static void printToken(ZToken *token) {
 	switch(token->type) {
-		case TOK_LAST:
-			printf("LAST");
-			break;
 		case TOK_INT_LIT:
 			printf("int(%llu)", token->integer);
 			break;
@@ -235,7 +235,7 @@ static void printToken(ZToken *token) {
 			break;
 		case TOK_IDENT:
 			printf("ident(%s)", token->str);
-		#define DEF(id, str) case id: printf(str); break;
+		#define DEF(id, str, _) case id: printf(str); break;
 
 		#define TOK_FLOWS
 		#define TOK_TYPES
@@ -257,6 +257,31 @@ void printTokens(ZTokens *tokens) {
 	foreach(tok, tokens) printToken(tok);
 }
 
+static inline void skipSpaces(lexer_t *l) {
+	while (*l->current && isspace(*l->current)) next(l);
+}
+
+static void skipInlineComments(lexer_t *l) {
+	if (!*l->current || !*(l->current + 1)) return;
+	if (*l->current != '/' || *(l->current + 1) != '/') return;
+
+	while (*l->current && *l->current != '\n') next(l);
+}
+
+static void skipMultilineComments(lexer_t *l) {
+	if (!*l->current || !*(l->current + 1)) return;
+	if (*l->current != '/' || *(l->current + 1) != '*') return;
+
+	next(l); next(l);
+	while (l->current && l->current + 1) {
+		if (*l->current == '*' && *(l->current + 1) == '/') break;
+		next(l);
+	}
+	if (!*l->current || !*(l->current + 1)) error(l, "Unterminated multiline comments");
+
+	next(l); next(l);
+}
+
 ZTokens *ztokenize(char * program) {
 	lexer_t l;
 
@@ -266,23 +291,33 @@ ZTokens *ztokenize(char * program) {
 	l.col = 0;
 	l.tokens = allocator.alloc(sizeof(ZTokens));
 	ZTokens *tokens = l.tokens;
-	ZToken *curr = NULL;
+	ZToken *curr;
 
 	vec_init(l.tokens, 32);
 	initKeywords();
 
 	while (*l.current) {
 		curr = NULL;
-		while (*l.current && isspace(*l.current)) l.current++;
+		skipSpaces(&l);
+		skipInlineComments(&l);
+		skipSpaces(&l);
+		skipMultilineComments(&l);
 		if (!*l.current) break;
 
-		if (isalpha(*l.current) || *l.current == '_') {
+		
+
+		if (*l.current == '"') {
+			curr = parseString(&l);
+		} else if (isalpha(*l.current) || *l.current == '_') {
 			curr = parseLiteral(&l);
-		} else if (isdigit(*l.current) || *l.current == '-') {
+		} else if (isdigit(*l.current)) {
 			curr = parseInt(&l);
-		} else {
+		} 
+
+		if (!curr) {
 			curr = parseSymbol(&l);
 		}
+
 		if (!curr) error(&l, "Error parsing near %.10s\n", l.current);
 		addToken(&l, curr);
 	}

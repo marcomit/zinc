@@ -1,7 +1,9 @@
-#include <stdlib.h>
-#include <stdio.h>
 #include "zlex.h"
 #include "zmem.h"
+#include "zparse.h"
+
+#include <stdlib.h>
+#include <stdio.h>
 
 char *readfile(const char *filename) {
 	FILE *fd = fopen(filename, "r");
@@ -24,13 +26,14 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 	char *program = readfile(argv[1]);
-	printf("PROGRAM:\n%s\n", program);
-
 
 	allocator.init();
 
 	ZTokens *tokens = ztokenize(program);
 
+
+	zparse(tokens);
 	allocator.close();
+
 	return 0;
 }

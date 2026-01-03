@@ -1,11 +1,13 @@
+#include "zparse.h"
+#include "zlex.h"
+#include "zmem.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdbool.h>
-#include "zparse.h"
-#include "zlex.h"
 
 static void error(char *fmt, ...) {
 	va_list args;
@@ -15,11 +17,25 @@ static void error(char *fmt, ...) {
 	exit(1);
 }
 
+static ZNode *makenode(ZNodeType type) {
+	ZNode *self = allocator.alloc(sizeof(ZNode));
+	self->type = type;
+	return self;
+}
+
 static ZToken *peek(ZTokens *tokens) {
 	if (tokens->current >= tokens->len) {
 		error("Iterator tokens out of bound!");
 	}
 	return tokens->ptr[tokens->current];
+}
+
+static ZToken *peekAhead(ZTokens *tokens, int32_t offset) {
+	int32_t index = tokens->current + offset;
+	if (index < 0 || index >= tokens->len) {
+		error("Index out of range %d", index);
+	}
+	return tokens->ptr[index];
 }
 
 static ZToken *consume(ZTokens *tokens) {
@@ -28,78 +44,47 @@ static ZToken *consume(ZTokens *tokens) {
 	return curr;
 }
 
-static bool matchValue(ZTokens *tokens, char *value) {
-	return strcmp(peek(tokens)->value, value) == 0;
+static bool match(ZTokens *tokens, ZTokenType type) {
+	bool res = peek(tokens)->type == type;
+	if (res) consume(tokens);
+	return res;
 }
 
-static bool matchType(ZTokens *tokens, ZTokenType type) {
-	return peek(tokens)->type == type;
-}
+static ZNode *parseUnary(ZTokens *tokens) {
+	if (match(tokens, TOK_INT_LIT) ||
+			match(tokens, TOK_STR_LIT) ||
+			match(tokens, TOK_BOOL_LIT)) {
+		ZNode *node = makenode(NODE_LITERAL);
+		node->literalTok = peekAhead(tokens, -1);
 
-static ZToken *skipByValue(ZTokens *tokens, char *value) {
-	ZToken *curr = consume(tokens);
-	if (strcmp(curr->value, value)) {
-		error("Expected '%s' got '%s';", value, curr->value);
-	}
-	return curr + 1;
-}
+		return node;
+	} else if (match(tokens, TOK_IDENT)) {
+		ZNode *node = makenode(NODE_IDENTIFIER);
+		node->identTok = peekAhead(tokens, -1);
 
-static ZToken *skipByType(ZTokens *tokens, ZTokenType type) {
-	ZToken *curr = consume(tokens);
-	if (curr->type != type) {
-		error("Unexpected token '%s'", curr->value);
-	}
-	return curr + 1;
-}
-
-
-static ZNodeExpr *parseExpr(ZTokens *tokens) {
-	if (matchType(tokens, TOK_INT_LIT)) {
-		consume(tokens);
+		return node;
 	}
 	return NULL;
 }
 
-static ZNodeStmt *parseStmt(ZTokens *tokens) {
-	return NULL;
+static ZNode *parseFactor(ZTokens *tokens) {
+	ZNode *node = parseUnary(tokens);
+	return node;
 }
 
-static ZNodeBlock *parseBlock(ZTokens *tokens) {
-	skipByType(tokens, TOK_LBRACKET);
+static ZNode *parseTerm(ZTokens *tokens) {
+	ZNode *left = parseFactor(tokens);
 
-	ZNodeBlock *block = malloc(sizeof(ZNodeBlock));
-	vec_init(&block->stmts, 8);
+	 
 
-	ZNodeStmt *stmt = NULL;
-
-	do {
-
-		stmt = parseStmt(tokens);
-		if (stmt) vec_push(&block->stmts, stmt);
-
-	} while (stmt);
-
-	skipByType(tokens, TOK_RBRACKET);
-	return block;
+	ZNode *term = makenode(NODE_BINARY);
+	term->binary.left = left;
+	term->binary.op = left;
+	term->binary.right = left;
+	return term;
 }
 
-static ZNodeIf *parseIf(ZTokens *tokens) {
-	skipByType(tokens, TOK_IF);
-	skipByType(tokens, TOK_LPAREN);
-
-	ZNodeExpr *expr = parseExpr(tokens);
-
-	skipByType(tokens, TOK_RPAREN);
-
-	ZNodeBlock *branchTrue = parseBlock(tokens);
-	return NULL;
-}
-
-static ZNode *parseTokens(ZTokens *tokens) {
-
-}
-
-ZNode *parse(ZTokens *tokens) {
+ZNode *zparse(ZTokens *tokens) {
 	tokens->current = 0;
 	return NULL;
 }
