@@ -34,6 +34,8 @@ typedef struct {
 		int64_t integer;
 		bool boolean;
 	};
+	size_t row;
+	size_t col;
 } ZToken;
 
 typedef struct {

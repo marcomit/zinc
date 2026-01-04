@@ -128,6 +128,8 @@ static ZToken *createBoolean(bool value) {
 }
 
 static void addToken(lexer_t *l, ZToken *token) {
+	token->row = l->row;
+	token->col = l->col;
 	vec_push(l->tokens, token);
 }
 
@@ -200,7 +202,7 @@ static ZToken *parseInt(lexer_t *l) {
 
 	while (isdigit(*l->current)) next(l);
 
-	long long value = strtoll(l->current, NULL, 10);
+	long long value = strtoll(start, NULL, 10);
 	if (errno == ERANGE) error(l, "Invalid integer range %.10s", start);
 
 	return createInteger(value);
