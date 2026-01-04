@@ -9,12 +9,15 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#define expect(l, t)  if (!match(l, t)) return NULL
+
+static ZNode *parse(ZTokens *);
+
 static void error(char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 	vfprintf(stderr, fmt, args);
 	va_end(args);
-	exit(1);
 }
 
 static ZNode *makenode(ZNodeType type) {
@@ -26,6 +29,7 @@ static ZNode *makenode(ZNodeType type) {
 static ZToken *peek(ZTokens *tokens) {
 	if (tokens->current >= tokens->len) {
 		error("Iterator tokens out of bound!");
+		return NULL;
 	}
 	return tokens->ptr[tokens->current];
 }
@@ -44,47 +48,215 @@ static ZToken *consume(ZTokens *tokens) {
 	return curr;
 }
 
+static inline bool check(ZTokens *tokens, ZTokenType type) {
+	return peek(tokens)->type == type;
+}
+
 static bool match(ZTokens *tokens, ZTokenType type) {
-	bool res = peek(tokens)->type == type;
+	bool res = check(tokens, type);
 	if (res) consume(tokens);
 	return res;
 }
 
-static ZNode *parseUnary(ZTokens *tokens) {
-	if (match(tokens, TOK_INT_LIT) ||
-			match(tokens, TOK_STR_LIT) ||
-			match(tokens, TOK_BOOL_LIT)) {
-		ZNode *node = makenode(NODE_LITERAL);
-		node->literalTok = peekAhead(tokens, -1);
+// assignment   = identifier "=" assignment
+//              | logic_or ;
+//
+// logic_or     = logic_and { "||" logic_and } ;
+// logic_and    = equality { "&&" equality } ;
+// equality     = comparison { ( "==" | "!=" ) comparison } ;
+// comparison   = term { ( "<" | ">" | "<=" | ">=" ) term } ;
+// term         = factor { ( "+" | "-" ) factor } ;
+// factor       = unary { ( "*" | "/" ) unary } ;
+//
+// unary        = ( "!" | "-" ) unary
+//              | primary ;
+//
+// primary      = number
+//              | identifier
+//              | "(" expression ")"
 
+static ZNode *parsePrimary(ZTokens *tokens) {
+	if (check(tokens, TOK_LPAREN)) {
+		return parse(tokens);
+	}
+	ZNode *node = makenode(NODE_IDENTIFIER);
+	if (check(tokens, TOK_IDENT)) {
+		node->identTok = consume(tokens);
 		return node;
-	} else if (match(tokens, TOK_IDENT)) {
-		ZNode *node = makenode(NODE_IDENTIFIER);
-		node->identTok = peekAhead(tokens, -1);
-
+	} else if (check(tokens, TOK_INT_LIT)) {
+		node->type = NODE_LITERAL;
+		node->literalTok = consume(tokens);
 		return node;
 	}
+	error("Expected an identifier or literal!");
 	return NULL;
 }
 
+static ZNode *parseUnary(ZTokens *tokens) {
+	ZNode *node = makenode(NODE_UNARY);
+	if (check(tokens, TOK_NOT) || check(tokens, TOK_MINUS)) {
+		node->unary.op = consume(tokens);
+		node->unary.operand = parseUnary(tokens);
+		return node;
+	}
+	return parsePrimary(tokens);
+}
+
 static ZNode *parseFactor(ZTokens *tokens) {
-	ZNode *node = parseUnary(tokens);
+	ZNode *node;
+
+	ZNode *left = parseUnary(tokens);
+
+	while (check(tokens, TOK_STAR) ||
+					check(tokens, TOK_DIV)) {
+		node = makenode(NODE_BINARY);
+		ZToken *op = consume(tokens);
+		ZNode *right = parseUnary(tokens);
+		node->binary.op = op;
+		node->binary.left = left;
+		node->binary.right = right;
+		left = node;
+	}
+
+	if (!node) return left;
+
 	return node;
 }
 
 static ZNode *parseTerm(ZTokens *tokens) {
-	ZNode *left = parseFactor(tokens);
+	ZNode *node;
 
-	 
+	ZNode *left = parseUnary(tokens);
 
-	ZNode *term = makenode(NODE_BINARY);
-	term->binary.left = left;
-	term->binary.op = left;
-	term->binary.right = left;
-	return term;
+	while (check(tokens, TOK_PLUS) ||
+					check(tokens, TOK_MINUS)) {
+		node = makenode(NODE_BINARY);
+		ZToken *op = consume(tokens);
+		ZNode *right = parseUnary(tokens);
+		node->binary.op = op;
+		node->binary.left = left;
+		node->binary.right = right;
+		left = node;
+	}
+
+	if (!node) return left;
+
+	return node;
+} 
+
+static ZType *parseType(ZTokens *tokens) {
+	return NULL;
+}
+
+static ZNode *parseStmt(ZTokens *tokens) {
+	return NULL;
+}
+
+static ZNode *parseBlock(ZTokens *tokens) {
+	ZNode *block = makenode(NODE_BLOCK);
+
+	vec_init(&block->block, 8);
+	
+	ZNode *stmt;
+	do {
+		stmt = parseStmt(tokens);
+		if (stmt) vec_push(&block->block, stmt);
+	} while (stmt);
+
+	return block;
+}
+
+static ZField *makefield(ZType *type, ZToken *name) {
+	ZField *field = allocator.alloc(sizeof(ZField));
+	field->type = type;
+	field->field = name;
+	return field;
+}
+
+static ZNode *parseStructDecl(ZTokens *tokens) {
+	expect(tokens, TOK_STRUCT);
+	expect(tokens, TOK_IDENT);
+	ZToken *name = peekAhead(tokens, -1);
+
+	expect(tokens, TOK_LBRACKET);
+
+	ZFields *fields = allocator.alloc(sizeof(ZFields));
+	vec_init(fields, 4);
+
+	while (peek(tokens)->type != TOK_RBRACKET) {
+		ZType *type = parseType(tokens);
+		expect(tokens, TOK_IDENT);
+		ZToken *ident = peekAhead(tokens, -1);
+
+		vec_push(fields, makefield(type, ident));
+	}
+
+	ZNode *node = makenode(NODE_STRUCT);
+	node->structDef.fields = fields;
+	node->structDef.ident = name;
+	return node;
+}
+
+static ZNode *parseExpr(ZTokens *tokens) {
+	return NULL;
+}
+
+static ZNode *parseIf(ZTokens *tokens) {
+
+	expect(tokens, TOK_IF);
+	expect(tokens, TOK_LPAREN);
+	
+	ZNode *cond = parseExpr(tokens);
+
+	expect(tokens, TOK_RPAREN);
+
+	ZNode *body = parseBlock(tokens);
+	if (!body) return NULL;
+
+	ZNode *node = makenode(NODE_IF);
+
+	if (match(tokens, TOK_ELSE)) {
+		ZNode *elseBody = parseBlock(tokens);
+		if (!elseBody) return NULL;
+		node->ifStmt.elseBranch = elseBody;
+	}
+
+	node->ifStmt.cond = cond;
+	node->ifStmt.body = body;
+	return node;
+}
+
+static ZNode *parseWhile(ZTokens *tokens) {
+	expect(tokens, TOK_WHILE);
+	expect(tokens, TOK_LPAREN);
+	ZNode *cond = parseExpr(tokens);
+	expect(tokens, TOK_RPAREN);
+	ZNode *body = parseBlock(tokens);
+
+	ZNode *node = makenode(NODE_WHILE);
+	node->whileStmt.branch = body;
+	node->whileStmt.cond = cond;
+	return node;
+}
+
+static ZNode *parse(ZTokens *tokens) {
+	switch (peek(tokens)->type) {
+		case TOK_STRUCT:
+		return parseStructDecl(tokens);
+		case TOK_IF:
+		return parseIf(tokens);
+		case TOK_WHILE:
+		return parseWhile(tokens);
+		case TOK_INT_LIT:
+		return parseTerm(tokens);
+		default:
+			error("Unhandled node type");
+			return NULL;
+		break;
+	}
 }
 
 ZNode *zparse(ZTokens *tokens) {
 	tokens->current = 0;
-	return NULL;
+	return parse(tokens);
 }

@@ -20,6 +20,31 @@ char *readfile(const char *filename) {
 	return buff;
 }
 
+int calculate(ZNode *node) {
+	if (!node) return 0;
+	if (node->type == NODE_LITERAL) {
+		return node->literalTok->integer;
+	}
+	int left = calculate(node->binary.left);
+	int right = calculate(node->binary.right);
+	switch(node->binary.op->type) {
+	case TOK_PLUS:
+		return left + right;
+	break;
+	case TOK_MINUS:
+		return left - right;
+	break;
+	case TOK_STAR:
+		return left * right;
+	break;
+	case TOK_DIV:
+		return left / right;
+	break;
+	default:
+		return 0;
+	}
+}
+
 int main(int argc, char **argv) {
 	if (argc < 2) {
 		printf("Usage: %s, <filename>", *argv);
@@ -32,7 +57,11 @@ int main(int argc, char **argv) {
 	ZTokens *tokens = ztokenize(program);
 
 
-	zparse(tokens);
+	ZNode *root = zparse(tokens);
+
+	int res = calculate(root);
+	printf("calculated: %d", res);
+
 	allocator.close();
 
 	return 0;

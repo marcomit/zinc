@@ -24,6 +24,8 @@ typedef enum {
 
 typedef struct ZNode ZNode;
 typedef struct ZType ZType;
+typedef struct ZField ZField;
+typedef vec(ZField *) ZFields;
 
 typedef enum ZTypeKind {
 	Z_TYPE_PRIMITIVE,
@@ -33,10 +35,10 @@ typedef enum ZTypeKind {
 	Z_TYPE_POINTER
 } ZTypeKind;
 
-typedef struct {
+struct ZField {
 	ZType *type;
 	ZToken *field;
-} ZField;
+};
 
 struct ZType {
 	ZTypeKind kind;
@@ -50,7 +52,7 @@ struct ZType {
 
 		struct {
 			ZToken *name;
-			vec(ZField *) fields;
+			ZFields *fields;
 		} strct;
 
 		struct {
@@ -117,7 +119,7 @@ struct ZNode {
 			ZType *ret;
 			ZToken *ident;
 
-			vec(ZField *) args;
+			ZFields args;
 
 			ZNode *body;
 			// One of main feature of zinc is receiver functions
@@ -132,7 +134,7 @@ struct ZNode {
 
 		struct {
 			ZToken *ident;
-			vec(ZField *) fields;
+			ZFields *fields;
 		} structDef;
 
 		struct {
