@@ -28,22 +28,6 @@ typedef struct {
 	ZTokenType type;
 } KeyboardEntry;
 
-static const char *tokens[] = {
-#define DEF(id, str, _) str,
-
-#define TOK_TYPES
-#define TOK_SYMBOLS
-#define TOK_FLOWS
-
-#include "ztok.h"
-
-#undef TOK_FLOWS
-#undef TOK_SYMBOLS
-#undef TOK_TYPES
-
-#undef DEF
-};
-
 static KeyboardEntry keyboardEntries[HASHMAP_TOK_LEN];
 
 static uint32_t hashtoken(const char *buff, size_t len) {
@@ -118,12 +102,6 @@ static ZToken *createInteger(int64_t value) {
 static ZToken *createString(char *str) {
 	ZToken *self = createToken(TOK_STR_LIT);
 	self->str = str;
-	return self;
-}
-
-static ZToken *createBoolean(bool value) {
-	ZToken *self = createToken(TOK_BOOL_LIT);
-	self->boolean = value;
 	return self;
 }
 
@@ -237,6 +215,7 @@ void printToken(ZToken *token) {
 			break;
 		case TOK_IDENT:
 			printf("ident(%s)", token->str);
+			break;
 		#define DEF(id, str, _) case id: printf(str); break;
 
 		#define TOK_FLOWS

@@ -122,7 +122,7 @@ struct ZNode {
 			ZType *ret;
 			ZToken *ident;
 
-			ZFields args;
+			ZFields *args;
 
 			ZNode *body;
 			// One of main feature of zinc is receiver functions

@@ -58,9 +58,10 @@ int main(int argc, char **argv) {
 
 
 	ZNode *root = zparse(tokens);
+	(void)root;
 
-	int res = calculate(root);
-	printf("calculated: %d", res);
+	// int res = calculate(root);
+	// printf("calculated: %d", res);
 
 	allocator.close();
 
