@@ -98,7 +98,7 @@ ZTokenType findKeyword(const char *ident, size_t len) {
 }
 
 static ZToken *createToken(ZTokenType type) {
-	ZToken *self = allocator.alloc(sizeof(ZToken));
+	ZToken *self = zalloc(ZToken);
 	self->type = type;
 	return self;
 }
@@ -224,7 +224,7 @@ static ZToken *parseLiteral(lexer_t *l) {
 	return createToken(type);
 }
 
-static void printToken(ZToken *token) {
+void printToken(ZToken *token) {
 	switch(token->type) {
 		case TOK_INT_LIT:
 			printf("int(%llu)", token->integer);
@@ -251,12 +251,14 @@ static void printToken(ZToken *token) {
 
 		#undef DEF
 	}
-	printf("\n");
 }
 
 void printTokens(ZTokens *tokens) {
 	printf("Tokens: %zu\n", tokens->len);
-	foreach(tok, tokens) printToken(tok);
+	foreach(tok, tokens) {
+		printToken(tok);
+		printf("\n");
+	}
 }
 
 static inline void skipSpaces(lexer_t *l) {
@@ -291,7 +293,7 @@ ZTokens *ztokenize(char * program) {
 	l.current = program;
 	l.row = 0;
 	l.col = 0;
-	l.tokens = allocator.alloc(sizeof(ZTokens));
+	l.tokens = zalloc(ZTokens);
 	ZTokens *tokens = l.tokens;
 	ZToken *curr;
 

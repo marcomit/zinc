@@ -1,6 +1,7 @@
 #ifndef ZPARSE_H
 #define ZPARSE_H
 
+#include "base.h"
 #include "zlex.h"
 
 typedef enum {
@@ -25,7 +26,9 @@ typedef enum {
 typedef struct ZNode ZNode;
 typedef struct ZType ZType;
 typedef struct ZField ZField;
+
 typedef vec(ZField *) ZFields;
+typedef vec(ZType *)  ZTypes;
 
 typedef enum ZTypeKind {
 	Z_TYPE_PRIMITIVE,
@@ -57,7 +60,7 @@ struct ZType {
 
 		struct {
 			ZType *ret;
-			vec(ZType *) args;
+			ZTypes *args;
 		} func;
 
 		struct {

@@ -2,19 +2,18 @@
  * Definition of tokens using the X macros trick.
  * To categorize tokens we use bit flags
  * in order to check if a token is of a specific category.
- * Since there are ~50 tokens we set the flags from the 8th bit.
- * TOK_FLOWS	: 1 << 8
- * TOK_TYPES	: 1 << 9
- * TOK_DYN 		: 1 << 10
- * TOK_SYMBOLS: 1 << 11
  */
 
 #ifndef TOK_MASKS
-#define TOK_FLOWS_MASK 		(1 << 8)
-#define TOK_TYPES_MASK 		(1 << 9)
-#define TOK_DYN_MASK 			(1 << 10)
-#define TOK_SYMBOLS_MASK 	(1 << 11)
-#define TOK_OPERATOR			(1 << 12)
+#define TOK_MASKS
+
+#define TOK_BASE_MASK 16
+
+#define TOK_FLOWS_MASK 		(1 << (TOK_BASE_MASK))
+#define TOK_TYPES_MASK 		(1 << (TOK_BASE_MASK + 1))
+#define TOK_DYN_MASK 			(1 << (TOK_BASE_MASK + 2))
+#define TOK_SYMBOLS_MASK 	(1 << (TOK_BASE_MASK + 3))
+#define TOK_OPERATOR			(1 << (TOK_BASE_MASK + 4))
 #endif
 
 #ifdef TOK_FLOWS
@@ -56,8 +55,9 @@ DEF(TOK_IDENT,			"identifier",				TOK_DYN_MASK | 0x19)
 
 DEF(TOK_ARROW,			"->", 			TOK_SYMBOLS_MASK | 0x1A)
 DEF(TOK_EQEQ,				"==", 			TOK_SYMBOLS_MASK | 0x1B)
-DEF(TOK_LPAREN,			"(", 				TOK_SYMBOLS_MASK | 0x1C)
-DEF(TOK_RPAREN,			")", 				TOK_SYMBOLS_MASK | 0x1D)
+DEF(TOK_NOTEQ,			"!=", 			TOK_SYMBOLS_MASK | 0x1C)
+DEF(TOK_LPAREN,			"(", 				TOK_SYMBOLS_MASK | 0x1D)
+DEF(TOK_RPAREN,			")", 				TOK_SYMBOLS_MASK | 0x1E)
 DEF(TOK_LBRACKET,		"{", 				TOK_SYMBOLS_MASK | 0x1F)
 DEF(TOK_RBRACKET,		"}", 				TOK_SYMBOLS_MASK | 0x20)
 DEF(TOK_LSBRACKET,	"[", 				TOK_SYMBOLS_MASK | 0x21)
@@ -71,4 +71,11 @@ DEF(TOK_NOT,				"!", 				TOK_OPERATOR | TOK_SYMBOLS_MASK | 0x28)
 DEF(TOK_COMMA, 			",", 				TOK_SYMBOLS_MASK | 0x29)
 DEF(TOK_EQ, 				"=", 				TOK_SYMBOLS_MASK | 0x2A)
 DEF(TOK_DOT,				".", 				TOK_SYMBOLS_MASK | 0x2B)
+DEF(TOK_GTE,				">=", 			TOK_SYMBOLS_MASK | 0x2C)
+DEF(TOK_LTE,				"<=", 			TOK_SYMBOLS_MASK | 0x2D)
+DEF(TOK_GT,					">", 				TOK_SYMBOLS_MASK | 0x2E)
+DEF(TOK_LT,					"<", 				TOK_SYMBOLS_MASK | 0x2F)
+DEF(TOK_AND,				"and", 			TOK_SYMBOLS_MASK | 0x30)
+DEF(TOK_OR,					"or", 			TOK_SYMBOLS_MASK | 0x31)
+
 #endif

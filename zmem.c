@@ -72,20 +72,20 @@ static inline void initArena() {
 	allocator.ctx = createArena();
 }
 
-static void *zalloc(size_t size) { return arenaAlloc(allocator.ctx, size); }
+static void *aalloc(size_t size) { return arenaAlloc(allocator.ctx, size); }
 
-static void empty(void *ptr) { }
+static void empty(void *ptr) { (void)ptr; }
 
-static void zclose() { arenaFree(allocator.ctx); }
+static void aclose() { arenaFree(allocator.ctx); }
 
 #define ARENA_ALLOCATOR
 
 #ifdef ARENA_ALLOCATOR
 Allocator allocator = {
-	.alloc 	= zalloc,
+	.alloc 	= aalloc,
 	.free		= empty,
 	.init		= initArena,
-	.close 	= zclose,
+	.close 	= aclose,
 	.ctx 		= NULL
 };
 #else

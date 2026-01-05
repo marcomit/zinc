@@ -1,11 +1,8 @@
 #ifndef ZLEX_H
 #define ZLEX_H
 
+#include "base.h"
 #include "zvec.h"
-
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
 
 typedef enum {
 
@@ -31,19 +28,20 @@ typedef struct {
 	ZTokenType type;
 	union {
 		char *str;
-		int64_t integer;
+		i64 integer;
 		bool boolean;
 	};
-	size_t row;
-	size_t col;
+	usize row;
+	usize col;
 } ZToken;
 
 typedef struct {
 	asVec(ZToken *);
-	int32_t current;
+	i32 current;
 } ZTokens;
 
 ZTokens *ztokenize(char *);
 
 void printTokens(ZTokens *);
+void printToken(ZToken *);
 #endif
