@@ -58,7 +58,8 @@ int main(int argc, char **argv) {
 
 
 	ZNode *root = zparse(tokens);
-	(void)root;
+
+	printNode(root, 0);
 
 	// int res = calculate(root);
 	// printf("calculated: %d", res);

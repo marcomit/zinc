@@ -1,0 +1,115 @@
+(* Zinc Programming Language Grammar *)
+
+(* Program Structure *)
+program = { declaration } ;
+
+declaration = function_declaration
+            | variable_declaration
+            | type_declaration ;
+
+(* Function Declarations *)
+function_declaration = type, identifier, "(", [ parameter_list ], ")", block ;
+
+parameter_list = parameter, { ",", parameter } ;
+
+parameter = type, identifier ;
+
+(* Variable Declarations *)
+variable_declaration = type, identifier, [ "=", expression ], ";" ;
+
+(* Type Declarations *)
+type = basic_type
+     | pointer_type
+     | array_type
+     | identifier ;  (* for user-defined types *)
+
+basic_type = "int" | "char" | "float" | "double" | "void" ;
+
+pointer_type = "*", type ;  (* star on the left *)
+
+array_type = type, "[", [ expression ], "]" ;
+
+(* Statements *)
+block = "{", { statement }, "}" ;
+
+statement = variable_declaration
+          | expression_statement
+          | if_statement
+          | while_statement
+          | for_statement
+          | return_statement
+          | block ;
+
+expression_statement = [ expression ], ";" ;
+
+if_statement = "if", expression, block, [ "else", ( if_statement | block ) ] ;
+
+while_statement = "while", expression, block ;
+
+for_statement = "for", expression, ";", expression, ";", expression, block ;
+
+return_statement = "return", [ expression ], ";" ;
+
+(* Expressions *)
+expression = assignment_expression ;
+
+assignment_expression = logical_or_expression, [ "=", assignment_expression ] ;
+
+logical_or_expression = logical_and_expression, { "||", logical_and_expression } ;
+
+logical_and_expression = equality_expression, { "&&", equality_expression } ;
+
+equality_expression = relational_expression, { ( "==" | "!=" ), relational_expression } ;
+
+relational_expression = additive_expression, { ( "<" | ">" | "<=" | ">=" ), additive_expression } ;
+
+additive_expression = multiplicative_expression, { ( "+" | "-" ), multiplicative_expression } ;
+
+multiplicative_expression = unary_expression, { ( "*" | "/" | "%" ), unary_expression } ;
+
+unary_expression = postfix_expression
+                 | ( "+" | "-" | "!" | "*" | "&" ), unary_expression ;
+
+postfix_expression = primary_expression, { postfix_operator } ;
+
+postfix_operator = "[", expression, "]"           (* array indexing *)
+                 | "(", [ argument_list ], ")"    (* function call *)
+                 | ".", identifier                 (* member access *)
+                 | "->", identifier                (* pointer member access *)
+                 | "++"                            (* post-increment *)
+                 | "--" ;                          (* post-decrement *)
+
+primary_expression = identifier
+                   | constant
+                   | string_literal
+                   | "(", expression, ")" ;
+
+argument_list = expression, { ",", expression } ;
+
+(* Receiver Functions (method-like syntax) *)
+(* You'll need to define how these work - here's a suggestion *)
+receiver_function = "fn", type, ".", identifier, "(", [ parameter_list ], ")", block ;
+
+(* Lexical Elements *)
+identifier = letter, { letter | digit | "_" } ;
+
+constant = integer_constant | float_constant | char_constant ;
+
+integer_constant = digit, { digit } ;
+
+float_constant = digit, { digit }, ".", { digit } ;
+
+char_constant = "'", character, "'" ;
+
+string_literal = '"', { character }, '"' ;
+
+letter = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" 
+       | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" 
+       | "u" | "v" | "w" | "x" | "y" | "z"
+       | "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" 
+       | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" 
+       | "U" | "V" | "W" | "X" | "Y" | "Z" ;
+
+digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+
+character = ? any valid character ? ;

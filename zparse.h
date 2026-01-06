@@ -65,7 +65,7 @@ struct ZType {
 
 		struct {
 			ZType *base;
-			int size;
+			usize size;
 		} array;
 	};
 
@@ -161,5 +161,7 @@ struct ZNode {
 };
 
 ZNode *zparse(ZTokens *);
+
+void printNode(ZNode *, u8);
 
 #endif
