@@ -5,7 +5,7 @@
 #define ARENA_ALIGNMENT 8
 #define ARENA_ALIGN(size) (((size) + (ARENA_ALIGNMENT - 1)) & ~(ARENA_ALIGNMENT - 1))
 
-#define ARENA_PAGE_SIZE (1 << 16)
+#define ARENA_PAGE_SIZE MiB(1)
 
 typedef struct ArenaBucket {
 	size_t len;
@@ -74,6 +74,10 @@ static inline void initArena() {
 
 static void *aalloc(size_t size) { return arenaAlloc(allocator.ctx, size); }
 
+static void *arealloc(void *ptr, usize size) {
+	return aalloc(size);
+}
+
 static void empty(void *ptr) { (void)ptr; }
 
 static void aclose() { arenaFree(allocator.ctx); }
@@ -82,11 +86,12 @@ static void aclose() { arenaFree(allocator.ctx); }
 
 #ifdef ARENA_ALLOCATOR
 Allocator allocator = {
-	.alloc 	= aalloc,
-	.free		= empty,
-	.init		= initArena,
-	.close 	= aclose,
-	.ctx 		= NULL
+	.alloc 		= aalloc,
+	.realloc 	= arealloc,
+	.free			= empty,
+	.init			= initArena,
+	.close 		= aclose,
+	.ctx 			= NULL
 };
 #else
 Allocator allocator = {

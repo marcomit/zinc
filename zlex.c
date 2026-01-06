@@ -19,9 +19,9 @@
 typedef struct {
 	char *program;
 	char *current;
-	ZTokens *tokens;
+	ZToken **tokens;
 	size_t row, col;
-} lexer_t;
+} ZLexer;
 
 typedef struct {
 	const char *keyword;
@@ -105,13 +105,13 @@ static ZToken *createString(char *str) {
 	return self;
 }
 
-static void addToken(lexer_t *l, ZToken *token) {
+static void addToken(ZLexer *l, ZToken *token) {
 	token->row = l->row;
 	token->col = l->col;
-	vec_push(l->tokens, token);
+	vecpush(l->tokens, token);
 }
 
-static void next(lexer_t *l) {
+static void next(ZLexer *l) {
 	if (!*l->current) return;
 	if (*l->current == '\n') {
 		l->row++;
@@ -122,7 +122,7 @@ static void next(lexer_t *l) {
 	l->current++;
 }
 
-static void error(lexer_t *l, const char *fmt, ...) {
+static void error(ZLexer *l, const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 
@@ -134,7 +134,7 @@ static void error(lexer_t *l, const char *fmt, ...) {
 	// exit(1);
 }
 
-static ZToken *parseString(lexer_t *l) {
+static ZToken *parseString(ZLexer *l) {
 	if (*l->current != '"') return NULL;
 	next(l);
 
@@ -153,7 +153,7 @@ static ZToken *parseString(lexer_t *l) {
 	return createString(buff);
 }
 
-static ZToken *parseSymbol(lexer_t *l) {
+static ZToken *parseSymbol(ZLexer *l) {
 	if (false) { }
 	#define DEF(id, str, _) else if(!strncmp(str, l->current, strlen(str))) { \
 		l->current += strlen(str);																							\
@@ -174,7 +174,7 @@ static ZToken *parseSymbol(lexer_t *l) {
 	return NULL;
 }
 
-static ZToken *parseInt(lexer_t *l) {
+static ZToken *parseInt(ZLexer *l) {
 	char *start = l->current;
 	if (!isdigit(*l->current)) return NULL;
 
@@ -186,7 +186,7 @@ static ZToken *parseInt(lexer_t *l) {
 	return createInteger(value);
 }
 
-static ZToken *parseLiteral(lexer_t *l) {
+static ZToken *parseLiteral(ZLexer *l) {
 	if (!isalpha(*l->current) && *l->current != '_') return NULL;
 
 	char *start = l->current;
@@ -232,26 +232,26 @@ void printToken(ZToken *token) {
 	}
 }
 
-void printTokens(ZTokens *tokens) {
-	printf("Tokens: %zu\n", tokens->len);
-	foreach(tok, tokens) {
-		printToken(tok);
+void printTokens(ZToken **tokens) {
+	printf("Tokens: %zu\n", veclen(tokens));
+	for (usize i = 0; i < veclen(tokens); i++) {
+		printToken(tokens[i]);
 		printf("\n");
 	}
 }
 
-static inline void skipSpaces(lexer_t *l) {
+static inline void skipSpaces(ZLexer *l) {
 	while (*l->current && isspace(*l->current)) next(l);
 }
 
-static void skipInlineComments(lexer_t *l) {
+static void skipInlineComments(ZLexer *l) {
 	if (!*l->current || !*(l->current + 1)) return;
 	if (*l->current != '/' || *(l->current + 1) != '/') return;
 
 	while (*l->current && *l->current != '\n') next(l);
 }
 
-static void skipMultilineComments(lexer_t *l) {
+static void skipMultilineComments(ZLexer *l) {
 	if (!*l->current || !*(l->current + 1)) return;
 	if (*l->current != '/' || *(l->current + 1) != '*') return;
 
@@ -265,44 +265,47 @@ static void skipMultilineComments(lexer_t *l) {
 	next(l); next(l);
 }
 
-ZTokens *ztokenize(char * program) {
-	lexer_t l;
+ZLexer *makelexer(char *program) {
+	ZLexer *self = zalloc(ZLexer);
 
-	l.program = program;
-	l.current = program;
-	l.row = 0;
-	l.col = 0;
-	l.tokens = zalloc(ZTokens);
-	ZTokens *tokens = l.tokens;
+	self->row = 0;
+	self->col = 0;
+	self->tokens = NULL;
+	self->program = program;
+	self->current = program;
+	return self;
+}
+
+ZToken **ztokenize(char * program) {
+	ZLexer *l = makelexer(program);
 	ZToken *curr;
 
-	vec_init(l.tokens, 32);
 	initKeywords();
 
-	while (*l.current) {
+	while (*l->current) {
 		curr = NULL;
-		skipSpaces(&l);
-		skipInlineComments(&l);
-		skipSpaces(&l);
-		skipMultilineComments(&l);
-		if (!*l.current) break;
+		skipSpaces(l);
+		skipInlineComments(l);
+		skipSpaces(l);
+		skipMultilineComments(l);
+		if (!*l->current) break;
 
 		
 
-		if (*l.current == '"') {
-			curr = parseString(&l);
-		} else if (isalpha(*l.current) || *l.current == '_') {
-			curr = parseLiteral(&l);
-		} else if (isdigit(*l.current)) {
-			curr = parseInt(&l);
+		if (*l->current == '"') {
+			curr = parseString(l);
+		} else if (isalpha(*l->current) || *l->current == '_') {
+			curr = parseLiteral(l);
+		} else if (isdigit(*l->current)) {
+			curr = parseInt(l);
 		} 
 
 		if (!curr) {
-			curr = parseSymbol(&l);
+			curr = parseSymbol(l);
 		}
 
-		if (!curr) error(&l, "Error parsing near %.10s\n", l.current);
-		addToken(&l, curr);
+		if (!curr) error(l, "Error parsing near %.10s\n", l->current);
+		addToken(l, curr);
 	}
-	return tokens;
+	return l->tokens;
 }

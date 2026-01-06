@@ -54,8 +54,7 @@ int main(int argc, char **argv) {
 
 	allocator.init();
 
-	ZTokens *tokens = ztokenize(program);
-
+	ZToken **tokens = ztokenize(program);
 
 	ZNode *root = zparse(tokens);
 

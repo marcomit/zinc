@@ -35,13 +35,8 @@ typedef struct {
 	usize col;
 } ZToken;
 
-typedef struct {
-	asVec(ZToken *);
-	i32 current;
-} ZTokens;
+ZToken **ztokenize(char *);
 
-ZTokens *ztokenize(char *);
-
-void printTokens(ZTokens *);
+void printTokens(ZToken **);
 void printToken(ZToken *);
 #endif

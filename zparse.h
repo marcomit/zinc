@@ -27,9 +27,6 @@ typedef struct ZNode ZNode;
 typedef struct ZType ZType;
 typedef struct ZField ZField;
 
-typedef vec(ZField *) ZFields;
-typedef vec(ZType *)  ZTypes;
-
 typedef enum ZTypeKind {
 	Z_TYPE_PRIMITIVE,
 	Z_TYPE_STRUCT,
@@ -55,12 +52,12 @@ struct ZType {
 
 		struct {
 			ZToken *name;
-			ZFields *fields;
+			ZField **fields;
 		} strct;
 
 		struct {
 			ZType *ret;
-			ZTypes *args;
+			ZType **args;
 		} func;
 
 		struct {
@@ -111,7 +108,7 @@ struct ZNode {
 			ZNode *rvalue;
 		} varAssign;
 
-		vec(ZNode *) block;
+		ZNode ** block;
 
 		struct {
 			ZType *target;
@@ -122,7 +119,7 @@ struct ZNode {
 			ZType *ret;
 			ZToken *ident;
 
-			ZFields *args;
+			ZField **args;
 
 			ZNode *body;
 			// One of main feature of zinc is receiver functions
@@ -132,12 +129,12 @@ struct ZNode {
 
 		struct {
 			ZNode *callee;
-			vec(ZNode *) args;
+			ZNode ** args;
 		} call;
 
 		struct {
 			ZToken *ident;
-			ZFields *fields;
+			ZField **fields;
 		} structDef;
 
 		struct {
@@ -160,7 +157,7 @@ struct ZNode {
 	};
 };
 
-ZNode *zparse(ZTokens *);
+ZNode *zparse(ZToken **);
 
 void printNode(ZNode *, u8);
 

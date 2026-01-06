@@ -1,3 +1,9 @@
- 3 * (4 + 8) + 4
+// 3 + (4 *+ 8) + 4
 
-// **void(int, **int) prova() {}
+int main(int argc, **char argv) {
+	if argc > 0 {
+		return 0
+	}
+
+	return 1
+}
