@@ -1,0 +1,198 @@
+#include "zdebug.h"
+#include "zparse.h"
+
+#define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
+
+void printToken(ZToken *token) {
+	switch(token->type) {
+		case TOK_INT_LIT:
+			printf("int(%llu)", token->integer);
+			break;
+		case TOK_STR_LIT:
+			printf("string(%s)", token->str);
+			break;
+		case TOK_BOOL_LIT:
+			printf("bool(%s)", token->boolean ? "true" : "false");
+			break;
+		case TOK_IDENT:
+			printf("ident(%s)", token->str);
+			break;
+		#define DEF(id, str, _) case id: printf(str); break;
+
+		#define TOK_FLOWS
+		#define TOK_TYPES
+		#define TOK_SYMBOLS
+
+		#include "ztok.h"
+
+		#undef TOK_SYMBOLS
+		#undef TOK_TYPES
+		#undef TOK_FLOWS
+
+		#undef DEF
+	}
+}
+
+void printTokens(ZToken **tokens) {
+	printf("==== Tokens: %zu ====\n", veclen(tokens));
+	for (usize i = 0; i < veclen(tokens); i++) {
+		printToken(tokens[i]);
+		printf(" ");
+		if (i % 5 == 0) printf("\n");
+	}
+	printf("\n==== End tokens ====\n");
+}
+
+void printType(ZType *type) {
+	if (!type) {
+		printf("unknown");
+		return;
+	}
+
+	if (type->constant) printf("const ");
+
+	switch(type->kind) {
+	case Z_TYPE_POINTER:
+		printf("*");
+		printType(type->base);
+		break;
+	case Z_TYPE_PRIMITIVE:
+		printToken(type->token);
+		break;
+	case Z_TYPE_FUNCTION:
+		printType(type->func.ret);
+		printf("(");
+		for (usize i = 0; i < veclen(type->func.args); i++) {
+			printType(type->func.args[i]);
+			if (i < veclen(type->func.args) - 1) printf(", ");
+		}
+		printf(")");
+		break;
+	case Z_TYPE_STRUCT:
+		printf("struct %s {", type->strct.name->str);
+		for (usize i = 0; i < veclen(type->strct.fields); i++) {
+			printType(type->strct.fields[i]->type);
+			printf("%s\n", type->strct.fields[i]->field->str);
+		}
+		printf("}");
+		break;
+	case Z_TYPE_ARRAY:
+		printf("[%zu]", type->array.size);
+		printType(type->array.base);
+		break;
+	}
+}
+
+void printNode(ZNode *node, u8 depth) {
+	if (node == NULL) {
+		printf("unknown");
+		return;
+	}
+
+	// Helper to print indentation
+	indent(depth);
+
+	printf("[%s] ", (char*[]){
+			"BLOCK", "IF", "WHILE", "RETURN", "VAR_DECL", "ASSIGN", 
+			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
+			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM"
+	}[node->type]);
+
+	depth++;
+	switch (node->type) {
+	case NODE_LITERAL:
+		printf("Value: ");
+		printToken(node->literalTok);
+		break;
+
+	case NODE_IDENTIFIER:
+		printf("Name: %s", node->identTok->str);
+		break;
+
+	case NODE_BINARY:
+		printf("Op: ");
+		printToken(node->binary.op);
+		printf("\n");
+		printNode(node->binary.left, depth);
+		printNode(node->binary.right, depth);
+		return; // Return early to avoid the double newline
+
+	case NODE_VAR_DECL:
+		printf("Var: %s Type: ", node->varDecl.ident->str);
+		printType(node->varDecl.type);
+		if (node->varDecl.rvalue) {
+			printf("\n");
+			printNode(node->varDecl.rvalue, depth);
+		}
+		break;
+
+	case NODE_BLOCK:
+		printf(" %zu\n", veclen(node->block));
+		for (usize i = 0; i < veclen(node->block); i++) {
+			printNode(node->block[i], depth);
+		}
+
+		return;
+
+	case NODE_FUNC:
+		// if (node->funcDef.receiver) {
+		// 	printf("Receiver: ");
+		// 	printType(node->funcDef.receiver);
+		// 	printf(" ");
+		// }
+		printf("Name: %s\n", node->funcDef.ident->str);
+		printNode(node->funcDef.body, depth);
+		return;
+
+	case NODE_CALL:
+		printf("Callee: %s\n", node->call.callee->identTok->str);
+		for (usize i = 0; i < veclen(node->call.args); i++){
+			printNode(node->call.args[i], depth);
+		}
+		return;
+
+	case NODE_RETURN:
+		printf("\n");
+		if (node->returnStmt.expr) printNode(node->returnStmt.expr, depth);
+		return;
+
+	case NODE_IF:
+		printf("Cond: \n");
+		printNode(node->ifStmt.cond, depth);
+		printNode(node->ifStmt.body, depth);
+		if (node->ifStmt.elseBranch) {
+			indent(depth - 1);
+			printf("[ELSE]\n");
+			printNode(node->ifStmt.elseBranch, depth);
+		}
+		break;
+	case NODE_WHILE:
+		printf("Cond: \n");
+		printNode(node->whileStmt.cond, depth);
+		printNode(node->whileStmt.branch, depth);
+
+	case NODE_PROGRAM:
+		printf("\n");
+		for (usize i = 0; i < veclen(node->program); i++) {
+			printNode(node->program[i], depth);
+		}
+		break;
+	case NODE_STRUCT:
+		printf("%s\n", node->structDef.ident->str);
+
+		for (usize i = 0; i < veclen(node->structDef.fields); i++) {
+			indent(depth);
+			printType(node->structDef.fields[i]->type);
+			printf("\n");
+			printf("%s\n", node->structDef.fields[i]->field->str);
+		}
+		break;
+	// Add cases for WHILE, MEMBER, etc., following the same pattern
+	default:
+			printf("(details not implemented in printer for node %d)", node->type);
+			break;
+	}
+	printf("\n");
+}
+
+

@@ -43,6 +43,7 @@ DEF(TOK_STRUCT, 		"struct", 	TOK_TYPES_MASK | 0x12)
 DEF(TOK_UNION, 			"union", 		TOK_TYPES_MASK | 0x13)
 DEF(TOK_TYPEDEF, 		"typedef", 	TOK_TYPES_MASK | 0x14)
 DEF(TOK_ENUM, 			"enum", 		TOK_TYPES_MASK | 0x15)
+DEF(TOK_CONST, 			"const",		0x33)
 #endif
 
 #ifdef TOK_DYN

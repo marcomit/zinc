@@ -75,6 +75,7 @@ static inline void initArena() {
 static void *aalloc(size_t size) { return arenaAlloc(allocator.ctx, size); }
 
 static void *arealloc(void *ptr, usize size) {
+	(void)ptr;
 	return aalloc(size);
 }
 

@@ -21,7 +21,8 @@ typedef enum {
 	NODE_STRUCT,
 	NODE_SUBSCRIPT,
 	NODE_MEMBER,
-	NODE_PROGRAM
+	NODE_MODULE,
+	NODE_PROGRAM,
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -100,8 +101,8 @@ struct ZNode {
 
 		struct {
 			ZType *type;
-			ZNode *lvalue;
-			ZNode *rvalue;
+			ZToken *ident;
+			ZNode *rvalue; // Null if not initialized
 		} varDecl;
 
 		struct {
@@ -157,6 +158,7 @@ struct ZNode {
 
 		ZToken *literalTok;
 		ZToken *identTok;
+		ZToken *module;
 	};
 };
 

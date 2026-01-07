@@ -1,6 +1,7 @@
 #include "zlex.h"
 #include "zmem.h"
 #include "zparse.h"
+#include "zdebug.h"
 
 #include <stdlib.h>
 #include <stdio.h>

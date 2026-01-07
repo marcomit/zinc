@@ -202,44 +202,6 @@ static ZToken *parseLiteral(ZLexer *l) {
 	return createToken(type);
 }
 
-void printToken(ZToken *token) {
-	switch(token->type) {
-		case TOK_INT_LIT:
-			printf("int(%llu)", token->integer);
-			break;
-		case TOK_STR_LIT:
-			printf("string(%s)", token->str);
-			break;
-		case TOK_BOOL_LIT:
-			printf("bool(%s)", token->boolean ? "true" : "false");
-			break;
-		case TOK_IDENT:
-			printf("ident(%s)", token->str);
-			break;
-		#define DEF(id, str, _) case id: printf(str); break;
-
-		#define TOK_FLOWS
-		#define TOK_TYPES
-		#define TOK_SYMBOLS
-
-		#include "ztok.h"
-
-		#undef TOK_SYMBOLS
-		#undef TOK_TYPES
-		#undef TOK_FLOWS
-
-		#undef DEF
-	}
-}
-
-void printTokens(ZToken **tokens) {
-	printf("Tokens: %zu\n", veclen(tokens));
-	for (usize i = 0; i < veclen(tokens); i++) {
-		printToken(tokens[i]);
-		printf("\n");
-	}
-}
-
 static inline void skipSpaces(ZLexer *l) {
 	while (*l->current && isspace(*l->current)) next(l);
 }

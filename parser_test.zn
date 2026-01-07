@@ -1,11 +1,28 @@
+// module "std"
+
+
+struct prova {
+	int type
+	
+	int row
+	int col
+}
+
 int main(int argc, **char argv) {
-	int a = 0
+	**int a = (4 + 3) * 8
 	if (3 + 4) < (4 + 5 * 4) {
 		return 0
-	} else {
+	}
+
+	while (3 + 4) < (4 + 5 * 4) {
+		return 0
+	}
+
+	while a = 10 == 9 {
 
 	}
-	return 1
+
+	return 1 + 1
 }
 
 int prova() {}

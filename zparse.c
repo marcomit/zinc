@@ -1,6 +1,7 @@
 #include "zparse.h"
 #include "zlex.h"
 #include "zmem.h"
+#include "zdebug.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -11,8 +12,6 @@
 
 #define ensure(c) if (!(c)) return NULL
 #define expect(l, t)  ensure(match(l, t))
-
-#define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
 #define error(fmt, ...) do {												\
 	fprintf(stderr, "%s:%d", __FILE__, __LINE__);			\
@@ -33,13 +32,14 @@ typedef struct ZParser {
 
 typedef ZNode *(*ParseFunction)(ZParser *);
 
-static ZType *parseType		(ZParser *);
-static ZNode *parse				(ZParser *);
-static ZNode *parseIf			(ZParser *);
-static ZNode *parseWhile	(ZParser *);
-static ZNode *parseReturn	(ZParser *);
-static ZNode *parseBlock	(ZParser *);
-static ZNode *parseExpr		(ZParser *);
+static ZType *parseType			(ZParser *);
+static ZNode *parse					(ZParser *);
+static ZNode *parseIf				(ZParser *);
+static ZNode *parseWhile		(ZParser *);
+static ZNode *parseReturn		(ZParser *);
+static ZNode *parseBlock		(ZParser *);
+static ZNode *parseExpr			(ZParser *);
+static ZNode *parseVarDecl	(ZParser *);
 
 static ZParser *makeparser(ZToken **tokens) {
 	ZParser *self = zalloc(ZParser);
@@ -104,162 +104,12 @@ static bool match(ZParser *parser, ZTokenType type) {
 	return res;
 }
 
-static bool matchMask(ZParser *parser, u32 mask) {
-	bool res = checkMask(parser, mask);
-	if (res) consume(parser);
-	return res;
-}
-
-static void reportError(ZParser *parser, const char *message) {
-	ZParserError *error = zalloc(ZParserError);
-	error->message = message;
-	error->token = peek(parser);
-	vecpush(parser->errors, error);
-}
-
-void printType(ZType *type) {
-	if (!type) {
-		printf("unknown");
-		return;
-	}
-
-	if (type->constant) printf("const ");
-
-	switch(type->kind) {
-	case Z_TYPE_POINTER:
-		printf("*");
-		printType(type->base);
-		break;
-	case Z_TYPE_PRIMITIVE:
-		printToken(type->token);
-		break;
-	case Z_TYPE_FUNCTION:
-		printType(type->func.ret);
-		printf("(");
-		for (usize i = 0; i < veclen(type->func.args); i++) {
-			printType(type->func.args[i]);
-			if (i < veclen(type->func.args) - 1) printf(", ");
-		}
-		printf(")");
-		break;
-	case Z_TYPE_STRUCT:
-		printf("struct %s {", type->strct.name->str);
-		for (usize i = 0; i < veclen(type->strct.fields); i++) {
-			printType(type->strct.fields[i]->type);
-			printf("%s\n", type->strct.fields[i]->field->str);
-		}
-		printf("}");
-		break;
-	case Z_TYPE_ARRAY:
-		printf("[%zu]", type->array.size);
-		printType(type->array.base);
-		break;
-	}
-}
-
-void printNode(ZNode *node, u8 depth) {
-	if (node == NULL) {
-		printf("unknown");
-		return;
-	}
-
-	// Helper to print indentation
-	indent(depth);
-
-	printf("[%s] ", (char*[]){
-			"BLOCK", "IF", "WHILE", "RETURN", "VAR_DECL", "ASSIGN", 
-			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
-			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "PROGRAM"
-	}[node->type]);
-
-	depth++;
-	switch (node->type) {
-	case NODE_LITERAL:
-		printf("Value: ");
-		printToken(node->literalTok);
-		break;
-
-	case NODE_IDENTIFIER:
-		printf("Name: %s", node->identTok->str);
-		break;
-
-	case NODE_BINARY:
-		printf("Op: ");
-		printToken(node->binary.op);
-		printf("\n");
-		printNode(node->binary.left, depth);
-		printNode(node->binary.right, depth);
-		return; // Return early to avoid the double newline
-
-	case NODE_VAR_DECL:
-		printf("Var: %s Type: ", node->varDecl.lvalue->identTok->str);
-		printType(node->varDecl.type);
-		if (node->varDecl.rvalue) {
-			printf("\n");
-			printNode(node->varDecl.rvalue, depth);
-		}
-		break;
-
-	case NODE_BLOCK:
-		printf(" %zu\n", veclen(node->block));
-		for (usize i = 0; i < veclen(node->block); i++) {
-			printNode(node->block[i], depth);
-		}
-
-		return;
-
-	case NODE_FUNC:
-		// if (node->funcDef.receiver) {
-		// 	printf("Receiver: ");
-		// 	printType(node->funcDef.receiver);
-		// 	printf(" ");
-		// }
-		printf("Name: %s\n", node->funcDef.ident->str);
-		printNode(node->funcDef.body, depth);
-		return;
-
-	case NODE_CALL:
-		printf("Callee: %s\n", node->call.callee->identTok->str);
-		for (usize i = 0; i < veclen(node->call.args); i++){
-			printNode(node->call.args[i], depth);
-		}
-		return;
-
-	case NODE_RETURN:
-		printf("\n");
-		if (node->returnStmt.expr) printNode(node->returnStmt.expr, depth);
-		return;
-
-	case NODE_IF:
-		printf("Cond: \n");
-		printNode(node->ifStmt.cond, depth);
-		printNode(node->ifStmt.body, depth);
-		if (node->ifStmt.elseBranch) {
-			indent(depth - 1);
-			printf("[ELSE]\n");
-			printNode(node->ifStmt.elseBranch, depth);
-		}
-		break;
-	case NODE_WHILE:
-		printf("Cond: \n");
-		printNode(node->whileStmt.cond, depth);
-		printf("Body: \n");
-		printNode(node->whileStmt.branch, depth);
-
-	case NODE_PROGRAM:
-		printf("\n");
-		for (usize i = 0; i < veclen(node->program); i++) {
-			printNode(node->program[i], depth);
-		}
-		break;
-	// Add cases for WHILE, MEMBER, etc., following the same pattern
-	default:
-			printf("(details not implemented in printer for node %d)", node->type);
-			break;
-	}
-	printf("\n");
-}
-
+// static void reportError(ZParser *parser, const char *message) {
+// 	ZParserError *error = zalloc(ZParserError);
+// 	error->message = message;
+// 	error->token = peek(parser);
+// 	vecpush(parser->errors, error);
+// }
 static bool isValidToken(ZParser *parser, ZTokenType *validTokens, size_t len) {
 	for (size_t i = 0; i < len; i++) {
 		if (check(parser, validTokens[i])) return true;
@@ -324,13 +174,13 @@ static ZNode *parseGenericBinary(ZParser *parser,
 	return node ? node : left;
 }
 
-static ZNode *parsePostfixExpr(ZParser *parser) {
-
-}
-
-static ZNode *parsePostfixOperator(ZParser *parser) {
-
-}
+// static ZNode *parsePostfixExpr(ZParser *parser) {
+//
+// }
+//
+// static ZNode *parsePostfixOperator(ZParser *parser) {
+//
+// }
 
 static ZNode *parsePrimary(ZParser *parser) {
 	if (!canPeek(parser)) {
@@ -411,7 +261,7 @@ static ZNode *parseAssignment(ZParser *parser) {
 }
 
 static ZNode *parseBinary(ZParser *parser) {
-	return parseLogicalOr(parser);
+	return parseAssignment(parser);
 }
 
 static ZType **parseTypeArgs(ZParser *parser) {
@@ -440,6 +290,8 @@ static ZType *parseType(ZParser *parser) {
 	ensure(canPeek(parser));
 	usize saved = parser->current;
 
+	bool constant = match(parser, TOK_CONST);
+
 	u8 stars = 0;
 	while (match(parser, TOK_STAR)) stars++;
 
@@ -452,6 +304,7 @@ static ZType *parseType(ZParser *parser) {
 	ZType *base = maketype(Z_TYPE_PRIMITIVE);
 	base->token = consume(parser);
 	base = applyStarsToType(base, stars);
+	base->constant = constant;
 
 
 	if (match(parser, TOK_LPAREN)) {
@@ -476,16 +329,17 @@ static ZNode *parseStmt(ZParser *parser) {
 		parseWhile,
 		parseReturn,
 		parseBlock,
+		parseVarDecl
 	};
 
-	return parseOrGrammar(parser, toTry, 5);
+	return parseOrGrammar(parser, toTry, 6);
 }
 
 static ZNode *parseBlock(ZParser *parser) {
 	ensure(canPeek(parser) && match(parser, TOK_LBRACKET));
 
 	ZNode *block = makenode(NODE_BLOCK);
-	ZNode *stmt;
+	ZNode *stmt = NULL;
 	do {
 		stmt = parseStmt(parser);
 		if (stmt) vecpush(block->block, stmt);
@@ -493,30 +347,31 @@ static ZNode *parseBlock(ZParser *parser) {
 
 	ensure(match(parser, TOK_RBRACKET));
 
+	printf("Block created\n");
 	return block;
 }
 
 static ZNode *parseStructDecl(ZParser *parser) {
-	expect(parser, TOK_STRUCT);
-	expect(parser, TOK_IDENT);
-	ZToken *name = peekAhead(parser, -1);
+	ensure(match(parser, TOK_STRUCT));
+	ensure(check(parser, TOK_IDENT));
+	ZToken *name = consume(parser);
+
 	if (!name) return NULL;
 
-	expect(parser, TOK_LBRACKET);
+	ensure(match(parser, TOK_LBRACKET));
 
 	ZField **fields = NULL;
 
-	while (canPeek(parser) && peek(parser)->type != TOK_RBRACKET) {
-		ZType *type = parseType(parser);
-
+	while (canPeek(parser)) {
+		ZType *type = wrapType(parser, parseType);
 		if (!type) {
-			return NULL;
+			printf("missing type");
+			printToken(peek(parser));
+			break;
 		}
 
-		expect(parser, TOK_IDENT);
-		ZToken *ident = peekAhead(parser, -1);
-
-		vecpush(fields, makefield(type, ident));
+		if (!check(parser, TOK_IDENT)) break;
+		ZToken *ident = consume(parser);
 	}
 
 	ZNode *node = makenode(NODE_STRUCT);
@@ -562,7 +417,7 @@ static ZNode *parseIf(ZParser *parser) {
 }
 
 static ZNode *parseWhile(ZParser *parser) {
-	expect(parser, TOK_WHILE);
+	ensure(match(parser, TOK_WHILE));
 
 	ZNode *cond = parseExpr(parser);
 	ZNode *body = parseBlock(parser);
@@ -612,8 +467,10 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 		}
 	}
 
+	printf("trying to parse obdy\n");
 	ZNode *body = parseBlock(parser);
 	if (!body) return NULL;
+	printf("block");
 
 	ZNode *node = makenode(NODE_FUNC);
 	node->funcDef.ret = ret;
@@ -621,6 +478,8 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	node->funcDef.args = args;
 	node->funcDef.body = body;
 
+	printf("Function %s parsed\n", name->str);
+	printNode(node, 0);
 	return node;
 }
 
@@ -629,6 +488,7 @@ static ZNode *parseVarDecl(ZParser *parser) {
 
 	ensure(type && canPeek(parser) && check(parser, TOK_IDENT));
 
+	ZToken *ident = consume(parser);
 
 	ensure(match(parser, TOK_EQ));
 
@@ -636,52 +496,33 @@ static ZNode *parseVarDecl(ZParser *parser) {
 
 	ZNode *rvalue = parseExpr(parser);
 
-	node->varDecl.lvalue = node;
+	node->varDecl.ident = ident;
 	node->varDecl.rvalue = rvalue;
 	node->varDecl.type = type;
+
+
 
 	return node;
 }
 
 static ZNode *parseImport(ZParser *parser) {
-	(void)parser;
+	ensure(match(parser, TOK_MODULE));
+
+	ensure(canPeek(parser) && check(parser, TOK_STR_LIT));
+
+	ZNode *node = makenode(NODE_MODULE);
+	node->module = consume(parser);
 	return NULL;
 }
 
-// static ZNode *parse(ZParser *parser) {
-// 	ParseFunction pf[] = {
-// 		parseFuncDecl,
-// 		parseStructDecl,
-// 		parseVarDecl,
-// 		parseImport
-// 	};
-// 	return parseOrGrammar(parser, pf, 3);
-// }
-
 static ZNode *parse(ZParser *parser) {
-	if (!canPeek(parser)) return NULL;
-
-	ZToken *curr = peek(parser);
-
-	if (check(parser, TOK_STAR) || checkMask(parser, TOK_TYPES_MASK)) {
-	}
-		return parseFuncDecl(parser);
-
-	switch (curr->type) {
-		case TOK_STRUCT:
-		return parseStructDecl(parser);
-		case TOK_IF:
-		// printf("Parse if: ");
-		return parseIf(parser);
-		case TOK_WHILE:
-		return parseWhile(parser);
-		case TOK_INT_LIT:
-		return parseBinary(parser);
-		default:
-			error("Unhandled node type %d", peek(parser)->type);
-			return NULL;
-		break;
-	}
+	ParseFunction pf[] = {
+		parseFuncDecl,
+		parseStructDecl,
+		parseVarDecl,
+		parseImport
+	};
+	return parseOrGrammar(parser, pf, 4);
 }
 
 ZNode *zparse(ZToken **tokens) {
