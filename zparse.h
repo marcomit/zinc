@@ -20,7 +20,8 @@ typedef enum {
 	NODE_CAST,
 	NODE_STRUCT,
 	NODE_SUBSCRIPT,
-	NODE_MEMBER
+	NODE_MEMBER,
+	NODE_PROGRAM
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -151,6 +152,8 @@ struct ZNode {
 			ZNode *arr;
 			ZNode *index;
 		} subscript;
+
+		ZNode **program;
 
 		ZToken *literalTok;
 		ZToken *identTok;

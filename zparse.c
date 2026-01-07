@@ -12,6 +12,8 @@
 #define ensure(c) if (!(c)) return NULL
 #define expect(l, t)  ensure(match(l, t))
 
+#define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
+
 #define error(fmt, ...) do {												\
 	fprintf(stderr, "%s:%d", __FILE__, __LINE__);			\
 	fprintf(stderr, fmt, __VA_ARGS__);								\
@@ -155,21 +157,22 @@ void printType(ZType *type) {
 	}
 }
 
-void printNode(ZNode *node, u8 indent) {
+void printNode(ZNode *node, u8 depth) {
 	if (node == NULL) {
 		printf("unknown");
 		return;
 	}
 
 	// Helper to print indentation
-	for (int i = 0; i < indent; i++) printf("  ");
+	indent(depth);
 
 	printf("[%s] ", (char*[]){
 			"BLOCK", "IF", "WHILE", "RETURN", "VAR_DECL", "ASSIGN", 
 			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
-			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER"
+			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "PROGRAM"
 	}[node->type]);
 
+	depth++;
 	switch (node->type) {
 	case NODE_LITERAL:
 		printf("Value: ");
@@ -184,8 +187,8 @@ void printNode(ZNode *node, u8 indent) {
 		printf("Op: ");
 		printToken(node->binary.op);
 		printf("\n");
-		printNode(node->binary.left, indent + 1);
-		printNode(node->binary.right, indent + 1);
+		printNode(node->binary.left, depth);
+		printNode(node->binary.right, depth);
 		return; // Return early to avoid the double newline
 
 	case NODE_VAR_DECL:
@@ -193,14 +196,14 @@ void printNode(ZNode *node, u8 indent) {
 		printType(node->varDecl.type);
 		if (node->varDecl.rvalue) {
 			printf("\n");
-			printNode(node->varDecl.rvalue, indent + 1);
+			printNode(node->varDecl.rvalue, depth);
 		}
 		break;
 
 	case NODE_BLOCK:
-		printf("\n");
+		printf(" %zu\n", veclen(node->block));
 		for (usize i = 0; i < veclen(node->block); i++) {
-			printNode(node->block[i], indent + 1);
+			printNode(node->block[i], depth);
 		}
 
 		return;
@@ -212,24 +215,46 @@ void printNode(ZNode *node, u8 indent) {
 		// 	printf(" ");
 		// }
 		printf("Name: %s\n", node->funcDef.ident->str);
-		printNode(node->funcDef.body, indent + 1);
+		printNode(node->funcDef.body, depth);
 		return;
 
 	case NODE_CALL:
-			printf("Callee: %s\n", node->call.callee->identTok->str);
-			for (usize i = 0; i < veclen(node->call.args); i++){
-				printNode(node->call.args[i], indent + 1);
-			}
-			return;
+		printf("Callee: %s\n", node->call.callee->identTok->str);
+		for (usize i = 0; i < veclen(node->call.args); i++){
+			printNode(node->call.args[i], depth);
+		}
+		return;
 
 	case NODE_RETURN:
-			printf("\n");
-			if (node->returnStmt.expr) printNode(node->returnStmt.expr, indent + 1);
-			return;
+		printf("\n");
+		if (node->returnStmt.expr) printNode(node->returnStmt.expr, depth);
+		return;
 
-	// Add cases for IF, WHILE, MEMBER, etc., following the same pattern
+	case NODE_IF:
+		printf("Cond: \n");
+		printNode(node->ifStmt.cond, depth);
+		printNode(node->ifStmt.body, depth);
+		if (node->ifStmt.elseBranch) {
+			indent(depth - 1);
+			printf("[ELSE]\n");
+			printNode(node->ifStmt.elseBranch, depth);
+		}
+		break;
+	case NODE_WHILE:
+		printf("Cond: \n");
+		printNode(node->whileStmt.cond, depth);
+		printf("Body: \n");
+		printNode(node->whileStmt.branch, depth);
+
+	case NODE_PROGRAM:
+		printf("\n");
+		for (usize i = 0; i < veclen(node->program); i++) {
+			printNode(node->program[i], depth);
+		}
+		break;
+	// Add cases for WHILE, MEMBER, etc., following the same pattern
 	default:
-			printf("(details not implemented in printer)");
+			printf("(details not implemented in printer for node %d)", node->type);
 			break;
 	}
 	printf("\n");
@@ -256,13 +281,27 @@ static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
 	return res;
 }
 
+static ZNode *parseOrGrammar(ZParser *parser, ParseFunction *pf, usize len) {
+	usize saved = parser->current;
+
+	ZNode *parsed = NULL;
+	for (usize i = 0; i < len; i++) {
+		parsed = pf[i](parser);
+		if (parsed) return parsed;
+		parser->current = saved;
+	}
+
+	return NULL;
+}
+
 static ZNode *parseGenericBinary(ZParser *parser,
-																ParseFunction getChild,
+																ParseFunction parseLeft,
+																ParseFunction parseRight,
 																ZTokenType *validTokens,
 																size_t validTokensLen) {
 	ZNode *node = NULL;
 
-	ZNode *left = wrapNode(parser, getChild);
+	ZNode *left = wrapNode(parser, parseLeft);
 
 	ensure(left);
 
@@ -271,7 +310,7 @@ static ZNode *parseGenericBinary(ZParser *parser,
 		node = makenode(NODE_BINARY);
 		ZToken *op = consume(parser);
 		
-		ZNode *right = wrapNode(parser, getChild);
+		ZNode *right = wrapNode(parser, parseRight);
 
 		if (!right) break;
 
@@ -285,6 +324,14 @@ static ZNode *parseGenericBinary(ZParser *parser,
 	return node ? node : left;
 }
 
+static ZNode *parsePostfixExpr(ZParser *parser) {
+
+}
+
+static ZNode *parsePostfixOperator(ZParser *parser) {
+
+}
+
 static ZNode *parsePrimary(ZParser *parser) {
 	if (!canPeek(parser)) {
 		return NULL;
@@ -292,7 +339,7 @@ static ZNode *parsePrimary(ZParser *parser) {
 
 	if (check(parser, TOK_LPAREN)) {
 		consume(parser);
-		ZNode *node = parse(parser);
+		ZNode *node = parseExpr(parser);
 		expect(parser, TOK_RPAREN);
 		return node;
 	}
@@ -330,36 +377,41 @@ static ZNode *parseUnary(ZParser *parser) {
 
 static ZNode *parseFactor(ZParser *parser) {
 	ZTokenType valids[] = {TOK_STAR, TOK_DIV};
-	return parseGenericBinary(parser, parseUnary, valids, 2);
+	return parseGenericBinary(parser, parseUnary, parseUnary, valids, 2);
 }
 
 static ZNode *parseTerm(ZParser *parser) {
 	ZTokenType valids[] = {TOK_PLUS, TOK_MINUS};
-	return parseGenericBinary(parser, parseFactor, valids, 2);
+	return parseGenericBinary(parser, parseFactor, parseFactor, valids, 2);
 }
 
 static ZNode *parseComparison(ZParser *parser) {
 	ZTokenType valids[] = {TOK_LT, TOK_GT, TOK_LTE, TOK_GTE};
-	return parseGenericBinary(parser, parseTerm, valids, 4);
+	return parseGenericBinary(parser, parseTerm, parseTerm, valids, 4);
 }
 
 static ZNode *parseEquality(ZParser *parser) {
 	ZTokenType valids[] = {TOK_EQEQ, TOK_NOTEQ};
-	return parseGenericBinary(parser, parseComparison, valids, 2);
+	return parseGenericBinary(parser, parseComparison, parseComparison, valids, 2);
 }
 
 static ZNode *parseLogicalAnd(ZParser *parser) {
 	ZTokenType valids[] = {TOK_AND};
-	return parseGenericBinary(parser, parseEquality, valids, 1);
+	return parseGenericBinary(parser, parseEquality, parseEquality, valids, 1);
 }
 
 static ZNode *parseLogicalOr(ZParser *parser) {
 	ZTokenType valids[] = {TOK_OR};
-	return parseGenericBinary(parser, parseLogicalAnd, valids, 1);
+	return parseGenericBinary(parser, parseLogicalAnd, parseLogicalAnd, valids, 1);
+}
+
+static ZNode *parseAssignment(ZParser *parser) {
+	ZTokenType valids[] = {TOK_EQ};
+	return parseGenericBinary(parser, parseLogicalOr, parseAssignment, valids, 1);
 }
 
 static ZNode *parseBinary(ZParser *parser) {
-	return parseTerm(parser);
+	return parseLogicalOr(parser);
 }
 
 static ZType **parseTypeArgs(ZParser *parser) {
@@ -426,16 +478,7 @@ static ZNode *parseStmt(ZParser *parser) {
 		parseBlock,
 	};
 
-	usize saved = parser->current;
-	ZNode *node = NULL;
-	for (u8 i = 0; i < (u8)(sizeof(toTry) / sizeof(ParseFunction)); i++) {
-		node = toTry[i](parser);
-
-		if (node) return node;
-
-		parser->current = saved;
-	}
-	return NULL;
+	return parseOrGrammar(parser, toTry, 5);
 }
 
 static ZNode *parseBlock(ZParser *parser) {
@@ -488,13 +531,19 @@ static ZNode *parseExpr(ZParser *parser) {
 
 static ZNode *parseReturn(ZParser *parser) {
 	ensure(canPeek(parser) && match(parser, TOK_RETURN));
-	return parseExpr(parser);
+	ZNode *ret = makenode(NODE_RETURN);
+
+	ret->returnStmt.expr = parseExpr(parser);
+	return ret;
 }
 
 static ZNode *parseIf(ZParser *parser) {
 	expect(parser, TOK_IF);
 	
+	// printf("if found\n");
 	ZNode *cond = parseExpr(parser);
+	// printf("parsed cond: ");
+	// printNode(cond, 0);
 
 	ZNode *body = parseBlock(parser);
 	if (!body) return NULL;
@@ -534,13 +583,11 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 
 	ZToken *name = consume(parser);
 
-	printToken(name);
-	printf("\n");
 	ensure(canPeek(parser) && match(parser, TOK_LPAREN));
 
 	ZField **args = NULL;
 
-	while (canPeek(parser)) {
+	while (canPeek(parser) && !match(parser, TOK_RPAREN)) {
 		ZType *argType = wrapType(parser, parseType);
 		if (!argType) {
 			return NULL;
@@ -577,20 +624,54 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	return node;
 }
 
+static ZNode *parseVarDecl(ZParser *parser) {
+	ZType *type = wrapType(parser, parseType);
+
+	ensure(type && canPeek(parser) && check(parser, TOK_IDENT));
+
+
+	ensure(match(parser, TOK_EQ));
+
+	ZNode *node = makenode(NODE_VAR_DECL);
+
+	ZNode *rvalue = parseExpr(parser);
+
+	node->varDecl.lvalue = node;
+	node->varDecl.rvalue = rvalue;
+	node->varDecl.type = type;
+
+	return node;
+}
+
+static ZNode *parseImport(ZParser *parser) {
+	(void)parser;
+	return NULL;
+}
+
+// static ZNode *parse(ZParser *parser) {
+// 	ParseFunction pf[] = {
+// 		parseFuncDecl,
+// 		parseStructDecl,
+// 		parseVarDecl,
+// 		parseImport
+// 	};
+// 	return parseOrGrammar(parser, pf, 3);
+// }
+
 static ZNode *parse(ZParser *parser) {
 	if (!canPeek(parser)) return NULL;
 
 	ZToken *curr = peek(parser);
-	
+
 	if (check(parser, TOK_STAR) || checkMask(parser, TOK_TYPES_MASK)) {
-		printf("try to parse function declaration\n");
-		return parseFuncDecl(parser);
 	}
+		return parseFuncDecl(parser);
 
 	switch (curr->type) {
 		case TOK_STRUCT:
 		return parseStructDecl(parser);
 		case TOK_IF:
+		// printf("Parse if: ");
 		return parseIf(parser);
 		case TOK_WHILE:
 		return parseWhile(parser);
@@ -605,5 +686,14 @@ static ZNode *parse(ZParser *parser) {
 
 ZNode *zparse(ZToken **tokens) {
 	ZParser *parser = makeparser(tokens);
-	return parse(parser);
+	ZNode *root = makenode(NODE_PROGRAM);
+	root->program = NULL;
+
+	while (canPeek(parser)) {
+		ZNode *child = parse(parser);
+		if (!child) break;
+		vecpush(root->program, child);
+	}
+
+	return root;
 }

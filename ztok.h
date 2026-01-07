@@ -28,6 +28,7 @@ DEF(TOK_RETURN, 		"return", 	TOK_FLOWS_MASK | 0x07)
 DEF(TOK_GOTO, 			"goto", 		TOK_FLOWS_MASK | 0x08)
 DEF(TOK_SWITCH, 		"switch", 	TOK_FLOWS_MASK | 0x09)
 DEF(TOK_CASE, 			"case", 		TOK_FLOWS_MASK | 0x0A)
+DEF(TOK_MODULE,			"module", 	0x32)
 #endif
 
 #ifdef TOK_TYPES

@@ -23,6 +23,8 @@ type = basic_type
      | array_type
      | identifier ;  (* for user-defined types *)
 
+struct_decl = "struct", "{", { type, identifier } "}"
+
 basic_type = "int" | "char" | "float" | "double" | "void" ;
 
 pointer_type = "*", type ;  (* star on the left *)
@@ -75,9 +77,7 @@ postfix_expression = primary_expression, { postfix_operator } ;
 postfix_operator = "[", expression, "]"           (* array indexing *)
                  | "(", [ argument_list ], ")"    (* function call *)
                  | ".", identifier                 (* member access *)
-                 | "->", identifier                (* pointer member access *)
-                 | "++"                            (* post-increment *)
-                 | "--" ;                          (* post-decrement *)
+                 | "->", identifier ;              (* pointer member access *)
 
 primary_expression = identifier
                    | constant
