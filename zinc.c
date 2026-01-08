@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
 	}
 	char *program = readfile(argv[1]);
 
-	allocator.init();
+	allocator.open();
 
 	ZToken **tokens = ztokenize(program);
 

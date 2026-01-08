@@ -3,4 +3,6 @@
 
 #include "zparse.h"
 
+void analyze(ZNode *);
+
 #endif

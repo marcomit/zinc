@@ -23,6 +23,7 @@ typedef enum {
 	NODE_MEMBER,
 	NODE_MODULE,
 	NODE_PROGRAM,
+	NODE_UNION
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -95,7 +96,7 @@ struct ZNode {
 		} binary;
 
 		struct {
-			ZToken *op;
+			ZNode *op;
 			ZNode *operand;
 		} unary;
 
@@ -126,7 +127,7 @@ struct ZNode {
 			ZNode *body;
 			// One of main feature of zinc is receiver functions
 			// Used to attach functions to every type of types.
-			ZType *receiver;
+			ZField *receiver;
 		} funcDef;
 
 		struct {

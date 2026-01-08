@@ -2,27 +2,23 @@
 
 
 struct prova {
-	int type
-	
-	int row
-	int col
+	int arg1
+	int arg2
+	int arg3
+}
+
+const int globalVar
+
+int pow(int a) int self {
+	while self > 0 {
+		a = a * a
+		self = self - 1
+	}
+	return a
 }
 
 int main(int argc, **char argv) {
-	**int a = (4 + 3) * 8
-	if (3 + 4) < (4 + 5 * 4) {
-		return 0
-	}
-
-	while (3 + 4) < (4 + 5 * 4) {
-		return 0
-	}
-
-	while a = 10 == 9 {
-
-	}
-
-	return 1 + 1
+	int a = 2
+	a.pow(10)
+	return 0
 }
-
-int prova() {}

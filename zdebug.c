@@ -3,21 +3,29 @@
 
 #define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
-void printToken(ZToken *token) {
+char *stoken(ZToken *token) {
+	char *tok = allocator.alloc(32);
+	bool istype = token->type & TOK_TYPES_MASK;
+
+	if (istype) {
+		sprintf(tok, "type(");
+	}
+
+	
 	switch(token->type) {
 		case TOK_INT_LIT:
-			printf("int(%llu)", token->integer);
+			sprintf(tok, "int(%llu)", token->integer);
 			break;
 		case TOK_STR_LIT:
-			printf("string(%s)", token->str);
+			sprintf(tok, "string(%s)", token->str);
 			break;
 		case TOK_BOOL_LIT:
-			printf("bool(%s)", token->boolean ? "true" : "false");
+			sprintf(tok, "bool(%s)", token->boolean ? "true" : "false");
 			break;
 		case TOK_IDENT:
-			printf("ident(%s)", token->str);
+			sprintf(tok, "ident(%s)", token->str);
 			break;
-		#define DEF(id, str, _) case id: printf(str); break;
+		#define DEF(id, str, _) case id: sprintf(tok, str); break;
 
 		#define TOK_FLOWS
 		#define TOK_TYPES
@@ -31,14 +39,21 @@ void printToken(ZToken *token) {
 
 		#undef DEF
 	}
+
+	return tok;
 }
+
+void printToken(ZToken *token) {
+	char *tok = stoken(token);
+	printf("%s", tok);
+}
+
 
 void printTokens(ZToken **tokens) {
 	printf("==== Tokens: %zu ====\n", veclen(tokens));
 	for (usize i = 0; i < veclen(tokens); i++) {
 		printToken(tokens[i]);
-		printf(" ");
-		if (i % 5 == 0) printf("\n");
+		printf("\n");
 	}
 	printf("\n==== End tokens ====\n");
 }
@@ -135,12 +150,16 @@ void printNode(ZNode *node, u8 depth) {
 		return;
 
 	case NODE_FUNC:
-		// if (node->funcDef.receiver) {
-		// 	printf("Receiver: ");
-		// 	printType(node->funcDef.receiver);
-		// 	printf(" ");
-		// }
-		printf("Name: %s\n", node->funcDef.ident->str);
+		if (node->funcDef.receiver) {
+			printf("Receiver: ");
+			printType(node->funcDef.receiver->type);
+			printf(" ");
+			printToken(node->funcDef.receiver->field);
+			printf(" ");
+		}
+		printf("Name: %s, Type: ", node->funcDef.ident->str);
+		printType(node->funcDef.ret);
+		printf("\n");
 		printNode(node->funcDef.body, depth);
 		return;
 
@@ -181,10 +200,10 @@ void printNode(ZNode *node, u8 depth) {
 		printf("%s\n", node->structDef.ident->str);
 
 		for (usize i = 0; i < veclen(node->structDef.fields); i++) {
+				ZField *field = node->structDef.fields[i];
 			indent(depth);
-			printType(node->structDef.fields[i]->type);
-			printf("\n");
-			printf("%s\n", node->structDef.fields[i]->field->str);
+			printType(field->type);
+			printf(" %s\n", field->field->str);
 		}
 		break;
 	// Add cases for WHILE, MEMBER, etc., following the same pattern

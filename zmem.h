@@ -17,8 +17,11 @@ typedef struct Allocator {
 	void *(*alloc)(usize);
 	void *(*realloc)(void *, usize);
 	void (*free)(void *);
-	void (*init)();
+	void (*open)();
 	void (*close)();
+
+	void (*startScope)();
+	void (*endScope)();
 
 	void *ctx;
 } Allocator;

@@ -4,6 +4,8 @@
 #include "zlex.h"
 #include "zparse.h"
 
+char *stoken(ZToken *);
+
 void printToken(ZToken *);
 void printTokens(ZToken **);
 

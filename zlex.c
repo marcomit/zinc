@@ -154,16 +154,20 @@ static ZToken *parseString(ZLexer *l) {
 }
 
 static ZToken *parseSymbol(ZLexer *l) {
-	if (false) { }
+	if (false) { /* Empty if statement only for macro definition*/ }
 	#define DEF(id, str, _) else if(!strncmp(str, l->current, strlen(str))) { \
 		l->current += strlen(str);																							\
 		return createToken(id);																									\
 	}
 
 	#define TOK_SYMBOLS
+	#define TOK_FLOWS
+	#define TOK_TYPES
 
 	#include "ztok.h"
 
+	#undef TOK_TYPES
+	#undef TOK_FLOWS
 	#undef TOK_SYMBOLS
 	#undef DEF
 	
@@ -190,7 +194,7 @@ static ZToken *parseLiteral(ZLexer *l) {
 	if (!isalpha(*l->current) && *l->current != '_') return NULL;
 
 	char *start = l->current;
-	while (isalpha(*l->current) || *l->current == '_') next(l);
+	while (isalnum(*l->current) || *l->current == '_') next(l);
 
 	size_t len = l->current - start;
 	ZTokenType type = findKeyword(start, len);
@@ -250,9 +254,8 @@ ZToken **ztokenize(char * program) {
 		skipInlineComments(l);
 		skipSpaces(l);
 		skipMultilineComments(l);
+		skipSpaces(l);
 		if (!*l->current) break;
-
-		
 
 		if (*l->current == '"') {
 			curr = parseString(l);
