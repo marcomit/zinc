@@ -86,8 +86,9 @@ void printType(ZType *type) {
 	case Z_TYPE_STRUCT:
 		printf("struct %s {", type->strct.name->str);
 		for (usize i = 0; i < veclen(type->strct.fields); i++) {
-			printType(type->strct.fields[i]->type);
-			printf("%s\n", type->strct.fields[i]->field->str);
+			ZNode *field = type->strct.fields[i];
+			printType(field->field.type);
+			printf("%s\n", field->field.identifier->str);
 		}
 		printf("}");
 		break;
@@ -152,9 +153,9 @@ void printNode(ZNode *node, u8 depth) {
 	case NODE_FUNC:
 		if (node->funcDef.receiver) {
 			printf("Receiver: ");
-			printType(node->funcDef.receiver->type);
+			printType(node->funcDef.receiver->field.type);
 			printf(" ");
-			printToken(node->funcDef.receiver->field);
+			printToken(node->funcDef.receiver->field.identifier);
 			printf(" ");
 		}
 		printf("Name: %s, Type: ", node->funcDef.ident->str);
@@ -200,15 +201,23 @@ void printNode(ZNode *node, u8 depth) {
 		printf("%s\n", node->structDef.ident->str);
 
 		for (usize i = 0; i < veclen(node->structDef.fields); i++) {
-				ZField *field = node->structDef.fields[i];
+			ZNode *field = node->structDef.fields[i];
 			indent(depth);
-			printType(field->type);
-			printf(" %s\n", field->field->str);
+			printType(field->field.type);
+			printf(" %s\n", field->field.identifier->str);
 		}
 		break;
 	case NODE_UNARY:
 		printf("Op: %s\n", stoken(node->unary.operat));
 		printNode(node->unary.operand, depth);
+		break;
+	case NODE_MODULE:
+		printf("Name: %s\n", stoken(node->module));
+		break;
+	
+	case NODE_MEMBER:
+		printf("Field: %s\n", node->memberAccess.field->str);
+		printNode(node->memberAccess.object, depth);
 		break;
 	// Add cases for WHILE, MEMBER, etc., following the same pattern
 	default:

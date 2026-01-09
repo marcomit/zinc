@@ -23,12 +23,12 @@ typedef enum {
 	NODE_MEMBER,
 	NODE_MODULE,
 	NODE_PROGRAM,
-	NODE_UNION
+	NODE_UNION,
+	NODE_FIELD
 } ZNodeType;
 
 typedef struct ZNode ZNode;
 typedef struct ZType ZType;
-typedef struct ZField ZField;
 
 typedef enum ZTypeKind {
 	Z_TYPE_PRIMITIVE,
@@ -37,11 +37,6 @@ typedef enum ZTypeKind {
 	Z_TYPE_FUNCTION,
 	Z_TYPE_POINTER
 } ZTypeKind;
-
-struct ZField {
-	ZType *type;
-	ZToken *field;
-};
 
 struct ZType {
 	ZTypeKind kind;
@@ -55,7 +50,7 @@ struct ZType {
 
 		struct {
 			ZToken *name;
-			ZField **fields;
+			ZNode **fields;
 		} strct;
 
 		struct {
@@ -119,15 +114,20 @@ struct ZNode {
 		} cast;
 
 		struct {
+			ZType *type;
+			ZToken *identifier;
+		} field;
+
+		struct {
 			ZType *ret;
 			ZToken *ident;
 
-			ZField **args;
+			ZNode **args;
 
 			ZNode *body;
 			// One of main feature of zinc is receiver functions
 			// Used to attach functions to every type of types.
-			ZField *receiver;
+			ZNode *receiver;
 		} funcDef;
 
 		struct {
@@ -137,12 +137,12 @@ struct ZNode {
 
 		struct {
 			ZToken *ident;
-			ZField **fields;
+			ZNode **fields;
 		} structDef;
 
 		struct {
 			ZToken *ident;
-			ZField **fields;
+			ZNode **fields;
 		} unionDef;
 
 		struct {

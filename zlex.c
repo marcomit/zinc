@@ -145,9 +145,11 @@ static ZToken *parseString(ZLexer *l) {
 		error(l, "Unterinated string %.10s", start);
 		return NULL;
 	}
+	next(l);
 
 	int len = l->current - start - 1;
 	char *buff = allocator.alloc(len + 1);
+	memcpy(buff, start, len);
 	buff[len] = 0;
 
 	return createString(buff);

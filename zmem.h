@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define zalloc(t) (t *)allocator.alloc(sizeof(t))
-#define znalloc(t, n) (t *)allocator.alloc(sizeof((t)) * (n))
+#define znalloc(t, n) (t *)allocator.alloc(sizeof(t) * (n))
 
 #define KiB(n) ((n) << 10)
 #define MiB(n) ((n) << 20)
