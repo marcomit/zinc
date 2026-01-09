@@ -250,11 +250,15 @@ ZToken **ztokenize(char * program) {
 
 	while (*l->current) {
 		curr = NULL;
-		skipSpaces(l);
-		skipInlineComments(l);
-		skipSpaces(l);
-		skipMultilineComments(l);
-		skipSpaces(l);
+		
+		while (true) {
+			char *start = l->current;
+			skipSpaces(l);
+			skipInlineComments(l);
+			skipMultilineComments(l);
+			if (l->current == start) break;
+		}
+
 		if (!*l->current) break;
 
 		if (*l->current == '"') {
@@ -263,9 +267,7 @@ ZToken **ztokenize(char * program) {
 			curr = parseLiteral(l);
 		} else if (isdigit(*l->current)) {
 			curr = parseInt(l);
-		} 
-
-		if (!curr) {
+		} else {
 			curr = parseSymbol(l);
 		}
 

@@ -22,3 +22,7 @@ int main(int argc, **char argv) {
 	a.pow(10)
 	return 0
 }
+
+void draw() *Point p {
+
+}

@@ -96,7 +96,7 @@ struct ZNode {
 		} binary;
 
 		struct {
-			ZNode *op;
+			ZToken *operat;
 			ZNode *operand;
 		} unary;
 
@@ -141,9 +141,13 @@ struct ZNode {
 		} structDef;
 
 		struct {
+			ZToken *ident;
+			ZField **fields;
+		} unionDef;
+
+		struct {
 			ZNode *object;
 			ZToken *field;
-			bool isArrow;
 		} memberAccess;
 
 		struct {
@@ -164,7 +168,4 @@ struct ZNode {
 };
 
 ZNode *zparse(ZToken **);
-
-void printNode(ZNode *, u8);
-
 #endif

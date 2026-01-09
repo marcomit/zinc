@@ -206,6 +206,10 @@ void printNode(ZNode *node, u8 depth) {
 			printf(" %s\n", field->field->str);
 		}
 		break;
+	case NODE_UNARY:
+		printf("Op: %s\n", stoken(node->unary.operat));
+		printNode(node->unary.operand, depth);
+		break;
 	// Add cases for WHILE, MEMBER, etc., following the same pattern
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);

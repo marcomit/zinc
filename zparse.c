@@ -197,7 +197,6 @@ static ZNode *parseGenericBinary(ZParser *parser,
 	return node ? node : left;
 }
 
-
 static ZNode *parsePrimary(ZParser *parser) {
 	if (!canPeek(parser)) {
 		return NULL;
@@ -224,36 +223,48 @@ static ZNode *parsePrimary(ZParser *parser) {
 
 static ZNode *parseArrSubscript(ZParser *parser) {
 	expect(parser, TOK_LSBRACKET);
-	ZNode *node = parseExpr(parser);
+	ZNode *index = parseExpr(parser);
 	expect(parser, TOK_RSBRACKET);
+
+	ZNode *node = makenode(NODE_SUBSCRIPT);
+	node->subscript.index = index;
 	return node;
 }
 
 static ZNode **parseArgs(ZParser *parser) {
 	ZNode **args = NULL;
-	ZNode *expr = NULL;
-	do {
+	
+	ZNode *expr = wrapNode(parser, parseExpr);
+	if (!expr) return args;
+	
+	vecpush(args, expr);
+	
+	while (match(parser, TOK_COMMA)) {
 		expr = wrapNode(parser, parseExpr);
-		if (!match(parser, TOK_COMMA)) break;
-	} while (expr);
-
+		if (!expr) break;
+		vecpush(args, expr);
+	}
+	
 	return args;
 }
 
 static ZToken *parseMemberAccess(ZParser *parser) {
-	ensure(match(parser, TOK_DOT) || match(parser, TOK_ARROW));
+	ensure(match(parser, TOK_DOT));
 	return consume(parser);
 }
 
 static ZNode *parseFuncCall(ZParser *parser) {
 	expect(parser, TOK_LPAREN);
 	ZNode **args = parseArgs(parser);
+	expect(parser, TOK_RPAREN);
+
 	ZNode *node = makenode(NODE_CALL);
 	node->call.args = args;
+	node->call.callee = NULL;
 	return node;
 }
 
-static ZNode *parserPostfixOper(ZParser *parser) {
+static ZNode *parsePostfixOper(ZParser *parser) {
 	if (check(parser, TOK_LSBRACKET)) {
 		return parseArrSubscript(parser);
 	} else if (check(parser, TOK_LPAREN)) {
@@ -264,31 +275,63 @@ static ZNode *parserPostfixOper(ZParser *parser) {
 
 	ZNode *node = makenode(NODE_MEMBER);
 	node->memberAccess.field = member;
+
+	return node;
 }
 
 static ZNode *parsePostfixExpr(ZParser *parser) {
-	ZNode *node = parsePrimary(parser);
+	ZNode *left = parsePrimary(parser);
 
-	while (node) {
-		ZNode *operator = parserPostfixOper(parser);
-	}
-	return node;
+	ensure(left);
+	printf("parsed primary: ");
+	printNode(left, 0);
+	printf("\n");
+
+
+	ZNode *node = NULL;
+	do {
+
+		node = parsePostfixOper(parser);
+		if (!node) break;
+
+		switch (node->type) {
+		case NODE_CALL:
+			node->call.callee = left;
+			break;
+		case NODE_SUBSCRIPT:
+			node->subscript.arr = left;
+			break;
+		case NODE_MEMBER:
+			node->memberAccess.object = left;
+			break;
+		default:
+			reportError(parser, "Invalid postfix operator");
+			break;
+		}
+
+		left = node;
+	} while (node);
+	return left;
 }
 
 static ZNode *parseUnary(ZParser *parser) {
 	ensure(canPeek(parser));
 
-	ZNode *postfix = parsePostfixExpr(parser);
-	if (postfix) return postfix;
+	ZNode *node = parsePostfixExpr(parser);
 
+	if (node) return node;
 	ZTokenType valids[] = {TOK_PLUS, TOK_MINUS, TOK_NOT, TOK_STAR, TOK_REF};
-	if (isValidToken(parser, valids, 5)) {
-
+	if (!isValidToken(parser, valids, 5)) {
+		reportError(parser, "Failed to parse unary expression");
+		return NULL;
 	}
 
-	ZNode *node = makenode(NODE_UNARY);
+	node = makenode(NODE_UNARY);
+	node->unary.operat = consume(parser);
+	node->unary.operand = parseUnary(parser);
 
-	node->unary.op = NULL;
+	ensure(node->unary.operand);
+
 	return node;
 }
 
@@ -435,8 +478,18 @@ static ZField *parseField(ZParser *parser) {
 
 static ZNode *parseUnionDecl(ZParser *parser) {
 	expect(parser, TOK_UNION);
+	expect(parser, TOK_RBRACKET);
 
+	ZField **fields = NULL;
+	ZField *field = NULL;
+	while (( field = parseField(parser) )) vecpush(fields, field);
+
+	expect(parser, TOK_RBRACKET);
+	
 	ZNode *node = makenode(NODE_UNION);
+
+	node->unionDef.fields = fields;
+	node->unionDef.ident = NULL;
 
 	return node;
 }
@@ -453,17 +506,10 @@ static ZNode *parseStructDecl(ZParser *parser) {
 	expect(parser, TOK_LBRACKET);
 
 	ZField **fields = NULL;
-	usize saved = parser->current;
+	ZField 	 *field = NULL;
 
-	while (canPeek(parser)) {
-		ZType *type = wrapType(parser, parseType);
-
-		if (!type) break;
-
-		if (!check(parser, TOK_IDENT)) break;
-		ZToken *ident = consume(parser);
-
-		vecpush(fields, makefield(type, ident));
+	while (( field = parseField(parser) )) {
+		vecpush(fields, field);
 	}
 	printf("=== parsed struct fields %zu === \n", veclen(fields));
 
@@ -492,13 +538,17 @@ static ZNode *parseIf(ZParser *parser) {
 	
 	ZNode *cond = parseExpr(parser);
 
+	ParseFunction elseBranch[] = {
+		parseIf, parseBlock
+	};
+
 	ZNode *body = parseBlock(parser);
 	if (!body) return NULL;
 
 	ZNode *node = makenode(NODE_IF);
 
 	if (canPeek(parser) && match(parser, TOK_ELSE)) {
-		ZNode *elseBody = parseBlock(parser);
+		ZNode *elseBody = parseOrGrammar(parser, elseBranch, 2);
 		if (!elseBody) return NULL;
 		node->ifStmt.elseBranch = elseBody;
 	}
@@ -574,8 +624,6 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	node->funcDef.body = body;
 	node->funcDef.receiver = receiver;
 
-	printf("Function %s parsed\n", name->str);
-	printNode(node, 0);
 	return node;
 }
 

@@ -1,134 +1,110 @@
-"prova"
-// Test file for Zinc tokenizer
-// Tests all token categories and edge cases
-
-// Flow control keywords
-if (x == 10) {
-    return 42
-} else {
-    while (y) {
-        continue
-    }
-}
-
-do {
-    goto label
-} while (0)
-
-
-// Type keywords
-void foo(void)
-char c
-int num
-float f
-double d
-short s
-long l
-
+// Point struct with embedded anonymous struct
 struct Point {
     int x
     int y
 }
 
-union Data {
-    int i
-    float f
+// Shape struct with embedded Point
+struct Shape {
+    Point
+    int color
+    struct {
+        int visible
+        int layer
+    }
 }
 
-typedef struct Node Node
-
-enum Color {
-    RED,
-    GREEN,
-    BLUE
+// Rectangle struct with named Point
+struct Rectangle {
+    Point topleft
+    Point bottomright
 }
 
-// Symbols and operators - edge cases
-int *ptr
-int **pptr
-struct Point *p
-p->x = 5
-p->y = 10
+// Regular function
+int add(int a, int b) {
+    return a + b
+}
 
-// Test arrow vs minus
-x->y
-x - y
-x--
-x-=5
+// Function with pointer arithmetic
+int sum_array(int[] arr, int size) {
+    int total = 0
+    for int i = 0, i < size, i = i + 1 {
+        total = total + arr[i]
+    }
+    return total
+}
 
-// Test equality vs assignment
-if (a == b) {}
-a = b
+// Receiver function for Point
+void print() Point p {
+    printf("Point(%d, %d)", p.x, p.y)
+}
 
-// All brackets
-int arr[10]
-struct S { int x }
-func(a, b, c)
+// Receiver function for Point with calculation
+int distance_squared() Point p {
+    return p.x * p.x + p.y * p.y
+}
 
-// Operators
-x = a + b
-y = c - d
-z = e * f
-w = g / h
-ptr = &x
-val = *ptr
+// Receiver function for Shape (uses embedded fields)
+void display() Shape s {
+    printf("Shape at (%d, %d) color=%d", s.x, s.y, s.color)
+    if s.visible and s.layer > 0 {
+        printf(" [visible on layer %d]", s.layer)
+    }
+}
 
-// Adjacency tests (no spaces)
-x=y+z*w/v
-arr[0]=10
-p->x=p->y
-if(x==y){}
-while(a){}
+// Function demonstrating pointer dereferencing
+void move(*Point p, int dx, int dy) {
+    p.x = p.x + dx  // auto-dereference
+    p.y = p.y + dy
+}
 
-// Multi-character symbol tests
-->->->
-====
---
-++
-***
-
-// Literals and identifiers
-"hello world"
-"escape \"quotes\""
-42
-0
--1
-true
-false
-identifier123
-_underscore
-CamelCase
-
-// Comma-separated lists
-func(a, b, c, d)
-int x, y, z
-struct { int a, b, c }
-
-// Dot operator
-s.field
-p->s.field
-
-// Complex expressions
-result = (a + b) * (c - d) / e
-array[index] = *ptr->field
-(*callback)(arg1, arg2, arg3)
-
-// Potential ambiguities
-// Arrow vs minus + greater
-a->b
-a - >b  // This is "a - (>b)" which should error on >
-
-// Deref vs multiply
-int *p = &x
-z = a * b
-z = *p
-
-// Edge case: symbols at boundaries
-{{{}}}
-((()))
-[[[]]]
-
-// All symbols in sequence
-( ) { } [ ] & * + - / , = . ->
-
-// End of file - no newline
+// Main function
+int main() {
+    // Create points
+    Point p1 = {10, 20}
+    Point p2 = {30, 40}
+    
+    // Test regular function
+    int sum = add(p1.x, p2.y)
+    
+    // Test receiver function
+    p1.print()
+    
+    // Create shape with embedded Point
+    Shape shape = {5, 10, 255, 1, 2}
+    shape.display()
+    
+    // Access embedded fields directly
+    shape.x = 100
+    shape.y = 200
+    
+    // Create rectangle with named Point fields
+    Rectangle rect = {{0, 0}, {100, 100}}
+    rect.topleft.print()
+    rect.bottomright.print()
+    
+    // Test pointer operations
+    *Point ptr = &p1
+    move(ptr, 5, 5)
+    ptr.print()  // auto-dereference
+    
+    // Test logical operators
+    if p1.x > 0 and p1.y > 0 {
+        printf("Point in first quadrant")
+    }
+    
+    if not (p1.x == 0 or p1.y == 0) {
+        printf("Point not on axis")
+    }
+    
+    // Array example
+    int[] numbers = {1, 2, 3, 4, 5}
+    int total = sum_array(numbers, 5)
+    
+    // Pointer arithmetic with array
+    int[] ptr_num = numbers
+    ptr_num = ptr_num + 2  // points to third element
+    printf("Third element: %d", *ptr_num)
+    
+    return 0
+}

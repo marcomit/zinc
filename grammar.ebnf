@@ -4,32 +4,38 @@
 program = { declaration } ;
 
 declaration = function_declaration
+            | receiver_function
             | variable_declaration
-            | type_declaration ;
+            | struct_declaration ;
 
-(* Function Declarations *)
+(* Functions *)
 function_declaration = type, identifier, "(", [ parameter_list ], ")", block ;
 
-parameter_list = parameter, { ",", parameter } ;
+receiver_function = type, identifier, "(", [ parameter_list ], ")", type, identifier, block ;
 
+parameter_list = parameter, { ",", parameter } ;
 parameter = type, identifier ;
 
-(* Variable Declarations *)
-variable_declaration = type, identifier, [ "=", expression ], ";" ;
+(* Variables *)
+variable_declaration = type, identifier, [ "=", expression ] ;
 
-(* Type Declarations *)
+(* Structs *)
+struct_declaration = "struct", identifier, "{", { struct_member }, "}" ;
+
+struct_member = type, [ identifier ]
+              | "struct", "{", { struct_member }, "}" ;
+
+(* Types *)
 type = basic_type
      | pointer_type
      | array_type
-     | identifier ;  (* for user-defined types *)
-
-struct_decl = "struct", "{", { type, identifier } "}"
+     | struct_type
+     | identifier ;
 
 basic_type = "int" | "char" | "float" | "double" | "void" ;
-
-pointer_type = "*", type ;  (* star on the left *)
-
+pointer_type = "*", type ;
 array_type = type, "[", [ expression ], "]" ;
+struct_type = "struct", identifier ;
 
 (* Statements *)
 block = "{", { statement }, "}" ;
@@ -42,24 +48,24 @@ statement = variable_declaration
           | return_statement
           | block ;
 
-expression_statement = [ expression ], ";" ;
+expression_statement = [ expression ] ;
 
 if_statement = "if", expression, block, [ "else", ( if_statement | block ) ] ;
 
 while_statement = "while", expression, block ;
 
-for_statement = "for", expression, ";", expression, ";", expression, block ;
+for_statement = "for", expression, ",", expression, ",", expression, block ;
 
-return_statement = "return", [ expression ], ";" ;
+return_statement = "return", [ expression ] ;
 
 (* Expressions *)
 expression = assignment_expression ;
 
 assignment_expression = logical_or_expression, [ "=", assignment_expression ] ;
 
-logical_or_expression = logical_and_expression, { "||", logical_and_expression } ;
+logical_or_expression = logical_and_expression, { "or", logical_and_expression } ;
 
-logical_and_expression = equality_expression, { "&&", equality_expression } ;
+logical_and_expression = equality_expression, { "and", equality_expression } ;
 
 equality_expression = relational_expression, { ( "==" | "!=" ), relational_expression } ;
 
@@ -70,14 +76,13 @@ additive_expression = multiplicative_expression, { ( "+" | "-" ), multiplicative
 multiplicative_expression = unary_expression, { ( "*" | "/" | "%" ), unary_expression } ;
 
 unary_expression = postfix_expression
-                 | ( "+" | "-" | "!" | "*" | "&" ), unary_expression ;
+                 | ( "+" | "-" | "not" | "*" | "&" ), unary_expression ;
 
 postfix_expression = primary_expression, { postfix_operator } ;
 
-postfix_operator = "[", expression, "]"           (* array indexing *)
-                 | "(", [ argument_list ], ")"    (* function call *)
-                 | ".", identifier                 (* member access *)
-                 | "->", identifier ;              (* pointer member access *)
+postfix_operator = "[", expression, "]"
+                 | "(", [ argument_list ], ")"
+                 | ".", identifier ;
 
 primary_expression = identifier
                    | constant
@@ -85,10 +90,6 @@ primary_expression = identifier
                    | "(", expression, ")" ;
 
 argument_list = expression, { ",", expression } ;
-
-(* Receiver Functions (method-like syntax) *)
-(* You'll need to define how these work - here's a suggestion *)
-receiver_function = "fn", type, ".", identifier, "(", [ parameter_list ], ")", block ;
 
 (* Lexical Elements *)
 identifier = letter, { letter | digit | "_" } ;
