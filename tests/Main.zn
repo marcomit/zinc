@@ -1,0 +1,29 @@
+// Test: Semantic Analysis
+
+void Main() {
+    int x = 10
+    int y = 20
+    
+    // 1. Valid Assignment
+    x = y + 5
+    
+    // 2. L-Value Error (zsem should catch this)
+    // Grammar allows it: expression = expression
+    // Semantic analyzer should say: "Cannot assign to a constant"
+    100 = x 
+
+    // 3. Pointer & Unary Check
+    *int ptr = &x
+    *ptr = 50 
+    
+    // 4. Visibility Check (assuming MathUtils is linked)
+    float result = Add(1.0, 2.0)            // OK: Public
+    float bad = internal_square(5.0)       // ERROR: Private in MathUtils.zn
+    
+    // 5. Loop Check
+    for x = 0, x < 10, x = x + 1 {
+        if x == 5 {
+            return
+        }
+    }
+}

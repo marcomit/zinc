@@ -1,44 +1,35 @@
 #include "zsem.h"
 #include "zparse.h"
 #include "zvec.h"
+#include "zmem.h"
 
-typedef struct ZSemantic {
-
-} ZSemantic;
-
-// void checkStmt(ZSemantic *);
-// void checkBlock(ZSemantic *);
-// void checkExpr(ZSemantic *);
-// void checkBinary(ZSemantic *);
-
-static bool sameType(ZType *a, ZType *b) {
-	if (!a && !b) return true;
+bool typesEqual(ZType *a, ZType *b) {
 	if (!a || !b) return false;
+
 	if (a->kind != b->kind) return false;
 
-	switch (a->kind) {
-	case Z_TYPE_POINTER:
-		return sameType(a->base, b->base);
-	case Z_TYPE_FUNCTION:
-		if (!sameType(a->func.ret, b->func.ret)) return false;
-		if (veclen(a->func.args) != veclen(b->func.args)) return false;
-		for (usize i = 0; i < veclen(a->func.args); i++) {
-			if (!sameType(a->func.args[i], b->func.args[i])) return false;
-		}
-		return true;
-
+	switch(a->kind) {
 	case Z_TYPE_PRIMITIVE:
 		return a->token->type == b->token->type;
-	case Z_TYPE_STRUCT:
-		// TODO
-		return true;
+	case Z_TYPE_POINTER:
+		return typesEqual(a->base, b->base);
 	case Z_TYPE_ARRAY:
-		// TODO
-		return false;
+		return typesEqual(a->array.base, b->array.base);
+	case Z_TYPE_STRUCT:
+		return a->strct.name == b->strct.name;
+	case Z_TYPE_FUNCTION:
+
 	default:
-		break;
+		return false;
 	}
-	return true;
+}
+
+static void analyzeFunc(ZSemantic *semantic) {
+
+}
+
+static void analyzeBinary(ZSemantic *semantic) {
+
 }
 
 void analyze(ZNode *root) {

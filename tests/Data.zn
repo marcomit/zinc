@@ -1,0 +1,23 @@
+// Test: Advanced Structs and Types
+
+struct Header {
+    int id
+    *char tag
+}
+
+struct Package {
+    struct Header head
+    
+    // Anonymous nested struct (allowed by your struct_member rule)
+    struct {
+        int priority
+        int mode
+    }
+    
+    [int] data  // Array type
+}
+
+void InitPackage(*Package p) {
+    p.head.id = 100
+    p.priority = 1  // Testing member access depth
+}

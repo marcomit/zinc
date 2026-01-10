@@ -34,7 +34,7 @@ type = basic_type
 
 basic_type = "int" | "char" | "float" | "double" | "void" ;
 pointer_type = "*", type ;
-array_type = type, "[", [ expression ], "]" ;
+array_type = "[", type, "]" ;
 struct_type = "struct", identifier ;
 
 (* Statements *)

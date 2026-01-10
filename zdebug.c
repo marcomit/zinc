@@ -53,7 +53,13 @@ void printTokens(ZToken **tokens) {
 	printf("==== Tokens: %zu ====\n", veclen(tokens));
 	for (usize i = 0; i < veclen(tokens); i++) {
 		printToken(tokens[i]);
-		printf("\n");
+
+		if (i > 0 && tokens[i-1]->row != tokens[i]->row) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+
 	}
 	printf("\n==== End tokens ====\n");
 }
@@ -68,7 +74,8 @@ void printType(ZType *type) {
 
 	switch(type->kind) {
 	case Z_TYPE_POINTER:
-		printf("*");
+		// printf("*");
+		printf("pointer of ");
 		printType(type->base);
 		break;
 	case Z_TYPE_PRIMITIVE:
@@ -93,8 +100,10 @@ void printType(ZType *type) {
 		printf("}");
 		break;
 	case Z_TYPE_ARRAY:
-		printf("[%zu]", type->array.size);
+		// printf("[");
+		printf("array of ");
 		printType(type->array.base);
+		// printf("]");
 		break;
 	}
 }

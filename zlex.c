@@ -122,6 +122,10 @@ static void next(ZLexer *l) {
 	l->current++;
 }
 
+static void skip(ZLexer *l, u8 chars) {
+	while (chars--) next(l);
+}
+
 static void error(ZLexer *l, const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
@@ -158,7 +162,7 @@ static ZToken *parseString(ZLexer *l) {
 static ZToken *parseSymbol(ZLexer *l) {
 	if (false) { /* Empty if statement only for macro definition*/ }
 	#define DEF(id, str, _) else if(!strncmp(str, l->current, strlen(str))) { \
-		l->current += strlen(str);																							\
+		skip(l, strlen(str));																										\
 		return createToken(id);																									\
 	}
 
@@ -217,6 +221,7 @@ static void skipInlineComments(ZLexer *l) {
 	if (*l->current != '/' || *(l->current + 1) != '/') return;
 
 	while (*l->current && *l->current != '\n') next(l);
+	if (*l->current) next(l);
 }
 
 static void skipMultilineComments(ZLexer *l) {
@@ -273,7 +278,10 @@ ZToken **ztokenize(char * program) {
 			curr = parseSymbol(l);
 		}
 
-		if (!curr) error(l, "Error parsing near %.10s\n", l->current);
+		if (!curr) {
+			error(l, "Error parsing near %.10s\n", l->current);
+			next(l);
+		}
 		addToken(l, curr);
 	}
 	return l->tokens;

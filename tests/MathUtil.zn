@@ -1,0 +1,23 @@
+// Test: Visibility and Receiver Functions
+
+struct Vector {
+    float x
+    float y
+}
+
+// Public function (starts with Uppercase)
+float Add(float a, float b) {
+    return a + b
+}
+
+// Private helper (starts with lowercase)
+float internal_square(float n) {
+    return n * n
+}
+
+// Receiver function: float Vector.Magnitude()
+// Based on your grammar: type identifier (...) type identifier block
+float Magnitude(*Vector v) Vector v {
+    float sum = internal_square(v.x) + internal_square(v.y)
+    return sum
+}
