@@ -37,6 +37,4 @@ typedef struct {
 
 ZToken **ztokenize(char *);
 
-void printTokens(ZToken **);
-void printToken(ZToken *);
 #endif

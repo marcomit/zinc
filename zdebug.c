@@ -120,7 +120,8 @@ void printNode(ZNode *node, u8 depth) {
 	printf("[%s] ", (char*[]){
 			"BLOCK", "IF", "WHILE", "RETURN", "VAR_DECL", "ASSIGN", 
 			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
-			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM"
+			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
+			"UNION", "FIELD", "TYPEDEF"
 	}[node->type]);
 
 	depth++;
@@ -221,12 +222,17 @@ void printNode(ZNode *node, u8 depth) {
 		printNode(node->unary.operand, depth);
 		break;
 	case NODE_MODULE:
-		printf("Name: %s\n", stoken(node->module));
+		printf("Name: %s\n", stoken(node->module.name));
+		printNode(node->module.root, depth);
 		break;
 	
 	case NODE_MEMBER:
 		printf("Field: %s\n", node->memberAccess.field->str);
 		printNode(node->memberAccess.object, depth);
+		break;
+	case NODE_TYPEDEF:
+		printf(" %s alias for ", node->typeDef.alias->str);
+		printType(node->typeDef.type);
 		break;
 	// Add cases for WHILE, MEMBER, etc., following the same pattern
 	default:

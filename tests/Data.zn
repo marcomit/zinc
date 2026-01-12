@@ -5,17 +5,6 @@ struct Header {
     *char tag
 }
 
-struct Package {
-    struct Header head
-    
-    // Anonymous nested struct (allowed by your struct_member rule)
-    struct {
-        int priority
-        int mode
-    }
-    
-    [int] data  // Array type
-}
 
 void InitPackage(*Package p) {
     p.head.id = 100

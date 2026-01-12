@@ -2,6 +2,7 @@
 #include "zlex.h"
 #include "zmem.h"
 #include "zdebug.h"
+#include "zmod.h"
 #include "zvec.h"
 
 #include <stdint.h>
@@ -29,12 +30,18 @@ typedef struct ZParser {
 	 */
 	usize *errstack;
 	u8 depth;
+
+	/* List of visited modules */
+	char **modules;
+
+	/* Module parsing */
+	char *currentModule;
 } ZParser;
 
 typedef ZNode *(*ParseFunction)(ZParser *);
 
 static ZType *parseType			(ZParser *);
-static ZNode *parse					(ZParser *);
+static ZNode *parse					(ZParser *, char *);
 static ZNode *parseIf				(ZParser *);
 static ZNode *parseWhile		(ZParser *);
 static ZNode *parseReturn		(ZParser *);
@@ -682,32 +689,79 @@ static ZNode *parseImport(ZParser *parser) {
 	ensure(check(parser, TOK_STR_LIT));
 
 	ZNode *node = makenode(NODE_MODULE);
-	node->module = consume(parser);
+
+	for (usize i = 0; i < parser->modules; i++) {
+
+	}
+
+	node->module.name = consume(parser);
+
+	ZToken **tokens = ztokenize(node->module.name->str);
+
+	node->module.root = zparse(tokens, node->module.name->str);
+
 	return node;
 }
 
-static ZNode *parse(ZParser *parser) {
+static ZNode *parseTypedef(ZParser *parser) {
+	expect(parser, TOK_TYPEDEF);
+	ensure(check(parser, TOK_IDENT));
+
+	ZToken *alias = consume(parser);
+
+	expect(parser, TOK_EQ);
+
+	ZType *type = wrapType(parser, parseType);
+	
+	ensure(type);
+
+	ZNode *node = makenode(NODE_TYPEDEF);
+	node->typeDef.alias = alias;
+	node->typeDef.type  = type;
+	return node;
+}
+
+static ZNode *parse(ZParser *parser, char *module) {
+	for (usize i = 0; i < veclen(parser->modules); i++) {
+		if (!strcmp(parser->modules[i], module)) {
+			return NULL;
+		}
+	}
+
+	parser->currentModule = module;
+	
+	// vecpush(parser->modules, NULL);
+
 	ParseFunction pf[] = {
-		parseImport, /* Not tokenized yet */
+		parseImport,
+		parseTypedef,
 		parseFuncDecl,
 		parseStructDecl,
 		parseVarDef,
 		parseVarDecl,
 	};
-	return parseOrGrammar(parser, pf, 5);
+	usize len = sizeof(pf) / sizeof(pf[0]);
+	return parseOrGrammar(parser, pf, len);
 }
 
-ZNode *zparse(ZToken **tokens) {
-	ZParser *parser = makeparser(tokens);
+static ZNode *parseProgram(ZParser *parser) {
 	ZNode *root = makenode(NODE_PROGRAM);
 	root->program = NULL;
 
+	parser->modules = NULL;
+
 	while (canPeek(parser)) {
-		ZNode *child = parse(parser);
+		ZNode *child = parse(parser, parser->currentModule);
 		if (!child) break;
 		vecpush(root->program, child);
 	}
+	return root;
+}
 
+ZNode *zparse(ZToken **tokens, char *module) {
+	ZParser *parser = makeparser(tokens);
+	
+	ZNode *root = parseProgram(parser);
 	if (canPeek(parser)) {
 		reportError(parser, "Compilation failed");
 	}

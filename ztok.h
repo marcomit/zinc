@@ -9,11 +9,12 @@
 
 #define TOK_BASE_MASK 16
 
-#define TOK_FLOWS_MASK 		(1 << (TOK_BASE_MASK))
-#define TOK_TYPES_MASK 		(1 << (TOK_BASE_MASK + 1))
-#define TOK_DYN_MASK 			(1 << (TOK_BASE_MASK + 2))
-#define TOK_SYMBOLS_MASK 	(1 << (TOK_BASE_MASK + 3))
-#define TOK_OPERATOR			(1 << (TOK_BASE_MASK + 4))
+#define TOK_FLOWS_MASK 						(1 << (TOK_BASE_MASK))
+#define TOK_TYPES_MASK 						(1 << (TOK_BASE_MASK + 1))
+#define TOK_DYN_MASK 							(1 << (TOK_BASE_MASK + 2))
+#define TOK_SYMBOLS_MASK 					(1 << (TOK_BASE_MASK + 3))
+#define TOK_OPERATOR							(1 << (TOK_BASE_MASK + 4))
+#define TOK_TYPES_SIGNATURE_MASK 	(1 << (TOK_BASE_MASK + 5))
 #endif
 
 #ifdef TOK_FLOWS
@@ -40,10 +41,10 @@ DEF(TOK_SHORT, 			"short", 		TOK_TYPES_MASK | 0x10)
 DEF(TOK_LONG, 			"long", 		TOK_TYPES_MASK | 0x11)
 DEF(TOK_STRUCT, 		"struct", 	TOK_TYPES_MASK | 0x12)
 DEF(TOK_UNION, 			"union", 		TOK_TYPES_MASK | 0x13)
-DEF(TOK_TYPEDEF, 		"typedef", 	TOK_TYPES_MASK | 0x14)
+DEF(TOK_TYPEDEF, 		"alias", 		TOK_TYPES_MASK | 0x14)
 DEF(TOK_ENUM, 			"enum", 		TOK_TYPES_MASK | 0x15)
-DEF(TOK_CONST, 			"const",		0x33)
-DEF(TOK_MODULE,			"module", 	TOK_FLOWS_MASK | 0x32)
+DEF(TOK_CONST, 			"const",		TOK_TYPES_SIGNATURE_MASK | 0x33)
+DEF(TOK_MODULE,			"use", 			TOK_FLOWS_MASK | 0x32)
 #endif
 
 #ifdef TOK_DYN

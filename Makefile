@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
 TARGET = zinc
-SRC = zinc.c zmem.c zparse.c zlex.c zdebug.c
+SRC = zinc.c zmem.c zparse.c zlex.c zdebug.c zmod.c zsem.c
 INSTALL_DIR = $(HOME)/scripts
 
 all: $(TARGET)

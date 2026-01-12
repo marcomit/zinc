@@ -24,7 +24,8 @@ typedef enum {
 	NODE_MODULE,
 	NODE_PROGRAM,
 	NODE_UNION,
-	NODE_FIELD
+	NODE_FIELD,
+	NODE_TYPEDEF
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -159,13 +160,23 @@ struct ZNode {
 			ZNode *index;
 		} subscript;
 
+		struct {
+			ZToken *alias;
+			ZType *type;
+		} typeDef;
+
+		struct {
+			ZToken *name;
+			ZNode *root;
+		} module;
+
 		ZNode **program;
 
 		ZToken *literalTok;
 		ZToken *identTok;
-		ZToken *module;
+		
 	};
 };
 
-ZNode *zparse(ZToken **);
+ZNode *zparse(ZToken **, char *);
 #endif

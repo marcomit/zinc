@@ -1,4 +1,5 @@
 // Test: Visibility and Receiver Functions
+use "tests/Data.zn"
 
 struct Vector {
     float x

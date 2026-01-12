@@ -32,6 +32,7 @@ type = basic_type
      | struct_type
      | identifier ;
 
+typedef_type = "type", identifier, "=", type;
 basic_type = "int" | "char" | "float" | "double" | "void" ;
 pointer_type = "*", type ;
 array_type = "[", type, "]" ;
