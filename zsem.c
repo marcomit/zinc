@@ -1,5 +1,24 @@
 #include "zsem.h"
+/* This file is the Semantic analyzer.
+ *
+ * Now what is a semantic analyzer?
+ * In this part of the compiler/interpreter
+ * we have already built the AST (Abstract Syntax Tree) and 
+ * we want to make sure that all the types are correctly.
+ * for example this expression 1230 + "hello"
+ * is not valid because i cannot add a number to a string
+ * but the parser parse it correctly. so we need to check every single expression/statement
+ * that all types are correctly.
+ * In this phase we also care about the scope of functions/variables.
+ *
+ * How do we handle the scope?
+ *
+ * We have a global scope for the entire project,
+ * then a child scope for the current file and then a child for blocks like functions, loops etc..
+ * */
+
 #include "zparse.h"
+#include "zdebug.h"
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *);
@@ -39,10 +58,15 @@ static ZSemantic *makesemantic(ZNode *root) {
 static void putFunc(ZSemantic *semantic, ZNode *node) {
 	ZSymbol *symbol = makesymbol(Z_SYM_FUNC);
 
+	if (!node) {
+		printf("Some data missing\n");
+		return;
+	}
 	symbol->name = node->funcDef.ident->str;
 	symbol->type = node->funcDef.ret;
 	symbol->node = node;
 
+	printf("Before pushing the symbol\n");
 	vecpush(semantic->table->current->symbols, symbol);
 }
 
@@ -99,6 +123,15 @@ bool typesEqual(ZType *a, ZType *b) {
 	}
 }
 
+static bool isLValue(ZNode *node) {
+	if (node->type & TOK_LITERAL) return false;
+	return true;
+}
+
+static bool isRValue(ZNode *node) {
+	return true;
+}
+
 static ZType *analyzeExpr(ZSemantic *semantic, ZNode *curr) {
 	if (curr->type == NODE_LITERAL) {
 		return curr->resolved;
@@ -110,19 +143,22 @@ static ZType *analyzeExpr(ZSemantic *semantic, ZNode *curr) {
 	ZType *right = analyzeExpr(semantic, curr->binary.right);
 
 	if (!typesEqual(left, right)) {
-		printf("Mismatch type");
-	}
-	
-	switch (curr->binary.op->type) {
-	case TOK_EQEQ:
-		break;
-	default:
-		printf("Invalid operator\n");
-		return NULL;
-		break;
+		printf("Mismatch type: \n");
+		printType(left);
+		printf("\n");
+		printType(right);
+		printf("\n");
 	}
 
-	return NULL;
+
+	if (curr->binary.op->type == TOK_EQ) {
+		if (!isLValue(curr->binary.left)) {
+			printf("Is not a value lvalue\n");
+			return NULL;
+		}
+	}
+
+	return left;
 }
 
 static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
@@ -134,15 +170,24 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 	}
 }
 
+static void analyzeWhile(ZSemantic *semantic, ZNode *curr) {
+	analyzeExpr(semantic, curr->whileStmt.cond);
+	analyzeBlock(semantic, curr->whileStmt.branch);
+}
+
 static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
-	switch (semantic->current->type) {
+	switch (curr->type) {
 	case NODE_IF: 
 		analyzeIf(semantic, curr);
 		break;
 	case NODE_WHILE:
+		analyzeWhile(semantic, curr);
+		break;
+	case NODE_BINARY:
+		analyzeExpr(semantic, curr);
 		break;
 	default:
-		printf("(not yet implemented)\n");
+		printf("(not yet implemented %d)\n", curr->type);
 		break;
 	}
 }
@@ -157,18 +202,16 @@ static void analyzeBlock(ZSemantic *semantic, ZNode *block) {
 }
 
 static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
-	if (semantic->root->type != NODE_PROGRAM) return;
+	printf("FUNC\n");
 	putFunc(semantic, curr);
 	analyzeBlock(semantic, curr->funcDef.body);
 }
 
 static void analyzeVar(ZSemantic *semantic, ZNode *curr) {
-	if (semantic->root->type != NODE_PROGRAM) return;
 	putVar(semantic, curr);
 }
 
 static void analyzeStruct(ZSemantic *semantic, ZNode *curr) {
-	if (semantic->root->type != NODE_PROGRAM) return;
 	putStruct(semantic, curr);
 }
 
@@ -178,13 +221,16 @@ void zanalyze(ZNode *root) {
 		ZNode *child = root->program[i];
 		switch(child->type) {
 		case NODE_FUNC:
-			analyzeFunc(semantic, root);
+			analyzeFunc(semantic, child);
 			break;
 		case NODE_VAR_DECL:
-			analyzeVar(semantic, root);
+			analyzeVar(semantic, child);
 			break;
 		case NODE_STRUCT:
-			analyzeStruct(semantic, root);
+			analyzeStruct(semantic, child);
+			break;
+		case NODE_TYPEDEF:
+			printf("aliase validated\n");
 			break;
 		default:
 			fprintf(stderr, "Unexpected node\n");

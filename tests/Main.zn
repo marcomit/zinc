@@ -26,7 +26,6 @@ void Main() {
     float bad = internal_square(5.0)       // ERROR: Private in MathUtils.zn
     
     // 5. Loop Check
-    // for x = 0, x < 10, x = x + 1 {
 		while true {
         if x == 5 {
             return

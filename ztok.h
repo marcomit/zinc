@@ -15,6 +15,7 @@
 #define TOK_SYMBOLS_MASK 					(1 << (TOK_BASE_MASK + 3))
 #define TOK_OPERATOR							(1 << (TOK_BASE_MASK + 4))
 #define TOK_TYPES_SIGNATURE_MASK 	(1 << (TOK_BASE_MASK + 5))
+#define TOK_LITERAL							 	(1 << (TOK_BASE_MASK + 6))
 #endif
 
 #ifdef TOK_FLOWS
@@ -48,9 +49,9 @@ DEF(TOK_MODULE,			"use", 			TOK_FLOWS_MASK | 0x32)
 #endif
 
 #ifdef TOK_DYN
-DEF(TOK_STR_LIT, 		"string literal", 	TOK_DYN_MASK | 0x16)
-DEF(TOK_INT_LIT, 		"int literal", 			TOK_DYN_MASK | 0x17)
-DEF(TOK_BOOL_LIT, 	"boolean literal", 	TOK_DYN_MASK | 0x18)
+DEF(TOK_STR_LIT, 		"string literal", 	TOK_LITERAL | TOK_DYN_MASK | 0x16)
+DEF(TOK_INT_LIT, 		"int literal", 			TOK_LITERAL | TOK_DYN_MASK | 0x17)
+DEF(TOK_BOOL_LIT, 	"boolean literal", 	TOK_LITERAL | TOK_DYN_MASK | 0x18)
 DEF(TOK_IDENT,			"identifier",				TOK_DYN_MASK | 0x19)
 #endif
 
