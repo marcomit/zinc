@@ -2,14 +2,22 @@
 // use "tests/Data.zn"
 // use "tests/MathUtil.zn"
 
-alias Prova = int
+type ArrInt = [int]
+type ArrPointerInt = [*int]
+
+struct Vec2 {
+	u8 x
+	u8 y
+}
+
+type Vector = Vec2
 
 void Main() {
-    int x = 10
-    int y = -20
+    u8 x = 10
+    i8 y = -20
     
     // 1. Valid Assignment
-    x = y + 5
+    x = y + 5 + c
     
     // 2. L-Value Error (zsem should catch this)
     // Grammar allows it: expression = expression
@@ -22,7 +30,7 @@ void Main() {
     // *ptr = 50 
     
     // 4. Visibility Check (assuming MathUtils is linked)
-    float result = Add(1.0, 2.0)            // OK: Public
+    // float result = Add(1.0, 2.0)            // OK: Public
     float bad = internal_square(5.0)       // ERROR: Private in MathUtils.zn
     
     // 5. Loop Check

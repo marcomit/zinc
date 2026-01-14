@@ -48,8 +48,9 @@ static ZSymTable *makesymtable() {
 
 static ZSemantic *makesemantic(ZNode *root) {
 	ZSemantic *self = zalloc(ZSemantic);
-	self->current = root;
 	self->root = root;
+	self->currentFuncRet = NULL;
+	self->loopDepth = 0;
 
 	self->table = makesymtable();
 	return self;
@@ -66,7 +67,6 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 	symbol->type = node->funcDef.ret;
 	symbol->node = node;
 
-	printf("Before pushing the symbol\n");
 	vecpush(semantic->table->current->symbols, symbol);
 }
 
@@ -201,14 +201,32 @@ static void analyzeBlock(ZSemantic *semantic, ZNode *block) {
 	endScope(semantic);
 }
 
+static void analyzeReturn(ZSemantic *semantic, ZNode *node) {
+	ZType *ret = analyzeExpr(semantic, node->returnStmt.expr);
+
+	if (!typesEqual(ret, semantic->currentFuncRet)) {
+		printf("Invalid return statement for this function\n");
+		printf("Given return type: ");
+		printType(ret);
+		printf("\nExpected return type: ");
+		printType(semantic->currentFuncRet);
+	}
+}
+
 static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 	printf("FUNC\n");
 	putFunc(semantic, curr);
+
+	semantic->currentFuncRet = curr->funcDef.ret;
 	analyzeBlock(semantic, curr->funcDef.body);
+
+	printf("END FUNC\n");
 }
 
 static void analyzeVar(ZSemantic *semantic, ZNode *curr) {
 	putVar(semantic, curr);
+
+	curr->varDecl.type;
 }
 
 static void analyzeStruct(ZSemantic *semantic, ZNode *curr) {

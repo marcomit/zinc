@@ -2,7 +2,6 @@
 #include "zlex.h"
 #include "zmem.h"
 #include "zdebug.h"
-#include "zmod.h"
 #include "zvec.h"
 
 #include <stdint.h>
@@ -521,8 +520,10 @@ static ZNode *parseUnionDecl(ZParser *parser) {
 }
 
 static ZNode *parseStructDecl(ZParser *parser) {
-	ensure(match(parser, TOK_STRUCT) && check(parser, TOK_IDENT));
-	ZToken *name = consume(parser);
+	ensure(match(parser, TOK_STRUCT));
+	ZToken *name = NULL;
+
+	if (check(parser, TOK_IDENT)) name = consume(parser);
 
 	if (!name) {
 		reportError(parser, "Expected an identifier after 'struct'");
@@ -722,11 +723,11 @@ static ZNode *parseTypedef(ZParser *parser) {
 }
 
 static ZNode *parse(ZParser *parser, char *module) {
-	for (usize i = 0; i < veclen(parser->modules); i++) {
-		if (!strcmp(parser->modules[i], module)) {
-			return NULL;
-		}
-	}
+	// for (usize i = 0; i < veclen(parser->modules); i++) {
+	// 	if (!strcmp(parser->modules[i], module)) {
+	// 		return NULL;
+	// 	}
+	// }
 
 	parser->currentModule = module;
 	

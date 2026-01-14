@@ -9,6 +9,10 @@ typedef enum {
 	Z_SYM_STRUCT
 } ZSymType;
 
+typedef struct {
+
+} ZError;
+
 typedef struct ZSymbol {
 	ZSymType kind;
 	char *name;
@@ -29,13 +33,13 @@ typedef struct ZSymTable {
 
 typedef struct ZSemantic {
 	ZNode *root;
-	ZNode *current;
-
 	ZSymTable *table;
+	ZType *currentFuncRet;
+	u16 loopDepth;
 } ZSemantic;
 
 void zanalyze(ZNode *);
 
 bool typesEqual(ZType *, ZType *);
-
+bool typesCompatible(ZType *, ZType *);
 #endif
