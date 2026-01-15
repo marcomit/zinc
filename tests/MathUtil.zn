@@ -2,23 +2,23 @@
 use "tests/Data.zn"
 
 struct Vector {
-    float x
-    float y
+    f32 x
+    f32 y
 }
 
 // Public function (starts with Uppercase)
-float Add(float a, float b) {
+f32 Add(f32 a, f32 b) {
     return a + b
 }
 
 // Private helper (starts with lowercase)
-float internal_square(float n) {
+f32 internal_square(f32 n) {
     return n * n
 }
 
-// Receiver function: float Vector.Magnitude()
+// Receiver function: f32 Vector.Magnitude()
 // Based on your grammar: type identifier (...) type identifier block
-float Magnitude(*Vector v) Vector v {
-    float sum = internal_square(v.x) + internal_square(v.y)
+f32 Magnitude(*Vector v) Vector v {
+    f32 sum = internal_square(v.x) + internal_square(v.y)
     return sum
 }

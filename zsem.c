@@ -1,4 +1,3 @@
-#include "zsem.h"
 /* This file is the Semantic analyzer.
  *
  * Now what is a semantic analyzer?
@@ -17,6 +16,7 @@
  * then a child scope for the current file and then a child for blocks like functions, loops etc..
  * */
 
+#include "zsem.h"
 #include "zparse.h"
 #include "zdebug.h"
 
@@ -123,6 +123,31 @@ bool typesEqual(ZType *a, ZType *b) {
 	}
 }
 
+static void resolve(ZSemantic *semantic, ZToken *ident) {
+
+}
+
+static void analyzeMemberAccess(ZSemantic *semantic, ZNode *curr) {
+	ZToken *type = curr->memberAccess.field;
+	ZNode *obj = curr->memberAccess.object;
+	if (obj->type == NODE_IDENTIFIER) {
+
+	}
+}
+
+static void validateUnary(ZSemantic *semantic, ZNode *curr) {
+	switch(curr->type) {
+	case NODE_MEMBER:
+		break;
+	case NODE_CALL:
+
+		break;
+	default:
+		printf("(not yet implemented %d)\n", curr->type);
+		break;
+	}
+}
+
 static bool isLValue(ZNode *node) {
 	if (node->type & TOK_LITERAL) return false;
 	return true;
@@ -136,6 +161,7 @@ static ZType *analyzeExpr(ZSemantic *semantic, ZNode *curr) {
 	if (curr->type == NODE_LITERAL) {
 		return curr->resolved;
 	} else if (curr->type != NODE_BINARY) {
+		printf("Node unary\n");
 		return NULL;
 	}
 
@@ -186,6 +212,9 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 	case NODE_BINARY:
 		analyzeExpr(semantic, curr);
 		break;
+	case NODE_IDENTIFIER:
+		printNode(curr, 0);
+		break;
 	default:
 		printf("(not yet implemented %d)\n", curr->type);
 		break;
@@ -214,19 +243,18 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *node) {
 }
 
 static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
-	printf("FUNC\n");
+	printf("FUNC %s\n", curr->funcDef.ident->str);
 	putFunc(semantic, curr);
 
 	semantic->currentFuncRet = curr->funcDef.ret;
 	analyzeBlock(semantic, curr->funcDef.body);
 
-	printf("END FUNC\n");
+	printf("END FUNC %s\n", curr->funcDef.ident->str);
 }
 
 static void analyzeVar(ZSemantic *semantic, ZNode *curr) {
 	putVar(semantic, curr);
 
-	curr->varDecl.type;
 }
 
 static void analyzeStruct(ZSemantic *semantic, ZNode *curr) {
@@ -250,8 +278,13 @@ void zanalyze(ZNode *root) {
 		case NODE_TYPEDEF:
 			printf("aliase validated\n");
 			break;
+		case NODE_MODULE:
+			printf("MODULE %s\n", child->module.name->str);
+			zanalyze(child->module.root);
+			printf("MODULE %s validated\n", child->module.name->str);
+			break;
 		default:
-			fprintf(stderr, "Unexpected node\n");
+			fprintf(stderr, "Unexpected node %d\n", child->type);
 			break;
 		}
 	}

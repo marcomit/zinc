@@ -1,8 +1,8 @@
 // Test: Advanced Structs and Types
 
 struct Header {
-    int id
-    *char tag
+    u8 id
+    u8 tag
 }
 
 
