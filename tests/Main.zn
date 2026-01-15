@@ -2,8 +2,8 @@
 // use "tests/Data.zn"
 // use "tests/MathUtil.zn"
 
-type ArrInt = [int]
-type ArrPointerInt = [*int]
+type Arru8 = [u8]
+type ArrPou8eru8 = [*u8]
 
 struct Vec2 {
 	u8 x
@@ -25,13 +25,13 @@ void Main() {
     100 = x 
 
 		// x[3]
-    // 3. Pointer & Unary Check
-    // *int ptr = &x
+    // 3. Pou8er & Unary Check
+    // *u8 ptr = &x
     // *ptr = 50 
     
     // 4. Visibility Check (assuming MathUtils is linked)
-    // float result = Add(1.0, 2.0)            // OK: Public
-    float bad = internal_square(5.0)       // ERROR: Private in MathUtils.zn
+    // f32 result = Add(1.0, 2.0)            // OK: Public
+    f32 bad = u8ernal_square(5.0)       // ERROR: Private in MathUtils.zn
     
     // 5. Loop Check
 		while true {

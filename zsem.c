@@ -123,15 +123,26 @@ bool typesEqual(ZType *a, ZType *b) {
 	}
 }
 
-static void resolve(ZSemantic *semantic, ZToken *ident) {
+static ZSymbol *resolve(ZSemantic *semantic, ZToken *ident) {
+	ZScope *curr = semantic->table->current;
+	while (curr) {
+		for (usize i = 0; i < veclen(curr->symbols); i++) {
 
+		}
+		curr = curr->parent;
+	}
+
+	return NULL;
 }
 
 static void analyzeMemberAccess(ZSemantic *semantic, ZNode *curr) {
 	ZToken *type = curr->memberAccess.field;
 	ZNode *obj = curr->memberAccess.object;
 	if (obj->type == NODE_IDENTIFIER) {
-
+		ZSymbol *sym = resolve(semantic, obj->identTok);
+		if (!sym) {
+			fprintf(stderr, "Local variable not found!");
+		}
 	}
 }
 
@@ -157,34 +168,13 @@ static bool isRValue(ZNode *node) {
 	return true;
 }
 
-static ZType *analyzeExpr(ZSemantic *semantic, ZNode *curr) {
-	if (curr->type == NODE_LITERAL) {
-		return curr->resolved;
-	} else if (curr->type != NODE_BINARY) {
-		printf("Node unary\n");
-		return NULL;
-	}
-
-	ZType *left = analyzeExpr(semantic, curr->binary.left);
-	ZType *right = analyzeExpr(semantic, curr->binary.right);
-
-	if (!typesEqual(left, right)) {
-		printf("Mismatch type: \n");
-		printType(left);
-		printf("\n");
-		printType(right);
-		printf("\n");
-	}
-
+static void analyzeExpr(ZSemantic *semantic, ZNode *curr) {
+	if (curr->resolved && curr->type != NODE_BINARY) return;
 
 	if (curr->binary.op->type == TOK_EQ) {
 		if (!isLValue(curr->binary.left)) {
-			printf("Is not a value lvalue\n");
-			return NULL;
 		}
 	}
-
-	return left;
 }
 
 static void analyzeIf(ZSemantic *semantic, ZNode *curr) {

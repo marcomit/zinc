@@ -3,6 +3,7 @@
 
 #include "base.h"
 #include "zlex.h"
+#include "zerr.h"
 
 typedef enum {
 	NODE_BLOCK, 		// All inside a {} is a block. A list of statement

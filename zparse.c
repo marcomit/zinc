@@ -14,14 +14,8 @@
 #define ensure(c) if (!(c)) return NULL
 #define expect(l, t)  ensure(match(l, t))
 
-typedef struct ZParserError {
-	char *message;
-	ZToken *token;
-} ZParserError;
-
 typedef struct ZParser {
 	ZToken **tokens;
-	ZParserError **errors;
 	u64 current;
 
 	/*
@@ -31,7 +25,10 @@ typedef struct ZParser {
 	u8 depth;
 
 	/* List of visited modules */
-	char **modules;
+	struct {
+		char *name;
+		ZNode *root;
+	} *modules;
 
 	/* Module parsing */
 	char *currentModule;
@@ -52,7 +49,6 @@ static ZParser *makeparser(ZToken **tokens) {
 	ZParser *self = zalloc(ZParser);
 	self->current = 0;
 	self->tokens = tokens;
-	self->errors = NULL;
 	self->errstack = NULL;
 	self->depth = 0;
 	return self;
@@ -684,24 +680,30 @@ static ZNode *parseVarDecl(ZParser *parser) {
 	return node;
 }
 
+static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
+	for (usize i = 0; i < veclen(parser->modules); i++) {
+		if (strcmp(parser->modules[i].name, name->str) == 0) {
+			reportError(parser, "Duplicate import\n");
+			return parser->modules[i].root;
+		}
+	}
+
+	ZToken **tokens = ztokenize(name->str);
+
+	ZNode *node = makenode(NODE_MODULE);
+
+	node->module.root = zparse(tokens, name->str);
+	node->module.name = name;
+
+	return node;
+}
+
 static ZNode *parseImport(ZParser *parser) {
 	expect(parser, TOK_MODULE);
 
 	ensure(check(parser, TOK_STR_LIT));
 
-	ZNode *node = makenode(NODE_MODULE);
-
-	for (usize i = 0; i < parser->modules; i++) {
-
-	}
-
-	node->module.name = consume(parser);
-
-	ZToken **tokens = ztokenize(node->module.name->str);
-
-	node->module.root = zparse(tokens, node->module.name->str);
-
-	return node;
+	return getModuleByName(parser, consume(parser));
 }
 
 static ZNode *parseTypedef(ZParser *parser) {
