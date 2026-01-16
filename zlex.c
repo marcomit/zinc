@@ -18,8 +18,7 @@
 #define HASHMAP_TOK_MASK (HASHMAP_TOK_LEN - 1)
 
 typedef struct {
-	/* Name of the current file */
-	char *filename;
+	ZState *state;
 
 	/* Pointer to the entire file */
 	char *program;
@@ -35,6 +34,7 @@ typedef struct {
 
 	/* Current position of the text */
 	size_t row, col;
+
 } ZLexer;
 
 typedef struct {
@@ -160,20 +160,6 @@ static void printLine(ZLexer *l) {
 	
 }
 
-static void error(ZLexer *l, const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-
-	fprintf(stderr, "%s:%zu,%zu: ", l->filename, l->row, l->col);
-	vfprintf(stderr, fmt, args);
-	fputc('\n', stderr);
- printLine(l);
-	fputc('\n', stderr);
-
-	va_end(args);
-	next(l);
-}
-
 static ZToken *parseString(ZLexer *l) {
 	if (*l->current != '"') return NULL;
 	next(l);
@@ -182,7 +168,7 @@ static ZToken *parseString(ZLexer *l) {
 	while (*l->current && *l->current != '"') next(l);
 
 	if (!l->current) {
-		error(l, "Unterinated string %.10s", start);
+		error(l->state, veclast(l->tokens), "Unterinated string %.10s", start);
 		return NULL;
 	}
 	next(l);
@@ -213,7 +199,7 @@ static ZToken *parseSymbol(ZLexer *l) {
 	#undef TOK_SYMBOLS
 	#undef DEF
 	
-	error(l, "Unexpected symbol");
+	error(l->state, veclast(l->tokens), "Unexpected symbol");
 
 	return NULL;
 }
@@ -225,7 +211,7 @@ static ZToken *parseInt(ZLexer *l) {
 	while (isdigit(*l->current)) next(l);
 
 	long long value = strtoll(start, NULL, 10);
-	if (errno == ERANGE) error(l, "Invalid integer range %.10s", start);
+	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
 	return createInteger(value);
 }
@@ -267,13 +253,15 @@ static void skipMultilineComments(ZLexer *l) {
 		if (*l->current == '*' && *(l->current + 1) == '/') break;
 		next(l);
 	}
-	if (!*l->current || !*(l->current + 1)) error(l, "Unterminated multiline comments");
+	if (!*l->current || !*(l->current + 1)) {
+		error(l->state, veclast(l->tokens), "Unterminated multiline comments");
+	}
 
 	next(l); next(l);
 }
 
-ZLexer *makelexer(char *filename) {
-	char *program = readfile(filename);
+ZLexer *makelexer(ZState *state) {
+	char *program = readfile(state->filename);
 	
 	if (!program) return NULL;
 
@@ -285,12 +273,12 @@ ZLexer *makelexer(char *filename) {
 	self->program = program;
 	self->current = program;
 	self->line = program;
-	self->filename = filename;
+	self->state = state;
 	return self;
 }
 
-ZToken **ztokenize(char *filename) {
-	ZLexer *l = makelexer(filename);
+ZToken **ztokenize(ZState *state) {
+	ZLexer *l = makelexer(state);
 
 	if (!l) return NULL;
 
@@ -321,7 +309,7 @@ ZToken **ztokenize(char *filename) {
 			curr = parseSymbol(l);
 		}
 
-		if (!curr) error(l, "Unexpected symbol\n");
+		if (!curr) error(l->state, veclast(l->tokens), "Unexpected symbol\n");
 		else addToken(l, curr);
 	}
 	return l->tokens;

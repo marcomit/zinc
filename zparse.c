@@ -15,6 +15,7 @@
 #define expect(l, t)  ensure(match(l, t))
 
 typedef struct ZParser {
+	ZState *state;
 	ZToken **tokens;
 	u64 current;
 
@@ -45,12 +46,13 @@ static ZNode *parseBlock		(ZParser *);
 static ZNode *parseExpr			(ZParser *);
 static ZNode *parseVarDecl	(ZParser *);
 
-static ZParser *makeparser(ZToken **tokens) {
+static ZParser *makeparser(ZState *state, ZToken **tokens) {
 	ZParser *self = zalloc(ZParser);
 	self->current = 0;
 	self->tokens = tokens;
 	self->errstack = NULL;
 	self->depth = 0;
+	self->state = state;
 	return self;
 }
 
@@ -111,28 +113,9 @@ static void commitErrors(ZParser *parser) {
 static void rollbackErrors(ZParser *parser) {
 	if (parser->depth > 0) {
 		usize checkpoint = vecpop(parser->errstack);
-		while (veclen(parser->errors) > checkpoint) vecpop(parser->errors);
+		while (veclen(parser->state->errors) > checkpoint) vecpop(parser->state->errors);
 		parser->depth--;
 	}
-}
-
-static void reportError(ZParser *parser, const char *fmt, ...) {
-	ZParserError *error = zalloc(ZParserError);
-
-	va_list args;
-	va_start(args, fmt);
-
-	va_list argsCopy;
-	va_copy(argsCopy, args);
-	int len = vsnprintf(NULL, 0, fmt, argsCopy);
-	va_end(argsCopy);
-
-	error->message = allocator.alloc(len + 1);
-	vsnprintf(error->message, len + 1, fmt, args);
-	va_end(args);
-
-	error->token = peek(parser);
-	vecpush(parser->errors, error);
 }
 
 static bool isValidToken(ZParser *parser, ZTokenType *validTokens, size_t len) {
@@ -683,12 +666,13 @@ static ZNode *parseVarDecl(ZParser *parser) {
 static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
 	for (usize i = 0; i < veclen(parser->modules); i++) {
 		if (strcmp(parser->modules[i].name, name->str) == 0) {
-			reportError(parser, "Duplicate import\n");
+			warning(parser->state, name, "Duplicate import\n");
 			return parser->modules[i].root;
 		}
 	}
 
-	ZToken **tokens = ztokenize(name->str);
+	parser->state->filename = 
+	ZToken **tokens = ztokenize(parser->state);
 
 	ZNode *node = makenode(NODE_MODULE);
 
@@ -761,20 +745,13 @@ static ZNode *parseProgram(ZParser *parser) {
 	return root;
 }
 
-ZNode *zparse(ZToken **tokens, char *module) {
-	ZParser *parser = makeparser(tokens);
+ZNode *zparse(ZState *state, ZToken **tokens) {
+	ZParser *parser = makeparser(state, tokens);
 	
 	ZNode *root = parseProgram(parser);
 	if (canPeek(parser)) {
-		reportError(parser, "Compilation failed");
+		error(state, peek(parser), "Compilation failed");
 	}
-
-	printf("\n====== Errors ======\n");
-	for (usize i = 0; i < veclen(parser->errors); i++) {
-		ZParserError *err = parser->errors[i];
-		printf("%zu,%zu: %s\n", err->token->row, err->token->col, err->message);
-	}
-	printf("====== End errors ======\n\n");
 
 	return root;
 }

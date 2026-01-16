@@ -3,7 +3,7 @@
 
 #include "base.h"
 #include "zlex.h"
-#include "zerr.h"
+#include "zmod.h"
 
 typedef enum {
 	NODE_BLOCK, 		// All inside a {} is a block. A list of statement
@@ -179,5 +179,5 @@ struct ZNode {
 	};
 };
 
-ZNode *zparse(ZToken **, char *);
+ZNode *zparse(ZState *, ZToken **);
 #endif

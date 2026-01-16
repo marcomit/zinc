@@ -221,12 +221,12 @@ static void analyzeBlock(ZSemantic *semantic, ZNode *block) {
 }
 
 static void analyzeReturn(ZSemantic *semantic, ZNode *node) {
-	ZType *ret = analyzeExpr(semantic, node->returnStmt.expr);
+	analyzeExpr(semantic, node->returnStmt.expr);
 
-	if (!typesEqual(ret, semantic->currentFuncRet)) {
+	if (!typesEqual(node->resolved, semantic->currentFuncRet)) {
 		printf("Invalid return statement for this function\n");
 		printf("Given return type: ");
-		printType(ret);
+		printType(node->resolved);
 		printf("\nExpected return type: ");
 		printType(semantic->currentFuncRet);
 	}
@@ -251,7 +251,7 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *curr) {
 	putStruct(semantic, curr);
 }
 
-void zanalyze(ZNode *root) {
+void zanalyze(ZState *state, ZNode *root) {
 	ZSemantic *semantic = makesemantic(root);
 	for (usize i = 0; i < veclen(root->program); i++) {
 		ZNode *child = root->program[i];
@@ -270,7 +270,7 @@ void zanalyze(ZNode *root) {
 			break;
 		case NODE_MODULE:
 			printf("MODULE %s\n", child->module.name->str);
-			zanalyze(child->module.root);
+			zanalyze(state, child->module.root);
 			printf("MODULE %s validated\n", child->module.name->str);
 			break;
 		default:

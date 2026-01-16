@@ -1,5 +1,6 @@
 #include "zlex.h"
 #include "zmem.h"
+#include "zmod.h"
 #include "zparse.h"
 #include "zdebug.h"
 #include "zsem.h"
@@ -29,15 +30,16 @@ int main(int argc, char **argv) {
 	}
 
 	allocator.open();
+	ZState *state = makestate(argv[1]);
 
-	ZToken **tokens = ztokenize(argv[1]);
+	ZToken **tokens = ztokenize(state);
 
 	printTokens(tokens);
-	ZNode *root = zparse(tokens, argv[1]);
+	ZNode *root = zparse(state, tokens);
 
 	printNode(root, 0);
 
-	zanalyze(root);
+	zanalyze(state, root);
 
 	allocator.close();
 
