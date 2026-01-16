@@ -1,8 +1,4 @@
-#include "zparse.h"
-#include "zlex.h"
-#include "zmem.h"
-#include "zdebug.h"
-#include "zvec.h"
+#include "zinc.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -314,7 +310,7 @@ static ZNode *parseUnary(ZParser *parser) {
 	if (node) return node;
 	ZTokenType valids[] = {TOK_PLUS, TOK_MINUS, TOK_NOT, TOK_STAR, TOK_REF};
 	if (!isValidToken(parser, valids, 5)) {
-		reportError(parser, "Failed to parse unary expression");
+		error(parser->state, peek(parser), "Failed to parse unary expression");
 		return NULL;
 	}
 
@@ -402,14 +398,14 @@ static ZType *parseType(ZParser *parser) {
 			!check(parser, TOK_IDENT) && 
 			!check(parser, TOK_LSBRACKET)) {
 		parser->current = saved;
-		reportError(parser, "Expected a primitive type, got %s", stoken(peek(parser)));
+		error(parser->state, peek(parser), "Expected a primitive type, got %s", stoken(peek(parser)));
 		return NULL;
 	}
 
 	if (match(parser, TOK_LSBRACKET)) {
 		ZType *type = wrapType(parser, parseType);
 		if (!match(parser, TOK_RSBRACKET)) {
-			reportError(parser, "Invalid array type");
+			error(parser->state, peek(parser), "Invalid array type");
 		}
 		ZType *array = maketype(Z_TYPE_ARRAY);
 		array->array.base = applyStarsToType(type, stars);
@@ -505,7 +501,7 @@ static ZNode *parseStructDecl(ZParser *parser) {
 	if (check(parser, TOK_IDENT)) name = consume(parser);
 
 	if (!name) {
-		reportError(parser, "Expected an identifier after 'struct'");
+		error(parser->state, peek(parser), "Expected an identifier after 'struct'");
 		return NULL;
 	}
 
@@ -671,12 +667,11 @@ static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
 		}
 	}
 
-	parser->state->filename = 
 	ZToken **tokens = ztokenize(parser->state);
 
 	ZNode *node = makenode(NODE_MODULE);
 
-	node->module.root = zparse(tokens, name->str);
+	node->module.root = zparse(parser->state, tokens);
 	node->module.name = name;
 
 	return node;
@@ -695,8 +690,6 @@ static ZNode *parseTypedef(ZParser *parser) {
 	ensure(check(parser, TOK_IDENT));
 
 	ZToken *alias = consume(parser);
-
-	expect(parser, TOK_EQ);
 
 	ZType *type = wrapType(parser, parseType);
 	
@@ -724,6 +717,7 @@ static ZNode *parse(ZParser *parser, char *module) {
 		parseTypedef,
 		parseFuncDecl,
 		parseStructDecl,
+		// parseUnionDecl,
 		parseVarDef,
 		parseVarDecl,
 	};

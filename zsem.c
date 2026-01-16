@@ -15,10 +15,8 @@
  * We have a global scope for the entire project,
  * then a child scope for the current file and then a child for blocks like functions, loops etc..
  * */
-
-#include "zsem.h"
-#include "zparse.h"
-#include "zdebug.h"
+#include "zinc.h"
+#include <ctype.h>
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *);
@@ -46,32 +44,39 @@ static ZSymTable *makesymtable() {
 	return self;
 }
 
-static ZSemantic *makesemantic(ZNode *root) {
+static ZSemantic *makesemantic(ZState *state, ZNode *root) {
 	ZSemantic *self = zalloc(ZSemantic);
 	self->root = root;
 	self->currentFuncRet = NULL;
 	self->loopDepth = 0;
+	self->state = state;
 
 	self->table = makesymtable();
 	return self;
 }
 
+static bool isPublic(char *name) {
+	return isupper(*name);
+}
+
 static void putFunc(ZSemantic *semantic, ZNode *node) {
 	ZSymbol *symbol = makesymbol(Z_SYM_FUNC);
 
-	if (!node) {
-		printf("Some data missing\n");
-		return;
-	}
 	symbol->name = node->funcDef.ident->str;
 	symbol->type = node->funcDef.ret;
 	symbol->node = node;
 
-	vecpush(semantic->table->current->symbols, symbol);
+	ZScope *scope = semantic->table->current;
+
+	if (isPublic(node->funcDef.ident->str)) {
+		scope = semantic->table->global;
+	}
+
+	vecpush(scope->symbols, symbol);
 }
 
 static void putVar(ZSemantic *semantic, ZNode *node) {
-	ZSymbol *symbol = makesymbol(Z_SYM_FUNC);
+	ZSymbol *symbol = makesymbol(Z_SYM_VAR);
 
 	symbol->name = node->funcDef.ident->str;
 	symbol->type = node->funcDef.ret;
@@ -81,7 +86,7 @@ static void putVar(ZSemantic *semantic, ZNode *node) {
 }
 
 static void putStruct(ZSemantic *semantic, ZNode *node) {
-	ZSymbol *symbol = makesymbol(Z_SYM_FUNC);
+	ZSymbol *symbol = makesymbol(Z_SYM_STRUCT);
 
 	symbol->name = node->structDef.ident->str;
 	symbol->node = node;
@@ -154,7 +159,7 @@ static void validateUnary(ZSemantic *semantic, ZNode *curr) {
 
 		break;
 	default:
-		printf("(not yet implemented %d)\n", curr->type);
+		warning(semantic->state, curr->tok, "(not yet implemented %d)\n", curr->type);
 		break;
 	}
 }
@@ -169,7 +174,7 @@ static bool isRValue(ZNode *node) {
 }
 
 static void analyzeExpr(ZSemantic *semantic, ZNode *curr) {
-	if (curr->resolved && curr->type != NODE_BINARY) return;
+	if (curr->resolved || curr->type != NODE_BINARY) return;
 
 	if (curr->binary.op->type == TOK_EQ) {
 		if (!isLValue(curr->binary.left)) {
@@ -205,8 +210,15 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 	case NODE_IDENTIFIER:
 		printNode(curr, 0);
 		break;
+	case NODE_RETURN:
+		analyzeExpr(semantic, curr);
+		if (!typesEqual(curr->resolved, semantic->currentFuncRet)) {
+			error(semantic->state, NULL, "Invalid return type");
+		}
+		break;
 	default:
-		printf("(not yet implemented %d)\n", curr->type);
+		printf("not yet implemented %d\n", curr->type);
+		// warning(semantic->state, NULL, "(not yet implemented %d)\n", curr->type);
 		break;
 	}
 }
@@ -234,7 +246,6 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *node) {
 
 static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 	printf("FUNC %s\n", curr->funcDef.ident->str);
-	putFunc(semantic, curr);
 
 	semantic->currentFuncRet = curr->funcDef.ret;
 	analyzeBlock(semantic, curr->funcDef.body);
@@ -251,8 +262,57 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *curr) {
 	putStruct(semantic, curr);
 }
 
+static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
+	for (usize i = 0; i < veclen(root->program); i++) {
+		ZNode *child = root->program[i];
+
+		switch (child->type) {
+		case NODE_FUNC:
+			putFunc(semantic, child);
+			break;
+		case NODE_STRUCT:
+			putStruct(semantic, child);
+			break;
+		case NODE_VAR_DECL:
+			putVar(semantic, child);
+			break;
+		case NODE_MODULE:
+			beginScope(semantic);
+			discoverGlobalScope(semantic, child->module.root);
+			endScope(semantic);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+static void analyze(ZSemantic *semantic, ZNode *root) {
+	for (usize i = 0; i < veclen(root->program); i++) {
+		ZNode *child = root->program[i];
+		switch (child->type) {
+		case NODE_VAR_DECL:
+			analyzeFunc(semantic, child);
+			break;
+		case NODE_STRUCT:
+			analyzeStruct(semantic, child);
+			break;
+		case NODE_FUNC:
+			analyzeFunc(semantic, child);
+			break;
+		case NODE_MODULE:
+			beginScope(semantic);
+			analyze(semantic, child);
+			endScope(semantic);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
 void zanalyze(ZState *state, ZNode *root) {
-	ZSemantic *semantic = makesemantic(root);
+	ZSemantic *semantic = makesemantic(state, root);
 	for (usize i = 0; i < veclen(root->program); i++) {
 		ZNode *child = root->program[i];
 		switch(child->type) {

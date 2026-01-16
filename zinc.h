@@ -1,10 +1,76 @@
-#ifndef ZPARSE_H
-#define ZPARSE_H
+#ifndef ZINC_H
+#define ZINC_H
 
 #include "base.h"
-#include "zlex.h"
-#include "zmod.h"
+#include "zvec.h"
+#include "zmem.h"
 
+typedef enum {
+
+#define DEF(id, str, m) id = m,
+#define TOK_FLOWS
+#define TOK_TYPES
+#define TOK_DYN
+#define TOK_SYMBOLS
+
+#include "ztok.h"
+
+#undef TOK_FLOWS
+#undef TOK_TYPES
+#undef TOK_DYN
+#undef TOK_SYMBOLS
+
+#undef DEF
+
+} ZTokenType;
+
+typedef struct {
+	ZTokenType type;
+	union {
+		char *str;
+		i64 integer;
+		bool boolean;
+	};
+	char *sourcePtr;
+	char *sourceLinePtr;
+	usize row;
+	usize col;
+} ZToken;
+
+typedef enum {
+	Z_ERROR,
+	Z_WARNING,
+	Z_INFO
+} ZLogLevel;
+
+typedef struct {
+	char 			*filename;
+	char 			*message;
+	ZToken 		*token;
+	ZLogLevel level;
+} ZLog;
+
+typedef enum {
+	Z_LEXICAL,
+	Z_SYNTAX,
+	Z_SEMANTIC,
+	Z_GENERATE
+} ZPhase;
+
+typedef struct {
+	ZLog 		**errors;
+	ZPhase 	currentPhase;
+	char 		*filename;
+
+	char 		**pathFiles;
+	char 		**visitedFiles;
+	/* Not yet implemented */
+	bool 		verbose;
+	u8 			optimizationLevel;
+} ZState;
+
+
+/* ================== Syntax analysis	================== */
 typedef enum {
 	NODE_BLOCK, 		// All inside a {} is a block. A list of statement
 	NODE_IF,
@@ -179,5 +245,67 @@ struct ZNode {
 	};
 };
 
+/* ================== Semantic analysis	================== */
+typedef enum {
+	Z_SYM_VAR,
+	Z_SYM_FUNC,
+	Z_SYM_STRUCT
+} ZSymType;
+
+typedef struct ZSymbol {
+	ZSymType kind;
+	char *name;
+	ZType *type;
+	ZNode *node;
+} ZSymbol;
+
+typedef struct ZScope {
+	ZSymbol **symbols;
+	struct ZScope *parent;
+	u32 depth;
+} ZScope;
+
+typedef struct ZSymTable {
+	ZScope *global;
+	ZScope *current;
+} ZSymTable;
+
+typedef struct ZSemantic {
+	ZState *state;
+	ZNode *root;
+	ZSymTable *table;
+	ZType *currentFuncRet;
+	u16 loopDepth;
+} ZSemantic;
+
+void zanalyze(ZState *, ZNode *);
+
+bool typesEqual(ZType *, ZType *);
+bool typesCompatible(ZType *, ZType *);
+
+
+ZToken **ztokenize(ZState *);
 ZNode *zparse(ZState *, ZToken **);
+
+/* ================== Zinc state ================== */
+ZState *makestate(char *);
+
+char *readfile(char *);
+
+void error	(ZState *, ZToken *, const char *, ...);
+void warning(ZState *, ZToken *, const char *, ...);
+void info		(ZState *, ZToken *, const char *, ...);
+
+void printLogs(ZState *state);
+
+void visit(ZState *, char *);
+void undoVisit(ZState *);
+
+char *stoken(ZToken *);
+void printToken(ZToken *);
+void printTokens(ZToken **);
+
+void printType(ZType *);
+void printNode(ZNode *, u8);
+
 #endif

@@ -19,6 +19,9 @@ parameter = type, identifier ;
 (* Variables *)
 variable_declaration = type, identifier, [ "=", expression ] ;
 
+(* Calculate type at compile time *)
+dynamic_variable_declaration = identifier ":=" expression ;
+
 (* Structs *)
 struct_declaration = "struct", identifier, "{", { struct_member }, "}" ;
 

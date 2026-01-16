@@ -1,9 +1,4 @@
-#include "zlex.h"
-#include "zmem.h"
-#include "zmod.h"
-#include "zparse.h"
-#include "zdebug.h"
-#include "zsem.h"
+#include "zinc.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -40,6 +35,8 @@ int main(int argc, char **argv) {
 	printNode(root, 0);
 
 	zanalyze(state, root);
+
+	printLogs(state);
 
 	allocator.close();
 

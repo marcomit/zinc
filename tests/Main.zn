@@ -2,15 +2,15 @@
 // use "tests/Data.zn"
 // use "tests/MathUtil.zn"
 
-type Arru8 = [u8]
-type ArrPou8eru8 = [*u8]
+type Arru8 [u8]
+type ArrPou8eru8 [*u8]
 
 struct Vec2 {
 	u8 x
 	u8 y
 }
 
-type Vector = Vec2
+type Vector Vec2
 
 void Main() {
     u8 x = 10

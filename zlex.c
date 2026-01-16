@@ -1,6 +1,4 @@
-#include "zlex.h"
-#include "zmem.h"
-#include "zmod.h"
+#include "zinc.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -288,6 +286,8 @@ ZToken **ztokenize(ZState *state) {
 
 	while (*l->current) {
 		curr = NULL;
+		char *sourcePtr = l->current;
+		char *sourceLinePtr = l->line;
 		
 		while (true) {
 			char *start = l->current;
@@ -310,7 +310,11 @@ ZToken **ztokenize(ZState *state) {
 		}
 
 		if (!curr) error(l->state, veclast(l->tokens), "Unexpected symbol\n");
-		else addToken(l, curr);
+		else {
+			curr->sourceLinePtr = sourceLinePtr;
+			curr->sourcePtr  		= sourcePtr;
+			addToken(l, curr);
+		}
 	}
 	return l->tokens;
 }
