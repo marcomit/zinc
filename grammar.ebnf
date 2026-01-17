@@ -4,12 +4,17 @@
 program = { declaration } ;
 
 declaration = function_declaration
+						| foreign_function_declaration
             | receiver_function
             | variable_declaration
+						| dynamic_variable_declaration
             | struct_declaration ;
 
 (* Functions *)
 function_declaration = type, identifier, "(", [ parameter_list ], ")", block ;
+
+(* Foreign Functions *)
+foreign_function_declaration = "extern" type, identifier, "(", [ type ], ")" ;
 
 receiver_function = type, identifier, "(", [ parameter_list ], ")", type, identifier, block ;
 

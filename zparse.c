@@ -701,6 +701,33 @@ static ZNode *parseTypedef(ZParser *parser) {
 	return node;
 }
 
+static ZNode *parseForeignDecl(ZParser *parser) {
+	expect(parser, TOK_FOREIGN);
+
+	ZType *ret = wrapType(parser, parseType);
+
+	ensure(check(parser, TOK_IDENT));
+	ZToken *name = consume(parser);
+
+	expect(parser, TOK_LPAREN);
+
+	ZType **args = NULL;
+	while (true) {
+		ZType *type = wrapType(parser, parseType);
+		if (type) vecpush(args, type);
+		if (check(parser, TOK_RPAREN)) break;
+		if (!match(parser, TOK_COMMA)) break;
+	}
+
+	expect(parser, TOK_RPAREN);
+
+	ZNode *node = makenode(NODE_FOREIGN);
+	node->foreignFunc.ret = ret;
+	node->foreignFunc.tok = name;
+	node->foreignFunc.args = args;
+	return node;
+}
+
 static ZNode *parse(ZParser *parser, char *module) {
 	// for (usize i = 0; i < veclen(parser->modules); i++) {
 	// 	if (!strcmp(parser->modules[i], module)) {
@@ -714,10 +741,11 @@ static ZNode *parse(ZParser *parser, char *module) {
 
 	ParseFunction pf[] = {
 		parseImport,
+		parseForeignDecl,
 		parseTypedef,
 		parseFuncDecl,
 		parseStructDecl,
-		// parseUnionDecl,
+		parseUnionDecl,
 		parseVarDef,
 		parseVarDecl,
 	};
@@ -740,6 +768,7 @@ static ZNode *parseProgram(ZParser *parser) {
 }
 
 ZNode *zparse(ZState *state, ZToken **tokens) {
+	state->currentPhase = Z_PHASE_SYNTAX;
 	ZParser *parser = makeparser(state, tokens);
 	
 	ZNode *root = parseProgram(parser);

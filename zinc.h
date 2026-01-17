@@ -51,10 +51,10 @@ typedef struct {
 } ZLog;
 
 typedef enum {
-	Z_LEXICAL,
-	Z_SYNTAX,
-	Z_SEMANTIC,
-	Z_GENERATE
+	Z_PHASE_LEXICAL,
+	Z_PHASE_SYNTAX,
+	Z_PHASE_SEMANTIC,
+	Z_PHASE_GENERATE
 } ZPhase;
 
 typedef struct {
@@ -92,7 +92,8 @@ typedef enum {
 	NODE_PROGRAM,
 	NODE_UNION,
 	NODE_FIELD,
-	NODE_TYPEDEF
+	NODE_TYPEDEF,
+	NODE_FOREIGN
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -197,6 +198,12 @@ struct ZNode {
 			// Used to attach functions to every type of types.
 			ZNode *receiver;
 		} funcDef;
+
+		struct {
+			ZType 	*ret;
+			ZToken 	*tok;
+			ZType 	**args;
+		} foreignFunc;
 
 		struct {
 			ZNode *callee;

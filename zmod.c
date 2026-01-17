@@ -123,7 +123,7 @@ void printNode(ZNode *node, u8 depth) {
 			"BLOCK", "IF", "WHILE", "RETURN", "VAR_DECL", "ASSIGN", 
 			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
 			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
-			"UNION", "FIELD", "TYPEDEF"
+			"UNION", "FIELD", "TYPEDEF", "FOREIGN"
 	}[node->type]);
 
 	depth++;
@@ -236,6 +236,15 @@ void printNode(ZNode *node, u8 depth) {
 		printf(" %s alias for ", node->typeDef.alias->str);
 		printType(node->typeDef.type);
 		break;
+	case NODE_FOREIGN:
+		printType(node->foreignFunc.ret);
+		printf(" %s(", node->foreignFunc.tok->str);
+		for (usize i = 0; i < veclen(node->foreignFunc.args); i++) {
+			printType(node->foreignFunc.args[i]);
+			if (i < veclen(node->foreignFunc.args) - 1) printf(", ");
+		}
+		printf(")");
+		break;
 	// Add cases for WHILE, MEMBER, etc., following the same pattern
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);
@@ -246,7 +255,7 @@ void printNode(ZNode *node, u8 depth) {
 ZState *makestate(char *filename) {
 	ZState *self = zalloc(ZState);
 
-	self->currentPhase 			= Z_LEXICAL;
+	self->currentPhase 			= Z_PHASE_LEXICAL;
 	self->filename 					= filename;
 	self->errors 						= NULL;
 	self->verbose			 			= false;

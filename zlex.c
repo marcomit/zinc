@@ -276,6 +276,7 @@ ZLexer *makelexer(ZState *state) {
 }
 
 ZToken **ztokenize(ZState *state) {
+	state->currentPhase = Z_PHASE_LEXICAL;
 	ZLexer *l = makelexer(state);
 
 	if (!l) return NULL;
@@ -286,8 +287,6 @@ ZToken **ztokenize(ZState *state) {
 
 	while (*l->current) {
 		curr = NULL;
-		char *sourcePtr = l->current;
-		char *sourceLinePtr = l->line;
 		
 		while (true) {
 			char *start = l->current;
@@ -299,6 +298,8 @@ ZToken **ztokenize(ZState *state) {
 
 		if (!*l->current) break;
 
+		char *sourcePtr = l->current;
+		char *sourceLinePtr = l->line;
 		if (*l->current == '"') {
 			curr = parseString(l);
 		} else if (isalpha(*l->current) || *l->current == '_') {
