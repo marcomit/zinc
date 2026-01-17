@@ -58,7 +58,7 @@ static ZNode *makenode(ZNodeType type) {
 	return self;
 }
 
-static ZType *maketype(ZTypeKind kind) {
+ZType *maketype(ZTypeKind kind) {
 	ZType *self = zalloc(ZType);
 	self->kind = kind;
 	return self;
@@ -192,17 +192,14 @@ static ZNode *parseGenericBinary(ZParser *parser,
 }
 
 static ZNode *parsePrimary(ZParser *parser) {
-	if (!canPeek(parser)) {
-		return NULL;
-	}
+	ensure(canPeek(parser));
 
 	if (check(parser, TOK_LPAREN)) {
 		consume(parser);
 		ZNode *node = wrapNode(parser, parseExpr);
 		expect(parser, TOK_RPAREN);
 		return node;
-	}
-	if (check(parser, TOK_IDENT)) {
+	} else if (check(parser, TOK_IDENT)) {
 		ZNode *node = makenode(NODE_IDENTIFIER);
 		node->identTok = consume(parser);
 		return node;

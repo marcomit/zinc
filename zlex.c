@@ -93,26 +93,26 @@ ZTokenType findKeyword(const char *ident, size_t len) {
 	return TOK_IDENT;
 }
 
-static ZToken *createToken(ZTokenType type) {
+ZToken *maketoken(ZTokenType type) {
 	ZToken *self = zalloc(ZToken);
 	self->type = type;
 	return self;
 }
 
-static ZToken *createIdent(char *name) {
-	ZToken *self = createToken(TOK_IDENT);
+static ZToken *makeident(char *name) {
+	ZToken *self = maketoken(TOK_IDENT);
 	self->str = name;
 	return self;
 }
 
-static ZToken *createInteger(int64_t value) {
-	ZToken *self = createToken(TOK_INT_LIT);
+static ZToken *makeinteger(int64_t value) {
+	ZToken *self = maketoken(TOK_INT_LIT);
 	self->integer = value;
 	return self;
 }
 
-static ZToken *createString(char *str) {
-	ZToken *self = createToken(TOK_STR_LIT);
+static ZToken *makestring(char *str) {
+	ZToken *self = maketoken(TOK_STR_LIT);
 	self->str = str;
 	return self;
 }
@@ -176,14 +176,14 @@ static ZToken *parseString(ZLexer *l) {
 	memcpy(buff, start, len);
 	buff[len] = 0;
 
-	return createString(buff);
+	return makestring(buff);
 }
 
 static ZToken *parseSymbol(ZLexer *l) {
 	if (false) { /* Empty if statement only for macro definition*/ }
 	#define DEF(id, str, _) else if(!strncmp(str, l->current, strlen(str))) { \
 		skip(l, strlen(str));																										\
-		return createToken(id);																									\
+		return maketoken(id);																									\
 	}
 
 	#define TOK_SYMBOLS
@@ -211,7 +211,7 @@ static ZToken *parseInt(ZLexer *l) {
 	long long value = strtoll(start, NULL, 10);
 	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return createInteger(value);
+	return makeinteger(value);
 }
 
 static ZToken *parseLiteral(ZLexer *l) {
@@ -224,10 +224,10 @@ static ZToken *parseLiteral(ZLexer *l) {
 	ZTokenType type = findKeyword(start, len);
 
 	if (type == TOK_IDENT) {
-		return createIdent(strndup(start, len));
+		return makeident(strndup(start, len));
 	}
 
-	return createToken(type);
+	return maketoken(type);
 }
 
 static inline void skipSpaces(ZLexer *l) {

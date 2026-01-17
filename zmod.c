@@ -252,6 +252,36 @@ void printNode(ZNode *node, u8 depth) {
 	}
 	printf("\n");
 }
+
+void printSymbol(ZSymbol *symbol) {
+	switch (symbol->kind) {
+	case Z_SYM_VAR:
+		printf("Var(%s) ", symbol->name);
+		printType(symbol->type);
+		break;
+	case Z_SYM_FUNC:
+		printf("Func(%s)", symbol->name);
+		printType(symbol->type);
+		break;
+	case Z_SYM_STRUCT:
+		printf("Struct(%s)", symbol->name);
+		printType(symbol->type);
+		break;
+	}
+	printf("\n");
+}
+
+void printScope(ZScope *scope) {
+	if (!scope) return;
+	printf("\n\nScope(%zu)\n", veclen(scope->symbols));
+
+	for (usize i = 0; i < veclen(scope->symbols); i++) {
+		printSymbol(scope->symbols[i]);
+	}
+	printf("\nEnd scope\n");
+	printScope(scope->parent);
+}
+
 ZState *makestate(char *filename) {
 	ZState *self = zalloc(ZState);
 

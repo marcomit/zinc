@@ -15,6 +15,10 @@ install: $(TARGET)
 	cp $(TARGET) $(INSTALL_DIR)/$(TARGET)
 	chmod +x $(INSTALL_DIR)/$(TARGET)
 
+test: $(TARGET)
+	make install
+	zinc tests/MathUtil.zn
+
 clean:
 	rm -f $(TARGET)
 

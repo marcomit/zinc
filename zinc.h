@@ -256,20 +256,22 @@ struct ZNode {
 typedef enum {
 	Z_SYM_VAR,
 	Z_SYM_FUNC,
-	Z_SYM_STRUCT
+	Z_SYM_STRUCT,
+	Z_SYM_RECFUN
 } ZSymType;
 
 typedef struct ZSymbol {
-	ZSymType kind;
-	char *name;
-	ZType *type;
-	ZNode *node;
+	ZSymType 	kind;
+	char 			*name;
+	ZType 		*type;
+	ZNode 		*node;
+	bool 			isPublic;
 } ZSymbol;
 
 typedef struct ZScope {
-	ZSymbol **symbols;
+	ZSymbol 			**symbols;
 	struct ZScope *parent;
-	u32 depth;
+	u32 					depth;
 } ZScope;
 
 typedef struct ZSymTable {
@@ -278,21 +280,26 @@ typedef struct ZSymTable {
 } ZSymTable;
 
 typedef struct ZSemantic {
-	ZState *state;
-	ZNode *root;
+	ZState 		*state;
+	ZNode 		*root;
 	ZSymTable *table;
-	ZType *currentFuncRet;
-	u16 loopDepth;
+	ZType 		*currentFuncRet;
+	u16 			loopDepth;
 } ZSemantic;
 
+/* Lexer */
+ZToken **ztokenize(ZState *);
+ZToken *maketoken(ZTokenType);
+
+/* Parser */
+ZNode *zparse(ZState *, ZToken **);
+ZType *maketype(ZTypeKind);
+
+/* Semantic */
 void zanalyze(ZState *, ZNode *);
 
 bool typesEqual(ZType *, ZType *);
-bool typesCompatible(ZType *, ZType *);
-
-
-ZToken **ztokenize(ZState *);
-ZNode *zparse(ZState *, ZToken **);
+ZType *typesCompatible(ZState *, ZType *, ZType *);
 
 /* ================== Zinc state ================== */
 ZState *makestate(char *);
@@ -314,5 +321,7 @@ void printTokens(ZToken **);
 
 void printType(ZType *);
 void printNode(ZNode *, u8);
+
+void printScope(ZScope *);
 
 #endif
