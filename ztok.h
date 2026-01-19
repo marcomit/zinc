@@ -32,6 +32,8 @@ DEF(TOK_GOTO,     "goto",     TOK_FLOWS_MASK | 0x08)
 DEF(TOK_SWITCH,   "switch",   TOK_FLOWS_MASK | 0x09)
 DEF(TOK_CASE,     "case",     TOK_FLOWS_MASK | 0x0A)
 DEF(TOK_MODULE,   "use",      TOK_FLOWS_MASK | 0x0B)
+DEF(TOK_FOREIGN,  "foreign",	TOK_FLOWS_MASK | 0x0C)
+DEF(TOK_DEFER,  	"defer",		TOK_FLOWS_MASK | 0x0D)
 #endif
 
 #ifdef TOK_TYPES
@@ -52,7 +54,6 @@ DEF(TOK_UNION,   	"union",  	TOK_TYPES_SIGNATURE_MASK | 0x1D)
 DEF(TOK_TYPEDEF, 	"type",  		TOK_TYPES_SIGNATURE_MASK | 0x1E)
 DEF(TOK_ENUM,    	"enum",   	TOK_TYPES_SIGNATURE_MASK | 0x1F)
 DEF(TOK_CONST,   	"const",  	TOK_TYPES_SIGNATURE_MASK | 0x20)
-DEF(TOK_FOREIGN,  "foreign",	TOK_TYPES_SIGNATURE_MASK | 0x21)
 #endif
 
 #ifdef TOK_DYN
@@ -87,4 +88,5 @@ DEF(TOK_GT,        ">",   TOK_SYMBOLS_MASK | 0x54)
 DEF(TOK_LT,        "<",   TOK_SYMBOLS_MASK | 0x55)
 DEF(TOK_AND,       "and", TOK_SYMBOLS_MASK | 0x56)
 DEF(TOK_OR,        "or",  TOK_SYMBOLS_MASK | 0x57)
+DEF(TOK_ASSIGN,    ":=",  TOK_SYMBOLS_MASK | 0x58)
 #endif

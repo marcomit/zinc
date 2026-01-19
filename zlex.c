@@ -139,25 +139,6 @@ static void skip(ZLexer *l, u8 chars) {
 	while (chars--) next(l);
 }
 
-static void printLine(ZLexer *l) {
-	char *line = l->line;
-
-	while (*line && *line != '\n') {
-		fputc(*line, stderr);
-		line++;
-	}
-	fputc('\n', stderr);
-	line = l->line;
-
-	while (line != l->current) {
-		fputc(' ', stderr);
-		line++;
-	}
-
-	fputc('^', stderr);
-	
-}
-
 static ZToken *parseString(ZLexer *l) {
 	if (*l->current != '"') return NULL;
 	next(l);
@@ -310,8 +291,10 @@ ZToken **ztokenize(ZState *state) {
 			curr = parseSymbol(l);
 		}
 
-		if (!curr) error(l->state, veclast(l->tokens), "Unexpected symbol\n");
-		else {
+		if (!curr) {
+			error(l->state, veclast(l->tokens), "Unexpected symbol\n");
+			next(l);
+		} else {
 			curr->sourceLinePtr = sourceLinePtr;
 			curr->sourcePtr  		= sourcePtr;
 			addToken(l, curr);

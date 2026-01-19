@@ -107,6 +107,9 @@ void printType(ZType *type) {
 		printType(type->array.base);
 		// printf("]");
 		break;
+	default:
+		printf("(details not implemented for type %d)", type->kind);
+		break;
 	}
 }
 
@@ -123,7 +126,7 @@ void printNode(ZNode *node, u8 depth) {
 			"BLOCK", "IF", "WHILE", "RETURN", "VAR_DECL", "ASSIGN", 
 			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
 			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
-			"UNION", "FIELD", "TYPEDEF", "FOREIGN"
+			"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER"
 	}[node->type]);
 
 	depth++;
@@ -173,11 +176,17 @@ void printNode(ZNode *node, u8 depth) {
 		printf("Name: %s, Type: ", node->funcDef.ident->str);
 		printType(node->funcDef.ret);
 		printf("\n");
+		for (usize i = 0; i < veclen(node->funcDef.generics); i++) {
+			indent(depth);
+			printToken(node->funcDef.generics[i]);
+			printf("\n");
+		}
 		printNode(node->funcDef.body, depth);
 		return;
 
 	case NODE_CALL:
-		printf("Callee: %s\n", node->call.callee->identTok->str);
+		printf("\n");
+		printNode(node->call.callee, depth);
 		for (usize i = 0; i < veclen(node->call.args); i++){
 			printNode(node->call.args[i], depth);
 		}
@@ -245,6 +254,10 @@ void printNode(ZNode *node, u8 depth) {
 		}
 		printf(")");
 		break;
+	case NODE_DEFER:
+		printf("\n");
+		printNode(node->deferStmt.expr, depth);
+		break;
 	// Add cases for WHILE, MEMBER, etc., following the same pattern
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);
@@ -267,6 +280,8 @@ void printSymbol(ZSymbol *symbol) {
 		printf("Struct(%s)", symbol->name);
 		printType(symbol->type);
 		break;
+	default:
+		return;
 	}
 	printf("\n");
 }
@@ -311,7 +326,7 @@ char *readfile(char *filename) {
 	fread(buff, flen, 1, fd);
 
 	buff[flen] = 0;
-
+	fclose(fd);
 	return buff;
 }
 
@@ -373,10 +388,15 @@ void info(ZState *state, ZToken *tok, const char *fmt, ...) {
 	va_end(args);
 }
 
-void visit(ZState *state, char *filename) {
+bool visit(ZState *state, char *filename) {
+	for (usize i = 0; i < veclen(state->pathFiles); i++) {
+		if (strcmp(state->pathFiles[i], filename) == 0) return false;
+	}
+
 	vecpush(state->visitedFiles, 	filename);
 	vecpush(state->pathFiles, 		filename);
 	state->filename = filename;
+	return true;
 }
 
 void undoVisit(ZState *state) {

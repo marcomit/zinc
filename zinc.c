@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
 
 	printNode(root, 0);
 
-	zanalyze(state, root);
+	// zanalyze(state, root);
 
 	printLogs(state);
 

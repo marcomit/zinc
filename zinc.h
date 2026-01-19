@@ -93,7 +93,8 @@ typedef enum {
 	NODE_UNION,
 	NODE_FIELD,
 	NODE_TYPEDEF,
-	NODE_FOREIGN
+	NODE_FOREIGN,
+	NODE_DEFER
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -104,7 +105,8 @@ typedef enum ZTypeKind {
 	Z_TYPE_STRUCT,
 	Z_TYPE_ARRAY,
 	Z_TYPE_FUNCTION,
-	Z_TYPE_POINTER
+	Z_TYPE_POINTER,
+	Z_TYPE_TUPLE
 } ZTypeKind;
 
 struct ZType {
@@ -131,6 +133,8 @@ struct ZType {
 			ZType *base;
 			usize size;
 		} array;
+
+		ZType **tuple;
 	};
 
 	bool constant;
@@ -194,9 +198,9 @@ struct ZNode {
 			ZNode **args;
 
 			ZNode *body;
-			// One of main feature of zinc is receiver functions
-			// Used to attach functions to every type of types.
 			ZNode *receiver;
+
+			ZToken **generics;
 		} funcDef;
 
 		struct {
@@ -228,6 +232,10 @@ struct ZNode {
 		struct {
 			ZNode *expr; // Can be NULL for void returns
 		} returnStmt;
+
+		struct {
+			ZNode *expr;
+		} deferStmt;
 
 		struct {
 			ZNode *arr;
@@ -312,7 +320,7 @@ void info		(ZState *, ZToken *, const char *, ...);
 
 void printLogs(ZState *state);
 
-void visit(ZState *, char *);
+bool visit(ZState *, char *);
 void undoVisit(ZState *);
 
 char *stoken(ZToken *);

@@ -1,11 +1,11 @@
 // Test: Semantic Analysis
 // use "tests/Data.zn"
-// use "tests/MathUtil.zn"
+use "tests/MathUtil.zn"
 
-foreign bind()
+// foreign void bind()
 
-type Arru8 [u8]
-type ArrPou8eru8 [*u8]
+// type Arru8 [u8]
+// type ArrPou8eru8 [*u8]
 
 struct Vec2 {
 	u8 X
@@ -13,18 +13,18 @@ struct Vec2 {
 }
 
 
-type Vector Vec2
+// type Vector Vec2
 
-void Main() {
-	i32 prova = 0
+// void Main() {
+// 	i32 prova = 0
 
-}
+// }
 
-i64 test() {
-    mystr := "prova"
+*void Main() {
+    // mystr = "prova"
 
     list := mystr.Split()
 
-    defer list.free()
+   defer  list.free()
 }
  

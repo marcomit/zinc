@@ -1,5 +1,6 @@
 // Test: Visibility and Receiver Functions
 // use "tests/Data.zn"
+use "tests/Main.zn"
 
 foreign void putchar(u8)
 
