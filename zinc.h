@@ -75,6 +75,7 @@ typedef enum {
 	NODE_BLOCK, 		// All inside a {} is a block. A list of statement
 	NODE_IF,
 	NODE_WHILE,
+	NODE_FOR,
 	NODE_RETURN,
 	NODE_VAR_DECL,
 	NODE_ASSIGN,
@@ -94,7 +95,10 @@ typedef enum {
 	NODE_FIELD,
 	NODE_TYPEDEF,
 	NODE_FOREIGN,
-	NODE_DEFER
+	NODE_DEFER,
+	NODE_STRUCT_LIT,
+	NODE_TUPLE_LIT,
+	NODE_ARRAY_LIT
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -158,6 +162,12 @@ struct ZNode {
 		} whileStmt;
 
 		struct {
+			ZToken *ident;
+			ZNode *iterator;
+			ZNode *block;
+		} forStmt;
+
+		struct {
 			ZToken *op;
 			ZNode *left;
 			ZNode *right;
@@ -180,11 +190,6 @@ struct ZNode {
 		} varAssign;
 
 		ZNode ** block;
-
-		struct {
-			ZType *target;
-			ZNode *expr;
-		} cast;
 
 		struct {
 			ZType *type;
@@ -241,6 +246,24 @@ struct ZNode {
 			ZNode *arr;
 			ZNode *index;
 		} subscript;
+
+		struct {
+			ZNode **fields;
+		} tuplelit;
+
+		struct {
+			ZNode **fields;
+		} arraylit;
+
+		struct {
+			ZToken *key;
+			ZNode *value;
+		} structlitfield;
+
+		struct {
+			ZToken *ident;
+			ZNode **fields;
+		} structlit;
 
 		struct {
 			ZToken *alias;

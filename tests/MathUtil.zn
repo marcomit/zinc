@@ -1,27 +1,36 @@
 // Test: Visibility and Receiver Functions
 // use "tests/Data.zn"
-use "tests/Main.zn"
+// use "tests/Main.zn"
 
-foreign void putchar(u8)
+// foreign void putchar(u8)
 
-struct Vector {
-	f32 x
-	f32 y
-}
+// struct Vector {
+// 	f32 x
+// 	f32 y
+// }
 
 // Public function (starts with Uppercase)
-f32 Add(f32 a, f32 b) {
-	return a + b
-}
+// f32 Add(f32 a, f32 b) {
+// 	return a + b
+// }
 
 // Private helper (starts with lowercase)
-f32 internal_square(f32 n) {
-	return n * n
-}
+// f32 internal_square(f32 n) {
+// 	return n * n
+// }
 
 // Receiver function: f32 Vector.Magnitude()
 // Based on your grammar: type identifier (...) type identifier block
-f32 Magnitude(*Vector v) Vector v {
-	f32 sum = internal_square(v.x) + internal_square(v.y)
-	return sum
+// f32 Magnitude(*Vector v) Vector v {
+// 	f32 sum = internal_square(v.x) + internal_square(v.y)
+// 	return sum
+// }
+
+void main() {
+    // list := [1,2,3,4,5,6]
+    obj := Vector { x: 10, y: 10 }
+    // tuple := (1,2,3,4,5,6)
+    for i in 10 {
+        println("")
+    }
 }

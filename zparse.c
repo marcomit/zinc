@@ -8,7 +8,12 @@
 #include <stdbool.h>
 
 #define ensure(c) if (!(c)) return NULL
-#define expect(l, t)  ensure(match(l, t))
+#define expect(l, t) do {																											\
+	if (!match(l, t)) {																													\
+		error((l)->state, peek(l), "Expected ..., got %s", stoken(peek(parser)));	\
+		return NULL;																															\
+	}																																						\
+} while (0)
 
 typedef struct ZParser {
 	ZState *state;
@@ -33,15 +38,19 @@ typedef struct ZParser {
 
 typedef ZNode *(*ParseFunction)(ZParser *);
 
-static ZType *parseType			(ZParser *);
-static ZNode *parse					(ZParser *, char *);
-static ZNode *parseIf				(ZParser *);
-static ZNode *parseWhile		(ZParser *);
-static ZNode *parseReturn		(ZParser *);
-static ZNode *parseBlock		(ZParser *);
-static ZNode *parseExpr			(ZParser *);
-static ZNode *parseVarDecl	(ZParser *);
-static ZNode *parseVarDef		(ZParser *);
+static ZType *parseType				(ZParser *);
+static ZNode *parse						(ZParser *, char *);
+static ZNode *parseIf					(ZParser *);
+static ZNode *parseWhile			(ZParser *);
+static ZNode *parseFor				(ZParser *);
+static ZNode *parseReturn			(ZParser *);
+static ZNode *parseBlock			(ZParser *);
+static ZNode *parseArrayLit		(ZParser *);
+static ZNode *parseTupleLit		(ZParser *);
+static ZNode *parseStructLit	(ZParser *);
+static ZNode *parseExpr				(ZParser *);
+static ZNode *parseVarDecl		(ZParser *);
+static ZNode *parseVarDef			(ZParser *);
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
 	ZParser *self = zalloc(ZParser);
@@ -162,10 +171,19 @@ static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
 
 static ZNode *parseOrGrammar(ZParser *parser, ParseFunction *pf, usize len) {
 	ZNode *parsed = NULL;
+	usize saved = parser->current;
 	for (usize i = 0; i < len; i++) {
-		parsed = wrapNode(parser, pf[i]);
-		if (parsed) return parsed;
+		pushErrorCheckpoint(parser);
+		parsed = pf[i](parser);
+		if (parsed) {
+			rollbackErrors(parser);
+			return parsed;
+		}
+		else parser->current = saved;
+		commitErrors(parser);
 	}
+
+	for (usize i = 0; i < len - 1; i++) rollbackErrors(parser);
 
 	return NULL;
 }
@@ -212,7 +230,7 @@ static ZNode *parsePrimary(ZParser *parser) {
 		ZNode *node = makenode(NODE_IDENTIFIER);
 		node->identTok = consume(parser);
 		return node;
-	} else if (check(parser, TOK_INT_LIT)) {
+	} else if (checkMask(parser, TOK_LITERAL)) {
 		ZNode *node = makenode(NODE_LITERAL);
 		node->literalTok = consume(parser);
 		return node;
@@ -481,6 +499,7 @@ static ZNode *parseStmt(ZParser *parser) {
 	ParseFunction toTry[] = {
 		parseIf,
 		parseWhile,
+		parseFor,
 		parseReturn,
 		parseBlock,
 		parseVarDecl,
@@ -503,7 +522,12 @@ static ZNode *parseBlock(ZParser *parser) {
 		if (stmt) vecpush(block->block, stmt);
 	} while (stmt);
 
+	if (!check(parser, TOK_RBRACKET)) {
+		printf("Error parsing block statement\n");
+	}
+
 	expect(parser, TOK_RBRACKET);
+
 
 	return block;
 }
@@ -571,7 +595,15 @@ static ZNode *parseStructDecl(ZParser *parser) {
 }
 
 static ZNode *parseExpr(ZParser *parser) {
-	return parseBinary(parser);
+	ParseFunction toTry[] = {
+		parseBinary,
+		parseStructLit,
+		parseArrayLit,
+		parseTupleLit
+	};
+	usize len = sizeof(toTry) / sizeof(toTry[0]);
+	return parseOrGrammar(parser, toTry, len);
+	// return parseBinary(parser);
 }
 
 static ZNode *parseReturn(ZParser *parser) {
@@ -604,6 +636,39 @@ static ZNode *parseIf(ZParser *parser) {
 
 	node->ifStmt.cond = cond;
 	node->ifStmt.body = body;
+	return node;
+}
+
+static ZNode *parseFor(ZParser *parser) {
+	expect(parser, TOK_FOR);
+	printf("For parse\n");
+
+	ensure(check(parser, TOK_IDENT));
+	ZToken *ident = consume(parser);
+
+	expect(parser, TOK_IN);
+	
+	ZNode *node = makenode(NODE_FOR);
+
+	ZNode *expr = wrapNode(parser, parseExpr);
+	if (!expr) {
+		printf("Error parsing for loop, expected an expression here!\n");
+	}
+
+	ZNode *block = wrapNode(parser, parseBlock);
+	if (!block) {
+		printf("Error parsing for loop, expected an expression here!\n");
+	}
+	node->forStmt.ident = ident;
+	node->forStmt.iterator = expr;
+	node->forStmt.block = block;
+
+	if (!node->forStmt.iterator || !node->forStmt.block) {
+		if (!node->forStmt.iterator) printf("iterator ");
+		if (!node->forStmt.block) printf("block ");
+		printf("For parsing failed %s\n", stoken(peek(parser)));
+	}
+
 	return node;
 }
 
@@ -685,6 +750,10 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 
 	ZNode *body = wrapNode(parser, parseBlock);
 
+	if (!body) {
+		error(parser->state, peek(parser), "Error parsing block");
+	}
+
 	ensure(body);
 
 	ZNode *node = makenode(NODE_FUNC);
@@ -701,11 +770,14 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 static ZNode *parseVarInferred(ZParser *parser) {
 	ensure(check(parser, TOK_IDENT));
 
-	printf("Inferret");
 	ZToken *ident = consume(parser);
 	expect(parser, TOK_ASSIGN);
 
 	ZNode *expr = wrapNode(parser, parseExpr);
+
+	if (!expr) {
+		error(parser->state, peek(parser), "Error parsing expression");
+	}
 
 	return makenodevar(ident, NULL, expr);
 }
@@ -756,6 +828,77 @@ static ZNode *parseVarDecl(ZParser *parser) {
 	node->varDecl.type = type;
 
 	return node;
+}
+
+static ZNode *parseTupleLit(ZParser *parser) {
+	ensure(check(parser, TOK_LPAREN));
+	ZNode *expr = NULL;
+	ZNode **fields = NULL;
+	while (( expr = parseExpr(parser) )) vecpush(fields, expr);
+	ensure(check(parser, TOK_RPAREN));
+
+	ZNode *node = makenode(NODE_TUPLE_LIT);
+	node->tuplelit.fields = fields;
+	return node;
+}
+
+static ZNode *parseArrayLit(ZParser *parser) {
+	expect(parser, TOK_LSBRACKET);
+
+	printf("Parsing array literal\n");
+
+	ZNode **values = NULL;
+	ZNode *expr = NULL;
+
+	while (( expr = wrapNode(parser, parseExpr) )) {
+		vecpush(values, expr);
+		if (check(parser, TOK_RSBRACKET)) break;
+		if (!match(parser, TOK_COMMA)) {
+			error(parser->state, peek(parser), "Expected ',', got %s", stoken(peek(parser)));
+		}
+	}
+
+	expect(parser, TOK_RSBRACKET);
+
+	ZNode *node = makenode(NODE_ARRAY_LIT);
+
+	node->arraylit.fields = values;
+
+	return node;
+}
+
+static ZNode *parseStructLit(ZParser *parser) {
+	ensure(check(parser, TOK_IDENT));
+	ZToken *ident = consume(parser);
+
+	printf("Trying to parse struct literal\n");
+
+	expect(parser, TOK_LBRACKET);
+
+	ZNode *node = makenode(NODE_STRUCT_LIT);
+	node->structlit.ident = ident;
+
+	while (true) {
+		if (!check(parser, TOK_IDENT)) break;
+		ZToken *ident = consume(parser);
+		if (!match(parser, TOK_COLON)) {
+			error(parser->state, peek(parser), "Expected a ':', got %s", stoken(peek(parser)));
+			return NULL;
+		}
+		ZNode *expr = wrapNode(parser, parseExpr);
+		if (!expr) return NULL;
+		ZNode *var = makenodevar(ident, NULL, expr);
+		vecpush(node->structlit.fields, var);
+		if (check(parser, TOK_RBRACKET)) break;
+		if (!check(parser, TOK_COMMA)) {
+			error(parser->state, peek(parser), "Expected a ',', got %s", stoken(peek(parser)));
+			return NULL;
+		}
+	}
+
+	expect(parser, TOK_RBRACKET);
+
+	return NULL;
 }
 
 static ZNode *getModuleByName(ZParser *parser, ZToken *name) {

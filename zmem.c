@@ -47,6 +47,7 @@ static arena_t *createArena() {
 
 static void freeArenaBucket(ArenaBucket *arena, bool recursive) {
 	if (!arena) return;
+	printf("BUCKET ALLOCATION: %zu\n", arena->len);
 	if (recursive) freeArenaBucket(arena->next, recursive);
 	free(arena);
 }

@@ -123,10 +123,11 @@ void printNode(ZNode *node, u8 depth) {
 	indent(depth);
 
 	printf("[%s] ", (char*[]){
-			"BLOCK", "IF", "WHILE", "RETURN", "VAR_DECL", "ASSIGN", 
+			"BLOCK", "IF", "WHILE", "FOR", "RETURN", "VAR_DECL", "ASSIGN", 
 			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
 			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
-			"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER"
+			"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
+			"TUPLE_LIT", "ARRAY_LIT"
 	}[node->type]);
 
 	depth++;
@@ -211,7 +212,13 @@ void printNode(ZNode *node, u8 depth) {
 		printf("Cond: \n");
 		printNode(node->whileStmt.cond, depth);
 		printNode(node->whileStmt.branch, depth);
-
+		break;
+	case NODE_FOR:
+		printToken(node->forStmt.ident);
+		printf("\n");
+		printNode(node->forStmt.iterator, depth);
+		printNode(node->forStmt.block, depth);
+		break;
 	case NODE_PROGRAM:
 		printf("\n");
 		for (usize i = 0; i < veclen(node->program); i++) {
@@ -257,6 +264,12 @@ void printNode(ZNode *node, u8 depth) {
 	case NODE_DEFER:
 		printf("\n");
 		printNode(node->deferStmt.expr, depth);
+		break;
+	case NODE_ARRAY_LIT:
+		printf("\n");
+		for(usize i = 0; i < veclen(node->arraylit.fields); i++) {
+			printNode(node->arraylit.fields[i], depth);
+		}
 		break;
 	// Add cases for WHILE, MEMBER, etc., following the same pattern
 	default:
