@@ -38,19 +38,20 @@ typedef struct ZParser {
 
 typedef ZNode *(*ParseFunction)(ZParser *);
 
-static ZType *parseType				(ZParser *);
-static ZNode *parse						(ZParser *, char *);
-static ZNode *parseIf					(ZParser *);
-static ZNode *parseWhile			(ZParser *);
-static ZNode *parseFor				(ZParser *);
-static ZNode *parseReturn			(ZParser *);
-static ZNode *parseBlock			(ZParser *);
-static ZNode *parseArrayLit		(ZParser *);
-static ZNode *parseTupleLit		(ZParser *);
-static ZNode *parseStructLit	(ZParser *);
-static ZNode *parseExpr				(ZParser *);
-static ZNode *parseVarDecl		(ZParser *);
-static ZNode *parseVarDef			(ZParser *);
+static ZType *parseType						(ZParser *);
+static ZNode *parse								(ZParser *, char *);
+static ZNode *parseIf							(ZParser *);
+static ZNode *parseWhile					(ZParser *);
+static ZNode *parseFor						(ZParser *);
+static ZNode *parseReturn					(ZParser *);
+static ZNode *parseBlock					(ZParser *);
+static ZNode *parseArrayLit				(ZParser *);
+static ZNode *parseTupleLit				(ZParser *);
+static ZNode *parseStructLit			(ZParser *);
+static ZNode *parseExpr						(ZParser *);
+static ZNode *parseVarDecl				(ZParser *);
+static ZNode *parseVarDef					(ZParser *);
+static ZToken **parseGenericsDecl	(ZParser *);
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
 	ZParser *self = zalloc(ZParser);
@@ -170,21 +171,10 @@ static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
 }
 
 static ZNode *parseOrGrammar(ZParser *parser, ParseFunction *pf, usize len) {
-	ZNode *parsed = NULL;
-	usize saved = parser->current;
 	for (usize i = 0; i < len; i++) {
-		pushErrorCheckpoint(parser);
-		parsed = pf[i](parser);
-		if (parsed) {
-			rollbackErrors(parser);
-			return parsed;
-		}
-		else parser->current = saved;
-		commitErrors(parser);
+		ZNode *parsed = wrapNode(parser, pf[i]);
+		if (parsed) return parsed;
 	}
-
-	for (usize i = 0; i < len - 1; i++) rollbackErrors(parser);
-
 	return NULL;
 }
 
@@ -583,8 +573,13 @@ static ZNode *parseUnionDecl(ZParser *parser) {
 static ZNode *parseStructDecl(ZParser *parser) {
 	ensure(match(parser, TOK_STRUCT));
 	ZToken *name = NULL;
+	ZToken **generics = NULL;
 
 	if (check(parser, TOK_IDENT)) name = consume(parser);
+
+	if (check(parser, TOK_LSBRACKET)) {
+		generics = parseGenericsDecl(parser);
+	}
 
 	if (!name) {
 		error(parser->state, peek(parser), "Expected an identifier after 'struct'");
@@ -604,18 +599,20 @@ static ZNode *parseStructDecl(ZParser *parser) {
 
 	ZNode *node = makenode(NODE_STRUCT);
 	node->structDef.fields = fields;
+	node->structDef.generics = generics;
 	node->structDef.ident = name;
 	return node;
 }
 
 static ZNode *parseExpr(ZParser *parser) {
 	ParseFunction toTry[] = {
-		parseBinary,
 		parseStructLit,
+		parseBinary,
 		parseArrayLit,
 		parseTupleLit
 	};
 	usize len = sizeof(toTry) / sizeof(toTry[0]);
+	printf("Tok: %s\n", stoken(peek(parser)));
 	return parseOrGrammar(parser, toTry, len);
 	// return parseBinary(parser);
 }
@@ -787,6 +784,7 @@ static ZNode *parseVarInferred(ZParser *parser) {
 	ZToken *ident = consume(parser);
 	expect(parser, TOK_ASSIGN);
 
+	printf("Inferred %s\n", stoken(peek(parser)));
 	ZNode *expr = wrapNode(parser, parseExpr);
 
 	if (!expr) {
@@ -882,10 +880,11 @@ static ZNode *parseArrayLit(ZParser *parser) {
 }
 
 static ZNode *parseStructLit(ZParser *parser) {
-	ensure(check(parser, TOK_IDENT));
+	if (!check(parser, TOK_IDENT)) {
+		return NULL;
+	}
 	ZToken *ident = consume(parser);
 
-	printf("Trying to parse struct literal\n");
 
 	expect(parser, TOK_LBRACKET);
 
@@ -904,7 +903,7 @@ static ZNode *parseStructLit(ZParser *parser) {
 		ZNode *var = makenodevar(ident, NULL, expr);
 		vecpush(node->structlit.fields, var);
 		if (check(parser, TOK_RBRACKET)) break;
-		if (!check(parser, TOK_COMMA)) {
+		if (!match(parser, TOK_COMMA)) {
 			error(parser->state, peek(parser), "Expected a ',', got %s", stoken(peek(parser)));
 			return NULL;
 		}

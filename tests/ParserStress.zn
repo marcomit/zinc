@@ -1,0 +1,1126 @@
+// ============================================================================
+// Parser Stress Test for Zinc Language
+// This file tests various parsing scenarios and edge cases
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Module Imports
+// ----------------------------------------------------------------------------
+// use "tests/Data.zn"
+// use "tests/Range.zn"
+
+// ----------------------------------------------------------------------------
+// Foreign Function Declarations
+// ----------------------------------------------------------------------------
+foreign void putchar(u8)
+foreign void puts(*u8)
+foreign i32 printf(*u8)
+foreign *void malloc(u64)
+foreign void free(*void)
+foreign *void realloc(*void, u64)
+foreign i32 strcmp(*u8, *u8)
+foreign u64 strlen(*u8)
+
+// ----------------------------------------------------------------------------
+// Type Aliases (typedef)
+// ----------------------------------------------------------------------------
+type Byte u8
+type Word u16
+type DWord u32
+type QWord u64
+type Size u64
+type Pointer *void
+type String *u8
+type ByteArray [u8]
+type IntArray [i32]
+type FloatArray [f64]
+type PointerArray [*void]
+type Matrix [[f64]]
+type NestedArray [[[i32]]]
+
+// Generic type aliases
+/* type Optional[T] *T
+type Ref[T] *T
+type ConstRef[T] const *T
+type ArrayOf[T] [T]
+type PtrArray[T] [*T]
+type Result[T, E] Pair[T, E]
+type Callback[T, R] R(T)
+*/
+
+// ----------------------------------------------------------------------------
+// Struct Declarations
+// ----------------------------------------------------------------------------
+struct Point {
+    f64 x
+    f64 y
+}
+
+struct Point3D {
+    f64 x
+    f64 y
+    f64 z
+}
+
+struct Rectangle {
+    Point topLeft
+    Point bottomRight
+    u32 color
+    bool filled
+}
+
+struct Circle {
+    Point center
+    f64 radius
+}
+
+struct Color {
+    u8 r
+    u8 g
+    u8 b
+    u8 a
+}
+
+struct Vertex {
+    Point3D position
+    Point3D normal
+    Color color
+    f32 u
+    f32 v
+}
+
+struct DynamicArray {
+    *void data
+    u64 length
+    u64 capacity
+    u64 elementSize
+}
+
+struct StringBuilder {
+    *u8 buffer
+    u64 length
+    u64 capacity
+}
+
+struct LinkedListNode {
+    *void data
+    *LinkedListNode next
+    *LinkedListNode prev
+}
+
+struct LinkedList {
+    *LinkedListNode head
+    *LinkedListNode tail
+    u64 count
+}
+
+struct HashEntry {
+    u64 hash
+    *u8 key
+    *void value
+    *HashEntry next
+}
+
+struct HashMap {
+    *HashEntry buckets
+    u64 bucketCount
+    u64 entryCount
+    f64 loadFactor
+}
+
+struct BinaryTreeNode {
+    i64 key
+    *void value
+    *BinaryTreeNode left
+    *BinaryTreeNode right
+    *BinaryTreeNode parent
+    i32 height
+}
+
+struct BinaryTree {
+    *BinaryTreeNode root
+    u64 count
+}
+
+// Generic structs
+struct Container[T] {
+    T value
+    bool hasValue
+}
+
+struct Pair[A, B] {
+    A first
+    B second
+}
+
+struct Triple[A, B, C] {
+    A first
+    B second
+    C third
+}
+
+struct Node[T] {
+    T data
+    *Node[T] next
+    *Node[T] prev
+}
+
+struct Tree[T] {
+    T value
+    *Tree[T] left
+    *Tree[T] right
+}
+
+struct KeyValue[K, V] {
+    K key
+    V value
+    u64 hash
+}
+
+struct Buffer[T] {
+    *T data
+    u64 size
+    u64 capacity
+    u64 readPos
+    u64 writePos
+}
+
+struct Stack[T] {
+    *T items
+    u64 top
+    u64 capacity
+}
+
+struct Queue[T] {
+    *T items
+    u64 front
+    u64 rear
+    u64 size
+    u64 capacity
+}
+
+// Deeply nested generic struct
+struct ComplexData[T, U, V] {
+    Pair[T, U] pair
+    Container[V] container
+    [Pair[T, V]] pairArray
+    *Node[U] nodePtr
+}
+
+// ----------------------------------------------------------------------------
+// Simple Functions
+// ----------------------------------------------------------------------------
+void doNothing() {
+}
+
+i32 returnZero() {
+    return 0
+}
+
+i32 returnOne() {
+    return 1
+}
+
+bool returnTrue() {
+    return true
+}
+
+bool returnFalse() {
+    return false
+}
+
+f64 returnPi() {
+    return 3.14159265358979
+}
+
+// ----------------------------------------------------------------------------
+// Functions with Parameters
+// ----------------------------------------------------------------------------
+i32 add(i32 a, i32 b) {
+    return a + b
+}
+
+i32 subtract(i32 a, i32 b) {
+    return a - b
+}
+
+i32 multiply(i32 a, i32 b) {
+    return a * b
+}
+
+i32 divide(i32 a, i32 b) {
+    return a / b
+}
+
+f64 addFloat(f64 a, f64 b) {
+    return a + b
+}
+
+i32 addThree(i32 a, i32 b, i32 c) {
+    return a + b + c
+}
+
+i32 addFour(i32 a, i32 b, i32 c, i32 d) {
+    return a + b + c + d
+}
+
+i32 addFive(i32 a, i32 b, i32 c, i32 d, i32 e) {
+    return a + b + c + d + e
+}
+
+// Pointer parameters
+void swap(*i32 a, *i32 b) {
+    i32 temp = *a
+    *a = *b
+    *b = temp
+}
+
+void zeroOut(*i32 ptr) {
+    *ptr = 0
+}
+
+void copyBytes(*u8 dest, *u8 src, u64 count) {
+    for i in count {
+        dest[i] = src[i]
+    }
+}
+
+// Array parameters
+i32 sumArray([i32] arr, u64 len) {
+    i32 sum = 0
+    for i in len {
+        sum = sum + arr[i]
+    }
+    return sum
+}
+
+f64 averageArray([f64] arr, u64 len) {
+    f64 sum = 0.0
+    for i in len {
+        sum = sum + arr[i]
+    }
+    return sum / len
+}
+
+// Struct parameters
+f64 distance(Point a, Point b) {
+    dx := b.x - a.x
+    dy := b.y - a.y
+    return dx * dx + dy * dy
+}
+
+f64 rectangleArea(Rectangle r) {
+    width := r.bottomRight.x - r.topLeft.x
+    height := r.bottomRight.y - r.topLeft.y
+    return width * height
+}
+
+f64 circleArea(Circle c) {
+    return 3.14159265358979 * c.radius * c.radius
+}
+
+// ----------------------------------------------------------------------------
+// Generic Functions
+// ----------------------------------------------------------------------------
+T identity[T](T value) {
+    return value
+}
+
+void swapGeneric[T](*T a, *T b) {
+    T temp = *a
+    *a = *b
+    *b = temp
+}
+
+T max[T](T a, T b) {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+T min[T](T a, T b) {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+T clamp[T](T value, T minVal, T maxVal) {
+    if value < minVal {
+        return minVal
+    }
+    if value > maxVal {
+        return maxVal
+    }
+    return value
+}
+
+Pair[A, B] makePair[A, B](A first, B second) {
+    return Pair[A, B] { first: first, second: second }
+}
+
+Container[T] wrap[T](T value) {
+    return Container[T] { value: value, hasValue: true }
+}
+
+Container[T] empty[T]() {
+    Container[T] c
+    c.hasValue = false
+    return c
+}
+
+// Multiple generic parameters
+R apply[T, R](T value, R(T) func) {
+    return func(value)
+}
+
+R fold[T, R](R initial, [T] arr, u64 len, R(R, T) func) {
+    R result = initial
+    for i in len {
+        result = func(result, arr[i])
+    }
+    return result
+}
+
+// ----------------------------------------------------------------------------
+// Receiver Functions (Methods)
+// ----------------------------------------------------------------------------
+f64 magnitude() Point self {
+    return self.x * self.x + self.y * self.y
+}
+
+void normalize() Point *self {
+    mag := self.magnitude()
+    if mag > 0.0 {
+        self.x = self.x / mag
+        self.y = self.y / mag
+    }
+}
+
+Point add(Point other) Point self {
+    return Point { x: self.x + other.x, y: self.y + other.y }
+}
+
+Point subtract(Point other) Point self {
+    return Point { x: self.x - other.x, y: self.y - other.y }
+}
+
+Point scale(f64 factor) Point self {
+    return Point { x: self.x * factor, y: self.y * factor }
+}
+
+f64 dot(Point other) Point self {
+    return self.x * other.x + self.y * other.y
+}
+
+f64 cross(Point other) Point self {
+    return self.x * other.y - self.y * other.x
+}
+
+// 3D point methods
+f64 magnitude3D() Point3D self {
+    return self.x * self.x + self.y * self.y + self.z * self.z
+}
+
+Point3D add3D(Point3D other) Point3D self {
+    return Point3D { x: self.x + other.x, y: self.y + other.y, z: self.z + other.z }
+}
+
+f64 dot3D(Point3D other) Point3D self {
+    return self.x * other.x + self.y * other.y + self.z * other.z
+}
+
+Point3D cross3D(Point3D other) Point3D self {
+    return Point3D {
+        x: self.y * other.z - self.z * other.y,
+        y: self.z * other.x - self.x * other.z,
+        z: self.x * other.y - self.y * other.x
+    }
+}
+
+// Rectangle methods
+f64 area() Rectangle self {
+    width := self.bottomRight.x - self.topLeft.x
+    height := self.bottomRight.y - self.topLeft.y
+    return width * height
+}
+
+f64 perimeter() Rectangle self {
+    width := self.bottomRight.x - self.topLeft.x
+    height := self.bottomRight.y - self.topLeft.y
+    return 2.0 * width + 2.0 * height
+}
+
+bool contains(Point p) Rectangle self {
+    return p.x >= self.topLeft.x && p.x <= self.bottomRight.x && p.y >= self.topLeft.y && p.y <= self.bottomRight.y
+}
+
+// Circle methods
+f64 circleArea() Circle self {
+    return 3.14159265358979 * self.radius * self.radius
+}
+
+f64 circumference() Circle self {
+    return 2.0 * 3.14159265358979 * self.radius
+}
+
+bool circleContains(Point p) Circle self {
+    dx := p.x - self.center.x
+    dy := p.y - self.center.y
+    distSq := dx * dx + dy * dy
+    return distSq <= self.radius * self.radius
+}
+
+// DynamicArray methods
+void initArray(u64 elemSize) DynamicArray *self {
+    self.data = malloc(elemSize * 8)
+    self.length = 0
+    self.capacity = 8
+    self.elementSize = elemSize
+}
+
+void freeArray() DynamicArray *self {
+    if self.data != null {
+        free(self.data)
+    }
+    self.data = null
+    self.length = 0
+    self.capacity = 0
+}
+
+void growArray() DynamicArray *self {
+    newCap := self.capacity * 2
+    newData := realloc(self.data, newCap * self.elementSize)
+    self.data = newData
+    self.capacity = newCap
+}
+
+// StringBuilder methods
+void initStringBuilder() StringBuilder *self {
+    self.buffer = malloc(64)
+    self.length = 0
+    self.capacity = 64
+}
+
+void append(*u8 str) StringBuilder *self {
+    len := strlen(str)
+    while self.length + len >= self.capacity {
+        newCap := self.capacity * 2
+        newBuf := realloc(self.buffer, newCap)
+        self.buffer = newBuf
+        self.capacity = newCap
+    }
+    copyBytes(self.buffer + self.length, str, len)
+    self.length = self.length + len
+}
+
+void clear() StringBuilder *self {
+    self.length = 0
+}
+
+*u8 toString() StringBuilder self {
+    result := malloc(self.length + 1)
+    copyBytes(result, self.buffer, self.length)
+    return result
+}
+
+// Generic receiver functions
+void push[T](T item) Stack[T] *self {
+    if self.top >= self.capacity {
+        newCap := self.capacity * 2
+        self.capacity = newCap
+    }
+    self.items[self.top] = item
+    self.top = self.top + 1
+}
+
+T pop[T]() Stack[T] *self {
+    self.top = self.top - 1
+    return self.items[self.top]
+}
+
+T peek[T]() Stack[T] self {
+    return self.items[self.top - 1]
+}
+
+bool isEmpty[T]() Stack[T] self {
+    return self.top == 0
+}
+
+u64 size[T]() Stack[T] self {
+    return self.top
+}
+
+void enqueue[T](T item) Queue[T] *self {
+    self.items[self.rear] = item
+    self.rear = self.rear + 1
+    self.size = self.size + 1
+}
+
+T dequeue[T]() Queue[T] *self {
+    item := self.items[self.front]
+    self.front = self.front + 1
+    self.size = self.size - 1
+    return item
+}
+
+// ----------------------------------------------------------------------------
+// Control Flow Tests
+// ----------------------------------------------------------------------------
+i32 absoluteValue(i32 n) {
+    if n < 0 {
+        return -n
+    }
+    return n
+}
+
+i32 sign(i32 n) {
+    if n > 0 {
+        return 1
+    } else if n < 0 {
+        return -1
+    } else {
+        return 0
+    }
+}
+
+i32 fibonacci(i32 n) {
+    if n <= 1 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+i32 factorial(i32 n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+i32 gcd(i32 a, i32 b) {
+    while b != 0 {
+        temp := b
+        b = a - a / b * b
+        a = temp
+    }
+    return a
+}
+
+i32 power(i32 base, i32 exp) {
+    result := 1
+    while exp > 0 {
+        result = result * base
+        exp = exp - 1
+    }
+    return result
+}
+
+bool isPrime(i32 n) {
+    if n < 2 {
+        return false
+    }
+    if n == 2 {
+        return true
+    }
+    if n - n / 2 * 2 == 0 {
+        return false
+    }
+    i := 3
+    while i * i <= n {
+        if n - n / i * i == 0 {
+            return false
+        }
+        i = i + 2
+    }
+    return true
+}
+
+// Nested if statements
+i32 classify(i32 n) {
+    if n < 0 {
+        if n < -100 {
+            return -2
+        } else {
+            return -1
+        }
+    } else {
+        if n > 100 {
+            return 2
+        } else if n > 0 {
+            return 1
+        } else {
+            return 0
+        }
+    }
+}
+
+// Deeply nested control flow
+i32 deepNesting(i32 a, i32 b, i32 c) {
+    if a > 0 {
+        if b > 0 {
+            if c > 0 {
+                if a > b {
+                    if b > c {
+                        return a + b + c
+                    } else {
+                        return a + b - c
+                    }
+                } else {
+                    if a > c {
+                        return a - b + c
+                    } else {
+                        return -a + b + c
+                    }
+                }
+            } else {
+                return a + b
+            }
+        } else {
+            return a
+        }
+    } else {
+        return 0
+    }
+}
+
+// For loops
+void countUp(i32 n) {
+    for i in n {
+        x := i * 2
+    }
+}
+
+void nestedLoops(i32 n, i32 m) {
+    for i in n {
+        for j in m {
+            result := i * m + j
+        }
+    }
+}
+
+void tripleNestedLoops(i32 a, i32 b, i32 c) {
+    for i in a {
+        for j in b {
+            for k in c {
+                index := i * b * c + j * c + k
+            }
+        }
+    }
+}
+
+// While loops
+i32 countDown(i32 n) {
+    count := 0
+    while n > 0 {
+        count = count + 1
+        n = n - 1
+    }
+    return count
+}
+
+i32 sumWhile(i32 n) {
+    sum := 0
+    i := 1
+    while i <= n {
+        sum = sum + i
+        i = i + 1
+    }
+    return sum
+}
+
+// Mixed control flow
+i32 mixedControl(i32 n) {
+    sum := 0
+    for i in n {
+        if i - i / 2 * 2 == 0 {
+            j := i
+            while j > 0 {
+                sum = sum + j
+                j = j - 1
+            }
+        } else {
+            sum = sum + i
+        }
+    }
+    return sum
+}
+
+// ----------------------------------------------------------------------------
+// Defer Statement Tests
+// ----------------------------------------------------------------------------
+void deferSimple() {
+    x := malloc(100)
+    defer free(x)
+    data := x
+}
+
+void deferMultiple() {
+    a := malloc(100)
+    defer free(a)
+    b := malloc(200)
+    defer free(b)
+    c := malloc(300)
+    defer free(c)
+}
+
+void deferInLoop(i32 n) {
+    for i in n {
+        ptr := malloc(64)
+        defer free(ptr)
+    }
+}
+
+void deferWithControl(bool condition) {
+    resource := malloc(256)
+    defer free(resource)
+    if condition {
+        other := malloc(128)
+        defer free(other)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Expression Tests
+// ----------------------------------------------------------------------------
+i32 arithmeticExpr() {
+    return 1 + 2 * 3 - 4 / 2
+}
+
+i32 complexArithmetic(i32 a, i32 b, i32 c) {
+    return a * b + b * c - c * a + a * b * c
+}
+
+bool booleanExpr(bool a, bool b, bool c) {
+    return a && b || c && !a
+}
+
+bool comparisonExpr(i32 a, i32 b) {
+    return a < b && a <= b || a > b && a >= b || a == b || a != b
+}
+
+i32 unaryExpr(i32 x) {
+    y := -x
+    z := +y
+    return -(-x)
+}
+
+i32 pointerExpr(*i32 ptr) {
+    value := *ptr
+    *ptr = value + 1
+    return *ptr
+}
+
+*i32 addressExpr(i32 x) {
+    ptr := &x
+    return ptr
+}
+
+i32 memberExpr(Point p) {
+    return p.x + p.y
+}
+
+i32 chainedMemberExpr(Rectangle r) {
+    return r.topLeft.x + r.bottomRight.y
+}
+
+i32 arrayExpr([i32] arr) {
+    first := arr[0]
+    second := arr[1]
+    arr[2] = first + second
+    return arr[2]
+}
+
+i32 callExpr(i32 a, i32 b) {
+    result := add(a, b)
+    result = multiply(result, 2)
+    return subtract(result, 1)
+}
+
+i32 chainedCallExpr(Point p) {
+    return p.add(p).magnitude()
+}
+
+i32 complexExpr(i32 a, i32 b, *i32 ptr, [i32] arr) {
+    return a * b + *ptr - arr[0] + add(a, b)
+}
+
+// Assignment expressions
+void assignmentExpr() {
+    a := 1
+    b := 2
+    c := 3
+    a = b = c
+    x := a + b
+    y := x * 2
+    z := y - 1
+}
+
+// Parenthesized expressions
+i32 parenthesizedExpr(i32 a, i32 b, i32 c) {
+    return (a + b) * c
+}
+
+i32 nestedParenExpr(i32 a, i32 b, i32 c, i32 d) {
+    return ((a + b) * (c - d)) / ((a - b) + (c + d))
+}
+
+// ----------------------------------------------------------------------------
+// Literal Tests
+// ----------------------------------------------------------------------------
+void intLiterals() {
+    a := 0
+    b := 1
+    c := -1
+    d := 42
+    e := 12345
+    f := 999999999
+}
+
+void floatLiterals() {
+    a := 0.0
+    b := 1.0
+    c := -1.0
+    d := 3.14159
+    e := 2.71828
+    f := 0.00001
+    g := 123456.789
+}
+
+void boolLiterals() {
+    a := true
+    b := false
+    c := !true
+    d := !false
+}
+
+void stringLiterals() {
+    a := "hello"
+    b := "world"
+    c := "hello world"
+    d := ""
+    e := "special chars: \t \n \r"
+    f := "quotes: \" \'"
+}
+
+void arrayLiterals() {
+    ints := [1, 2, 3, 4, 5]
+    floats := [1.0, 2.0, 3.0]
+    bools := [true, false, true]
+    empty := []
+    nested := [[1, 2], [3, 4], [5, 6]]
+}
+
+void structLiterals() {
+    p := Point { x: 10.0, y: 20.0 }
+    p3d := Point3D { x: 1.0, y: 2.0, z: 3.0 }
+    color := Color { r: 255, g: 128, b: 64, a: 255 }
+    rect := Rectangle {
+        topLeft: Point { x: 0.0, y: 0.0 },
+        bottomRight: Point { x: 100.0, y: 100.0 },
+        color: 0xFF0000,
+        filled: true
+    }
+}
+
+void nestedStructLiterals() {
+    vertex := Vertex {
+        position: Point3D { x: 0.0, y: 0.0, z: 0.0 },
+        normal: Point3D { x: 0.0, y: 1.0, z: 0.0 },
+        color: Color { r: 255, g: 255, b: 255, a: 255 },
+        u: 0.0,
+        v: 0.0
+    }
+}
+
+void genericStructLiterals() {
+    intContainer := Container[i32] { value: 42, hasValue: true }
+    floatPair := Pair[f64, f64] { first: 1.0, second: 2.0 }
+    mixedPair := Pair[i32, *u8] { first: 100, second: "hello" }
+}
+
+// ----------------------------------------------------------------------------
+// Variable Declaration Tests
+// ----------------------------------------------------------------------------
+void inferredTypes() {
+    a := 42
+    b := 3.14
+    c := true
+    d := "hello"
+    e := [1, 2, 3]
+    f := Point { x: 0.0, y: 0.0 }
+}
+
+void explicitTypes() {
+    i8 a = 1
+    i16 b = 2
+    i32 c = 3
+    i64 d = 4
+    u8 e = 5
+    u16 f = 6
+    u32 g = 7
+    u64 h = 8
+    f32 i = 9.0
+    f64 j = 10.0
+    bool k = true
+}
+
+void pointerTypes() {
+    *i32 ptr = null
+    **i32 ptrPtr = null
+    ***i32 ptrPtrPtr = null
+    *void voidPtr = null
+    *u8 bytePtr = null
+    *Point pointPtr = null
+}
+
+void arrayTypes() {
+    [i32] intArr
+    [f64] floatArr
+    [*u8] stringArr
+    [[i32]] nestedArr
+    [Point] pointArr
+}
+
+void constTypes() {
+    const i32 constant = 42
+    const *i32 constPtr = null
+    *const i32 ptrToConst = null
+}
+
+void genericTypes() {
+    Container[i32] intContainer
+    Pair[i32, f64] intFloatPair
+    Triple[i32, f64, bool] triple
+    Node[Point] pointNode
+    Buffer[u8] byteBuffer
+    Stack[i32] intStack
+    Queue[Point] pointQueue
+}
+
+void complexTypes() {
+    [Container[i32]] containerArr
+    *Pair[i32, f64] pairPtr
+    Buffer[Pair[i32, i32]] pairBuffer
+    [*Node[i32]] nodePtrArr
+}
+
+// ----------------------------------------------------------------------------
+// Type Composition Tests
+// ----------------------------------------------------------------------------
+void typeComposition() {
+    Pair[Container[i32], Container[f64]] pairOfContainers
+    Container[Pair[i32, i32]] containerOfPair
+    [Pair[i32, Pair[i32, i32]]] nestedPairArr
+    Stack[Queue[Container[i32]]] complexNested
+}
+
+// ----------------------------------------------------------------------------
+// Main Function - Integration Test
+// ----------------------------------------------------------------------------
+void main() {
+    // Variable declarations
+    i32 counter = 0
+    f64 total = 0.0
+    bool running = true
+
+    // Struct literals
+    origin := Point { x: 0.0, y: 0.0 }
+    target := Point { x: 100.0, y: 100.0 }
+
+    // Method calls
+    dist := origin.magnitude()
+    normalized := origin.add(target)
+
+    // Generic function calls
+    maxVal := max(10, 20)
+    minVal := min(5, 15)
+    clamped := clamp(50, 0, 100)
+
+    // Array operations
+    numbers := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    first := numbers[0]
+    last := numbers[9]
+
+    // Control flow
+    if counter > 0 {
+        total = total + 1.0
+    } else if counter < 0 {
+        total = total - 1.0
+    } else {
+        total = 0.0
+    }
+
+    // While loop
+    while running {
+        counter = counter + 1
+        if counter >= 100 {
+            running = false
+        }
+    }
+
+    // For loop
+    for i in 10 {
+        counter = counter + i
+    }
+
+    // Defer
+    ptr := malloc(1024)
+    defer free(ptr)
+
+    // Nested struct
+    rect := Rectangle {
+        topLeft: Point { x: 0.0, y: 0.0 },
+        bottomRight: Point { x: 50.0, y: 50.0 },
+        color: 0xFFFFFF,
+        filled: true
+    }
+
+    // Method on struct
+    area := rect.area()
+
+    // Generic struct
+    intContainer := Container[i32] { value: 42, hasValue: true }
+    wrapped := wrap(100)
+
+    // Complex expressions
+    result := (counter + 10) * 2 - 5 / 2
+    check := counter > 0 && total > 0.0 || running == false
+
+    // Pointer operations
+    *i32 numPtr = &counter
+    value := *numPtr
+    *numPtr = value + 1
+
+    // Chained method calls
+    p1 := Point { x: 1.0, y: 2.0 }
+    p2 := Point { x: 3.0, y: 4.0 }
+    sum := p1.add(p2)
+    dotProduct := p1.dot(p2)
+
+    // Nested function calls
+    a := add(multiply(2, 3), subtract(10, 5))
+
+    // Array of structs
+    points := [
+        Point { x: 0.0, y: 0.0 },
+        Point { x: 1.0, y: 1.0 },
+        Point { x: 2.0, y: 2.0 }
+    ]
+
+    // Loop with struct access
+    for idx in 3 {
+        px := points[idx].x
+        py := points[idx].y
+    }
+
+    // Multiple defers
+    resource1 := malloc(100)
+    defer free(resource1)
+    resource2 := malloc(200)
+    defer free(resource2)
+
+    // Final computation
+    finalResult := fibonacci(10) + factorial(5) + gcd(48, 18)
+}

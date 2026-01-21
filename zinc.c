@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
 		printf("Usage: %s, <filename>", *argv);
 		return 1;
 	}
+    allocator.open();
 
 	allocator.open();
 	ZState *state = makestate(argv[1]);

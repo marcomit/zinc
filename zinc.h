@@ -222,6 +222,7 @@ struct ZNode {
 		struct {
 			ZToken *ident;
 			ZNode **fields;
+			ZToken **generics;
 		} structDef;
 
 		struct {

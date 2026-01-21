@@ -30,7 +30,7 @@ void main() {
     // list := [1,2,3,4,5,6]
     obj := Vector { x: 10, y: 10 }
     // tuple := (1,2,3,4,5,6)
-    for i in 10 {
-        println("")
-    }
+    // for i in 10 {
+    //     println("")
+    // }
 }

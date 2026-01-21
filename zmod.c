@@ -226,8 +226,11 @@ void printNode(ZNode *node, u8 depth) {
 		}
 		break;
 	case NODE_STRUCT:
-		printf("%s\n", node->structDef.ident->str);
-
+		printf("%s[", node->structDef.ident->str);
+		for (usize i = 0; i < veclen(node->structDef.generics); i++) {
+				printToken(node->structDef.generics[i]);
+		}
+		printf("]\n");
 		for (usize i = 0; i < veclen(node->structDef.fields); i++) {
 			ZNode *field = node->structDef.fields[i];
 			indent(depth);
@@ -269,6 +272,13 @@ void printNode(ZNode *node, u8 depth) {
 		printf("\n");
 		for(usize i = 0; i < veclen(node->arraylit.fields); i++) {
 			printNode(node->arraylit.fields[i], depth);
+		}
+		break;
+	case NODE_STRUCT_LIT:
+		printToken(node->structlit.ident);
+		printf("\n");
+		for (usize i = 0; i < veclen(node->structlit.fields); i++) {
+			printNode(node->structlit.fields[i], depth);
 		}
 		break;
 	// Add cases for WHILE, MEMBER, etc., following the same pattern
