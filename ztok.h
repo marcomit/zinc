@@ -35,6 +35,7 @@ DEF(TOK_MODULE,   "use",      TOK_FLOWS_MASK | 0x0B)
 DEF(TOK_FOREIGN,  "foreign",	TOK_FLOWS_MASK | 0x0C)
 DEF(TOK_DEFER,  	"defer",		TOK_FLOWS_MASK | 0x0D)
 DEF(TOK_IN, 		 	"in",				TOK_FLOWS_MASK | 0x0E)
+DEF(TOK_MATCH, 	 	"match",		TOK_FLOWS_MASK | 0x0F)
 #endif
 
 #ifdef TOK_TYPES

@@ -440,8 +440,9 @@ static ZType *parseTypeTuple(ZParser *parser) {
 }
 
 static ZType *parseType(ZParser *parser) {
-	ensure(canPeek(parser));
-	usize saved = parser->current;
+	if (check(parser, TOK_LPAREN)) {
+		return parseTypeTuple(parser);
+	}
 
 	bool constant = match(parser, TOK_CONST);
 
@@ -452,7 +453,6 @@ static ZType *parseType(ZParser *parser) {
 	if (!checkMask(parser, TOK_TYPES_MASK) &&
 			!check(parser, TOK_IDENT) && 
 			!check(parser, TOK_LSBRACKET)) {
-		parser->current = saved;
 		error(parser->state, peek(parser), "Expected a primitive type, got %s", stoken(peek(parser)));
 		return NULL;
 	}
@@ -495,11 +495,25 @@ static ZNode *parseDefer(ZParser *parser) {
 	return node;
 }
 
+static ZNode *parseMatch(ZParser *parser) {
+	expect(parser, TOK_MATCH);
+
+	ZNode *expr = wrapNode(parser, parseExpr);
+
+	ensure(expr);
+
+	expect(parser, TOK_LBRACKET);
+	expect(parser, TOK_RBRACKET);
+
+	return NULL;
+}
+
 static ZNode *parseStmt(ZParser *parser) {
 	ParseFunction toTry[] = {
 		parseIf,
 		parseWhile,
 		parseFor,
+		parseMatch,
 		parseReturn,
 		parseBlock,
 		parseVarDecl,
@@ -898,7 +912,7 @@ static ZNode *parseStructLit(ZParser *parser) {
 
 	expect(parser, TOK_RBRACKET);
 
-	return NULL;
+	return node;
 }
 
 static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
