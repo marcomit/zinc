@@ -1,5 +1,6 @@
 #include "zinc.h"
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -376,6 +377,33 @@ static ZNode *parseBinary(ZParser *parser) {
 	return parseAssignment(parser);
 }
 
+/* Parses a list of types delimited by left and right.
+ * It assumes that the elements are separated by a TOK_COMMA.
+ *
+ * Example: [u8, char, [u8]]
+ * You can parse this by using this function
+ * by calling with TOK_LSBRACKET and TOK_RSBRACKET.
+ * */
+static ZType **parseTypeList(ZParser *parser, ZTokenType left, ZTokenType right) {
+	expect(parser, left);
+	ZType **args = NULL;
+	do {
+		ZType *curr = wrapType(parser, parseType);
+		if (!curr) {
+			printf("Failed parsing a type list\n");
+			return args;
+		}
+		vecpush(args, curr);
+		if (!match(parser, TOK_COMMA)) break;
+		if (check(parser, right)) break;
+	} while (true);
+	if (!match(parser, right)) {
+		printf("parseTypeList failed: missing %d token\n", right);
+		return NULL;
+	}
+	return args;
+}
+
 static ZType **parseTypeArgs(ZParser *parser) {
 	ZType **args = NULL;
 
@@ -412,28 +440,46 @@ static ZType *parseTypeArray(ZParser *parser) {
 
 /* A tuple must have at least 2 types */
 static ZType *parseTypeTuple(ZParser *parser) {
-	expect(parser, TOK_LPAREN);
-	
-	ZType **types = NULL;
-	while (true) {
-		ZType *type = wrapType(parser, parseType);
-		if (!type) return NULL;
-		vecpush(types, type);
-		if (check(parser, TOK_RPAREN)) break;
-		if (!match(parser, TOK_COMMA)) return NULL;
-	}
-	expect(parser, TOK_RPAREN);
+	ZType **types = parseTypeList(parser, TOK_LPAREN, TOK_RPAREN);
 
-	ZType *type = maketype(Z_TYPE_STRUCT);
+	if (!types) {
+		printf("Failed to parse the tuple type\n");
+		return NULL;
+	} else if (veclen(types) < 1) {
+		printf("Tuple too small\n");
+	}
+
+	ZType *type = maketype(Z_TYPE_TUPLE);
 	type->tuple = types;
 	return type;
 }
 
-static ZType *parseType(ZParser *parser) {
-	if (check(parser, TOK_LPAREN)) {
-		return parseTypeTuple(parser);
+static ZType *parseTypeFunc(ZParser *parser) {
+	bool constant = match(parser, TOK_CONST);
+	
+	u8 stars = 0;
+	while (match(parser, TOK_STAR)) stars++;
+
+	ZType *ret = wrapType(parser, parseType);
+	ZType **args = parseTypeList(parser, TOK_LPAREN, TOK_RPAREN);
+	ZType **generics = NULL;
+
+	if (check(parser, TOK_LSBRACKET)) {
+		generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
+		if (!generics) {
+			printf("Error parsing generics function type");
+			return NULL;
+		}
 	}
 
+	ZType *type = maketype(Z_TYPE_FUNCTION);
+	type->func.ret = ret;
+	type->func.args = args;
+	type->func.generics = generics;
+	return NULL;
+}
+
+static ZType *parseType(ZParser *parser) {
 	bool constant = match(parser, TOK_CONST);
 
 	u8 stars = 0;
@@ -457,15 +503,18 @@ static ZType *parseType(ZParser *parser) {
 		return array;
 	}
 
+	if (check(parser, TOK_LSBRACKET)) {
+		ZType **generics = NULL;
+	}
+
 	ZType *base = maketype(Z_TYPE_PRIMITIVE);
 	base->token = consume(parser);
 	base = applyStarsToType(base, stars);
 	base->constant = constant;
 
 
-	if (match(parser, TOK_LPAREN)) {
-		ZType **args = parseTypeArgs(parser);
-		expect(parser, TOK_RPAREN);
+	if (check(parser, TOK_LPAREN)) {
+		ZType **args = parseTypeList(parser, TOK_LPAREN, TOK_RPAREN);
 
 		ZType *type = maketype(Z_TYPE_FUNCTION);
 		type->func.ret = base;
@@ -571,6 +620,8 @@ static ZNode *parseUnionDecl(ZParser *parser) {
 }
 
 static ZNode *parseStructDecl(ZParser *parser) {
+	int **a = NULL;
+	*(&*a) = NULL;
 	ensure(match(parser, TOK_STRUCT));
 	ZToken *name = NULL;
 	ZToken **generics = NULL;

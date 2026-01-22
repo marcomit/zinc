@@ -246,7 +246,7 @@ ZLexer *makelexer(ZState *state) {
 
 	ZLexer *self = zalloc(ZLexer);
 
-	self->row = 0;
+	self->row = 1;
 	self->col = 0;
 	self->tokens = NULL;
 	self->program = program;

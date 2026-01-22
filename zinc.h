@@ -126,11 +126,13 @@ struct ZType {
 		struct {
 			ZToken *name;
 			ZNode **fields;
+			ZType **generics;
 		} strct;
 
 		struct {
 			ZType *ret;
 			ZType **args;
+			ZType **generics;
 		} func;
 
 		struct {
