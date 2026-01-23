@@ -15,31 +15,33 @@ char *stoken(ZToken *token) {
 
 	
 	switch(token->type) {
-		case TOK_INT_LIT:
-			sprintf(tok, "int(%llu)", token->integer);
-			break;
-		case TOK_STR_LIT:
-			sprintf(tok, "string(%s)", token->str);
-			break;
-		case TOK_BOOL_LIT:
-			sprintf(tok, "bool(%s)", token->boolean ? "true" : "false");
-			break;
-		case TOK_IDENT:
-			sprintf(tok, "ident(%s)", token->str);
-			break;
-		#define DEF(id, str, _) case id: sprintf(tok, str); break;
+	case TOK_INT_LIT:
+		sprintf(tok, "int(%llu)", token->integer);
+		break;
+	case TOK_STR_LIT:
+		sprintf(tok, "string(%s)", token->str);
+		break;
+	case TOK_BOOL_LIT:
+		sprintf(tok, "bool(%s)", token->boolean ? "true" : "false");
+		break;
+	case TOK_IDENT:
+		sprintf(tok, "ident(%s)", token->str);
+		break;
+	#define DEF(id, str, _) case id: sprintf(tok, str); break;
 
-		#define TOK_FLOWS
-		#define TOK_TYPES
-		#define TOK_SYMBOLS
+	#define TOK_FLOWS
+	#define TOK_TYPES
+	#define TOK_SYMBOLS
 
-		#include "ztok.h"
+	#include "ztok.h"
 
-		#undef TOK_SYMBOLS
-		#undef TOK_TYPES
-		#undef TOK_FLOWS
+	#undef TOK_SYMBOLS
+	#undef TOK_TYPES
+	#undef TOK_FLOWS
 
-		#undef DEF
+	#undef DEF
+	default:
+		break;
 	}
 
 	return tok;
@@ -297,7 +299,6 @@ void printNode(ZNode *node, u8 depth) {
 			printNode(node->structlit.fields[i], depth);
 		}
 		break;
-	// Add cases for WHILE, MEMBER, etc., following the same pattern
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);
 			break;

@@ -12,7 +12,7 @@
 #define FNV_OFFSET 2166136261u
 #define FNV_PRIME	 16777619u
 
-#define HASHMAP_TOK_LEN 64
+#define HASHMAP_TOK_LEN 128
 #define HASHMAP_TOK_MASK (HASHMAP_TOK_LEN - 1)
 
 typedef struct {
@@ -54,23 +54,23 @@ static uint32_t hashtoken(const char *buff, size_t len) {
 	return hash;
 }
 
+static KeyboardEntry keywords[] = {
+	#define DEF(id, str, _) { str, id },
+
+	#define TOK_FLOWS
+	#define TOK_TYPES
+
+	#include "ztok.h"
+
+	#undef TOK_TYPES
+	#undef TOK_FLOWS
+
+	#undef DEF
+};
 
 static void initKeywords() {
-	KeyboardEntry keywords[] = {
-		#define DEF(id, str, _) { str, id },
-
-		#define TOK_FLOWS
-		#define TOK_TYPES
-
-		#include "ztok.h"
-	
-		#undef TOK_TYPES
-		#undef TOK_FLOWS
-
-		#undef DEF
-	};
-
-	for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {
+	usize len = sizeof(keywords) / sizeof(keywords[0]);
+	for (size_t i = 0; i < len; i++) {
 		const char *name = keywords[i].keyword;
 		uint32_t hash = hashtoken(name, strlen(name)) & HASHMAP_TOK_MASK;
 

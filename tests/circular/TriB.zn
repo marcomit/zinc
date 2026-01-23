@@ -1,0 +1,12 @@
+// Test: Triple Circular Import - File B
+// TriA -> TriB -> C -> TriA
+use "tests/circular/C.zn"
+
+struct TypeB {
+    u8 b
+    *TypeC cref
+}
+
+void useB(TypeB b) {
+    b.b = 2
+}

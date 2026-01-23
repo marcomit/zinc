@@ -35,6 +35,8 @@ typedef struct ZParser {
 
 	/* Module parsing */
 	char *currentModule;
+
+	struct ZParser *parent;
 } ZParser;
 
 typedef ZNode *(*ParseFunction)(ZParser *);
@@ -645,7 +647,6 @@ static ZNode *parseExpr(ZParser *parser) {
 		parseTupleLit
 	};
 	usize len = sizeof(toTry) / sizeof(toTry[0]);
-	printf("Tok: %s\n", stoken(peek(parser)));
 	return parseOrGrammar(parser, toTry, len);
 	// return parseBinary(parser);
 }
@@ -685,7 +686,6 @@ static ZNode *parseIf(ZParser *parser) {
 
 static ZNode *parseFor(ZParser *parser) {
 	expect(parser, TOK_FOR);
-	printf("For parse\n");
 
 	ensure(check(parser, TOK_IDENT));
 	ZToken *ident = consume(parser);
@@ -708,8 +708,6 @@ static ZNode *parseFor(ZParser *parser) {
 	node->forStmt.block = block;
 
 	if (!node->forStmt.iterator || !node->forStmt.block) {
-		if (!node->forStmt.iterator) printf("iterator ");
-		if (!node->forStmt.block) printf("block ");
 		printf("For parsing failed %s\n", stoken(peek(parser)));
 	}
 
@@ -752,8 +750,6 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	ZToken *name = consume(parser);
 	ZToken **generics = NULL;
 
-	printToken(name);
-	printf("\n");
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseGenericsDecl(parser);
 		if (!generics) {
@@ -819,7 +815,6 @@ static ZNode *parseVarInferred(ZParser *parser) {
 	ZToken *ident = consume(parser);
 	expect(parser, TOK_ASSIGN);
 
-	printf("Inferred %s\n", stoken(peek(parser)));
 	ZNode *expr = wrapNode(parser, parseExpr);
 
 	if (!expr) {
@@ -892,8 +887,6 @@ static ZNode *parseTupleLit(ZParser *parser) {
 static ZNode *parseArrayLit(ZParser *parser) {
 	expect(parser, TOK_LSBRACKET);
 
-	printf("Parsing array literal\n");
-
 	ZNode **values = NULL;
 	ZNode *expr = NULL;
 
@@ -959,19 +952,17 @@ static ZNode *parseStructLit(ZParser *parser) {
 }
 
 static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
-	for (usize i = 0; i < veclen(parser->modules); i++) {
-		if (strcmp(parser->modules[i].name, name->str) == 0) {
-			warning(parser->state, name, "Duplicate import\n");
-			return parser->modules[i].root;
-		}
-	}
 	bool canVisit = visit(parser->state, name->str);
-	printf("Parsing %s\n", name->str);
-	if (!canVisit) return NULL;
+	ZNode *node = makenode(NODE_MODULE);
+
+	if (!canVisit) {
+		node->module.name = name;
+		node->module.root = NULL;
+		return node;
+	}
 
 	ZToken **tokens = ztokenize(parser->state);
 
-	ZNode *node = makenode(NODE_MODULE);
 
 
 	node->module.root = zparse(parser->state, tokens);
@@ -1074,8 +1065,6 @@ static ZNode *parseProgram(ZParser *parser) {
 ZNode *zparse(ZState *state, ZToken **tokens) {
 	state->currentPhase = Z_PHASE_SYNTAX;
 	ZParser *parser = makeparser(state, tokens);
-
-	printf("Current file %s\n", state->filename);
 
 	ZNode *root = parseProgram(parser);
 	if (canPeek(parser)) {

@@ -1,5 +1,5 @@
 // Test: Semantic Analysis
-// use "tests/Data.zn"
+use "tests/Data.zn"
 // use "tests/MathUtil.zn"
 
 // foreign void bind()

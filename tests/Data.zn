@@ -1,4 +1,5 @@
 // Test: Advanced Structs and Types
+use "tests/Main.zn"
 
 struct Header {
     u8 id

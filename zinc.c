@@ -27,6 +27,7 @@ int main(int argc, char **argv) {
 
 	allocator.open();
 	ZState *state = makestate(argv[1]);
+	visit(state, argv[1]);
 
 	ZToken **tokens = ztokenize(state);
 
