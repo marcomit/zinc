@@ -249,7 +249,6 @@ bool typesEqual(ZType *a, ZType *b) {
 }
 
 static ZSymbol *resolve(ZSemantic *semantic, ZToken *ident) {
-	printf("Trying to resolve %s\n", ident->str);
 	ZScope *curr = semantic->table->current;
 	while (curr) {
 		for (usize i = 0; i < veclen(curr->symbols); i++) {
@@ -269,7 +268,7 @@ static void analyzeMemberAccess(ZSemantic *semantic, ZNode *curr) {
 	if (obj->type == NODE_IDENTIFIER) {
 		ZSymbol *sym = resolve(semantic, obj->identTok);
 		if (!sym) {
-			fprintf(stderr, "Local variable not found!");
+			error(semantic->state, NULL, "Local variable not found!");
 		}
 	}
 }
@@ -285,6 +284,10 @@ static void validateUnary(ZSemantic *semantic, ZNode *curr) {
 		warning(semantic->state, curr->tok, "(not yet implemented %d)\n", curr->type);
 		break;
 	}
+}
+
+static void validateType(ZSemantic *semantic, ZType *type) {
+
 }
 
 static bool isLValue(ZNode *node) {
@@ -367,7 +370,7 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 		break;
 	case NODE_RETURN:
 		analyzeExpr(semantic, curr->returnStmt.expr);
-			printf("Return expression analyzed\n");
+		printf("Return expression analyzed\n");
 		if (!typesEqual(curr->resolved, semantic->currentFuncRet)) {
 			printType(curr->resolved);
 			printf("\n");

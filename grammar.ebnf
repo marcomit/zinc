@@ -13,7 +13,8 @@ declaration = function_declaration
             | enum_declaration
             | typedef_declaration
             | distinct_type_declaration
-            | const_declaration ;
+            | const_declaration
+            | macro_declaration ;
 
 (* ============ Generics ============ *)
 
@@ -51,6 +52,23 @@ return_type = type
 
 (* const MAX_SIZE u32 = 4096 *)
 const_declaration = "const", identifier, type, "=", expression ;
+
+(* ============ Macros ============ *)
+
+(* macro unless $cond $body { if not ($cond) $body } *)
+macro_declaration = "macro", macro_pattern, block ;
+
+(* Pattern: sequence of literal tokens and capture variables *)
+macro_pattern = { macro_pattern_element }+ ;
+
+macro_pattern_element = identifier                              (* literal keyword: unless, in, from *)
+                      | "$", identifier                         (* expr capture: $cond *)
+                      | "@", identifier                         (* ident capture: @name *)
+                      | "#", identifier                         (* type capture: #T *)
+                      | macro_repetition ;                      (* repetition: $(...)* *)
+
+(* Repetition: $(, $rest)* or $(pattern)+ *)
+macro_repetition = "$", "(", { macro_pattern_element }, ")", ( "*" | "+" ) ;
 
 (* ============ Variables ============ *)
 
