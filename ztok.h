@@ -59,10 +59,11 @@ DEF(TOK_CONST,   	"const",  	TOK_TYPES_SIGNATURE_MASK | 0x20)
 #endif
 
 #ifdef TOK_DYN
-DEF(TOK_STR_LIT,  "string literal",  TOK_LITERAL | TOK_DYN_MASK | 0x30)
-DEF(TOK_INT_LIT,  "int literal",     TOK_LITERAL | TOK_DYN_MASK | 0x31)
-DEF(TOK_BOOL_LIT, "boolean literal", TOK_LITERAL | TOK_DYN_MASK | 0x32)
-DEF(TOK_IDENT,    "identifier",      TOK_DYN_MASK | 0x33)
+DEF(TOK_STR_LIT,   "string literal",  TOK_LITERAL | TOK_DYN_MASK | 0x30)
+DEF(TOK_INT_LIT,   "int literal",     TOK_LITERAL | TOK_DYN_MASK | 0x31)
+DEF(TOK_BOOL_LIT,  "boolean literal", TOK_LITERAL | TOK_DYN_MASK | 0x32)
+DEF(TOK_FLOAT_LIT, "float literal",   TOK_LITERAL | TOK_DYN_MASK | 0x34)
+DEF(TOK_IDENT,     "identifier",      TOK_DYN_MASK | 0x33)
 #endif
 
 #ifdef TOK_SYMBOLS

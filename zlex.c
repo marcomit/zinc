@@ -33,6 +33,9 @@ typedef struct {
 	/* Current position of the text */
 	size_t row, col;
 
+	/* Track if newline was seen since last token */
+	bool sawNewline;
+
 } ZLexer;
 
 typedef struct {
@@ -111,6 +114,12 @@ static ZToken *makeinteger(int64_t value) {
 	return self;
 }
 
+static ZToken *makefloat(double value) {
+	ZToken *self = maketoken(TOK_FLOAT_LIT);
+	self->floating = value;
+	return self;
+}
+
 static ZToken *makestring(char *str) {
 	ZToken *self = maketoken(TOK_STR_LIT);
 	self->str = str;
@@ -129,6 +138,7 @@ static void next(ZLexer *l) {
 		l->row++;
 		l->col = 0;
 		l->line = l->current + 1;
+		l->sawNewline = true;
 	} else {
 		l->col++;
 	}
@@ -144,18 +154,47 @@ static ZToken *parseString(ZLexer *l) {
 	next(l);
 
 	char *start = l->current;
-	while (*l->current && *l->current != '"') next(l);
 
-	if (!l->current) {
-		error(l->state, veclast(l->tokens), "Unterinated string %.10s", start);
+	// First pass: count length and check for unterminated string
+	size_t len = 0;
+	while (*l->current && *l->current != '"') {
+		if (*l->current == '\\' && *(l->current + 1)) {
+			next(l);  // skip backslash
+		}
+		next(l);
+		len++;
+	}
+
+	if (!*l->current) {
+		error(l->state, veclast(l->tokens), "Unterminated string %.10s", start);
 		return NULL;
 	}
-	next(l);
+	next(l);  // consume closing quote
 
-	int len = l->current - start - 1;
+	// Second pass: build string with escape sequences
 	char *buff = allocator.alloc(len + 1);
-	memcpy(buff, start, len);
-	buff[len] = 0;
+	char *src = start;
+	size_t i = 0;
+
+	while (*src && src < l->current - 1) {
+		if (*src == '\\' && *(src + 1)) {
+			src++;
+			switch (*src) {
+				case 'n':  buff[i++] = '\n'; break;
+				case 't':  buff[i++] = '\t'; break;
+				case 'r':  buff[i++] = '\r'; break;
+				case '\\': buff[i++] = '\\'; break;
+				case '"':  buff[i++] = '"';  break;
+				case '\'': buff[i++] = '\''; break;
+				case '0':  buff[i++] = '\0'; break;
+				default:   buff[i++] = *src; break;  // unknown escape, keep as-is
+			}
+		} else {
+			buff[i++] = *src;
+		}
+		src++;
+	}
+	buff[i] = '\0';
 
 	return makestring(buff);
 }
@@ -183,11 +222,32 @@ static ZToken *parseSymbol(ZLexer *l) {
 	return NULL;
 }
 
-static ZToken *parseInt(ZLexer *l) {
+static ZToken *parseNumber(ZLexer *l) {
 	char *start = l->current;
 	if (!isdigit(*l->current)) return NULL;
 
 	while (isdigit(*l->current)) next(l);
+
+	bool isFloat = false;
+	if (*l->current == '.' && isdigit(*(l->current + 1))) {
+		isFloat = true;
+		next(l);  // consume '.'
+		while (isdigit(*l->current)) next(l);
+	}
+
+	// Handle scientific notation (e.g., 1e10, 1.5e-3)
+	if (*l->current == 'e' || *l->current == 'E') {
+		isFloat = true;
+		next(l);  // consume 'e' or 'E'
+		if (*l->current == '+' || *l->current == '-') next(l);
+		while (isdigit(*l->current)) next(l);
+	}
+
+	if (isFloat) {
+		double value = strtod(start, NULL);
+		if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid float range %.10s", start);
+		return makefloat(value);
+	}
 
 	long long value = strtoll(start, NULL, 10);
 	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
@@ -241,7 +301,7 @@ static void skipMultilineComments(ZLexer *l) {
 
 ZLexer *makelexer(ZState *state) {
 	char *program = readfile(state->filename);
-	
+
 	if (!program) return NULL;
 
 	ZLexer *self = zalloc(ZLexer);
@@ -253,6 +313,7 @@ ZLexer *makelexer(ZState *state) {
 	self->current = program;
 	self->line = program;
 	self->state = state;
+	self->sawNewline = true;  // First token is "after" a newline
 	return self;
 }
 
@@ -286,7 +347,7 @@ ZToken **ztokenize(ZState *state) {
 		} else if (isalpha(*l->current) || *l->current == '_') {
 			curr = parseLiteral(l);
 		} else if (isdigit(*l->current)) {
-			curr = parseInt(l);
+			curr = parseNumber(l);
 		} else {
 			curr = parseSymbol(l);
 		}
@@ -297,6 +358,8 @@ ZToken **ztokenize(ZState *state) {
 		} else {
 			curr->sourceLinePtr = sourceLinePtr;
 			curr->sourcePtr  		= sourcePtr;
+			curr->newlineBefore = l->sawNewline;
+			l->sawNewline = false;
 			addToken(l, curr);
 		}
 	}

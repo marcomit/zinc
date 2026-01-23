@@ -165,8 +165,8 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
 		return NULL;
 	}
 
-	ZTokenType ta = a->token->type;
-	ZTokenType tb = b->token->type;
+	ZTokenType ta = a->primitive.token->type;
+	ZTokenType tb = b->primitive.token->type;
 
 	if (ta == TOK_VOID || tb == TOK_VOID) return NULL;
 
@@ -182,7 +182,7 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
 		}
 
 		ZType *promoted = maketype(Z_TYPE_PRIMITIVE);
-		promoted->token = maketoken(TOK_F64);
+		promoted->primitive.token = maketoken(TOK_F64);
 
 		return promoted;
 	}
@@ -204,11 +204,11 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
 
 	// Highest rank reached
 	if (signedRank == 4) {
-		warning(state, signedType->token, "Cannot promote an i64, try with an explicit casting");
+		warning(state, signedType->primitive.token, "Cannot promote an i64, try with an explicit casting");
 	}
 
 	ZType *promoted = maketype(Z_TYPE_PRIMITIVE);
-	promoted->token = maketoken(toSigned(signedRank + 1));
+	promoted->primitive.token = maketoken(toSigned(signedRank + 1));
 	
 	return promoted;
 }
@@ -220,7 +220,7 @@ bool typesEqual(ZType *a, ZType *b) {
 
 	switch(a->kind) {
 	case Z_TYPE_PRIMITIVE:
-		return a->token->type == b->token->type;
+		return a->primitive.token->type == b->primitive.token->type;
 	case Z_TYPE_POINTER:
 		return typesEqual(a->base, b->base);
 	case Z_TYPE_ARRAY:
@@ -229,6 +229,20 @@ bool typesEqual(ZType *a, ZType *b) {
 		return a == b;
 	case Z_TYPE_FUNCTION:
 		return a == b;
+	case Z_TYPE_TUPLE:
+		if (veclen(a->tuple) != veclen(b->tuple)) return false;
+		for (usize i = 0; i < veclen(a->tuple); i++) {
+			if (!typesEqual(a->tuple[i], b->tuple[i])) return false;
+		}
+		return true;
+	case Z_TYPE_GENERIC:
+		// Compare the base type name and all generic arguments
+		if (strcmp(a->generic.name->str, b->generic.name->str) != 0) return false;
+		if (veclen(a->generic.args) != veclen(b->generic.args)) return false;
+		for (usize i = 0; i < veclen(a->generic.args); i++) {
+			if (!typesEqual(a->generic.args[i], b->generic.args[i])) return false;
+		}
+		return true;
 	default:
 		return false;
 	}

@@ -7,12 +7,6 @@
 // type Arru8 [u8]
 // type ArrPou8eru8 [*u8]
 
-struct Vec2 {
-	u8 X
-	u8 Y
-}
-
-
 // type Vector Vec2
 
 // void Main() {
@@ -20,11 +14,21 @@ struct Vec2 {
 
 // }
 
-*void Main() {
-    // mystr = "prova"
-
-    list := mystr.Split()
-
-   defer  list.free()
+struct Node[T] {
+    T data
+    *Node[T] next
+    *Node[T] prev
 }
+
+void Main() {
+    Map[*char, u8] test = 10
+}
+
+// *void Main() {
+//     // mystr = "prova"
+//
+//     list := mystr.Split()
+//
+//    defer  list.free()
+// }
  

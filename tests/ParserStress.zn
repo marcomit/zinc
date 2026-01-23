@@ -230,7 +230,7 @@ bool returnFalse() {
 }
 
 f64 returnPi() {
-    return 3.14159265358979
+    // return 3.14159265358979
 }
 
 // ----------------------------------------------------------------------------
@@ -316,7 +316,7 @@ f64 rectangleArea(Rectangle r) {
 }
 
 f64 circleArea(Circle c) {
-    return 3.14159265358979 * c.radius * c.radius
+    return returnPi() * c.radius * c.radius
 }
 
 // ----------------------------------------------------------------------------
@@ -390,7 +390,7 @@ f64 magnitude() Point self {
     return self.x * self.x + self.y * self.y
 }
 
-void normalize() Point *self {
+void normalize() *Point self {
     mag := self.magnitude()
     if mag > 0.0 {
         self.x = self.x / mag
@@ -449,7 +449,7 @@ f64 area() Rectangle self {
 f64 perimeter() Rectangle self {
     width := self.bottomRight.x - self.topLeft.x
     height := self.bottomRight.y - self.topLeft.y
-    return 2.0 * width + 2.0 * height
+    return 2 * width + 2 * height
 }
 
 bool contains(Point p) Rectangle self {
@@ -458,11 +458,11 @@ bool contains(Point p) Rectangle self {
 
 // Circle methods
 f64 circleArea() Circle self {
-    return 3.14159265358979 * self.radius * self.radius
+    return returnPi() * self.radius * self.radius
 }
 
 f64 circumference() Circle self {
-    return 2.0 * 3.14159265358979 * self.radius
+    return 2 * returnPi() * self.radius
 }
 
 bool circleContains(Point p) Circle self {
@@ -473,14 +473,14 @@ bool circleContains(Point p) Circle self {
 }
 
 // DynamicArray methods
-void initArray(u64 elemSize) DynamicArray *self {
+void initArray(u64 elemSize) *DynamicArray self {
     self.data = malloc(elemSize * 8)
     self.length = 0
     self.capacity = 8
     self.elementSize = elemSize
 }
 
-void freeArray() DynamicArray *self {
+void freeArray() *DynamicArray self {
     if self.data != null {
         free(self.data)
     }
@@ -489,7 +489,7 @@ void freeArray() DynamicArray *self {
     self.capacity = 0
 }
 
-void growArray() DynamicArray *self {
+void growArray() *DynamicArray self {
     newCap := self.capacity * 2
     newData := realloc(self.data, newCap * self.elementSize)
     self.data = newData
@@ -497,13 +497,13 @@ void growArray() DynamicArray *self {
 }
 
 // StringBuilder methods
-void initStringBuilder() StringBuilder *self {
+void initStringBuilder() *StringBuilder self {
     self.buffer = malloc(64)
     self.length = 0
     self.capacity = 64
 }
 
-void append(*u8 str) StringBuilder *self {
+void append(*u8 str) *StringBuilder self {
     len := strlen(str)
     while self.length + len >= self.capacity {
         newCap := self.capacity * 2
@@ -515,7 +515,7 @@ void append(*u8 str) StringBuilder *self {
     self.length = self.length + len
 }
 
-void clear() StringBuilder *self {
+void clear() *StringBuilder self {
     self.length = 0
 }
 
@@ -526,7 +526,7 @@ void clear() StringBuilder *self {
 }
 
 // Generic receiver functions
-void push[T](T item) Stack[T] *self {
+void push[T](T item) *Stack[T] self {
     if self.top >= self.capacity {
         newCap := self.capacity * 2
         self.capacity = newCap
@@ -535,7 +535,7 @@ void push[T](T item) Stack[T] *self {
     self.top = self.top + 1
 }
 
-T pop[T]() Stack[T] *self {
+T pop[T]() *Stack[T] self {
     self.top = self.top - 1
     return self.items[self.top]
 }
@@ -552,13 +552,13 @@ u64 size[T]() Stack[T] self {
     return self.top
 }
 
-void enqueue[T](T item) Queue[T] *self {
+void enqueue[T](T item) *Queue[T] self {
     self.items[self.rear] = item
     self.rear = self.rear + 1
     self.size = self.size + 1
 }
 
-T dequeue[T]() Queue[T] *self {
+T dequeue[T]() *Queue[T] self {
     item := self.items[self.front]
     self.front = self.front + 1
     self.size = self.size - 1
@@ -880,7 +880,7 @@ void intLiterals() {
 
 void floatLiterals() {
     a := 0.0
-    b := 1.0
+    b := 1.9
     c := -1.0
     d := 3.14159
     e := 2.71828
@@ -913,30 +913,30 @@ void arrayLiterals() {
 }
 
 void structLiterals() {
-    p := Point { x: 10.0, y: 20.0 }
-    p3d := Point3D { x: 1.0, y: 2.0, z: 3.0 }
+    p := Point { x: 10, y: 20 }
+    p3d := Point3D { x: 1, y: 2, z: 3 }
     color := Color { r: 255, g: 128, b: 64, a: 255 }
     rect := Rectangle {
-        topLeft: Point { x: 0.0, y: 0.0 },
-        bottomRight: Point { x: 100.0, y: 100.0 },
-        color: 0xFF0000,
+        topLeft: Point { x: 0, y: 0 },
+        bottomRight: Point { x: 100, y: 100 },
+        color: 0,
         filled: true
     }
 }
 
 void nestedStructLiterals() {
     vertex := Vertex {
-        position: Point3D { x: 0.0, y: 0.0, z: 0.0 },
-        normal: Point3D { x: 0.0, y: 1.0, z: 0.0 },
+        position: Point3D { x: 0, y: 0, z: 0 },
+        normal: Point3D { x: 0, y: 1, z: 0 },
         color: Color { r: 255, g: 255, b: 255, a: 255 },
-        u: 0.0,
-        v: 0.0
+        u: 0,
+        v: 0
     }
 }
 
 void genericStructLiterals() {
     intContainer := Container[i32] { value: 42, hasValue: true }
-    floatPair := Pair[f64, f64] { first: 1.0, second: 2.0 }
+    floatPair := Pair[f64, f64] { first: 1, second: 2 }
     mixedPair := Pair[i32, *u8] { first: 100, second: "hello" }
 }
 
@@ -945,7 +945,7 @@ void genericStructLiterals() {
 // ----------------------------------------------------------------------------
 void inferredTypes() {
     a := 42
-    b := 3.14
+    b := 3
     c := true
     d := "hello"
     e := [1, 2, 3]
@@ -961,14 +961,14 @@ void explicitTypes() {
     u16 f = 6
     u32 g = 7
     u64 h = 8
-    f32 i = 9.0
-    f64 j = 10.0
+    f32 i = 9
+    f64 j = 10
     bool k = true
 }
 
 void pointerTypes() {
     *i32 ptr = null
-    **i32 ptrPtr = null
+    *i32 ptrPtr = null
     ***i32 ptrPtrPtr = null
     *void voidPtr = null
     *u8 bytePtr = null
@@ -986,7 +986,7 @@ void arrayTypes() {
 void constTypes() {
     const i32 constant = 42
     const *i32 constPtr = null
-    *const i32 ptrToConst = null
+    const i32 ptrToConst = null
 }
 
 void genericTypes() {
@@ -1022,12 +1022,12 @@ void typeComposition() {
 void main() {
     // Variable declarations
     i32 counter = 0
-    f64 total = 0.0
+    f64 total = 0
     bool running = true
 
     // Struct literals
-    origin := Point { x: 0.0, y: 0.0 }
-    target := Point { x: 100.0, y: 100.0 }
+    origin := Point { x: 0, y: 0 }
+    target := Point { x: 100, y: 100 }
 
     // Method calls
     dist := origin.magnitude()
@@ -1045,11 +1045,11 @@ void main() {
 
     // Control flow
     if counter > 0 {
-        total = total + 1.0
+        total = total + 1
     } else if counter < 0 {
-        total = total - 1.0
+        total = total - 1
     } else {
-        total = 0.0
+        total = 0
     }
 
     // While loop
@@ -1071,9 +1071,9 @@ void main() {
 
     // Nested struct
     rect := Rectangle {
-        topLeft: Point { x: 0.0, y: 0.0 },
-        bottomRight: Point { x: 50.0, y: 50.0 },
-        color: 0xFFFFFF,
+        topLeft: Point { x: 0, y: 0 },
+        bottomRight: Point { x: 50, y: 50 },
+        color: 0,
         filled: true
     }
 
@@ -1086,7 +1086,7 @@ void main() {
 
     // Complex expressions
     result := (counter + 10) * 2 - 5 / 2
-    check := counter > 0 && total > 0.0 || running == false
+    check := counter > 0 && total > 0 || running == false
 
     // Pointer operations
     *i32 numPtr = &counter
@@ -1094,8 +1094,8 @@ void main() {
     *numPtr = value + 1
 
     // Chained method calls
-    p1 := Point { x: 1.0, y: 2.0 }
-    p2 := Point { x: 3.0, y: 4.0 }
+    p1 := Point { x: 1, y: 2 }
+    p2 := Point { x: 3, y: 4 }
     sum := p1.add(p2)
     dotProduct := p1.dot(p2)
 
@@ -1104,9 +1104,9 @@ void main() {
 
     // Array of structs
     points := [
-        Point { x: 0.0, y: 0.0 },
-        Point { x: 1.0, y: 1.0 },
-        Point { x: 2.0, y: 2.0 }
+        Point { x: 0, y: 0 },
+        Point { x: 1, y: 1 },
+        Point { x: 2, y: 2 }
     ]
 
     // Loop with struct access

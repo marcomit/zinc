@@ -81,7 +81,7 @@ void printType(ZType *type) {
 		printType(type->base);
 		break;
 	case Z_TYPE_PRIMITIVE:
-		printToken(type->token);
+		printToken(type->primitive.token);
 		break;
 	case Z_TYPE_FUNCTION:
 		printType(type->func.ret);
@@ -106,6 +106,22 @@ void printType(ZType *type) {
 		printf("array of ");
 		printType(type->array.base);
 		// printf("]");
+		break;
+	case Z_TYPE_TUPLE:
+		printf("(");
+		for (usize i = 0; i < veclen(type->tuple); i++) {
+			printType(type->tuple[i]);
+			if (i < veclen(type->tuple) - 1) printf(", ");
+		}
+		printf(")");
+		break;
+	case Z_TYPE_GENERIC:
+		printf("%s[", type->generic.name->str);
+		for (usize i = 0; i < veclen(type->generic.args); i++) {
+			printType(type->generic.args[i]);
+			if (i < veclen(type->generic.args) - 1) printf(", ");
+		}
+		printf("]");
 		break;
 	default:
 		printf("(details not implemented for type %d)", type->kind);

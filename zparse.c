@@ -191,14 +191,19 @@ static ZNode *parseGenericBinary(ZParser *parser,
 	ensure(left);
 
 	while (canPeek(parser) &&
-					isValidToken(parser, validTokens, validTokensLen)) {
+					isValidToken(parser, validTokens, validTokensLen) &&
+					!peek(parser)->newlineBefore) {
+		usize saved = parser->current;
 		node = makenode(NODE_BINARY);
 		ZToken *op = consume(parser);
-		
+
 		ZNode *right = wrapNode(parser, parseRight);
 
-		if (!right) break;
-
+		if (!right) {
+			parser->current = saved;
+			node = NULL;
+			break;
+		}
 
 		node->binary.op = op;
 		node->binary.left = left;
@@ -404,19 +409,6 @@ static ZType **parseTypeList(ZParser *parser, ZTokenType left, ZTokenType right)
 	return args;
 }
 
-static ZType **parseTypeArgs(ZParser *parser) {
-	ZType **args = NULL;
-
-	do {
-		ZType *curr = wrapType(parser, parseType);
-		if (!curr) return args;
-
-		vecpush(args, curr);
-		if (!match(parser, TOK_COMMA)) break;
-	} while (1);
-	return args;
-}
-
 static ZType *applyStarsToType(ZType *base, u8 stars) {
 	for (u8 i = 0; i < stars; i++) {
 		ZType *node = maketype(Z_TYPE_POINTER);
@@ -429,8 +421,8 @@ static ZType *applyStarsToType(ZType *base, u8 stars) {
 static ZType *parseTypeArray(ZParser *parser) {
 	expect(parser, TOK_LSBRACKET);
 	ZType *type = wrapType(parser, parseType);
-	expect(parser, TOK_RSBRACKET);
 	ensure(type);
+	expect(parser, TOK_RSBRACKET);
 
 	ZType *arr = maketype(Z_TYPE_ARRAY);
 	arr->array.base = type;
@@ -445,8 +437,9 @@ static ZType *parseTypeTuple(ZParser *parser) {
 	if (!types) {
 		printf("Failed to parse the tuple type\n");
 		return NULL;
-	} else if (veclen(types) < 1) {
-		printf("Tuple too small\n");
+	} else if (veclen(types) < 2) {
+		printf("Tuple must have at least 2 types\n");
+		return NULL;
 	}
 
 	ZType *type = maketype(Z_TYPE_TUPLE);
@@ -454,13 +447,7 @@ static ZType *parseTypeTuple(ZParser *parser) {
 	return type;
 }
 
-static ZType *parseTypeFunc(ZParser *parser) {
-	bool constant = match(parser, TOK_CONST);
-	
-	u8 stars = 0;
-	while (match(parser, TOK_STAR)) stars++;
-
-	ZType *ret = wrapType(parser, parseType);
+static ZType *parseTypeFunc(ZParser *parser, ZType *previous) {
 	ZType **args = parseTypeList(parser, TOK_LPAREN, TOK_RPAREN);
 	ZType **generics = NULL;
 
@@ -473,9 +460,24 @@ static ZType *parseTypeFunc(ZParser *parser) {
 	}
 
 	ZType *type = maketype(Z_TYPE_FUNCTION);
-	type->func.ret = ret;
+	type->func.ret = previous;
 	type->func.args = args;
 	type->func.generics = generics;
+	return type;
+}
+
+static ZType *parseAtom(ZParser *parser) {
+	if (check(parser, TOK_LSBRACKET)) {
+		return parseTypeArray(parser);
+	} else if (check(parser, TOK_LPAREN)) {
+		return parseTypeTuple(parser);
+	}
+
+	if (checkMask(parser, TOK_TYPES_MASK) || check(parser, TOK_IDENT)) {
+		ZType *base = maketype(Z_TYPE_PRIMITIVE);
+		base->primitive.token = consume(parser);
+		return base;
+	}
 	return NULL;
 }
 
@@ -485,44 +487,22 @@ static ZType *parseType(ZParser *parser) {
 	u8 stars = 0;
 	while (match(parser, TOK_STAR)) stars++;
 
-	// After stars expected token is a primitive type or an identifier for structs
-	if (!checkMask(parser, TOK_TYPES_MASK) &&
-			!check(parser, TOK_IDENT) && 
-			!check(parser, TOK_LSBRACKET)) {
-		error(parser->state, peek(parser), "Expected a primitive type, got %s", stoken(peek(parser)));
-		return NULL;
-	}
-
-	if (match(parser, TOK_LSBRACKET)) {
-		ZType *type = wrapType(parser, parseType);
-		if (!match(parser, TOK_RSBRACKET)) {
-			error(parser->state, peek(parser), "Invalid array type");
-		}
-		ZType *array = maketype(Z_TYPE_ARRAY);
-		array->array.base = applyStarsToType(type, stars);
-		return array;
-	}
-
-	if (check(parser, TOK_LSBRACKET)) {
-		ZType **generics = NULL;
-	}
-
-	ZType *base = maketype(Z_TYPE_PRIMITIVE);
-	base->token = consume(parser);
+	ZType *base = parseAtom(parser);
+	ensure(base);
 	base = applyStarsToType(base, stars);
+
 	base->constant = constant;
 
-
 	if (check(parser, TOK_LPAREN)) {
-		ZType **args = parseTypeList(parser, TOK_LPAREN, TOK_RPAREN);
-
-		ZType *type = maketype(Z_TYPE_FUNCTION);
-		type->func.ret = base;
-		type->func.args = args;
-
+		return parseTypeFunc(parser, base);
+	} else if (check(parser, TOK_LSBRACKET)) {
+		// Generic type instantiation like List[int] or Map[str, int]
+		ZType **generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
+		ZType *type = maketype(Z_TYPE_GENERIC);
+		type->generic.name = base->primitive.token;
+		type->generic.args = generics;
 		return type;
 	}
-
 	return base;
 }
 
@@ -620,21 +600,23 @@ static ZNode *parseUnionDecl(ZParser *parser) {
 }
 
 static ZNode *parseStructDecl(ZParser *parser) {
-	int **a = NULL;
-	*(&*a) = NULL;
 	ensure(match(parser, TOK_STRUCT));
 	ZToken *name = NULL;
 	ZToken **generics = NULL;
 
 	if (check(parser, TOK_IDENT)) name = consume(parser);
 
-	if (check(parser, TOK_LSBRACKET)) {
-		generics = parseGenericsDecl(parser);
-	}
-
 	if (!name) {
 		error(parser->state, peek(parser), "Expected an identifier after 'struct'");
 		return NULL;
+	}
+
+	if (check(parser, TOK_LSBRACKET)) {
+		generics = parseGenericsDecl(parser);
+		if (!generics) {
+			printf("Generics not parsed correctly\n");
+		}
+		printf("Generics parsed\n");
 	}
 
 	expect(parser, TOK_LBRACKET);
@@ -770,6 +752,8 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	ZToken *name = consume(parser);
 	ZToken **generics = NULL;
 
+	printToken(name);
+	printf("\n");
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseGenericsDecl(parser);
 		if (!generics) {
@@ -935,12 +919,21 @@ static ZNode *parseStructLit(ZParser *parser) {
 		return NULL;
 	}
 	ZToken *ident = consume(parser);
+	ZType **generics = NULL;
 
+	if (check(parser, TOK_LSBRACKET)) {
+		generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
+		if (!generics) {
+			printf("Error parsing generics\n");
+			return NULL;
+		}
+	}
 
 	expect(parser, TOK_LBRACKET);
 
 	ZNode *node = makenode(NODE_STRUCT_LIT);
 	node->structlit.ident = ident;
+	node->structlit.generics = generics;
 
 	while (true) {
 		if (!check(parser, TOK_IDENT)) break;

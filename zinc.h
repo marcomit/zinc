@@ -29,12 +29,14 @@ typedef struct {
 	union {
 		char *str;
 		i64 integer;
+		f64 floating;
 		bool boolean;
 	};
 	char *sourcePtr;
 	char *sourceLinePtr;
 	usize row;
 	usize col;
+	bool newlineBefore;
 } ZToken;
 
 typedef enum {
@@ -110,15 +112,21 @@ typedef enum ZTypeKind {
 	Z_TYPE_ARRAY,
 	Z_TYPE_FUNCTION,
 	Z_TYPE_POINTER,
-	Z_TYPE_TUPLE
+	Z_TYPE_TUPLE,
+	Z_TYPE_GENERIC		// Instantiated generic type, e.g. List[int]
 } ZTypeKind;
 
 struct ZType {
 	ZTypeKind kind;
 
 	union {
+		ZToken *tok;
 		// For PRIMITIVE (e.g. void or int)
-		ZToken *token;
+		struct {
+			ZToken *token;
+			ZType *base;
+			ZType **generics;
+		} primitive;
 
 		// For POINTER (The type the pointer points to)
 		ZType *base;
@@ -141,6 +149,12 @@ struct ZType {
 		} array;
 
 		ZType **tuple;
+
+		// For GENERIC instantiation (e.g. List[int], Map[str, int])
+		struct {
+			ZToken *name;		// The generic type name (e.g. "List")
+			ZType **args;		// The type arguments (e.g. [int])
+		} generic;
 	};
 
 	bool constant;
@@ -266,6 +280,7 @@ struct ZNode {
 		struct {
 			ZToken *ident;
 			ZNode **fields;
+			ZType **generics;
 		} structlit;
 
 		struct {
