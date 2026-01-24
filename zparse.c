@@ -27,22 +27,13 @@ typedef struct ZParser {
 	usize *errstack;
 	u8 depth;
 
-	/* List of visited modules */
-	struct {
-		char *name;
-		ZNode *root;
-	} *modules;
-
-	/* Module parsing */
-	char *currentModule;
-
-	struct ZParser *parent;
+	ZNode **macros;
 } ZParser;
 
 typedef ZNode *(*ParseFunction)(ZParser *);
 
 static ZType *parseType						(ZParser *);
-static ZNode *parse								(ZParser *, char *);
+static ZNode *parse								(ZParser *);
 static ZNode *parseIf							(ZParser *);
 static ZNode *parseWhile					(ZParser *);
 static ZNode *parseFor						(ZParser *);
@@ -1023,16 +1014,22 @@ static ZNode *parseForeignDecl(ZParser *parser) {
 	return node;
 }
 
-static ZNode *parse(ZParser *parser, char *module) {
-	// for (usize i = 0; i < veclen(parser->modules); i++) {
-	// 	if (!strcmp(parser->modules[i], module)) {
-	// 		return NULL;
-	// 	}
-	// }
+static ZNode *parseMacro(ZParser *parser) {
+	expect(parser, TOK_MACRO);
 
-	parser->currentModule = module;
-	
-	// vecpush(parser->modules, NULL);
+	ensure(check(parser, TOK_IDENT));
+	ZToken *ident = consume(parser);
+
+	ZNode *node = makenode(NODE_MACRO);
+
+
+
+	node->macro.ident = ident;
+
+	return node;
+}
+
+static ZNode *parse(ZParser *parser) {
 
 	ParseFunction pf[] = {
 		parseImport,
@@ -1052,10 +1049,9 @@ static ZNode *parseProgram(ZParser *parser) {
 	ZNode *root = makenode(NODE_PROGRAM);
 	root->program = NULL;
 
-	parser->modules = NULL;
 
 	while (canPeek(parser)) {
-		ZNode *child = parse(parser, parser->currentModule);
+		ZNode *child = parse(parser);
 		if (!child) break;
 		vecpush(root->program, child);
 	}

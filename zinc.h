@@ -100,7 +100,8 @@ typedef enum {
 	NODE_DEFER,
 	NODE_STRUCT_LIT,
 	NODE_TUPLE_LIT,
-	NODE_ARRAY_LIT
+	NODE_ARRAY_LIT,
+	NODE_MACRO
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -293,6 +294,12 @@ struct ZNode {
 			ZNode *root;
 		} module;
 
+		struct {
+			ZToken *ident;
+			ZNode **pattern;
+			ZNode *block;
+		} macro;
+
 		ZNode **program;
 
 		ZToken *literalTok;
@@ -300,6 +307,25 @@ struct ZNode {
 		
 	};
 };
+
+typedef enum {
+	Z_MACRO_KEY, 		// Captured keyword
+	Z_MACRO_EXPR, 	// Captured expression
+	Z_MACRO_IDENT, 	// Captured identifier
+	Z_MACRO_TYPE, 	// Captured type
+	Z_MACRO_ZM, 		// Zero or more
+	Z_MACRO_OM, 		// One or more
+} ZMacroType;
+
+typedef struct ZMacro {
+	ZMacroType kind;
+	union {
+		ZToken *ident;
+		ZNode *expr;
+		ZType *type;
+
+	};
+} ZMacro;
 
 /* ================== Semantic analysis	================== */
 typedef enum {
