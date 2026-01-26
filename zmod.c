@@ -131,6 +131,40 @@ void printType(ZType *type) {
 	}
 }
 
+static void printMacroPattern(ZMacroPattern *pattern) {
+	switch (pattern->kind) {
+	case Z_MACRO_IDENT:
+		printf("ident");
+		printf("(%s)", pattern->ident->str);
+		break;
+	case Z_MACRO_KEY:
+		printf("key");
+		printf("(%s)", pattern->ident->str);
+		break;
+	case Z_MACRO_TYPE:
+		printf("type");
+		printf("(%s)", pattern->ident->str);
+		break;
+	case Z_MACRO_EXPR:
+		printf("expr");
+		printf("(%s)", pattern->ident->str);
+		break;
+	case Z_MACRO_ZM:
+		for (usize i = 0; i < veclen(pattern->zeroOrMore); i++) {
+			printMacroPattern(pattern->zeroOrMore[i]);
+		}
+		break;
+	case Z_MACRO_OM:
+		for (usize i = 0; i < veclen(pattern->oneOrMore); i++) {
+			printMacroPattern(pattern->oneOrMore[i]);
+		}
+		break;
+	default:
+		printf("Invalid macro type\n");
+		break;
+	}
+}
+
 void printNode(ZNode *node, u8 depth) {
 	if (node == NULL) {
 		printf("unknown");
@@ -141,11 +175,11 @@ void printNode(ZNode *node, u8 depth) {
 	indent(depth);
 
 	printf("[%s] ", (char*[]){
-			"BLOCK", "IF", "WHILE", "FOR", "RETURN", "VAR_DECL", "ASSIGN", 
+			"BLOCK", "IF", "WHILE", "FOR", "RETURN", "VAR_DECL",
 			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
-			"CAST", "STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
+			"STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
 			"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
-			"TUPLE_LIT", "ARRAY_LIT"
+			"TUPLE_LIT", "ARRAY_LIT", "MACRO"
 	}[node->type]);
 
 	depth++;
@@ -297,6 +331,12 @@ void printNode(ZNode *node, u8 depth) {
 		printf("\n");
 		for (usize i = 0; i < veclen(node->structlit.fields); i++) {
 			printNode(node->structlit.fields[i], depth);
+		}
+		break;
+	case NODE_MACRO:
+		printf("Name: %s\n", stoken(node->macro.ident));
+		for (usize i = 0; i < veclen(node->macro.pattern); i++) {
+			printMacroPattern(node->macro.pattern[i]);
 		}
 		break;
 	default:

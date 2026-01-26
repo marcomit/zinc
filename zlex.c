@@ -1,14 +1,5 @@
 #include "zinc.h"
 
-#include <errno.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdarg.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-
 #define FNV_OFFSET 2166136261u
 #define FNV_PRIME	 16777619u
 

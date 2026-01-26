@@ -1,0 +1,200 @@
+// Test file for Zinc macros
+
+// Basic macro: unless (inverted if)
+macro unless $cond $body {
+    // if ($cond) $body
+}
+
+// Macro with identifier capture: repeat with named variable
+macro repeat @n $body {
+    // for @n in 0..@n $body
+}
+//
+// // Macro for swap operation
+// macro swap $a $b {
+//     tmp := $a
+//     $a = $b
+//     $b = tmp
+// }
+//
+// // Debug print macro
+// macro dbg $expr {
+//     print("DEBUG: ")
+//     println($expr)
+// }
+//
+// // Assert macro
+// macro assert $cond {
+//     if not ($cond) {
+//         println("Assertion failed")
+//     }
+// }
+//
+// // Assert with message
+// macro assert $cond $msg {
+//     if not ($cond) {
+//         println($msg)
+//     }
+// }
+//
+// // Type capture macro for generic allocation
+// macro new #T {
+//     alloc(sizeof(#T))
+// }
+//
+// // Macro with type and expression
+// macro cast #T $expr {
+//     (#T)($expr)
+// }
+//
+// // Loop macro
+// macro loop $body {
+//     while true $body
+// }
+//
+// // Times macro (do N times)
+// macro times $n $body {
+//     i := 0
+//     while i < n {
+//         $body
+//         i = i + 1
+//     }
+// }
+//
+// // Foreach macro with explicit types
+// macro foreach #T @item in $collection $body {
+//     i := 0
+//     while i < len($collection) {
+//         #T @item = $collection[i]
+//         $body
+//         i = i + 1
+//     }
+// }
+//
+// // Min/max macros
+// macro min $a $b {
+//     if $a < $b { $a } else { $b }
+// }
+//
+// macro max $a $b {
+//     if $a > $b { $a } else { $b }
+// }
+//
+// // Defer-like cleanup macro
+// macro with $resource $body {
+//     $body
+//     close($resource)
+// }
+//
+// // Repetition pattern: variadic print
+// macro println_all $($args)+ {
+//     $($args)+
+// }
+//
+// // Repetition pattern: sum of expressions
+// macro sum $($exprs)+ {
+//     0 $(+ $exprs)+
+// }
+//
+// // Variadic function call wrapper
+// macro call @fn $($args)* {
+//     @fn($($args)*)
+// }
+//
+// // Match-like macro with multiple arms
+// macro when $val $(, $pattern => $result)+ {
+//     match $val {
+//         $($pattern => $result)+
+//     }
+// }
+//
+// // Test function using macros
+// void main() {
+//     // Test unless - inverted condition
+//     x := 10
+//     unless x == 0 {
+//         println("x is not zero")
+//     }
+//
+//     // Test swap - exchange two values
+//     a := 1
+//     b := 2
+//     swap a b
+//     // Now a == 2, b == 1
+//
+//     // Test dbg - debug print
+//     dbg a + b
+//     dbg x * 2
+//
+//     // Test assert - condition checking
+//     assert a == 2
+//     assert b == 1 "b should be 1 after swap"
+//
+//     // Test repeat with identifier capture
+//     repeat counter times 5 {
+//         println(counter)
+//     }
+//
+//     // Test times - simple repetition
+//     times 3 {
+//         println("hello")
+//     }
+//
+//     // Test loop with break condition
+//     count := 0
+//     loop {
+//         count = count + 1
+//         if count > 5 {
+//             goto done
+//         }
+//     }
+//     done:
+//
+//     // Test min/max
+//     smaller := min 5 10
+//     larger := max 5 10
+//     dbg smaller
+//     dbg larger
+//
+//     // Test new with type capture - allocate memory
+//     *i32 ptr = new i32
+//     *ptr = 42
+//     dbg *ptr
+//
+//     // Test cast with type capture
+//     f := 3.14
+//     i32 truncated = cast i32 f
+//     dbg truncated
+//
+//     // Test foreach with type and identifier capture
+//     [i32] numbers = [1, 2, 3, 4, 5]
+//     foreach i32 num in numbers {
+//         dbg num
+//     }
+//
+//     // Test with - resource cleanup
+//     *File file = open("test.txt")
+//     with file {
+//         write(file, "hello")
+//     }
+//
+//     // Test println_all - variadic print
+//     println_all "a" "b" "c"
+//
+//     // Test sum - variadic sum
+//     i32 total = sum 1 2 3 4 5
+//     dbg total
+//
+//     // Test call - function call wrapper
+//     call println "called via macro"
+//
+//     // Test when - match-like syntax
+//     status := 200
+//     when status, 200 => println("OK"), 404 => println("Not Found"), 500 => println("Error")
+//
+//     // Nested macro usage
+//     unless smaller == larger {
+//         result := max (min a b) (min x count)
+//         dbg result
+//     }
+// }

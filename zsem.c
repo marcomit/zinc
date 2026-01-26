@@ -16,7 +16,6 @@
  * then a child scope for the current file and then a child for blocks like functions, loops etc..
  * */
 #include "zinc.h"
-#include <ctype.h>
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);

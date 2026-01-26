@@ -80,14 +80,12 @@ typedef enum {
 	NODE_FOR,
 	NODE_RETURN,
 	NODE_VAR_DECL,
-	NODE_ASSIGN,
 	NODE_BINARY,
 	NODE_UNARY,
 	NODE_CALL,     	// Function call
 	NODE_FUNC,     	// Function definition
 	NODE_LITERAL,  	// Numbers, strings, etc.
 	NODE_IDENTIFIER,
-	NODE_CAST,
 	NODE_STRUCT,
 	NODE_SUBSCRIPT,
 	NODE_MEMBER,
@@ -101,7 +99,9 @@ typedef enum {
 	NODE_STRUCT_LIT,
 	NODE_TUPLE_LIT,
 	NODE_ARRAY_LIT,
-	NODE_MACRO
+	NODE_MACRO,
+	NODE_GOTO,
+	NODE_LABEL
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -161,6 +161,25 @@ struct ZType {
 	bool constant;
 };
 
+typedef enum {
+	Z_MACRO_KEY, 		// Captured keyword
+	Z_MACRO_EXPR, 	// Captured expression
+	Z_MACRO_IDENT, 	// Captured identifier
+	Z_MACRO_TYPE, 	// Captured type
+	Z_MACRO_ZM, 		// Zero or more
+	Z_MACRO_OM, 		// One or more
+} ZMacroType;
+
+typedef struct ZMacroPattern {
+	ZMacroType kind;
+	union {
+		/* Used for keyword, expression and identifier*/
+		ZToken *ident;
+		struct ZMacroPattern **zeroOrMore;
+		struct ZMacroPattern **oneOrMore;
+	};
+} ZMacroPattern;
+
 struct ZNode {
 	ZNodeType type;
 	ZType *resolved;
@@ -200,11 +219,6 @@ struct ZNode {
 			ZToken *ident;
 			ZNode *rvalue; // Null if not initialized
 		} varDecl;
-
-		struct {
-			ZNode *lvalue;
-			ZNode *rvalue;
-		} varAssign;
 
 		ZNode ** block;
 
@@ -274,11 +288,6 @@ struct ZNode {
 		} arraylit;
 
 		struct {
-			ZToken *key;
-			ZNode *value;
-		} structlitfield;
-
-		struct {
 			ZToken *ident;
 			ZNode **fields;
 			ZType **generics;
@@ -296,9 +305,11 @@ struct ZNode {
 
 		struct {
 			ZToken *ident;
-			ZNode **pattern;
+			ZMacroPattern **pattern;
 			ZNode *block;
 		} macro;
+
+		ZToken *gotoLabel;  // For NODE_GOTO and NODE_LABEL
 
 		ZNode **program;
 
@@ -307,25 +318,6 @@ struct ZNode {
 		
 	};
 };
-
-typedef enum {
-	Z_MACRO_KEY, 		// Captured keyword
-	Z_MACRO_EXPR, 	// Captured expression
-	Z_MACRO_IDENT, 	// Captured identifier
-	Z_MACRO_TYPE, 	// Captured type
-	Z_MACRO_ZM, 		// Zero or more
-	Z_MACRO_OM, 		// One or more
-} ZMacroType;
-
-typedef struct ZMacro {
-	ZMacroType kind;
-	union {
-		ZToken *ident;
-		ZNode *expr;
-		ZType *type;
-
-	};
-} ZMacro;
 
 /* ================== Semantic analysis	================== */
 typedef enum {

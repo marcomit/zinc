@@ -17,7 +17,7 @@
 // #undef VEC_FREE
 // #define VEC_FREE allocator.free
 // #endif
-//
+
 int main(int argc, char **argv) {
 	if (argc < 2) {
 		printf("Usage: %s, <filename>", *argv);
@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
 
 	printNode(root, 0);
 
-	zanalyze(state, root);
+	// zanalyze(state, root);
 
 	printLogs(state);
 

@@ -5,15 +5,12 @@ program = { declaration } ;
 
 declaration = function_declaration
             | foreign_function_declaration
-            | foreign_constant_declaration
             | receiver_function
             | variable_declaration
-            | dynamic_variable_declaration
             | struct_declaration
-            | enum_declaration
+            | union_declaration
             | typedef_declaration
-            | distinct_type_declaration
-            | const_declaration
+            | import_declaration
             | macro_declaration ;
 
 (* ============ Generics ============ *)
@@ -24,34 +21,25 @@ generic_params = "[", identifier, { ",", identifier }, "]" ;
 (* Generic argument list: [i32] or [i32, Error] *)
 generic_args = "[", type, { ",", type }, "]" ;
 
+(* ============ Imports ============ *)
+
+import_declaration = "module", string_literal ;
+
 (* ============ Functions ============ *)
 
 function_declaration = return_type, identifier, [ generic_params ], "(", [ parameter_list ], ")", block ;
 
-foreign_function_declaration = "foreign", [ type ], identifier, "(", [ foreign_parameter_list ], ")" ;
+foreign_function_declaration = "foreign", type, identifier, "(", [ foreign_parameter_list ], ")" ;
 
-(* Foreign constant: external constant binding *)
-foreign_constant_declaration = "foreign", type, identifier ;
-
-foreign_parameter_list = type, { ",", type }
-                       | type, { ",", type }, ",", "..." ;  (* variadic *)
+foreign_parameter_list = type, { ",", type } ;
 
 receiver_function = return_type, identifier, [ generic_params ], "(", [ parameter_list ], ")", type, identifier, block ;
 
-parameter_list = parameter, { ",", parameter }
-               | parameter, { ",", parameter }, ",", variadic_parameter ;  (* with variadic *)
+parameter_list = parameter, { ",", parameter } ;
 
 parameter = type, identifier ;
 
-variadic_parameter = "...", type, identifier ;
-
-return_type = type
-            | "(", type, ",", type, { ",", type }, ")" ;  (* tuple return: (i32, bool) *)
-
-(* ============ Constants ============ *)
-
-(* const MAX_SIZE u32 = 4096 *)
-const_declaration = "const", identifier, type, "=", expression ;
+return_type = type ;
 
 (* ============ Macros ============ *)
 
@@ -73,50 +61,32 @@ macro_repetition = "$", "(", { macro_pattern_element }, ")", ( "*" | "+" ) ;
 (* ============ Variables ============ *)
 
 (* Explicit type declaration *)
-variable_declaration = type, identifier, [ "=", expression ] ;
-
-(* Type inference with := *)
-dynamic_variable_declaration = identifier, ":=", expression
-                             | destructure_pattern, ":=", expression ;
-
-(* Destructuring: {x, y} := point or {a, b} := swap(1, 2) *)
-destructure_pattern = "{", identifier, { ",", identifier }, "}" ;
+variable_declaration = type, identifier, "=", expression
+                     | identifier, ":=", expression ;
 
 (* ============ Structs ============ *)
 
 (* Struct with optional generics: struct Vec[T] { *T data } *)
-struct_declaration = "struct", identifier, [ generic_params ], "{", { struct_member }, "}" ;
+struct_declaration = "struct", identifier, [ generic_params ], "{", { struct_field }, "}" ;
 
-struct_member = type, identifier
-              | "struct", "{", { struct_member }, "}" ;
+struct_field = type, identifier ;
 
-(* ============ Enums (Sum Types) ============ *)
+(* ============ Unions ============ *)
 
-(* enum Option[T] { Some(T), None } *)
-enum_declaration = "enum", identifier, [ generic_params ], "{", enum_variant, { ",", enum_variant }, [ "," ], "}" ;
-
-enum_variant = identifier                                         (* Unit variant: None *)
-             | identifier, "(", type, { ",", type }, ")"          (* Tuple variant: Some(T) *)
-             | identifier, "{", { type, identifier }, "}" ;       (* Struct variant: Error { i32 code } *)
+union_declaration = "union", "{", { struct_field }, "}" ;
 
 (* ============ Type Aliases ============ *)
 
-(* Type alias with optional generics: type Result[T, E] ... *)
-typedef_declaration = "type", identifier, [ generic_params ], type ;
-
-(* Distinct type (not interchangeable): distinct type Meters f64 *)
-distinct_type_declaration = "distinct", "type", identifier, type ;
+typedef_declaration = "type", identifier, type ;
 
 (* ============ Types ============ *)
 
-type = basic_type
-     | pointer_type
-     | array_type
-     | slice_type
-     | tuple_type
-     | struct_type
-     | generic_type
-     | identifier ;
+type = [ "const" ], { "*" }, base_type, [ function_suffix | generic_args ] ;
+
+base_type = basic_type
+          | array_type
+          | tuple_type
+          | identifier ;
 
 basic_type = "char"
            | "u8" | "u16" | "u32" | "u64"
@@ -124,41 +94,36 @@ basic_type = "char"
            | "f32" | "f64"
            | "void" ;
 
-pointer_type = "*", type ;
+(* Pointer type: *T, **T *)
+(* Handled by { "*" } prefix in type rule *)
 
-(* Array type: [i32], [[u8]], [Vec[i32]] *)
+(* Array type: [i32], [[u8]] *)
 array_type = "[", type, "]" ;
-
-(* Slice type: []i32 - borrowed view into array *)
-slice_type = "[", "]", type ;
 
 (* Tuple type: (i32, bool), (i32, i32, i32) *)
 tuple_type = "(", type, ",", type, { ",", type }, ")" ;
 
-struct_type = "struct", identifier ;
+(* Function type suffix: i32(i32, i32) or void()[T] *)
+function_suffix = "(", [ type, { ",", type } ], ")", [ generic_args ] ;
 
-(* Generic type instantiation: Vec[i32], Result[Data, Error] *)
-generic_type = identifier, generic_args ;
+(* Generic type instantiation: Vec[i32], Map[str, i32] *)
+(* Handled by optional generic_args suffix in type rule *)
 
 (* ============ Statements ============ *)
 
 block = "{", { statement }, "}" ;
 
 statement = variable_declaration
-          | dynamic_variable_declaration
           | expression_statement
           | if_statement
           | while_statement
-          | for_statement
           | for_in_statement
-          | loop_statement
           | match_statement
           | return_statement
           | defer_statement
-          | break_statement
-          | continue_statement
-          | block
-          | ";" ;
+          | goto_statement
+          | label_statement
+          | block ;
 
 expression_statement = expression ;
 
@@ -166,59 +131,24 @@ if_statement = "if", expression, block, [ "else", ( if_statement | block ) ] ;
 
 while_statement = "while", expression, block ;
 
-(* Classic C-style for: for i := 0, i < 10, i = i + 1 { } *)
-for_statement = "for", ( expression | variable_declaration | dynamic_variable_declaration ), ",", expression, ",", expression, block ;
+(* Range-based for: for i in expr { } *)
+for_in_statement = "for", identifier, "in", expression, block ;
 
-(* Range-based for: for i in 0..10 { } or for item in collection { } *)
-for_in_statement = "for", identifier, "in", range_or_iterator, block
-                 | "for", identifier, ",", identifier, "in", expression, block ;  (* for i, item in enumerate() *)
-
-range_or_iterator = range_expression
-                  | expression ;
-
-(* 0..10 (exclusive) or 0..=10 (inclusive) *)
-range_expression = expression, "..", [ "=" ], expression ;
-
-(* Infinite loop: loop { } *)
-loop_statement = "loop", block ;
-
-match_statement = "match", expression, "{", match_arm, { ",", match_arm }, [ "," ], "}" ;
-
-match_arm = pattern, ":", ( expression | block ) ;
-
-pattern = identifier                                              (* variable binding *)
-        | constant                                                (* literal *)
-        | "_"                                                     (* wildcard *)
-        | identifier, ".", identifier                             (* enum variant: Option.None *)
-        | identifier, ".", identifier, "(", pattern_list, ")"     (* tuple variant: Option.Some(x) *)
-        | identifier, ".", identifier, "{", field_pattern_list, "}"  (* struct variant *)
-        | "{", pattern_list, "}"                                  (* tuple/struct destructure *)
-        | pattern, "|", pattern ;                                 (* or pattern: A | B *)
-
-pattern_list = pattern, { ",", pattern } ;
-
-field_pattern_list = identifier, [ ":", pattern ], { ",", identifier, [ ":", pattern ] } ;
+match_statement = "match", expression, "{", "}" ;
 
 return_statement = "return", [ expression ] ;
 
 defer_statement = "defer", expression ;
 
-break_statement = "break" ;
+goto_statement = "goto", identifier ;
 
-continue_statement = "continue" ;
+label_statement = identifier, ":" ;
 
 (* ============ Expressions ============ *)
 
-expression =  assignment_expression;
+expression = assignment_expression ;
 
-assignment_expression = logical_or_expression
-                      | lvalue, "=", assignment_expression ;
-
-(* Valid assignment targets *)
-lvalue = identifier
-       | "*", unary_expression
-       | lvalue, "[", expression, "]"
-       | lvalue, ".", identifier ;
+assignment_expression = logical_or_expression, [ "=", assignment_expression ] ;
 
 logical_or_expression = logical_and_expression, { "or", logical_and_expression } ;
 
@@ -230,7 +160,7 @@ relational_expression = additive_expression, { ( "<" | ">" | "<=" | ">=" ), addi
 
 additive_expression = multiplicative_expression, { ( "+" | "-" ), multiplicative_expression } ;
 
-multiplicative_expression = unary_expression, { ( "*" | "/" | "%" ), unary_expression } ;
+multiplicative_expression = unary_expression, { ( "*" | "/" ), unary_expression } ;
 
 unary_expression = postfix_expression
                  | ( "+" | "-" | "not" | "*" | "&" ), unary_expression ;
@@ -238,33 +168,27 @@ unary_expression = postfix_expression
 postfix_expression = primary_expression, { postfix_operator } ;
 
 postfix_operator = "[", expression, "]"                           (* subscript *)
-                 | "[", [ expression ], "..", [ "=" ], [ expression ], "]"  (* slice: arr[0..3], arr[..], arr[2..] *)
                  | "(", [ argument_list ], ")"                    (* call *)
                  | ".", identifier ;                              (* member access *)
 
 primary_expression = identifier
                    | constant
                    | string_literal
-                   | tuple_literal
                    | array_literal
                    | struct_literal
                    | "(", expression, ")" ;
 
 argument_list = expression, { ",", expression } ;
 
-(* Tuple literal: (1, 2) or (a, b, c) *)
-tuple_literal = "(", expression, ",", expression, { ",", expression }, ")" ;
-
 (* Array literal: [1, 2, 3] *)
 array_literal = "[", [ expression, { ",", expression }, [ "," ] ], "]" ;
 
-(* Struct literal: Point { 3.0, 4.0 } or Point { x: 3.0, y: 4.0 } *)
-struct_literal = identifier, "{", [ struct_field_list ], "}" ;
+(* Struct literal: Point { x: 3.0, y: 4.0 } or Point[T] { x: val } *)
+struct_literal = identifier, [ generic_args ], "{", [ struct_field_list ], "}" ;
 
-struct_field_list = struct_field, { ",", struct_field }, [ "," ] ;
+struct_field_list = struct_field_init, { ",", struct_field_init }, [ "," ] ;
 
-struct_field = expression                                         (* positional: Point { 3.0, 4.0 } *)
-             | identifier, ":", expression ;                      (* named: Point { x: 3.0, y: 4.0 } *)
+struct_field_init = identifier, ":", expression ;
 
 (* ============ Lexical Elements ============ *)
 
@@ -278,10 +202,10 @@ constant = integer_constant
 
 integer_constant = digit, { digit }
                  | "0x", hex_digit, { hex_digit }                  (* hex: 0xFF *)
-                 | "0b", binary_digit, { binary_digit } ;        	 (* binary: 0b1010 *)
+                 | "0b", binary_digit, { binary_digit } ;          (* binary: 0b1010 *)
 
 float_constant = digit, { digit }, ".", { digit }
-               | digit, { digit }, ".", { digit }, "e", [ "+" | "-" ], digit, { digit } ;  (* scientific: 1.5e-10 *)
+               | digit, { digit }, ".", { digit }, "e", [ "+" | "-" ], digit, { digit } ;
 
 char_constant = "'", character, "'" ;
 

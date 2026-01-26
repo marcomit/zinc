@@ -6,7 +6,7 @@
 #define ARENA_ALIGNMENT 8
 #define ARENA_ALIGN(size) (((size) + (ARENA_ALIGNMENT - 1)) & ~(ARENA_ALIGNMENT - 1))
 
-#define ARENA_PAGE_SIZE MiB(1)
+#define ARENA_PAGE_SIZE MiB(2)
 
 typedef struct ArenaBucket {
 	usize len;
@@ -118,7 +118,6 @@ static void empty			(void *ptr) { (void)ptr; }
 static void aclose		() 					{ arenaFree(allocator.ctx); }
 static void aascope		() 					{ arenaScope(allocator.ctx); }
 static void aaendscope() 					{ arenaEndScope(allocator.ctx); }
-
 
 #define ARENA_ALLOCATOR
 
