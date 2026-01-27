@@ -134,7 +134,7 @@ void printType(ZType *type) {
 static void printMacroPattern(ZMacroPattern *pattern) {
 	switch (pattern->kind) {
 	case Z_MACRO_IDENT:
-		printf("ident");
+		printf("i");
 		printf("(%s)", pattern->ident->str);
 		break;
 	case Z_MACRO_KEY:
@@ -150,14 +150,18 @@ static void printMacroPattern(ZMacroPattern *pattern) {
 		printf("(%s)", pattern->ident->str);
 		break;
 	case Z_MACRO_ZM:
+		printf("zero or more(");
 		for (usize i = 0; i < veclen(pattern->zeroOrMore); i++) {
 			printMacroPattern(pattern->zeroOrMore[i]);
 		}
+		printf(")");
 		break;
 	case Z_MACRO_OM:
+		printf("one or more(");
 		for (usize i = 0; i < veclen(pattern->oneOrMore); i++) {
 			printMacroPattern(pattern->oneOrMore[i]);
 		}
+		printf(")");
 		break;
 	default:
 		printf("Invalid macro type\n");

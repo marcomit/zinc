@@ -1074,16 +1074,15 @@ static ZMacroPattern *macroPatternElement(ZParser *parser) {
 			}
 			return self;
 		} else if (check(parser, TOK_IDENT)) {
-			self->kind = Z_MACRO_IDENT;
+			self->kind = Z_MACRO_EXPR;
 			self->ident = consume(parser);
 			return self;
 		}
-	} else if (check(parser, TOK_IDENT)) {
+	} else if (checkMask(parser, TOK_OVERRIDABLE)) {
 		self->kind = Z_MACRO_KEY;
 		self->ident = consume(parser);
 		return self;
 	}
-	printf("Error matching a pattern element\n");
 	return NULL;
 }
 
@@ -1099,7 +1098,12 @@ static ZMacroPattern **parseMacroPattern(ZParser *parser) {
 static ZNode *parseMacro(ZParser *parser) {
 	expect(parser, TOK_MACRO);
 
-	ensure(check(parser, TOK_IDENT));
+	if (!checkMask(parser, TOK_OVERRIDABLE)) {
+		printf("Unexpected token");
+		printToken(peek(parser));
+		printf("\n");
+		return NULL;
+	}
 	ZToken *ident = consume(parser);
 	ZMacroPattern **pattern = parseMacroPattern(parser);
 

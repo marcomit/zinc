@@ -9,6 +9,114 @@ macro unless $cond $body {
 macro repeat @n $body {
     // for @n in 0..@n $body
 }
+
+macro match $cond $($branch:$body)+ {
+	if false {} $(else if $branch { $body })+
+}
+
+macro vec $($expr)+ {
+
+}
+
+// ============================================
+// COMPLEX MACRO PATTERNS
+// ============================================
+
+// Pattern 1: Multiple expressions in repetition
+macro print_all $($expr)+ {
+    // Usage: print_all a b c d
+}
+
+// Pattern 2: Type and expression pairs
+macro typed_list $(#T $val)+ {
+    // Usage: typed_list i32 10 f64 3.14 str "hello"
+}
+
+// Pattern 3: Identifier with expression assignment
+macro let_many $(@name $val)+ {
+    // Usage: let_many x 10 y 20 z 30
+}
+
+// Pattern 4: Full variable declaration with type
+macro vars $(#T @name $init)* {
+    // Usage: vars i32 x 0 f64 y 3.14
+}
+
+// Pattern 5: Function-like with typed parameters
+macro fn @name $(#T @param)* $body {
+    // Usage: fn add i32 x i32 y { return x + y }
+}
+
+// Pattern 6: Struct definition with typed fields
+macro structy @name $(#T @field)+ {
+    // Usage: struct Point i32 x i32 y
+}
+
+// Pattern 7: Enum-like with identifier variants
+macro enum @name $(@variant)+ {
+    // Usage: enum Color Red Green Blue
+}
+
+// Pattern 8: Match arms with expression patterns
+macro match $val $($pattern $result)+ {
+    // Usage: match x 0 "zero" 1 "one" 2 "two"
+}
+
+// Pattern 9: Generic type instantiation
+macro generic #T @name $val {
+    // Usage: generic i32 myvar 42
+}
+
+// Pattern 10: Multiple type parameters
+macro multi_generic $(#T)+ @name {
+    // Usage: multi_generic i32 f64 str my_tuple
+}
+
+// Pattern 11: Method definition macro
+macro method @class @name $(#T @param)* #RetT $body {
+    // Usage: method Point distance i32 other Point { ... }
+}
+
+// Pattern 12: Array initialization with type and values
+macro array #T $(@name $($val)*)+ {
+    // Usage: array i32 nums 1 2 3 4 5
+}
+
+// Pattern 13: Conditional with else
+macro if_else $cond $then_body else $else_body {
+    // Usage: if_else x > 0 { print("positive") } else { print("non-positive") }
+}
+
+// Pattern 14: Loop with identifier and range expressions
+macro for @i from $start to $end $body {
+    // Usage: for i from 0 to 10 { print(i) }
+}
+
+// Pattern 15: Try-catch style
+macro try $try_body catch @err $catch_body {
+    // Usage: try { risky_call() } catch e { handle(e) }
+}
+
+// Pattern 16: Import multiple items
+macro use @module $(@item)+ {
+    // Usage: use std print println format
+}
+
+// Pattern 17: Nested expressions
+macro nest $outer $($inner)+ {
+    // Usage: nest add 1 2 3 4
+}
+
+// Pattern 18: Builder with setters
+macro build #T $(@field $val)* {
+    // Usage: build Config timeout 30 retries 3
+}
+
+// Pattern 19: Apply function to multiple args
+macro apply @fn $($arg)+ {
+    // Usage: apply println "a" "b" "c"
+}
+
 //
 // // Macro for swap operation
 // macro swap $a $b {
