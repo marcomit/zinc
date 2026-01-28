@@ -163,6 +163,14 @@ static void printMacroPattern(ZMacroPattern *pattern) {
 		}
 		printf(")");
 		break;
+	case Z_MACRO_SEQ:
+		printf("seq(");
+		for (usize i = 0; i < veclen(pattern->sequence); i++) {
+			printMacroPattern(pattern->sequence[i]);
+			if (i < veclen(pattern->sequence) - 1) printf(" ");
+		}
+		printf(")");
+		break;
 	default:
 		printf("Invalid macro type\n");
 		break;
@@ -339,9 +347,7 @@ void printNode(ZNode *node, u8 depth) {
 		break;
 	case NODE_MACRO:
 		printf("Name: %s\n", stoken(node->macro.ident));
-		for (usize i = 0; i < veclen(node->macro.pattern); i++) {
-			printMacroPattern(node->macro.pattern[i]);
-		}
+		printMacroPattern(node->macro.pattern);
 		break;
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);

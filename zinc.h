@@ -101,7 +101,8 @@ typedef enum {
 	NODE_ARRAY_LIT,
 	NODE_MACRO,
 	NODE_GOTO,
-	NODE_LABEL
+	NODE_LABEL,
+	NODE_TYPE
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -168,6 +169,7 @@ typedef enum {
 	Z_MACRO_TYPE, 	// Captured type
 	Z_MACRO_ZM, 		// Zero or more
 	Z_MACRO_OM, 		// One or more
+	Z_MACRO_SEQ			// Sequence
 } ZMacroType;
 
 typedef struct ZMacroPattern {
@@ -177,8 +179,14 @@ typedef struct ZMacroPattern {
 		ZToken *ident;
 		struct ZMacroPattern **zeroOrMore;
 		struct ZMacroPattern **oneOrMore;
+		struct ZMacroPattern **sequence;
 	};
 } ZMacroPattern;
+
+typedef struct ZMacroVar {
+	ZToken *name;
+	ZNode *captured;
+} ZMacroVar;
 
 struct ZNode {
 	ZNodeType type;
@@ -305,8 +313,10 @@ struct ZNode {
 
 		struct {
 			ZToken *ident;
-			ZMacroPattern **pattern;
+			ZMacroPattern *pattern;
 			ZNode *block;
+			ZMacroVar **captured;
+			usize consumed;
 		} macro;
 
 		ZToken *gotoLabel;  // For NODE_GOTO and NODE_LABEL
@@ -318,6 +328,20 @@ struct ZNode {
 		
 	};
 };
+
+typedef struct ZParser {
+	ZState *state;
+	ZToken **tokens;
+	u64 current;
+
+	/*
+	 * Used to track temporary errors and find a valid path.
+	 */
+	usize *errstack;
+	u8 depth;
+
+	ZNode **macros;
+} ZParser;
 
 /* ================== Semantic analysis	================== */
 typedef enum {
@@ -360,6 +384,19 @@ ZToken *maketoken(ZTokenType);
 
 /* Parser */
 ZNode *zparse(ZState *, ZToken **);
+ZNode *parseExpr(ZParser *);
+ZType *parseType(ZParser *);
+
+bool canPeek(ZParser *);
+bool check(ZParser *, ZTokenType);
+bool checkMask(ZParser *, u32);
+ZToken *peek(ZParser *);
+ZToken *consume(ZParser *);
+
+ZNode *getMacroByName(ZParser *, usize *);
+ZNode *expandMacro(ZParser *);
+
+ZNode *makenode(ZNodeType);
 ZType *maketype(ZTypeKind);
 
 /* Semantic */

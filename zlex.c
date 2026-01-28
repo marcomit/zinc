@@ -259,7 +259,10 @@ static ZToken *parseLiteral(ZLexer *l) {
 		return makeident(strndup(start, len));
 	}
 
-	return maketoken(type);
+	// Also set str field for keywords so getMacroByName can compare them
+	ZToken *tok = maketoken(type);
+	tok->str = strndup(start, len);
+	return tok;
 }
 
 static inline void skipSpaces(ZLexer *l) {
