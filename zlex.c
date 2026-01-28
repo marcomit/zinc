@@ -117,6 +117,17 @@ static ZToken *makestring(char *str) {
 	return self;
 }
 
+bool tokeneq(ZToken *a, ZToken *b) {
+	if (!a || !b) return false;
+	if (a->type != b->type) return false;
+	
+	if (a->type == TOK_IDENT || a->type & TOK_FLOWS_MASK) {
+		return strcmp(a->str, b->str) == 0;
+	}
+
+	return true;
+}
+
 static void addToken(ZLexer *l, ZToken *token) {
 	token->row = l->row;
 	token->col = l->col;
@@ -192,9 +203,11 @@ static ZToken *parseString(ZLexer *l) {
 
 static ZToken *parseSymbol(ZLexer *l) {
 	if (false) { /* Empty if statement only for macro definition*/ }
-	#define DEF(id, str, _) else if(!strncmp(str, l->current, strlen(str))) { \
-		skip(l, strlen(str));																										\
-		return maketoken(id);																									\
+	#define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) { \
+		skip(l, strlen(s)); 																							\
+		ZToken *tok = maketoken(id); 																			\
+		tok->str = s; 																										\
+		return tok; 																											\
 	}
 
 	#define TOK_SYMBOLS
@@ -210,6 +223,9 @@ static ZToken *parseSymbol(ZLexer *l) {
 	
 	error(l->state, veclast(l->tokens), "Unexpected symbol");
 
+
+	ZToken *tok = maketoken(0);
+	tok->str = "";
 	return NULL;
 }
 

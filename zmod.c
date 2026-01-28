@@ -1,11 +1,21 @@
 #include "zinc.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <stdarg.h>
 
 #define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
+static char *nodeLabels[] = {
+	"BLOCK", "IF", "WHILE", "FOR", "RETURN", "VAR_DECL",
+	"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
+	"STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
+	"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
+	"TUPLE_LIT", "ARRAY_LIT", "MACRO"
+};
+
 char *stoken(ZToken *token) {
+	if (!token) return "(null)";
 	char *tok = allocator.alloc(32);
 	bool istype = token->type & TOK_TYPES_MASK;
 
@@ -44,6 +54,28 @@ char *stoken(ZToken *token) {
 		break;
 	}
 
+	return tok;
+}
+
+char *tokname(ZTokenType type) {
+	char *tok = allocator.alloc(32);
+
+	switch (type) {
+#define DEF(id, str, _) case id: sprintf(tok, str); break; 
+
+	#define TOK_FLOWS
+	#define TOK_TYPES
+	#define TOK_SYMBOLS
+
+	#include "ztok.h"
+
+	#undef TOK_SYMBOLS
+	#undef TOK_TYPES
+	#undef TOK_FLOWS
+
+	#undef DEF
+		default: break;
+	}
 	return tok;
 }
 
@@ -131,45 +163,40 @@ void printType(ZType *type) {
 	}
 }
 
-static void printMacroPattern(ZMacroPattern *pattern) {
+static void printMacroPattern(ZMacroPattern *pattern, u8 depth) {
+	indent(depth);
 	switch (pattern->kind) {
 	case Z_MACRO_IDENT:
-		printf("i");
-		printf("(%s)", pattern->ident->str);
+		printf("i(%s)\n", pattern->ident->str);
 		break;
 	case Z_MACRO_KEY:
-		printf("key");
-		printf("(%s)", pattern->ident->str);
+		printf("key(%s)\n", pattern->ident->str);
 		break;
 	case Z_MACRO_TYPE:
-		printf("type");
-		printf("(%s)", pattern->ident->str);
+		printf("type(%s)\n", pattern->ident->str);
 		break;
 	case Z_MACRO_EXPR:
-		printf("expr");
-		printf("(%s)", pattern->ident->str);
+		printf("expr(%s)\n", pattern->ident->str);
 		break;
 	case Z_MACRO_ZM:
-		printf("zero or more(");
-		for (usize i = 0; i < veclen(pattern->zeroOrMore); i++) {
-			printMacroPattern(pattern->zeroOrMore[i]);
-		}
-		printf(")");
+		printf("$(\n");
+		printMacroPattern(pattern->zeroOrMore, depth + 1);
+		indent(depth);
+		printf(")*\n");
 		break;
 	case Z_MACRO_OM:
-		printf("one or more(");
-		for (usize i = 0; i < veclen(pattern->oneOrMore); i++) {
-			printMacroPattern(pattern->oneOrMore[i]);
-		}
-		printf(")");
+		printf("$(\n");
+		printMacroPattern(pattern->oneOrMore, depth + 1);
+		indent(depth);
+		printf(")+\n");
 		break;
 	case Z_MACRO_SEQ:
-		printf("seq(");
+		printf("seq(\n");
 		for (usize i = 0; i < veclen(pattern->sequence); i++) {
-			printMacroPattern(pattern->sequence[i]);
-			if (i < veclen(pattern->sequence) - 1) printf(" ");
+			printMacroPattern(pattern->sequence[i], depth + 1);
 		}
-		printf(")");
+		indent(depth);
+		printf(")\n");
 		break;
 	default:
 		printf("Invalid macro type\n");
@@ -186,13 +213,7 @@ void printNode(ZNode *node, u8 depth) {
 	// Helper to print indentation
 	indent(depth);
 
-	printf("[%s] ", (char*[]){
-			"BLOCK", "IF", "WHILE", "FOR", "RETURN", "VAR_DECL",
-			"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
-			"STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
-			"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
-			"TUPLE_LIT", "ARRAY_LIT", "MACRO"
-	}[node->type]);
+	printf("[%s] ", nodeLabels[node->type]);
 
 	depth++;
 	switch (node->type) {
@@ -347,7 +368,7 @@ void printNode(ZNode *node, u8 depth) {
 		break;
 	case NODE_MACRO:
 		printf("Name: %s\n", stoken(node->macro.ident));
-		printMacroPattern(node->macro.pattern);
+		printMacroPattern(node->macro.pattern, depth);
 		break;
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);

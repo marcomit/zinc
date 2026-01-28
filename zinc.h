@@ -177,8 +177,8 @@ typedef struct ZMacroPattern {
 	union {
 		/* Used for keyword, expression and identifier*/
 		ZToken *ident;
-		struct ZMacroPattern **zeroOrMore;
-		struct ZMacroPattern **oneOrMore;
+		struct ZMacroPattern *zeroOrMore;
+		struct ZMacroPattern *oneOrMore;
 		struct ZMacroPattern **sequence;
 	};
 } ZMacroPattern;
@@ -338,9 +338,11 @@ typedef struct ZParser {
 	 * Used to track temporary errors and find a valid path.
 	 */
 	usize *errstack;
-	u8 depth;
-
 	ZNode **macros;
+
+	/* Setted when it parses the body of a macro. */
+	ZNode *currentMacro;
+	u8 depth;
 } ZParser;
 
 /* ================== Semantic analysis	================== */
@@ -381,6 +383,7 @@ typedef struct ZSemantic {
 /* Lexer */
 ZToken **ztokenize(ZState *);
 ZToken *maketoken(ZTokenType);
+bool tokeneq(ZToken *, ZToken *);
 
 /* Parser */
 ZNode *zparse(ZState *, ZToken **);
@@ -393,6 +396,7 @@ bool checkMask(ZParser *, u32);
 ZToken *peek(ZParser *);
 ZToken *consume(ZParser *);
 
+ZNode *getMacroVar(ZNode *, ZToken *);
 ZNode *getMacroByName(ZParser *, usize *);
 ZNode *expandMacro(ZParser *);
 
@@ -420,6 +424,7 @@ bool visit(ZState *, char *);
 void undoVisit(ZState *);
 
 char *stoken(ZToken *);
+char *tokname(ZTokenType);
 void printToken(ZToken *);
 void printTokens(ZToken **);
 

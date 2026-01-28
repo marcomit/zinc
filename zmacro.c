@@ -1,5 +1,16 @@
 #include "zinc.h"
 
+ZNode *getMacroVar(ZNode *macro, ZToken *tok) {
+	ZMacroVar **capt = macro->macro.captured;
+	for (usize i = 0; i < veclen(capt); i++) {
+		if (tokeneq(capt[i]->name, tok)) {
+			return capt[i]->captured;
+		}
+	}
+
+	return NULL;
+}
+
 static bool matchMacroPattern(ZParser *parser,
 																ZNode *macro,
 																ZMacroPattern *pattern) {
