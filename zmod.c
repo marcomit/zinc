@@ -411,6 +411,7 @@ void printScope(ZScope *scope) {
 ZState *makestate(char *filename) {
 	ZState *self = zalloc(ZState);
 
+	self->output						= NULL;
 	self->currentPhase 			= Z_PHASE_LEXICAL;
 	self->filename 					= filename;
 	self->errors 						= NULL;

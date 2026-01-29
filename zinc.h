@@ -60,6 +60,7 @@ typedef enum {
 } ZPhase;
 
 typedef struct {
+	char 		*output;
 	ZLog 		**errors;
 	ZPhase 	currentPhase;
 	char 		*filename;
@@ -405,6 +406,9 @@ ZType *maketype(ZTypeKind);
 
 /* Semantic */
 void zanalyze(ZState *, ZNode *);
+
+/* Code generation */
+void zcompile(ZState *, ZNode *, const char *output);
 
 bool typesEqual(ZType *, ZType *);
 ZType *typesCompatible(ZState *, ZType *, ZType *);

@@ -36,6 +36,8 @@ int main(int argc, char **argv) {
 
 	printNode(root, 0);
 
+	zcompile(state, root, state->output);
+
 	// zanalyze(state, root);
 
 	printLogs(state);
