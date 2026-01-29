@@ -103,15 +103,37 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	return NULL;
 }
 
-static void compile(ZCodegen *ctx, ZNode *root) {
+static LLVMTypeRef convertType(ZType *type) {
+	return NULL;
+}
+
+static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
+	LLVMTypeRef ret = convertType(node->foreignFunc.ret);
+	usize argc = veclen(node->foreignFunc.args);
+
+	LLVMTypeRef *paramTypes = znalloc(LLVMTypeRef, argc);
+	LLVMTypeRef funcType = LLVMFunctionType(ret, paramTypes, argc, 0);
+
+
+	LLVMValueRef func = LLVMAddFunction(
+		ctx->mod,
+		node->foreignFunc.tok->str,
+		funcType
+	);
+	return func;
+}
+
+static LLVMValueRef compile(ZCodegen *ctx, ZNode *root) {
 	switch (root->type) {
 	case NODE_BINARY:
-		genExpr(ctx, root);
-		break;
+		return genExpr(ctx, root);
+	case NODE_FOREIGN:
+		return genForeign(ctx, root); 
 	default:
 		error(ctx->state, root->tok, "(compilation not yet implemented for %d)", root->type);
 		break;
 	}
+	return NULL;
 }
 
 static bool emitObjectFile(ZCodegen *ctx, const char *filename) {
