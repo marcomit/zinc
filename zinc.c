@@ -31,7 +31,6 @@ int main(int argc, char **argv) {
 
 	ZToken **tokens = ztokenize(state);
 
-	printTokens(tokens);
 	ZNode *root = zparse(state, tokens);
 
 	printNode(root, 0);

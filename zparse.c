@@ -41,6 +41,7 @@ static ZToken **parseGenericsDecl				(ZParser *);
 static ZMacroPattern *parseMacroPattern	(ZParser *, ZNode *);
 
 static ParseFunction stmtFunc[] = {
+	expandMacro,
 	parseIf,
 	parseWhile,
 	parseFor,
@@ -53,7 +54,6 @@ static ParseFunction stmtFunc[] = {
 	parseExpr,
 	parseGoto,
 	parseLabel,
-	expandMacro
 };
 
 static ParseFunction exprFunc[] = {
@@ -347,7 +347,9 @@ static ZNode *parseUnary(ZParser *parser) {
 
 	if (node) return node;
 	ZTokenType valids[] = {TOK_PLUS, TOK_MINUS, TOK_NOT, TOK_STAR, TOK_REF};
-	if (!isValidToken(parser, valids, 5)) {
+	usize len = sizeof(valids) / sizeof(valids[0]);
+
+	if (!isValidToken(parser, valids, len)) {
 		error(parser->state, peek(parser), "Failed to parse unary expression");
 		return NULL;
 	}
@@ -663,7 +665,6 @@ ZNode *parseExpr(ZParser *parser) {
 	usize len = sizeof(exprFunc) / sizeof(exprFunc[0]);
 
 	if (parser->currentMacro && match(parser, TOK_MACRO_EXPR)) {
-		printf("Macro variable\n");
 		if (!check(parser, TOK_IDENT)) {
 			error(parser->state, peek(parser), "Expected an identifier");
 			return NULL;
@@ -1135,6 +1136,7 @@ static ZMacroPattern *parseMacroPattern(ZParser *parser, ZNode *macro) {
 }
 
 static ZNode *parseMacro(ZParser *parser) {
+	ZToken *start = peek(parser);
 	expect(parser, TOK_MACRO);
 
 	if (!checkMask(parser, TOK_OVERRIDABLE)) {
@@ -1143,10 +1145,10 @@ static ZNode *parseMacro(ZParser *parser) {
 		printf("\n");
 		return NULL;
 	}
-	ZToken *ident = consume(parser);
 
 	ZNode *node = makenode(NODE_MACRO);
 	node->macro.captured = NULL;
+	node->macro.start = start;
 
 	usize saved = parser->current;
 	ZMacroPattern *pattern = parseMacroPattern(parser, node);
@@ -1162,7 +1164,6 @@ static ZNode *parseMacro(ZParser *parser) {
 	printf("Macro parsed\n");
 	parser->currentMacro = NULL;
 
-	node->macro.ident = ident;
 	node->macro.pattern = pattern;
 	node->macro.block = block;
 	node->macro.consumed = parser->current - saved;
@@ -1172,28 +1173,24 @@ static ZNode *parseMacro(ZParser *parser) {
 	return node;
 }
 
-static ZNode *getCurrentMacro(ZParser *parser) {
-	ZToken *curr = consume(parser);
-	for (usize i = 0; i < veclen(parser->macros); i++) {
-		if (strcmp(parser->macros[i]->macro.ident->str, curr->str) == 0) {
-			return parser->macros[i];
-		}
-	}
-	return NULL;
-}
-
-/* Assumed that macros have unique names. */
+/* Macros captured the start token. */
 static ZNode *skipMacro(ZParser *parser) {
-	expect(parser, TOK_MACRO);
-	ZNode *macro = getCurrentMacro(parser);
+	ZToken *curr = peek(parser);
 
-	consume(parser);
+	expect(parser, TOK_MACRO);
+	ZNode *macro = NULL;
+
+	for (usize i = 0; i < veclen(parser->macros) && !macro; i++) {
+		if (parser->macros[i]->macro.start == curr) macro = parser->macros[i];
+	}
+
 	if (!macro) return NULL;
 
 	usize toConsume = macro->macro.consumed;
 	while (toConsume --> 0) {
 		consume(parser);
 	}
+	printf("Tok: %s\n", stoken(peek(parser)));
 
 	return macro;
 }

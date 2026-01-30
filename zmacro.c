@@ -59,10 +59,9 @@ static ZNode **copynodevec(ZNode **nodes) {
 	return copy;
 }
 
-ZNode *copynode(ZNode *node) {
-	if (!node) return NULL;
-
-	ZNode *copy = makenode(node->type);
+ZNode *changenode(ZNode *node, ZNode *copy) {
+	if (!node || !copy) return NULL;
+	copy->type = node->type;
 	copy->tok = node->tok;
 	copy->resolved = copytype(node->resolved);
 
@@ -172,7 +171,6 @@ ZNode *copynode(ZNode *node) {
 			break;
 		case NODE_MACRO:
 			// Macros typically shouldn't be copied during expansion
-			copy->macro.ident = node->macro.ident;
 			copy->macro.pattern = node->macro.pattern;
 			copy->macro.block = copynode(node->macro.block);
 			copy->macro.captured = node->macro.captured;
@@ -188,6 +186,12 @@ ZNode *copynode(ZNode *node) {
 	}
 
 	return copy;
+}
+
+ZNode *copynode(ZNode *node) {
+	if (!node) return NULL;
+	ZNode *copy = makenode(node->type);
+	return changenode(node, copy);
 }
 
 static bool macropatterneq(ZMacroPattern *p1, ZMacroPattern *p2) {
@@ -225,59 +229,107 @@ ZNode *getMacroVar(ZNode *macro, ZToken *tok) {
 	return NULL;
 }
 
+static ZMacroVar *findCapturedVar(ZNode *macro, ZToken *name) {
+	ZMacroVar **vars = macro->macro.captured;
+	for (usize i = 0; i < veclen(vars); i++) {
+		if (tokeneq(vars[i]->name, name)) {
+			return vars[i];
+		}
+	}
+	return NULL;
+}
+
 static bool matchMacroPattern(ZParser *parser,
 																ZNode *macro,
 																ZMacroPattern *pattern) {
 	ZNode *node = NULL;
 	ZType *type = NULL;
-	ZMacroVar *macrovar = zalloc(ZMacroVar);
-	macrovar->name = macro->macro.ident;
+	ZMacroVar *macrovar = NULL;
+
 	switch (pattern->kind) {
 		case Z_MACRO_EXPR:
+			printf("Trying match expression\n");
 			node = parseExpr(parser);
-			break;
+			if (!node) {
+				printf("failed to parse expression\n");
+				return false;
+			}
+			macrovar = findCapturedVar(macro, pattern->ident);
+			if (macrovar && macrovar->captured) {
+				changenode(node, macrovar->captured);
+			}
+			return true;
+
 		case Z_MACRO_IDENT:
-			if (!check(parser, TOK_IDENT)) return NULL;
+			if (!check(parser, TOK_IDENT)) return false;
 			node = makenode(NODE_IDENTIFIER);
 			node->tok = consume(parser);
-			break;
+			macrovar = findCapturedVar(macro, pattern->ident);
+			if (macrovar && macrovar->captured) {
+				changenode(node, macrovar->captured);
+			}
+			return true;
+
 		case Z_MACRO_TYPE:
 			type = parseType(parser);
+			if (!type) return false;
 			node = makenode(NODE_TYPE);
 			node->resolved = type;
-			break;
+			macrovar = findCapturedVar(macro, pattern->ident);
+			if (macrovar && macrovar->captured) {
+				changenode(node, macrovar->captured);
+			}
+			return true;
+
 		case Z_MACRO_KEY:
-			if (!checkMask(parser, TOK_OVERRIDABLE)) {
-				node = makenode(NODE_IDENTIFIER);
-				node->tok = consume(parser);
+			// Match literal keyword - must match exactly
+			if (!canPeek(parser)) return false;
+			if (!tokeneq(peek(parser), pattern->ident)) {
+				printf("Key mismatch: expected %s, got %s\n",
+					stoken(pattern->ident), stoken(peek(parser)));
+				return false;
 			}
-			break;
+			consume(parser);
+			return true;
+
 		case Z_MACRO_SEQ:
+			printf("Trying match sequence\n");
 			for (usize i = 0; i < veclen(pattern->sequence); i++) {
-				matchMacroPattern(parser, macro, pattern->sequence[i]);
+				if (!matchMacroPattern(parser, macro, pattern->sequence[i])) {
+					return false;
+				}
 			}
-			break;
-		default: return false;
+			return true;
+
+		default:
+			return false;
 	}
-
-	if (!node) return false;
-
-	macrovar->captured = node;
-	return true;
 }
 
 ZNode *expandMacro(ZParser *parser) {
 	ZNode **macros = parser->macros;
+	if (!macros || veclen(macros) == 0) return NULL;
+
+	printf("expand macro %zu %s\n", veclen(parser->macros), stoken(peek(parser)));
 	ZNode *expanded = NULL;
+
 	for (usize i = 0; i < veclen(parser->macros); i++) {
+		usize saved = parser->current;
 		bool valid = matchMacroPattern(parser, macros[i], macros[i]->macro.pattern);
-		if (!valid) continue;
+		if (!valid) {
+			parser->current = saved;
+			printf("Invalid macro\n");
+			continue;
+		}
 
 		if (expanded) {
 			error(parser->state, peek(parser), "Two macros follows the same pattern");
 		}
 		ZNode *copiedBody = copynode(macros[i]->macro.block);
 		expanded = copiedBody;
+	}
+	if (expanded) {
+		printf("Macro expanded\n");
 	}
 	return expanded;
 }

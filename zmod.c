@@ -367,7 +367,6 @@ void printNode(ZNode *node, u8 depth) {
 		}
 		break;
 	case NODE_MACRO:
-		printf("Name: %s\n", stoken(node->macro.ident));
 		printMacroPattern(node->macro.pattern, depth);
 		break;
 	default:

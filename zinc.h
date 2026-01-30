@@ -313,10 +313,10 @@ struct ZNode {
 		} module;
 
 		struct {
-			ZToken *ident;
 			ZMacroPattern *pattern;
 			ZNode *block;
 			ZMacroVar **captured;
+			ZToken *start;
 			usize consumed;
 		} macro;
 
