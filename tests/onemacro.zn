@@ -1,0 +1,8 @@
+macro unless $cond $body -> {
+	if ($cond) { $body }
+}
+
+void main() {
+	i := 0
+	unless i < 10 return 0
+}

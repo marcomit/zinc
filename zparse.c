@@ -52,7 +52,8 @@ static ParseFunction stmtFunc[] = {
 	parseDefer,
 	parseExpr,
 	parseGoto,
-	parseLabel
+	parseLabel,
+	expandMacro
 };
 
 static ParseFunction exprFunc[] = {
@@ -661,8 +662,19 @@ static ZNode *parseStructDecl(ZParser *parser) {
 ZNode *parseExpr(ZParser *parser) {
 	usize len = sizeof(exprFunc) / sizeof(exprFunc[0]);
 
-	if (check(parser, TOK_MACRO_EXPR) && parser->currentMacro) {
-
+	if (parser->currentMacro && match(parser, TOK_MACRO_EXPR)) {
+		printf("Macro variable\n");
+		if (!check(parser, TOK_IDENT)) {
+			error(parser->state, peek(parser), "Expected an identifier");
+			return NULL;
+		}
+		ZToken *var = consume(parser);
+		ZNode *placeholder = getMacroCapturedVar(parser->currentMacro, var);
+		if (!placeholder) {
+			error(parser->state, peek(parser), "%s is not a valid macro variable", var->str);
+			return NULL;
+		}
+		return placeholder;
 	}
 
 	return parseOrGrammar(parser, exprFunc, len);
@@ -1047,6 +1059,9 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
 	ZMacroPattern *self = zalloc(ZMacroPattern);
 	ZMacroVar *var = zalloc(ZMacroVar);
 
+	// Arrows break the pattern parsing
+	if (match(parser, TOK_ARROW)) return NULL;
+
 	if (match(parser, TOK_MACRO_IDENT)) {
 		if (!check(parser, TOK_IDENT)) {
 			printf("Unexpected token\n");
@@ -1143,6 +1158,8 @@ static ZNode *parseMacro(ZParser *parser) {
 
 	parser->currentMacro = node;
 	ZNode *block = parseBlock(parser);
+	printNode(block, 2);
+	printf("Macro parsed\n");
 	parser->currentMacro = NULL;
 
 	node->macro.ident = ident;
@@ -1155,12 +1172,20 @@ static ZNode *parseMacro(ZParser *parser) {
 	return node;
 }
 
+static ZNode *getCurrentMacro(ZParser *parser) {
+	ZToken *curr = consume(parser);
+	for (usize i = 0; i < veclen(parser->macros); i++) {
+		if (strcmp(parser->macros[i]->macro.ident->str, curr->str) == 0) {
+			return parser->macros[i];
+		}
+	}
+	return NULL;
+}
+
 /* Assumed that macros have unique names. */
 static ZNode *skipMacro(ZParser *parser) {
 	expect(parser, TOK_MACRO);
-
-	
-	ZNode *macro = getMacroByName(parser, NULL);
+	ZNode *macro = getCurrentMacro(parser);
 
 	consume(parser);
 	if (!macro) return NULL;
@@ -1219,7 +1244,6 @@ ZNode *zparse(ZState *state, ZToken **tokens) {
 	ZParser *parser = makeparser(state, tokens);
 
 	discoverMacros(parser);
-	printf("Current index: %llu\n", parser->current);
 
 	ZNode *root = parseProgram(parser);
 	if (canPeek(parser)) {

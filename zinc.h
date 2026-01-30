@@ -326,7 +326,6 @@ struct ZNode {
 
 		ZToken *literalTok;
 		ZToken *identTok;
-		
 	};
 };
 
@@ -398,8 +397,9 @@ ZToken *peek(ZParser *);
 ZToken *consume(ZParser *);
 
 ZNode *getMacroVar(ZNode *, ZToken *);
-ZNode *getMacroByName(ZParser *, usize *);
+ZNode *getMacroCapturedVar(ZNode *, ZToken *);
 ZNode *expandMacro(ZParser *);
+ZNode *copynode(ZNode *);
 
 ZNode *makenode(ZNodeType);
 ZType *maketype(ZTypeKind);

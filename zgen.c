@@ -17,7 +17,7 @@ static LLVMValueRef genExpr(ZCodegen *, ZNode *);
 ZCodegen *makecodegen(ZState *state) {
 	ZCodegen *self = zalloc(ZCodegen);
 	self->ctx = LLVMContextCreate();
-	self->mod = LLVMModuleCreateWithNameInContext("Main", self->ctx);
+	self->mod = LLVMModuleCreateWithNameInContext("main", self->ctx);
 	self->builder = LLVMCreateBuilderInContext(self->ctx);
 	self->state = state;
 	return self;
@@ -104,6 +104,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMTypeRef convertType(ZType *type) {
+	(void)type;
 	return NULL;
 }
 
