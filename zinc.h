@@ -186,7 +186,8 @@ typedef struct ZMacroPattern {
 
 typedef struct ZMacroVar {
 	ZToken *name;
-	ZNode *captured;
+	usize tokenStart;  // Start index of captured tokens
+	usize tokenEnd;    // End index (exclusive)
 } ZMacroVar;
 
 struct ZNode {
@@ -312,12 +313,18 @@ struct ZNode {
 			ZNode *root;
 		} module;
 
+		/* For macros don't parse the body.
+		 * Just save where the body starts and ends.
+		 * When it tries to expand a macro it parse the body recursively.
+		 **/
 		struct {
 			ZMacroPattern *pattern;
-			ZNode *block;
+			usize startBody;
+			usize endBody;
 			ZMacroVar **captured;
 			ZToken *start;
 			usize consumed;
+			ZToken **sourceTokens;  // Original token array where the macro was defined
 		} macro;
 
 		ZToken *gotoLabel;  // For NODE_GOTO and NODE_LABEL
@@ -342,6 +349,10 @@ typedef struct ZParser {
 
 	/* Setted when it parses the body of a macro. */
 	ZNode *currentMacro;
+
+	/* Stack of macros currently being expanded (for cycle detection) */
+	ZNode **expandingMacros;
+
 	u8 depth;
 } ZParser;
 
@@ -388,6 +399,7 @@ bool tokeneq(ZToken *, ZToken *);
 /* Parser */
 ZNode *zparse(ZState *, ZToken **);
 ZNode *parseExpr(ZParser *);
+ZNode *parseStmt(ZParser *);
 ZType *parseType(ZParser *);
 
 bool canPeek(ZParser *);
@@ -400,6 +412,8 @@ ZNode *getMacroVar(ZNode *, ZToken *);
 ZNode *getMacroCapturedVar(ZNode *, ZToken *);
 ZNode *expandMacro(ZParser *);
 ZNode *copynode(ZNode *);
+bool macroeq(ZNode *, ZNode *);
+bool macropatterneq(ZMacroPattern *, ZMacroPattern *);
 
 ZNode *makenode(ZNodeType);
 ZType *maketype(ZTypeKind);

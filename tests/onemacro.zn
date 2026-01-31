@@ -1,8 +1,27 @@
 macro unless $cond $body -> {
-	if not ($cond) { $body }
+	if ($cond) { $body }
+}
+
+macro while $cond $body -> {
+    entry:
+    if !($cond) goto end
+    $body
+    goto entry
+    end:
+}
+
+macro for @i from $start to $end $body -> {
+   @i := $start 
+    while @i < $end {
+        $body
+        @i = @i + 1
+    }
 }
 
 void main() {
 	// i := 0
-	unless i < 10 i = 10
+	// unless i < 10 i = 10
+
+
+    for i from 0 to 10 print(i)
 }

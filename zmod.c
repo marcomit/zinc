@@ -367,6 +367,7 @@ void printNode(ZNode *node, u8 depth) {
 		}
 		break;
 	case NODE_MACRO:
+		printf("PATTERN = \n");
 		printMacroPattern(node->macro.pattern, depth);
 		break;
 	default:
@@ -515,7 +516,7 @@ void undoVisit(ZState *state) {
 	state->filename = filename;
 }
 
-static void printLineHighlight(ZToken *tok) {
+static void printLineHighlight(ZToken *tok, const char *color) {
     char *lineStart = tok->sourceLinePtr;
     
     while (*lineStart && *lineStart != '\n') {
@@ -528,7 +529,7 @@ static void printLineHighlight(ZToken *tok) {
         putchar(' ');
     }
     
-    printf("\033[31m^\033[0m\n");
+    printf("%s^\033[0m\n", color);
 }
 
 void printLogs(ZState *state) {
@@ -548,7 +549,7 @@ void printLogs(ZState *state) {
 		}
 		printf("%s\n", log->message);
 
-		if (log->token) printLineHighlight(log->token);
+		if (log->token) printLineHighlight(log->token, colors[log->level]);
 	}
 	printf("\n\n========= End Logs =========\n");
 }

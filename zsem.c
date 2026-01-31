@@ -431,8 +431,7 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *curr) {
 	putStruct(semantic, curr);
 }
 
-/* Discover all global variables/functions/data
- * */
+/* Discover all global variables/functions/data */
 static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 	for (usize i = 0; i < veclen(root->program); i++) {
 		ZNode *child = root->program[i];

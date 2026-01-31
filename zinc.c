@@ -34,10 +34,9 @@ int main(int argc, char **argv) {
 	ZNode *root = zparse(state, tokens);
 
 	printNode(root, 0);
-
+	// zanalyze(state, root);
 	// zcompile(state, root, state->output);
 
-	// zanalyze(state, root);
 
 	printLogs(state);
 
