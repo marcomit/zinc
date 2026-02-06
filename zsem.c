@@ -85,8 +85,8 @@ static void putGlobalVar(ZSemantic *semantic, ZNode *node) {
 static void putVar(ZSemantic *semantic, ZNode *node, bool canBeGlobal) {
 	ZSymbol *symbol = makesymbol(Z_SYM_VAR);
 	symbol->node = node;
-	symbol->name = node->varDecl.ident->str;
-	symbol->isPublic = canBeGlobal && isPublic(node->varDecl.ident->str);
+	symbol->name = node->varDecl.ident->identTok->str;
+	symbol->isPublic = canBeGlobal && isPublic(node->varDecl.ident->identTok->str);
 	putSymbol(semantic, symbol);
 }
 

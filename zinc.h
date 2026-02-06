@@ -24,7 +24,7 @@ typedef enum {
 
 } ZTokenType;
 
-typedef struct {
+typedef struct ZToken {
 	ZTokenType type;
 	union {
 		char *str;
@@ -186,8 +186,8 @@ typedef struct ZMacroPattern {
 
 typedef struct ZMacroVar {
 	ZToken *name;
-	usize tokenStart;  // Start index of captured tokens
-	usize tokenEnd;    // End index (exclusive)
+	usize startIndex;   // Start index into source token array
+	usize endIndex;     // End index (exclusive)
 } ZMacroVar;
 
 struct ZNode {
@@ -226,7 +226,7 @@ struct ZNode {
 
 		struct {
 			ZType *type;
-			ZToken *ident;
+			ZNode *ident; // It is a NODE_IDENTIFIER
 			ZNode *rvalue; // Null if not initialized
 		} varDecl;
 
@@ -319,11 +319,11 @@ struct ZNode {
 		 **/
 		struct {
 			ZMacroPattern *pattern;
-			usize startBody;
-			usize endBody;
+			usize startBody;        // Index of first token after {
+			usize endBody;          // Index of } (exclusive)
 			ZMacroVar **captured;
-			ZToken *start;
-			usize consumed;
+			ZToken *start;          // First token of macro definition
+			usize consumed;         // Tokens consumed by pattern + body
 			ZToken **sourceTokens;  // Original token array where the macro was defined
 		} macro;
 
@@ -336,11 +336,16 @@ struct ZNode {
 	};
 };
 
+typedef struct ZTokenStream {
+	ZToken **list;
+	usize current;
+	usize end; // Cached vector length
+	struct ZTokenStream *prev;
+} ZTokenStream;
+
 typedef struct ZParser {
 	ZState *state;
-	ZToken **tokens;
-	u64 current;
-
+	ZTokenStream *source;
 	/*
 	 * Used to track temporary errors and find a valid path.
 	 */
@@ -394,6 +399,7 @@ typedef struct ZSemantic {
 /* Lexer */
 ZToken **ztokenize(ZState *);
 ZToken *maketoken(ZTokenType);
+ZTokenStream *maketokstream(ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
 
 /* Parser */

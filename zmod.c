@@ -88,14 +88,9 @@ void printToken(ZToken *token) {
 void printTokens(ZToken **tokens) {
 	printf("==== Tokens: %zu ====\n", veclen(tokens));
 	for (usize i = 0; i < veclen(tokens); i++) {
+		if (tokens[i]->newlineBefore) printf("\n");
+		else printf(" ");
 		printToken(tokens[i]);
-
-		if (i > 0 && tokens[i-1]->row != tokens[i]->row) {
-			printf("\n");
-		} else {
-			printf(" ");
-		}
-
 	}
 	printf("\n==== End tokens ====\n");
 }
@@ -235,7 +230,7 @@ void printNode(ZNode *node, u8 depth) {
 		return; // Return early to avoid the double newline
 
 	case NODE_VAR_DECL:
-		printf("Var: %s Type: ", node->varDecl.ident->str);
+		printf("Var: %s Type: ", node->varDecl.ident->identTok->str);
 		printType(node->varDecl.type);
 		if (node->varDecl.rvalue) {
 			printf("\n");
@@ -369,6 +364,15 @@ void printNode(ZNode *node, u8 depth) {
 	case NODE_MACRO:
 		printf("PATTERN = \n");
 		printMacroPattern(node->macro.pattern, depth);
+		break;
+	case NODE_SUBSCRIPT:
+		printf("\n");
+		indent(depth);
+		printf("array:\n");
+		printNode(node->subscript.arr, depth);
+		indent(depth);
+		printf("index:\n");
+		printNode(node->subscript.index, depth);
 		break;
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);

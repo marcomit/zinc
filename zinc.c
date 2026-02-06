@@ -30,6 +30,7 @@ int main(int argc, char **argv) {
 	visit(state, argv[1]);
 
 	ZToken **tokens = ztokenize(state);
+	printTokens(tokens);
 
 	ZNode *root = zparse(state, tokens);
 

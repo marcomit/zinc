@@ -23,55 +23,55 @@ ZType *parseType												(ZParser *);
 ZNode	*parseExpr												(ZParser *);
 static ZNode *parse											(ZParser *);
 static ZNode *parseIf										(ZParser *);
-static ZNode *parseWhile								(ZParser *);
 static ZNode *parseFor									(ZParser *);
-static ZNode *parseReturn								(ZParser *);
+static ZNode *parseGoto									(ZParser *);
+static ZNode *parseWhile								(ZParser *);
 static ZNode *parseBlock								(ZParser *);
+static ZNode *parseMatch								(ZParser *);
+static ZNode *parseDefer								(ZParser *);
+static ZNode *parseLabel								(ZParser *);
+static ZNode *parseReturn								(ZParser *);
+static ZNode *parseVarDef								(ZParser *);
+static ZNode *parseBinary								(ZParser *);
+static ZNode *parseVarDecl							(ZParser *);
 static ZNode *parseArrayLit							(ZParser *);
 static ZNode *parseTupleLit							(ZParser *);
 static ZNode *parseStructLit						(ZParser *);
-static ZNode *parseVarDecl							(ZParser *);
-static ZNode *parseVarDef								(ZParser *);
-static ZNode *parseMatch								(ZParser *);
-static ZNode *parseDefer								(ZParser *);
-static ZNode *parseGoto									(ZParser *);
-static ZNode *parseLabel								(ZParser *);
-static ZNode *parseBinary								(ZParser *);
 static ZToken **parseGenericsDecl				(ZParser *);
 static ZMacroPattern *parseMacroPattern	(ZParser *, ZNode *);
 
 static ParseFunction stmtFunc[] = {
-	expandMacro,
 	parseIf,
-	parseWhile,
 	parseFor,
-	parseMatch,
-	parseReturn,
-	parseBlock,
-	parseVarDecl,
-	parseVarDef,
-	parseDefer,
-	parseExpr,
 	parseGoto,
+	parseExpr,
+	parseWhile,
+	parseMatch,
+	parseDefer,
 	parseLabel,
+	parseReturn,
+	parseVarDef,
+	expandMacro,
+	parseVarDecl,
 };
 
 static ParseFunction exprFunc[] = {
-	parseStructLit,
+	parseBlock, // Block parsed as expression for now.
 	parseBinary,
+	parseStructLit,
 	parseArrayLit,
 	parseTupleLit
 };
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
 	ZParser *self = zalloc(ZParser);
-	self->current = 0;
-	self->tokens = tokens;
+	self->source = maketokstream(tokens, NULL);
 	self->errstack = NULL;
 	self->depth = 0;
 	self->state = state;
 	self->macros = NULL;
 	self->currentMacro = NULL;
+	self->expandingMacros = NULL;
 	return self;
 }
 
@@ -93,7 +93,7 @@ ZType *maketype(ZTypeKind kind) {
 // 	return self;
 // }
 
-static ZNode *makenodevar(ZToken *ident, ZType *type, ZNode *expr) {
+static ZNode *makenodevar(ZNode *ident, ZType *type, ZNode *expr) {
 	ZNode *node = makenode(NODE_VAR_DECL);
 	node->varDecl.ident = ident;
 	node->varDecl.type = type;
@@ -101,19 +101,28 @@ static ZNode *makenodevar(ZToken *ident, ZType *type, ZNode *expr) {
 	return node;
 }
 
-inline bool canPeek(ZParser *parser) {
-	return (usize)parser->current < veclen(parser->tokens);
+bool canPeek(ZParser *p) {
+	while (p->source->current >= p->source->end && p->source->prev) {
+		p->source = p->source->prev;
+	}
+	return (bool)p->source;
 }
 
-inline ZToken *peek(ZParser *parser) {
-	return canPeek(parser) ? parser->tokens[parser->current] : NULL;
+ZToken *peek(ZParser *parser) {
+	while (parser->source->current >= parser->source->end && parser->source->prev) {
+		parser->source = parser->source->prev;
+	}
+	if (!canPeek(parser)) return NULL;
+
+	return parser->source->list[parser->source->current];
 }
 
 ZToken *consume(ZParser *parser) {
 	ensure(canPeek(parser));
 
 	ZToken *curr = peek(parser);
-	parser->current++;
+	
+	parser->source->current++;
 	return curr;
 }
 
@@ -159,14 +168,18 @@ static bool isValidToken(ZParser *parser, ZTokenType *validTokens, size_t len) {
 	return false;
 }
 
+/* Since this function tries to parse macros for now i save the current source of tokens
+ * such that after the execution of the function i can undo the modification. */
 static ZNode *wrapNode(ZParser *parser, ParseFunction parse) {
-	usize saved = parser->current;
+	ZTokenStream *savedStream = parser->source;
+	usize savedIndex = savedStream->current;
 	ZNode *res = parse(parser);
 
 	pushErrorCheckpoint(parser);
 
 	if (!res) {
-		parser->current = saved;
+		parser->source = savedStream;
+		parser->source->current = savedIndex;
 		commitErrors(parser);
 	} else {
 		rollbackErrors(parser);
@@ -175,13 +188,15 @@ static ZNode *wrapNode(ZParser *parser, ParseFunction parse) {
 }
 
 static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
-	usize saved = parser->current;
+	ZTokenStream *savedStream = parser->source;
+	usize savedIndex = savedStream->current;
 	ZType *res = parse(parser);
 
 	pushErrorCheckpoint(parser);
 
 	if (!res) {
-		parser->current = saved;
+		parser->source = savedStream;
+		parser->source->current = savedIndex;
 		rollbackErrors(parser);
 	} else {
 		commitErrors(parser);
@@ -211,14 +226,12 @@ static ZNode *parseGenericBinary(ZParser *parser,
 	while (canPeek(parser) &&
 					isValidToken(parser, validTokens, validTokensLen) &&
 					!peek(parser)->newlineBefore) {
-		usize saved = parser->current;
 		node = makenode(NODE_BINARY);
 		ZToken *op = consume(parser);
 
 		ZNode *right = wrapNode(parser, parseRight);
 
 		if (!right) {
-			parser->current = saved;
 			node = NULL;
 			break;
 		}
@@ -235,7 +248,14 @@ static ZNode *parseGenericBinary(ZParser *parser,
 static ZNode *parsePrimary(ZParser *parser) {
 	ensure(canPeek(parser));
 
-	if (check(parser, TOK_LPAREN)) {
+	if (parser->currentMacro && match(parser, TOK_MACRO_IDENT)) {
+		if (!check(parser, TOK_IDENT)) {
+			error(parser->state, peek(parser), "Expected an identifier after @");
+			return NULL;
+		}
+		ZToken *tok = consume(parser);
+		return getMacroCapturedVar(parser->currentMacro, tok);
+	} else if (check(parser, TOK_LPAREN)) {
 		consume(parser);
 		ZNode *node = wrapNode(parser, parseExpr);
 		expect(parser, TOK_RPAREN);
@@ -304,7 +324,7 @@ static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
 }
 
 static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
-	usize saved = parser->current;
+	usize saved = parser->source->current;
 	pushErrorCheckpoint(parser);
 	ZNode *res = NULL;
 	if (check(parser, TOK_LSBRACKET)) {
@@ -319,7 +339,7 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
 		commitErrors(parser);
 	} else {
 		rollbackErrors(parser);
-		parser->current = saved;
+		parser->source->current = saved;
 	}
 	return res;
 }
@@ -564,7 +584,7 @@ static ZNode *parseLabel(ZParser *parser) {
 	return node;
 }
 
-static ZNode *parseStmt(ZParser *parser) {
+ZNode *parseStmt(ZParser *parser) {
 	usize len = sizeof(stmtFunc) / sizeof(stmtFunc[0]);
 	return parseOrGrammar(parser, stmtFunc, len);
 }
@@ -749,6 +769,10 @@ static ZNode *parseWhile(ZParser *parser) {
 	expect(parser, TOK_WHILE);
 
 	ZNode *cond = wrapNode(parser, parseExpr);
+	if (!cond) {
+		printf("Error parsing expression\n");
+	}
+	printf("Parse while %s\n", stoken(peek(parser)));
 	ZNode *body = wrapNode(parser, parseBlock);
 
 	ZNode *node = makenode(NODE_WHILE);
@@ -816,10 +840,14 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 		}
 	}
 
-	usize saved = parser->current;
-	ZNode *receiver = wrapNode(parser, parseField);
+	ZNode *receiver = NULL;
+	if (!check(parser, TOK_LBRACKET)) {
+		receiver = wrapNode(parser, parseField);
+		if (!receiver) {
+			error(parser->state, peek(parser), "It is not a valid recceiver type");
+		}
+	}
 
-	if (!receiver) parser->current = saved;
 
 	ZNode *body = wrapNode(parser, parseBlock);
 
@@ -841,18 +869,27 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 }
 
 static ZNode *parseVarInferred(ZParser *parser) {
-	ensure(check(parser, TOK_IDENT));
+	ZNode *identNode = NULL;
+	
+	if (parser->currentMacro && match(parser, TOK_MACRO_IDENT)) {
+		identNode = getMacroCapturedVar(parser->currentMacro, consume(parser));
+		if (!identNode) {
+			error(parser->state, peek(parser), "Unknown var");	
+		}
+	} else {
+		ZToken *ident = consume(parser);
+		identNode = makenode(NODE_IDENTIFIER);
+		identNode->identTok = ident;
+	}
 
-	ZToken *ident = consume(parser);
 	expect(parser, TOK_ASSIGN);
-
 	ZNode *expr = wrapNode(parser, parseExpr);
 
 	if (!expr) {
 		error(parser->state, peek(parser), "Error parsing expression");
 	}
 
-	return makenodevar(ident, NULL, expr);
+	return makenodevar(identNode, NULL, expr);
 }
 
 static ZNode *parseVarDefTyped(ZParser *parser) {
@@ -861,9 +898,9 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
 	ensure(type && check(parser, TOK_IDENT));
 
 	ZToken *ident = consume(parser);
+	ZNode *node = makenode(NODE_IDENTIFIER);
+	node->identTok = ident;
 	ZNode *expr = NULL;
-
-	// expect(parser, TOK_EQ);
 
 	if (match(parser, TOK_EQ)) {
 		expr = wrapNode(parser, parseExpr);
@@ -873,7 +910,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
 		}
 	}
 
-	return makenodevar(ident, type, expr);
+	return makenodevar(node, type, expr);
 }
 
 static ZNode *parseVarDef(ZParser *parser) {
@@ -884,11 +921,14 @@ static ZNode *parseVarDef(ZParser *parser) {
 }
 
 static ZNode *parseVarDecl(ZParser *parser) {
+	ZNode *identNode = NULL;
 	ZType *type = wrapType(parser, parseType);
 
 	ensure(type && check(parser, TOK_IDENT));
 
 	ZToken *ident = consume(parser);
+	identNode = makenode(NODE_IDENTIFIER);
+	identNode->identTok = ident;
 
 	expect(parser, TOK_EQ);
 
@@ -896,7 +936,7 @@ static ZNode *parseVarDecl(ZParser *parser) {
 
 	ZNode *rvalue = wrapNode(parser, parseExpr);
 
-	node->varDecl.ident = ident;
+	node->varDecl.ident = identNode;
 	node->varDecl.rvalue = rvalue;
 	node->varDecl.type = type;
 
@@ -962,13 +1002,15 @@ static ZNode *parseStructLit(ZParser *parser) {
 	while (true) {
 		if (!check(parser, TOK_IDENT)) break;
 		ZToken *ident = consume(parser);
+		ZNode *node = makenode(NODE_IDENTIFIER);
+		node->identTok = ident;
 		if (!match(parser, TOK_COLON)) {
 			error(parser->state, peek(parser), "Expected a ':', got %s", stoken(peek(parser)));
 			return NULL;
 		}
 		ZNode *expr = wrapNode(parser, parseExpr);
 		if (!expr) return NULL;
-		ZNode *var = makenodevar(ident, NULL, expr);
+		ZNode *var = makenodevar(node, NULL, expr);
 		vecpush(node->structlit.fields, var);
 		if (check(parser, TOK_RBRACKET)) break;
 		if (!match(parser, TOK_COMMA)) {
@@ -1056,7 +1098,6 @@ static ZNode *parseForeignDecl(ZParser *parser) {
 
 
 static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
-	ZNode *node = zalloc(ZNode);
 	ZMacroPattern *self = zalloc(ZMacroPattern);
 	ZMacroVar *var = zalloc(ZMacroVar);
 
@@ -1071,7 +1112,8 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
 		self->kind = Z_MACRO_IDENT;
 		self->ident = consume(parser);
 		var->name = self->ident;
-		var->captured = node;
+		var->startIndex = 0;
+		var->endIndex = 0;
 		vecpush(macro->macro.captured, var);
 		return self;
 
@@ -1082,7 +1124,8 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
 		self->kind = Z_MACRO_TYPE;
 		self->ident = consume(parser);
 		var->name = self->ident;
-		var->captured = node;
+		var->startIndex = 0;
+		var->endIndex = 0;
 		vecpush(macro->macro.captured, var);
 		return self;
 	} else if (match(parser, TOK_MACRO_EXPR)) {
@@ -1106,7 +1149,8 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
 			self->kind = Z_MACRO_EXPR;
 			self->ident = consume(parser);
 			var->name = self->ident;
-			var->captured = node;
+			var->startIndex = 0;
+			var->endIndex = 0;
 			vecpush(macro->macro.captured, var);
 			return self;
 		}
@@ -1135,6 +1179,16 @@ static ZMacroPattern *parseMacroPattern(ZParser *parser, ZNode *macro) {
 	return seq;
 }
 
+static void skipBlock(ZParser *parser) {
+	i64 level = 1;  // Already inside { from caller
+
+	while (level > 0) {
+		if (check(parser, TOK_LBRACKET)) level++;
+		else if (check(parser, TOK_RBRACKET)) level--;
+		consume(parser);
+	}
+}
+
 static ZNode *parseMacro(ZParser *parser) {
 	ZToken *start = peek(parser);
 	expect(parser, TOK_MACRO);
@@ -1150,7 +1204,7 @@ static ZNode *parseMacro(ZParser *parser) {
 	node->macro.captured = NULL;
 	node->macro.start = start;
 
-	usize saved = parser->current;
+	usize saved = parser->source->current;
 	ZMacroPattern *pattern = parseMacroPattern(parser, node);
 
 	if (!pattern || veclen(pattern->sequence) < 1) {
@@ -1158,15 +1212,18 @@ static ZNode *parseMacro(ZParser *parser) {
 		return NULL;
 	}
 
-	parser->currentMacro = node;
-	ZNode *block = parseBlock(parser);
-	printNode(block, 2);
-	printf("Macro parsed\n");
-	parser->currentMacro = NULL;
-
 	node->macro.pattern = pattern;
-	node->macro.block = block;
-	node->macro.consumed = parser->current - saved;
+	node->macro.sourceTokens = parser->source->list;
+
+	// Expect -> before body
+	expect(parser, TOK_ARROW);
+	expect(parser, TOK_LBRACKET);  // Consume opening {
+
+	node->macro.startBody = parser->source->current;  // First token after {
+	skipBlock(parser);
+	node->macro.endBody = parser->source->current - 1;  // Exclude closing }
+
+	node->macro.consumed = parser->source->current - saved;
 
 	vecpush(parser->macros, node);
 
@@ -1211,7 +1268,7 @@ static ZNode *parse(ZParser *parser) {
 }
 
 static void discoverMacros(ZParser *parser) {
-	usize saved = parser->current;
+	usize saved = parser->source->current;
 	while (canPeek(parser)) {
 		if (check(parser, TOK_MACRO)) {
 			ZNode *macro = parseMacro(parser);
@@ -1220,7 +1277,7 @@ static void discoverMacros(ZParser *parser) {
 			consume(parser);
 		}
 	}
-	parser->current = saved;
+	parser->source->current = saved;
 }
 
 static ZNode *parseProgram(ZParser *parser) {
@@ -1243,6 +1300,7 @@ ZNode *zparse(ZState *state, ZToken **tokens) {
 	discoverMacros(parser);
 
 	ZNode *root = parseProgram(parser);
+
 	if (canPeek(parser)) {
 		error(state, peek(parser), "Compilation failed");
 	}

@@ -194,7 +194,7 @@ ZNode *copynode(ZNode *node) {
 	return changenode(node, copy);
 }
 
-static bool macropatterneq(ZMacroPattern *p1, ZMacroPattern *p2) {
+bool macropatterneq(ZMacroPattern *p1, ZMacroPattern *p2) {
 	if (!p1 || !p2) return false;
 	if (p1->kind != p2->kind) return false;
 
@@ -211,7 +211,7 @@ static bool macropatterneq(ZMacroPattern *p1, ZMacroPattern *p2) {
 	}
 }
 
-static bool macroeq(ZNode *m1, ZNode *m2) {
+bool macroeq(ZNode *m1, ZNode *m2) {
 	if (!m1 || !m2) return false;
 	if (!m1->macro.pattern || !m2->macro.pattern) return false;
 
@@ -245,39 +245,41 @@ static bool matchMacroPattern(ZParser *parser,
 	ZNode *node = NULL;
 	ZType *type = NULL;
 	ZMacroVar *macrovar = NULL;
+	usize startIdx;
 
 	switch (pattern->kind) {
 		case Z_MACRO_EXPR:
-			printf("Trying match expression\n");
+			startIdx = parser->source->current;
 			node = parseExpr(parser);
 			if (!node) {
-				printf("failed to parse expression\n");
 				return false;
 			}
 			macrovar = findCapturedVar(macro, pattern->ident);
-			if (macrovar && macrovar->captured) {
-				changenode(node, macrovar->captured);
+			if (macrovar) {
+				macrovar->startIndex = startIdx;
+				macrovar->endIndex = parser->source->current;
 			}
 			return true;
 
 		case Z_MACRO_IDENT:
 			if (!check(parser, TOK_IDENT)) return false;
-			node = makenode(NODE_IDENTIFIER);
-			node->tok = consume(parser);
+			startIdx = parser->source->current;
+			consume(parser);
 			macrovar = findCapturedVar(macro, pattern->ident);
-			if (macrovar && macrovar->captured) {
-				changenode(node, macrovar->captured);
+			if (macrovar) {
+				macrovar->startIndex = startIdx;
+				macrovar->endIndex = parser->source->current;
 			}
 			return true;
 
 		case Z_MACRO_TYPE:
+			startIdx = parser->source->current;
 			type = parseType(parser);
 			if (!type) return false;
-			node = makenode(NODE_TYPE);
-			node->resolved = type;
 			macrovar = findCapturedVar(macro, pattern->ident);
-			if (macrovar && macrovar->captured) {
-				changenode(node, macrovar->captured);
+			if (macrovar) {
+				macrovar->startIndex = startIdx;
+				macrovar->endIndex = parser->source->current;
 			}
 			return true;
 
@@ -285,15 +287,12 @@ static bool matchMacroPattern(ZParser *parser,
 			// Match literal keyword - must match exactly
 			if (!canPeek(parser)) return false;
 			if (!tokeneq(peek(parser), pattern->ident)) {
-				printf("Key mismatch: expected %s, got %s\n",
-					stoken(pattern->ident), stoken(peek(parser)));
 				return false;
 			}
 			consume(parser);
 			return true;
 
 		case Z_MACRO_SEQ:
-			printf("Trying match sequence\n");
 			for (usize i = 0; i < veclen(pattern->sequence); i++) {
 				if (!matchMacroPattern(parser, macro, pattern->sequence[i])) {
 					return false;
@@ -306,19 +305,30 @@ static bool matchMacroPattern(ZParser *parser,
 	}
 }
 
+void expandMacroTokens(ZNode *macro) {
+	ZToken **expanded = NULL;
+
+	for (ZToken *tok = macro->macro.startTok; tok != macro->macro.endTok; tok++) {
+		if (tok->type == TOK_MACRO_IDENT) {
+			tok++;
+			ZNode *captured = getMacroCapturedVar(macro, tok);
+		} else {
+			vecpush(expanded, tok);
+		}
+	}
+}
+
 ZNode *expandMacro(ZParser *parser) {
 	ZNode **macros = parser->macros;
 	if (!macros || veclen(macros) == 0) return NULL;
 
-	printf("expand macro %zu %s\n", veclen(parser->macros), stoken(peek(parser)));
 	ZNode *expanded = NULL;
 
 	for (usize i = 0; i < veclen(parser->macros); i++) {
-		usize saved = parser->current;
+		usize saved = parser->source->current;
 		bool valid = matchMacroPattern(parser, macros[i], macros[i]->macro.pattern);
 		if (!valid) {
-			parser->current = saved;
-			printf("Invalid macro\n");
+			parser->source->current = saved;
 			continue;
 		}
 
@@ -327,9 +337,6 @@ ZNode *expandMacro(ZParser *parser) {
 		}
 		ZNode *copiedBody = copynode(macros[i]->macro.block);
 		expanded = copiedBody;
-	}
-	if (expanded) {
-		printf("Macro expanded\n");
 	}
 	return expanded;
 }

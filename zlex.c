@@ -36,6 +36,15 @@ typedef struct {
 
 static KeyboardEntry keyboardEntries[HASHMAP_TOK_LEN];
 
+ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
+	ZTokenStream *self = zalloc(ZTokenStream);
+	self->list = tokens;
+	self->current = 0;
+	self->prev = prev;
+	self->end = veclen(tokens);
+	return self;
+}
+
 static uint32_t hashtoken(const char *buff, size_t len) {
 	uint32_t hash = FNV_OFFSET;
 	for (size_t i = 0; i < len; i++) {
