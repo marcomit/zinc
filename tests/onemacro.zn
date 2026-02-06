@@ -17,6 +17,12 @@ macro range @i $start to $end $body -> {
     while $start < $end { $body }
 }
 
+void main() {
+	guard 0 > 10 print(i) else {
+		print('000000')
+	}
+}
+
 /*
 // Guard clause (early return if condition is false)
 macro guard $cond else $body -> {
@@ -24,6 +30,7 @@ macro guard $cond else $body -> {
         $body
     }
 }
+
 
 // Unless (inverse if)
 macro unless $cond $body -> {

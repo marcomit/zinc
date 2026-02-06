@@ -170,11 +170,14 @@ ZNode *changenode(ZNode *node, ZNode *copy) {
 			copy->arraylit.fields = copynodevec(node->arraylit.fields);
 			break;
 		case NODE_MACRO:
-			// Macros typically shouldn't be copied during expansion
+			// Macros store body as token indices, not parsed AST
 			copy->macro.pattern = node->macro.pattern;
-			copy->macro.block = copynode(node->macro.block);
+			copy->macro.startBody = node->macro.startBody;
+			copy->macro.endBody = node->macro.endBody;
 			copy->macro.captured = node->macro.captured;
 			copy->macro.consumed = node->macro.consumed;
+			copy->macro.start = node->macro.start;
+			copy->macro.sourceTokens = node->macro.sourceTokens;
 			break;
 		case NODE_GOTO:
 		case NODE_LABEL:
@@ -258,17 +261,20 @@ static bool matchMacroPattern(ZParser *parser,
 			if (macrovar) {
 				macrovar->startIndex = startIdx;
 				macrovar->endIndex = parser->source->current;
+				macrovar->captured = node;
 			}
 			return true;
 
 		case Z_MACRO_IDENT:
 			if (!check(parser, TOK_IDENT)) return false;
 			startIdx = parser->source->current;
-			consume(parser);
+			node = makenode(NODE_IDENTIFIER);
+			node->identTok = consume(parser);
 			macrovar = findCapturedVar(macro, pattern->ident);
 			if (macrovar) {
 				macrovar->startIndex = startIdx;
 				macrovar->endIndex = parser->source->current;
+				macrovar->captured = node;
 			}
 			return true;
 
@@ -280,6 +286,9 @@ static bool matchMacroPattern(ZParser *parser,
 			if (macrovar) {
 				macrovar->startIndex = startIdx;
 				macrovar->endIndex = parser->source->current;
+				node = makenode(NODE_TYPE);
+				node->resolved = type;
+				macrovar->captured = node;
 			}
 			return true;
 
@@ -305,40 +314,64 @@ static bool matchMacroPattern(ZParser *parser,
 	}
 }
 
-void expandMacroTokens(ZNode *macro) {
-	ZToken **expanded = NULL;
-
-	for (ZToken *tok = macro->macro.startTok; tok != macro->macro.endTok; tok++) {
-		if (tok->type == TOK_MACRO_IDENT) {
-			tok++;
-			ZNode *captured = getMacroCapturedVar(macro, tok);
-		} else {
-			vecpush(expanded, tok);
-		}
-	}
-}
-
 ZNode *expandMacro(ZParser *parser) {
 	ZNode **macros = parser->macros;
 	if (!macros || veclen(macros) == 0) return NULL;
 
-	ZNode *expanded = NULL;
-
-	for (usize i = 0; i < veclen(parser->macros); i++) {
+	for (usize i = 0; i < veclen(macros); i++) {
 		usize saved = parser->source->current;
+
+		// Reset captured vars for fresh matching
+		for (usize j = 0; j < veclen(macros[i]->macro.captured); j++) {
+			macros[i]->macro.captured[j]->captured = NULL;
+			macros[i]->macro.captured[j]->startIndex = 0;
+			macros[i]->macro.captured[j]->endIndex = 0;
+		}
+
 		bool valid = matchMacroPattern(parser, macros[i], macros[i]->macro.pattern);
 		if (!valid) {
 			parser->source->current = saved;
 			continue;
 		}
 
-		if (expanded) {
-			error(parser->state, peek(parser), "Two macros follows the same pattern");
+		ZNode *macro = macros[i];
+
+		// Build body token array from the macro definition's source tokens
+		ZToken **bodyTokens = NULL;
+		for (usize t = macro->macro.startBody; t < macro->macro.endBody; t++) {
+			vecpush(bodyTokens, macro->macro.sourceTokens[t]);
 		}
-		ZNode *copiedBody = copynode(macros[i]->macro.block);
-		expanded = copiedBody;
+
+		if (!bodyTokens) return NULL;
+
+		// Create an isolated token stream for body parsing
+		ZTokenStream *bodyStream = maketokstream(bodyTokens, NULL);
+
+		// Save parser state
+		ZTokenStream *savedSource = parser->source;
+		ZNode *savedCurrentMacro = parser->currentMacro;
+
+		// Switch to body token stream
+		parser->source = bodyStream;
+		parser->currentMacro = macro;
+
+		// Parse the body as a sequence of statements
+		ZNode *block = makenode(NODE_BLOCK);
+		block->block = NULL;
+		ZNode *stmt = NULL;
+		while (parser->source->current < parser->source->end) {
+			stmt = parseStmt(parser);
+			if (stmt) vecpush(block->block, stmt);
+			else break;
+		}
+
+		// Restore parser state
+		parser->source = savedSource;
+		parser->currentMacro = savedCurrentMacro;
+
+		return block;
 	}
-	return expanded;
+	return NULL;
 }
 
 ZNode *getMacroCapturedVar(ZNode *macro, ZToken *name) {

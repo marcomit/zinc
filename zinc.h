@@ -188,6 +188,7 @@ typedef struct ZMacroVar {
 	ZToken *name;
 	usize startIndex;   // Start index into source token array
 	usize endIndex;     // End index (exclusive)
+	ZNode *captured;    // The parsed AST node for this captured variable
 } ZMacroVar;
 
 struct ZNode {

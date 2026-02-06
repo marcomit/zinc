@@ -44,7 +44,6 @@ static ParseFunction stmtFunc[] = {
 	parseIf,
 	parseFor,
 	parseGoto,
-	parseExpr,
 	parseWhile,
 	parseMatch,
 	parseDefer,
@@ -52,6 +51,7 @@ static ParseFunction stmtFunc[] = {
 	parseReturn,
 	parseVarDef,
 	expandMacro,
+	parseExpr,
 	parseVarDecl,
 };
 
@@ -105,7 +105,7 @@ bool canPeek(ZParser *p) {
 	while (p->source->current >= p->source->end && p->source->prev) {
 		p->source = p->source->prev;
 	}
-	return (bool)p->source;
+	return p->source->current < p->source->end;
 }
 
 ZToken *peek(ZParser *parser) {
@@ -1215,8 +1215,7 @@ static ZNode *parseMacro(ZParser *parser) {
 	node->macro.pattern = pattern;
 	node->macro.sourceTokens = parser->source->list;
 
-	// Expect -> before body
-	expect(parser, TOK_ARROW);
+	// Arrow (->) is already consumed by macroPatternElement as the sentinel
 	expect(parser, TOK_LBRACKET);  // Consume opening {
 
 	node->macro.startBody = parser->source->current;  // First token after {
