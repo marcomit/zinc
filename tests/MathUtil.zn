@@ -1,8 +1,9 @@
 // Test: Visibility and Receiver Functions
 // use "tests/Data.zn"
 // use "tests/Main.zn"
+foreign void putchar(u8)
 
-// foreign void putchar(u8)
+use "tests/Range"
 
 // struct Vector {
 // 	f32 x

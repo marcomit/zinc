@@ -1030,7 +1030,14 @@ static ZNode *parseStructLit(ZParser *parser) {
 }
 
 static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
-	bool canVisit = visit(parser->state, name->str);
+	usize len = strlen(name->str);
+	char *filename = znalloc(char, len + 2);
+	// memcpy(filename, name->str);
+	memcpy(filename, name->str, len);
+	filename[len] = '.';
+	filename[len+1] = 'z';
+	filename[len+2] = 'n';
+	bool canVisit = visit(parser->state, filename);
 	ZNode *node = makenode(NODE_MODULE);
 
 	if (!canVisit) {

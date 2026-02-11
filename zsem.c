@@ -19,6 +19,7 @@
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
+static ZType *resolveType(ZSemantic *semantic, ZNode *curr);
 
 static ZScope *makescope(ZScope *parent) {
 	ZScope *self = zalloc(ZScope);
@@ -30,12 +31,11 @@ static ZScope *makescope(ZScope *parent) {
 	return self;
 }
 
-// static ZSymbol *makesymbol(ZSymType kind) {
-// 	ZSymbol *self = zalloc(ZSymbol);
-// 	self->kind = kind;
-// 	self->isPublic = false;
-// 	return self;
-// }
+static ZSymbol *makesymbol(ZSymType kind) {
+	ZSymbol *self = zalloc(ZSymbol);
+	self->kind = kind;
+	return self;
+}
 
 static ZSymTable *makesymtable() {
 	ZSymTable *self = zalloc(ZSymTable);
@@ -59,45 +59,46 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
 // 	return isupper(*name);
 // }
 
-// static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
-// 	ZScope *scope = semantic->table->current;
-// 	if (symbol->isPublic) scope = semantic->table->global;
-// 	vecpush(scope->symbols, symbol);
-// }
+static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
+	ZScope *scope = semantic->table->current;
+	if (symbol->isPublic) scope = semantic->table->global;
+	vecpush(scope->symbols, symbol);
+}
 
-// static void putFunc(ZSemantic *semantic, ZNode *node) {
-// 	ZSymbol *symbol = makesymbol(Z_SYM_FUNC);
-//
-// 	symbol->name = node->funcDef.ident->str;
-// 	symbol->type = node->funcDef.ret;
-// 	symbol->node = node;
-// 	symbol->isPublic = isPublic(symbol->name);
-//
-// 	putSymbol(semantic, symbol);
-// }
+static void putFunc(ZSemantic *semantic, ZNode *node) {
+	ZSymbol *symbol = makesymbol(Z_SYM_FUNC);
 
-// static void putGlobalVar(ZSemantic *semantic, ZNode *node) {
-// 	ZSymbol *symbol = makesymbol(Z_SYM_VAR);
-// 	symbol->node = node;
-// 	putSymbol(semantic, symbol);
-// }
+	symbol->name = node->funcDef.ident->str;
+	symbol->type = node->funcDef.ret;
+	symbol->node = node;
+	symbol->isPublic = node->funcDef.pub;
 
-// static void putVar(ZSemantic *semantic, ZNode *node, bool canBeGlobal) {
-// 	ZSymbol *symbol = makesymbol(Z_SYM_VAR);
-// 	symbol->node = node;
-// 	symbol->name = node->varDecl.ident->identTok->str;
-// 	symbol->isPublic = canBeGlobal && isPublic(node->varDecl.ident->identTok->str);
-// 	putSymbol(semantic, symbol);
-// }
+	putSymbol(semantic, symbol);
+}
 
-// static void putStruct(ZSemantic *semantic, ZNode *node) {
-// 	ZSymbol *symbol = makesymbol(Z_SYM_STRUCT);
-//
-// 	symbol->name = node->structDef.ident->str;
-// 	symbol->node = node;
-//
-// 	vecpush(semantic->table->current->symbols, symbol);
-// }
+static void putGlobalVar(ZSemantic *semantic, ZNode *node) {
+	ZSymbol *symbol = makesymbol(Z_SYM_VAR);
+	symbol->node = node;
+	putSymbol(semantic, symbol);
+}
+
+static void putVar(ZSemantic *semantic, ZNode *node, bool canBeGlobal) {
+	ZSymbol *symbol = makesymbol(Z_SYM_VAR);
+	symbol->node = node;
+	symbol->name = node->varDecl.ident->identTok->str;
+	symbol->isPublic = canBeGlobal;
+	putSymbol(semantic, symbol);
+}
+
+static void putStruct(ZSemantic *semantic, ZNode *node) {
+	ZSymbol *symbol = makesymbol(Z_SYM_STRUCT);
+
+	symbol->name = node->structDef.ident->str;
+	symbol->node = node;
+	symbol->isPublic = node->structDef.pub;
+
+	vecpush(semantic->table->current->symbols, symbol);
+}
 
 static void beginScope(ZSemantic *semantic) {
 	ZScope *scope = makescope(semantic->table->current);
@@ -112,43 +113,43 @@ static void endScope(ZSemantic *semantic) {
 	semantic->table->current = semantic->table->current->parent;
 }
 
-// static u8 typeRank(ZTokenType t) {
-// 	switch (t) {
-// 	case TOK_CHAR: return 0;
-// 	case TOK_I8: 	case TOK_U8: 	return 1;
-// 	case TOK_I16: case TOK_U16: return 2;
-// 	case TOK_I32: case TOK_U32: return 3;
-// 	case TOK_I64: case TOK_U64: return 4;
-// 	case TOK_F32: return 5;
-// 	case TOK_F64: return 6;
-// 	default: 			return 0;
-// 	}
-// }
+static u8 typeRank(ZTokenType t) {
+	switch (t) {
+	case TOK_CHAR: return 0;
+	case TOK_I8: 	case TOK_U8: 	return 1;
+	case TOK_I16: case TOK_U16: return 2;
+	case TOK_I32: case TOK_U32: return 3;
+	case TOK_I64: case TOK_U64: return 4;
+	case TOK_F32: return 5;
+	case TOK_F64: return 6;
+	default: 			return 0;
+	}
+}
 
-// static inline bool isUnsigned	(ZTokenType t) { return t & TOK_UNSIGNED; 	}
-// static inline bool isSigned		(ZTokenType t) { return t & TOK_SIGNED; 		}
-// static inline bool isFloat		(ZTokenType t) { return t & TOK_FLOAT;			}
-// static inline bool isInteger	(ZTokenType t) { return isSigned(t) || isUnsigned(t); }
+static inline bool isUnsigned	(ZTokenType t) { return t & TOK_UNSIGNED; 	}
+static inline bool isSigned		(ZTokenType t) { return t & TOK_SIGNED; 		}
+static inline bool isFloat		(ZTokenType t) { return t & TOK_FLOAT;			}
+static inline bool isInteger	(ZTokenType t) { return isSigned(t) || isUnsigned(t); }
 
-// static ZTokenType toUnsigned(u8 rank) {
-// 	switch (rank) {
-// 	case 1: return TOK_U8;
-// 	case 2: return TOK_U16;
-// 	case 3: return TOK_U32;
-// 	case 4: return TOK_U64;
-// 	default: return TOK_U32;
-// 	}
-// }
+static ZTokenType toUnsigned(u8 rank) {
+	switch (rank) {
+	case 1: return TOK_U8;
+	case 2: return TOK_U16;
+	case 3: return TOK_U32;
+	case 4: return TOK_U64;
+	default: return TOK_U32;
+	}
+}
 
-// static ZTokenType toSigned(u8 rank) {
-// 	switch (rank) {
-// 	case 1: return TOK_I8;
-// 	case 2: return TOK_I16;
-// 	case 3: return TOK_I32;
-// 	case 4: return TOK_I64;
-// 	default: return TOK_I32;
-// 	}
-// }
+static ZTokenType toSigned(u8 rank) {
+	switch (rank) {
+	case 1: return TOK_I8;
+	case 2: return TOK_I16;
+	case 3: return TOK_I32;
+	case 4: return TOK_I64;
+	default: return TOK_I32;
+	}
+}
 
 /* An implementation note:
  * if a or b is a float the return type is always a float.
@@ -157,63 +158,59 @@ static void endScope(ZSemantic *semantic) {
  * so in this case the compiler shows a warning (explicit casting requested).
  * */
 ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
-	(void)state;
-	(void)a;
-	(void)b;
-	return NULL;
-	// if (!a || !b) return NULL;
-	// if (typesEqual(a, b)) return a;
-	//
-	// if (a->kind != Z_TYPE_PRIMITIVE || b->kind != Z_TYPE_PRIMITIVE) {
-	// 	return NULL;
-	// }
-	//
-	// ZTokenType ta = a->primitive.token->type;
-	// ZTokenType tb = b->primitive.token->type;
-	//
-	// if (ta == TOK_VOID || tb == TOK_VOID) return NULL;
-	//
-	// u8 ra = typeRank(ta);
-	// u8 rb = typeRank(tb);
+	if (!a || !b) return NULL;
+	if (typesEqual(a, b)) return a;
+
+	if (a->kind != Z_TYPE_PRIMITIVE || b->kind != Z_TYPE_PRIMITIVE) {
+		return NULL;
+	}
+
+	ZTokenType ta = a->primitive.token->type;
+	ZTokenType tb = b->primitive.token->type;
+
+	if (ta == TOK_VOID || tb == TOK_VOID) return NULL;
+
+	u8 ra = typeRank(ta);
+	u8 rb = typeRank(tb);
 
 	// f32 + i32 -> f64
 	// f32 + i64 -> f64
-	// if (isFloat(ta) || isFloat(tb)) {
-	// 	u8 minRank = min(ra, rb);
-	// 	if (minRank <= 2) {
-	// 		return ra > rb ? a : b;
-	// 	}
-	//
-	// 	ZType *promoted = maketype(Z_TYPE_PRIMITIVE);
-	// 	promoted->primitive.token = maketoken(TOK_F64);
-	//
-	// 	return promoted;
-	// }
+	if (isFloat(ta) || isFloat(tb)) {
+		u8 minRank = min(ra, rb);
+		if (minRank <= 2) {
+			return ra > rb ? a : b;
+		}
+
+		ZType *promoted = maketype(Z_TYPE_PRIMITIVE);
+		promoted->primitive.token = maketoken(TOK_F64);
+
+		return promoted;
+	}
 
 	// Both integers
 
 	// Both signed or both unsigned return the largest.
-	// if ((isSigned(ta) && isSigned(tb)) ||
-	// 		(isUnsigned(ta) && isUnsigned(tb))) {
-	// 	return ra > rb ? a : b;
-	// }
+	if ((isSigned(ta) && isSigned(tb)) ||
+			(isUnsigned(ta) && isUnsigned(tb))) {
+		return ra > rb ? a : b;
+	}
 
 	// signed vs unsigned types
-	// u8 signedRank = isSigned(ta) ? ra : rb;
-	// u8 unsignedRank = isSigned(ta) ? rb : ra;
-	//
-	// ZType *signedType = isSigned(ta) ? a : b;
-	// if (signedRank > unsignedRank) return signedType;
+	u8 signedRank = isSigned(ta) ? ra : rb;
+	u8 unsignedRank = isSigned(ta) ? rb : ra;
+
+	ZType *signedType = isSigned(ta) ? a : b;
+	if (signedRank > unsignedRank) return signedType;
 
 	// Highest rank reached
-	// if (signedRank == 4) {
-	// 	warning(state, signedType->primitive.token, "Cannot promote an i64, try with an explicit casting");
-	// }
-	//
-	// ZType *promoted = maketype(Z_TYPE_PRIMITIVE);
-	// promoted->primitive.token = maketoken(toSigned(signedRank + 1));
-	//
-	// return promoted;
+	if (signedRank == 4) {
+		warning(state, signedType->primitive.token, "Cannot promote an i64, try with an explicit casting");
+	}
+
+	ZType *promoted = maketype(Z_TYPE_PRIMITIVE);
+	promoted->primitive.token = maketoken(toSigned(signedRank + 1));
+
+	return promoted;
 }
 
 bool typesEqual(ZType *a, ZType *b) {
@@ -265,29 +262,81 @@ static ZSymbol *resolve(ZSemantic *semantic, ZToken *ident) {
 	return NULL;
 }
 
-// static void analyzeMemberAccess(ZSemantic *semantic, ZNode *curr) {
-// 	ZToken *type = curr->memberAccess.field;
-// 	ZNode *obj = curr->memberAccess.object;
-// 	if (obj->type == NODE_IDENTIFIER) {
-// 		ZSymbol *sym = resolve(semantic, obj->identTok);
-// 		if (!sym) {
-// 			error(semantic->state, NULL, "Local variable not found!");
-// 		}
-// 	}
-// }
+static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
+	ZType *resolved = resolveType(semantic, curr->memberAccess.object);
+	
+	if (resolved->kind != Z_TYPE_STRUCT) {
+		error(semantic->state, curr->tok, "Expected a struct type");
+		return NULL;
+	}
 
-// static void validateUnary(ZSemantic *semantic, ZNode *curr) {
-// 	switch(curr->type) {
-// 	case NODE_MEMBER:
-// 		break;
-// 	case NODE_CALL:
-//
-// 		break;
-// 	default:
-// 		warning(semantic->state, curr->tok, "(not yet implemented %d)\n", curr->type);
-// 		break;
-// 	}
-// }
+	ZNode **fields = resolved->strct.fields;
+	for (usize i = 0; i < veclen(fields); i++) {
+		if (tokeneq(fields[i]->field.identifier, curr->memberAccess.field)) {
+			return fields[i]->field.type;
+		}
+	}
+
+	return NULL;
+}
+
+static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
+	switch(curr->type) {
+	case NODE_MEMBER:
+		return resolveMemberAccess(semantic, curr);
+	default: return NULL;
+	}
+	return NULL;
+}
+
+static void analyzeMemberAccess(ZSemantic *semantic, ZNode *curr) {
+	ZToken *type = curr->memberAccess.field;
+	ZNode *obj = curr->memberAccess.object;
+	if (obj->type == NODE_IDENTIFIER) {
+		ZSymbol *sym = resolve(semantic, obj->identTok);
+		if (!sym) {
+			error(semantic->state, NULL, "Local variable not found!");
+		}
+	}
+}
+
+static void analyzeFCall(ZSemantic *semantic, ZNode *curr) {
+	ZSymbol *sym = resolve(semantic, curr->identTok);
+	if (!sym) {
+		error(semantic->state, curr->identTok, "Symbol not found");
+		return;
+	}
+	if (sym->kind != Z_SYM_FUNC) {
+		error(semantic->state, curr->identTok, "It is not a function");
+		return;
+	}
+
+	usize expectedArgs = veclen(sym->node->funcDef.args);
+	usize gotArgs = veclen(curr->call.args);
+	if (expectedArgs != gotArgs) {
+		error(semantic->state, curr->identTok,
+					"Expected %zu arguments, got %zu", expectedArgs, gotArgs);
+		return;
+	}
+
+	for (usize i = 0; i < expectedArgs; i++) {
+
+	}
+}
+
+static void validateUnary(ZSemantic *semantic, ZNode *curr) {
+	switch(curr->type) {
+	case NODE_MEMBER:
+		analyzeMemberAccess(semantic, curr);
+		break;
+	case NODE_CALL:
+		analyzeFCall(semantic, curr);
+		break;
+	default:
+		warning(semantic->state, curr->tok, "(not yet implemented %d)\n", curr->type);
+		break;
+	}
+}
 
 // static void validateType(ZSemantic *semantic, ZType *type) {
 // }
@@ -435,30 +484,30 @@ static void analyzeBlock(ZSemantic *semantic, ZNode *block, bool scoped) {
 // }
 
 /* Discover all global variables/functions/data */
-// static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
-// 	for (usize i = 0; i < veclen(root->program); i++) {
-// 		ZNode *child = root->program[i];
-//
-// 		switch (child->type) {
-// 		case NODE_FUNC:
-// 			putFunc(semantic, child);
-// 			break;
-// 		case NODE_STRUCT:
-// 			putStruct(semantic, child);
-// 			break;
-// 		case NODE_VAR_DECL:
-// 			putVar(semantic, child, true);
-// 			break;
-// 		case NODE_MODULE:
-// 			beginScope(semantic);
-// 			discoverGlobalScope(semantic, child->module.root);
-// 			endScope(semantic);
-// 			break;
-// 		default:
-// 			break;
-// 		}
-// 	}
-// }
+static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
+	for (usize i = 0; i < veclen(root->program); i++) {
+		ZNode *child = root->program[i];
+
+		switch (child->type) {
+		case NODE_FUNC:
+			putFunc(semantic, child);
+			break;
+		case NODE_STRUCT:
+			putStruct(semantic, child);
+			break;
+		case NODE_VAR_DECL:
+			putVar(semantic, child, true);
+			break;
+		case NODE_MODULE:
+			beginScope(semantic);
+			discoverGlobalScope(semantic, child->module.root);
+			endScope(semantic);
+			break;
+		default:
+			break;
+		}
+	}
+}
 
 static void analyze(ZSemantic *semantic, ZNode *root) {
 	(void)semantic;
