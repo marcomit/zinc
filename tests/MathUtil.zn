@@ -26,10 +26,23 @@
 // 	return sum
 // }
 
-void main() {
-    // list := [1,2,3,4,5,6]
-    obj := Vector { x: 10, y: 10 }
-    // tuple := (1,2,3,4,5,6)
+
+void booleanExpr(bool a, bool b, bool c) {
+    return a && b || c && a
+}
+
+u8 booleanExpr(bool a, bool b, bool c) {
+    return a and b or c and a
+}
+
+Pair[A, B] makePair[A, B](A first, B second) {
+    return Pair[A, B] { first: first, second: second }
+}
+
+u0 main() {
+    list := [1,2,3,4,5,6]
+    // obj := Vector{x: 10, y: 10}
+    tuple := (1,2,3,4,5,6)
     // for i in 10 {
     //     println("")
     // }

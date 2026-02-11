@@ -374,6 +374,13 @@ void printNode(ZNode *node, u8 depth) {
 		printf("index:\n");
 		printNode(node->subscript.index, depth);
 		break;
+	case NODE_TUPLE_LIT:
+		printf("\n");
+		ZNode **fields = node->tuplelit.fields;
+		for (usize i = 0; i < veclen(fields); i++) {
+			printNode(fields[i], depth);
+		}
+		break;
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);
 			break;
@@ -499,6 +506,16 @@ void info(ZState *state, ZToken *tok, const char *fmt, ...) {
 	va_start(args, fmt);
 
 	ZLog *log = vmakelog(Z_INFO, state->filename, tok, fmt, args); 
+	vecpush(state->errors, log);
+
+	va_end(args);
+}
+
+void debug(ZState *state, ZToken *tok, const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+
+	ZLog *log = vmakelog(Z_DEBUG, state->filename, tok, fmt, args);
 	vecpush(state->errors, log);
 
 	va_end(args);

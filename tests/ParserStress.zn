@@ -793,11 +793,11 @@ i32 complexArithmetic(i32 a, i32 b, i32 c) {
 }
 
 bool booleanExpr(bool a, bool b, bool c) {
-    return a && b || c && !a
+    return a and b or c and a
 }
 
 bool comparisonExpr(i32 a, i32 b) {
-    return a < b && a <= b || a > b && a >= b || a == b || a != b
+    return a < b and a <= b or a > b and a >= b or a == b or a != b
 }
 
 i32 unaryExpr(i32 x) {
@@ -1086,7 +1086,7 @@ void main() {
 
     // Complex expressions
     result := (counter + 10) * 2 - 5 / 2
-    check := counter > 0 && total > 0 || running == false
+    check := counter > 0 and total > 0 or running == false
 
     // Pointer operations
     *i32 numPtr = &counter

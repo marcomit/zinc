@@ -42,7 +42,8 @@ typedef struct ZToken {
 typedef enum {
 	Z_ERROR,
 	Z_WARNING,
-	Z_INFO
+	Z_INFO,
+	Z_DEBUG
 } ZLogLevel;
 
 typedef struct {
@@ -442,6 +443,7 @@ char *readfile(char *);
 void error	(ZState *, ZToken *, const char *, ...);
 void warning(ZState *, ZToken *, const char *, ...);
 void info		(ZState *, ZToken *, const char *, ...);
+void debug	(ZState *, ZToken *, const char *, ...);
 
 void printLogs(ZState *state);
 

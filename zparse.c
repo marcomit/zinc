@@ -41,6 +41,7 @@ static ZToken **parseGenericsDecl				(ZParser *);
 static ZMacroPattern *parseMacroPattern	(ZParser *, ZNode *);
 
 static ParseFunction stmtFunc[] = {
+	// parseBlock,
 	parseIf,
 	parseFor,
 	parseGoto,
@@ -57,10 +58,10 @@ static ParseFunction stmtFunc[] = {
 
 static ParseFunction exprFunc[] = {
 	parseBlock, // Block parsed as expression for now.
-	parseBinary,
 	parseStructLit,
+	parseBinary,
 	parseArrayLit,
-	parseTupleLit
+	parseTupleLit,
 };
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
@@ -141,7 +142,7 @@ bool match(ZParser *parser, ZTokenType type) {
 }
 
 static void pushErrorCheckpoint(ZParser *parser) {
-	usize errlen = veclen(parser->errstack);
+	usize errlen = veclen(parser->state->errors);
 	vecpush(parser->errstack, errlen);
 	parser->depth++;
 }
@@ -173,16 +174,16 @@ static bool isValidToken(ZParser *parser, ZTokenType *validTokens, size_t len) {
 static ZNode *wrapNode(ZParser *parser, ParseFunction parse) {
 	ZTokenStream *savedStream = parser->source;
 	usize savedIndex = savedStream->current;
-	ZNode *res = parse(parser);
 
 	pushErrorCheckpoint(parser);
+	ZNode *res = parse(parser);
 
 	if (!res) {
 		parser->source = savedStream;
 		parser->source->current = savedIndex;
-		commitErrors(parser);
-	} else {
 		rollbackErrors(parser);
+	} else {
+		commitErrors(parser);
 	}
 	return res;
 }
@@ -190,9 +191,9 @@ static ZNode *wrapNode(ZParser *parser, ParseFunction parse) {
 static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
 	ZTokenStream *savedStream = parser->source;
 	usize savedIndex = savedStream->current;
-	ZType *res = parse(parser);
 
 	pushErrorCheckpoint(parser);
+	ZType *res = parse(parser);
 
 	if (!res) {
 		parser->source = savedStream;
@@ -366,11 +367,11 @@ static ZNode *parseUnary(ZParser *parser) {
 	ZNode *node = wrapNode(parser, parsePostfixExpr);
 
 	if (node) return node;
-	ZTokenType valids[] = {TOK_PLUS, TOK_MINUS, TOK_NOT, TOK_STAR, TOK_REF};
+	ZTokenType valids[] = {TOK_PLUS, TOK_MINUS, TOK_NOT, TOK_SNOT, TOK_STAR, TOK_REF};
 	usize len = sizeof(valids) / sizeof(valids[0]);
 
 	if (!isValidToken(parser, valids, len)) {
-		error(parser->state, peek(parser), "Failed to parse unary expression");
+		error(parser->state, peek(parser), "Expected expression, got '%s'", stoken(peek(parser)));
 		return NULL;
 	}
 
@@ -404,13 +405,13 @@ static ZNode *parseEquality(ZParser *parser) {
 }
 
 static ZNode *parseLogicalAnd(ZParser *parser) {
-	ZTokenType valids[] = {TOK_AND};
-	return parseGenericBinary(parser, parseEquality, parseEquality, valids, 1);
+	ZTokenType valids[] = {TOK_AND, TOK_SAND};
+	return parseGenericBinary(parser, parseEquality, parseEquality, valids, 2);
 }
 
 static ZNode *parseLogicalOr(ZParser *parser) {
-	ZTokenType valids[] = {TOK_OR};
-	return parseGenericBinary(parser, parseLogicalAnd, parseLogicalAnd, valids, 1);
+	ZTokenType valids[] = {TOK_OR, TOK_SOR};
+	return parseGenericBinary(parser, parseLogicalAnd, parseLogicalAnd, valids, 2);
 }
 
 static ZNode *parseAssignment(ZParser *parser) {
@@ -435,7 +436,7 @@ static ZType **parseTypeList(ZParser *parser, ZTokenType left, ZTokenType right)
 	do {
 		ZType *curr = wrapType(parser, parseType);
 		if (!curr) {
-			printf("Failed parsing a type list\n");
+			error(parser->state, peek(parser), "Expected a type in type list");
 			return args;
 		}
 		vecpush(args, curr);
@@ -443,7 +444,7 @@ static ZType **parseTypeList(ZParser *parser, ZTokenType left, ZTokenType right)
 		if (check(parser, right)) break;
 	} while (true);
 	if (!match(parser, right)) {
-		printf("parseTypeList failed: missing %d token\n", right);
+		error(parser->state, peek(parser), "Expected '%s' to close type list, got '%s'", tokname(right), stoken(peek(parser)));
 		return NULL;
 	}
 	return args;
@@ -475,10 +476,10 @@ static ZType *parseTypeTuple(ZParser *parser) {
 	ZType **types = parseTypeList(parser, TOK_LPAREN, TOK_RPAREN);
 
 	if (!types) {
-		printf("Failed to parse the tuple type\n");
+		error(parser->state, peek(parser), "Expected types in tuple type");
 		return NULL;
 	} else if (veclen(types) < 2) {
-		printf("Tuple must have at least 2 types\n");
+		error(parser->state, peek(parser), "Tuple type requires at least 2 elements, got %zu", veclen(types));
 		return NULL;
 	}
 
@@ -494,7 +495,7 @@ static ZType *parseTypeFunc(ZParser *parser, ZType *previous) {
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
 		if (!generics) {
-			printf("Error parsing generics function type");
+			error(parser->state, peek(parser), "Expected generic type parameters in '[...]'");
 			return NULL;
 		}
 	}
@@ -600,7 +601,7 @@ static ZNode *parseBlock(ZParser *parser) {
 	} while (stmt);
 
 	if (!check(parser, TOK_RBRACKET)) {
-		printf("Error parsing block statement\n");
+		error(parser->state, peek(parser), "Expected '}' to close block, got '%s'", stoken(peek(parser)));
 	}
 
 	expect(parser, TOK_RBRACKET);
@@ -658,9 +659,8 @@ static ZNode *parseStructDecl(ZParser *parser) {
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseGenericsDecl(parser);
 		if (!generics) {
-			printf("Generics not parsed correctly\n");
+			error(parser->state, peek(parser), "Expected generic parameters after struct name");
 		}
-		printf("Generics parsed\n");
 	}
 
 	expect(parser, TOK_LBRACKET);
@@ -747,20 +747,16 @@ static ZNode *parseFor(ZParser *parser) {
 
 	ZNode *expr = wrapNode(parser, parseExpr);
 	if (!expr) {
-		printf("Error parsing for loop, expected an expression here!\n");
+		error(parser->state, peek(parser), "Expected iterable expression after 'in'");
 	}
 
 	ZNode *block = wrapNode(parser, parseBlock);
 	if (!block) {
-		printf("Error parsing for loop, expected an expression here!\n");
+		error(parser->state, peek(parser), "Expected block after for loop header");
 	}
 	node->forStmt.ident = ident;
 	node->forStmt.iterator = expr;
 	node->forStmt.block = block;
-
-	if (!node->forStmt.iterator || !node->forStmt.block) {
-		printf("For parsing failed %s\n", stoken(peek(parser)));
-	}
 
 	return node;
 }
@@ -770,9 +766,8 @@ static ZNode *parseWhile(ZParser *parser) {
 
 	ZNode *cond = wrapNode(parser, parseExpr);
 	if (!cond) {
-		printf("Error parsing expression\n");
+		error(parser->state, peek(parser), "Expected condition expression after 'while'");
 	}
-	printf("Parse while %s\n", stoken(peek(parser)));
 	ZNode *body = wrapNode(parser, parseBlock);
 
 	ZNode *node = makenode(NODE_WHILE);
@@ -808,7 +803,7 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseGenericsDecl(parser);
 		if (!generics) {
-			error(parser->state, peek(parser), "Error parsing generics");
+			error(parser->state, peek(parser), "Expected generic type parameters after function name");
 		}
 	}
 
@@ -824,7 +819,7 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 		ZToken *argName = consume(parser);
 	
 		if (!argName) {
-			printf("Error parsing argument function\n");
+			error(parser->state, peek(parser), "Expected parameter name after type");
 			return NULL;
 		}
 
@@ -844,15 +839,14 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	if (!check(parser, TOK_LBRACKET)) {
 		receiver = wrapNode(parser, parseField);
 		if (!receiver) {
-			error(parser->state, peek(parser), "It is not a valid recceiver type");
+			error(parser->state, peek(parser), "Expected receiver declaration or function body");
 		}
 	}
-
 
 	ZNode *body = wrapNode(parser, parseBlock);
 
 	if (!body) {
-		error(parser->state, peek(parser), "Error parsing block");
+		error(parser->state, peek(parser), "Expected function body '{...}' after declaration");
 	}
 
 	ensure(body);
@@ -886,7 +880,7 @@ static ZNode *parseVarInferred(ZParser *parser) {
 	ZNode *expr = wrapNode(parser, parseExpr);
 
 	if (!expr) {
-		error(parser->state, peek(parser), "Error parsing expression");
+		error(parser->state, peek(parser), "Expected expression after ':='");
 	}
 
 	return makenodevar(identNode, NULL, expr);
@@ -905,7 +899,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
 	if (match(parser, TOK_EQ)) {
 		expr = wrapNode(parser, parseExpr);
 		if (!expr) {
-			error(parser->state, peek(parser), "Error parsing the expression");
+			error(parser->state, peek(parser), "Expected expression after '='");
 			return NULL;
 		}
 	}
@@ -944,11 +938,18 @@ static ZNode *parseVarDecl(ZParser *parser) {
 }
 
 static ZNode *parseTupleLit(ZParser *parser) {
-	ensure(check(parser, TOK_LPAREN));
+	expect(parser, TOK_LPAREN);
 	ZNode *expr = NULL;
 	ZNode **fields = NULL;
-	while (( expr = parseExpr(parser) )) vecpush(fields, expr);
-	ensure(check(parser, TOK_RPAREN));
+	while (( expr = wrapNode(parser, parseExpr) )) {
+		if (check(parser, TOK_RPAREN)) break;
+		if (!match(parser, TOK_COMMA)) {
+			error(parser->state, peek(parser), "Expected comma");
+			return NULL;
+		}
+		vecpush(fields, expr);
+	}
+	expect(parser, TOK_RPAREN);
 
 	ZNode *node = makenode(NODE_TUPLE_LIT);
 	node->tuplelit.fields = fields;
@@ -966,6 +967,7 @@ static ZNode *parseArrayLit(ZParser *parser) {
 		if (check(parser, TOK_RSBRACKET)) break;
 		if (!match(parser, TOK_COMMA)) {
 			error(parser->state, peek(parser), "Expected ',', got %s", stoken(peek(parser)));
+			return NULL;
 		}
 	}
 
@@ -988,7 +990,7 @@ static ZNode *parseStructLit(ZParser *parser) {
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
 		if (!generics) {
-			printf("Error parsing generics\n");
+			error(parser->state, peek(parser), "Expected generic type arguments in '[...]'");
 			return NULL;
 		}
 	}
@@ -1106,7 +1108,7 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
 
 	if (match(parser, TOK_MACRO_IDENT)) {
 		if (!check(parser, TOK_IDENT)) {
-			printf("Unexpected token\n");
+			error(parser->state, peek(parser), "Expected identifier after '$'");
 			return NULL;
 		}
 		self->kind = Z_MACRO_IDENT;
@@ -1133,7 +1135,7 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
 			//TODO: handle properly sequences
 			ZMacroPattern *seq = parseMacroPattern(parser, macro);
 			if (!match(parser, TOK_RPAREN)) {
-				printf("Unterminated expression\n");
+				error(parser->state, peek(parser), "Expected ')' to close macro sequence");
 				return NULL;
 			}
 
@@ -1194,9 +1196,7 @@ static ZNode *parseMacro(ZParser *parser) {
 	expect(parser, TOK_MACRO);
 
 	if (!checkMask(parser, TOK_OVERRIDABLE)) {
-		printf("Unexpected token");
-		printToken(peek(parser));
-		printf("\n");
+		error(parser->state, peek(parser), "Expected overridable keyword after 'macro', got '%s'", stoken(peek(parser)));
 		return NULL;
 	}
 
@@ -1208,7 +1208,7 @@ static ZNode *parseMacro(ZParser *parser) {
 	ZMacroPattern *pattern = parseMacroPattern(parser, node);
 
 	if (!pattern || veclen(pattern->sequence) < 1) {
-		printf("Invalid macro pattern\n");
+		error(parser->state, peek(parser), "Macro pattern is empty or invalid");
 		return NULL;
 	}
 
@@ -1246,8 +1246,6 @@ static ZNode *skipMacro(ZParser *parser) {
 	while (toConsume --> 0) {
 		consume(parser);
 	}
-	printf("Tok: %s\n", stoken(peek(parser)));
-
 	return macro;
 }
 
@@ -1301,7 +1299,7 @@ ZNode *zparse(ZState *state, ZToken **tokens) {
 	ZNode *root = parseProgram(parser);
 
 	if (canPeek(parser)) {
-		error(state, peek(parser), "Compilation failed");
+		error(state, peek(parser), "Unexpected token '%s', expected a top-level declaration", stoken(peek(parser)));
 	}
 
 	return root;
