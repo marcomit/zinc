@@ -247,6 +247,7 @@ void printNode(ZNode *node, u8 depth) {
 		return;
 
 	case NODE_FUNC:
+		if (node->funcDef.pub) printf("pub ");
 		if (node->funcDef.receiver) {
 			printf("Receiver: ");
 			printType(node->funcDef.receiver->field.type);
@@ -254,7 +255,7 @@ void printNode(ZNode *node, u8 depth) {
 			printToken(node->funcDef.receiver->field.identifier);
 			printf(" ");
 		}
-		printf("Name: %s, Type: ", node->funcDef.ident->str);
+		printf("%s, Type: ", node->funcDef.ident->str);
 		printType(node->funcDef.ret);
 		printf("\n");
 		for (usize i = 0; i < veclen(node->funcDef.generics); i++) {
@@ -306,6 +307,7 @@ void printNode(ZNode *node, u8 depth) {
 		}
 		break;
 	case NODE_STRUCT:
+		if (node->structDef.pub) printf("pub ");
 		printf("%s[", node->structDef.ident->str);
 		for (usize i = 0; i < veclen(node->structDef.generics); i++) {
 				printToken(node->structDef.generics[i]);

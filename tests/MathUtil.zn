@@ -26,8 +26,12 @@
 // 	return sum
 // }
 
+pub struct Point {
+    f32 x
+    f32 y
+}
 
-void booleanExpr(bool a, bool b, bool c) {
+pub void booleanExpr(bool a, bool b, bool c) {
     return a && b || c && a
 }
 

@@ -249,6 +249,7 @@ struct ZNode {
 			ZNode *receiver;
 
 			ZToken **generics;
+			bool pub;
 		} funcDef;
 
 		struct {
@@ -266,6 +267,7 @@ struct ZNode {
 			ZToken *ident;
 			ZNode **fields;
 			ZToken **generics;
+			bool pub;
 		} structDef;
 
 		struct {
@@ -327,6 +329,7 @@ struct ZNode {
 			ZToken *start;          // First token of macro definition
 			usize consumed;         // Tokens consumed by pattern + body
 			ZToken **sourceTokens;  // Original token array where the macro was defined
+			bool pub;
 		} macro;
 
 		ZToken *gotoLabel;  // For NODE_GOTO and NODE_LABEL

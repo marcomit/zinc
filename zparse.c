@@ -384,39 +384,40 @@ static ZNode *parseUnary(ZParser *parser) {
 	return node;
 }
 
+#define arrlen(arr) (sizeof(arr) / sizeof((arr)[0]))
 static ZNode *parseFactor(ZParser *parser) {
 	ZTokenType valids[] = {TOK_STAR, TOK_DIV};
-	return parseGenericBinary(parser, parseUnary, parseUnary, valids, 2);
+	return parseGenericBinary(parser, parseUnary, parseUnary, valids, arrlen(valids));
 }
 
 static ZNode *parseTerm(ZParser *parser) {
 	ZTokenType valids[] = {TOK_PLUS, TOK_MINUS};
-	return parseGenericBinary(parser, parseFactor, parseFactor, valids, 2);
+	return parseGenericBinary(parser, parseFactor, parseFactor, valids, arrlen(valids));
 }
 
 static ZNode *parseComparison(ZParser *parser) {
 	ZTokenType valids[] = {TOK_LT, TOK_GT, TOK_LTE, TOK_GTE};
-	return parseGenericBinary(parser, parseTerm, parseTerm, valids, 4);
+	return parseGenericBinary(parser, parseTerm, parseTerm, valids, arrlen(valids));
 }
 
 static ZNode *parseEquality(ZParser *parser) {
 	ZTokenType valids[] = {TOK_EQEQ, TOK_NOTEQ};
-	return parseGenericBinary(parser, parseComparison, parseComparison, valids, 2);
+	return parseGenericBinary(parser, parseComparison, parseComparison, valids, arrlen(valids));
 }
 
 static ZNode *parseLogicalAnd(ZParser *parser) {
 	ZTokenType valids[] = {TOK_AND, TOK_SAND};
-	return parseGenericBinary(parser, parseEquality, parseEquality, valids, 2);
+	return parseGenericBinary(parser, parseEquality, parseEquality, valids, arrlen(valids));
 }
 
 static ZNode *parseLogicalOr(ZParser *parser) {
 	ZTokenType valids[] = {TOK_OR, TOK_SOR};
-	return parseGenericBinary(parser, parseLogicalAnd, parseLogicalAnd, valids, 2);
+	return parseGenericBinary(parser, parseLogicalAnd, parseLogicalAnd, valids, arrlen(valids));
 }
 
 static ZNode *parseAssignment(ZParser *parser) {
 	ZTokenType valids[] = {TOK_EQ};
-	return parseGenericBinary(parser, parseLogicalOr, parseAssignment, valids, 1);
+	return parseGenericBinary(parser, parseLogicalOr, parseAssignment, valids, arrlen(valids));
 }
 
 static ZNode *parseBinary(ZParser *parser) {
@@ -645,6 +646,7 @@ static ZNode *parseUnionDecl(ZParser *parser) {
 }
 
 static ZNode *parseStructDecl(ZParser *parser) {
+	bool public = match(parser, TOK_PUB);
 	ensure(match(parser, TOK_STRUCT));
 	ZToken *name = NULL;
 	ZToken **generics = NULL;
@@ -678,28 +680,27 @@ static ZNode *parseStructDecl(ZParser *parser) {
 	node->structDef.fields = fields;
 	node->structDef.generics = generics;
 	node->structDef.ident = name;
+	node->structDef.pub = public;
 	return node;
 }
 
 ZNode *parseExpr(ZParser *parser) {
-	usize len = sizeof(exprFunc) / sizeof(exprFunc[0]);
-
-	if (parser->currentMacro && match(parser, TOK_MACRO_EXPR)) {
-		if (!check(parser, TOK_IDENT)) {
-			error(parser->state, peek(parser), "Expected an identifier");
-			return NULL;
-		}
-		ZToken *var = consume(parser);
-		ZNode *placeholder = getMacroCapturedVar(parser->currentMacro, var);
-		if (!placeholder) {
-			error(parser->state, peek(parser), "%s is not a valid macro variable", var->str);
-			return NULL;
-		}
-		return placeholder;
+	if (!parser->currentMacro || !match(parser, TOK_MACRO_EXPR)) {
+		return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
 	}
 
-	return parseOrGrammar(parser, exprFunc, len);
-	// return parseBinary(parser);
+	if (!check(parser, TOK_IDENT)) {
+		error(parser->state, peek(parser), "Expected an identifier");
+		return NULL;
+	}
+
+	ZToken *var = consume(parser);
+	ZNode *placeholder = getMacroCapturedVar(parser->currentMacro, var);
+	if (!placeholder) {
+		error(parser->state, peek(parser), "%s is not a valid macro variable", var->str);
+		return NULL;
+	}
+	return placeholder;
 }
 
 static ZNode *parseReturn(ZParser *parser) {
@@ -793,6 +794,7 @@ static ZToken **parseGenericsDecl(ZParser *parser) {
 }
 
 static ZNode *parseFuncDecl(ZParser *parser) {
+	bool public = match(parser, TOK_PUB);
 	ZType *ret = wrapType(parser, parseType);
 
 	if (!ret || !canPeek(parser) || !check(parser, TOK_IDENT)) return NULL;
@@ -856,6 +858,7 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	node->funcDef.ident = name;
 	node->funcDef.args = args;
 	node->funcDef.body = body;
+	node->funcDef.pub = public;
 	node->funcDef.receiver = receiver;
 	node->funcDef.generics = generics;
 
@@ -1193,6 +1196,7 @@ static void skipBlock(ZParser *parser) {
 
 static ZNode *parseMacro(ZParser *parser) {
 	ZToken *start = peek(parser);
+	bool public = match(parser, TOK_PUB);
 	expect(parser, TOK_MACRO);
 
 	if (!checkMask(parser, TOK_OVERRIDABLE)) {
@@ -1203,6 +1207,7 @@ static ZNode *parseMacro(ZParser *parser) {
 	ZNode *node = makenode(NODE_MACRO);
 	node->macro.captured = NULL;
 	node->macro.start = start;
+	node->macro.pub = public;
 
 	usize saved = parser->source->current;
 	ZMacroPattern *pattern = parseMacroPattern(parser, node);
