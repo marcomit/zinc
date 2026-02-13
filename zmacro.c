@@ -314,11 +314,10 @@ static bool matchMacroPattern(ZParser *parser,
 	}
 }
 
-ZToken **copytokens(ZToken *source, usize len) {
+ZToken **copytokens(ZToken **source, usize start, usize end) {
 	ZToken **copy = NULL;
-	for (usize i = 0; i < len; i++) {
-		vecpush(copy, source);
-		source++;
+	for (usize i = start; i < end; i++) {
+		vecpush(copy, source[i]);
 	}
 	return copy;
 }
@@ -329,6 +328,7 @@ ZNode *expandMacro(ZParser *parser) {
 
 	for (usize i = 0; i < veclen(macros); i++) {
 		usize saved = parser->source->current;
+		ZTokenStream *savedStream = parser->source;
 
 		// Reset captured vars for fresh matching
 		for (usize j = 0; j < veclen(macros[i]->macro.captured); j++) {
@@ -339,6 +339,7 @@ ZNode *expandMacro(ZParser *parser) {
 
 		bool valid = matchMacroPattern(parser, macros[i], macros[i]->macro.pattern);
 		if (!valid) {
+			parser->source = savedStream;
 			parser->source->current = saved;
 			continue;
 		}
@@ -346,7 +347,7 @@ ZNode *expandMacro(ZParser *parser) {
 		ZNode *macro = macros[i];
 
 		ZToken **bodyTokens = NULL;
-		bodyTokens = copytokens(macro->macro.sourceTokens[macro->macro.startBody], macro->macro.consumed);
+		bodyTokens = copytokens(macro->macro.sourceTokens, macro->macro.startBody, macro->macro.endBody);
 
 		if (!bodyTokens) return NULL;
 

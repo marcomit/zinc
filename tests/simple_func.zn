@@ -1,0 +1,9 @@
+macro unless $cond $body -> {
+    if !($cond) {
+        $body
+    }
+}
+
+u0 main() {
+    unless x > 0 y
+}

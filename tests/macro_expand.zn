@@ -1,0 +1,17 @@
+macro unless $cond $body -> {
+    if !($cond) {
+        $body
+    }
+}
+
+macro repeat $body while $cond -> {
+    $body
+    while $cond {
+        $body
+    }
+}
+
+u0 main() {
+    i32 x = 10
+    unless x > 0 print("negative")
+}

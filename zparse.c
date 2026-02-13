@@ -10,12 +10,10 @@
 #include <stdbool.h>
 
 #define ensure(c) if (!(c)) return NULL
-#define expect(l, t) do {																												\
-	if (!match(l, t)) {																														\
-		error((l)->state, peek(l), "Expected %s, got %s", tokname(t), stoken(peek(parser)));			\
-		return NULL;																																\
-	}																																							\
-} while (0)
+#define expect(l, t) if (!match(l, t)) {																									\
+		error((l)->state, peek(l), "Expected %s, got %s", tokname(t), stoken(peek(parser)));	\
+		return NULL;																																					\
+	}
 
 typedef ZNode *(*ParseFunction)(ZParser *);
 
@@ -25,6 +23,7 @@ static ZNode *parse											(ZParser *);
 static ZNode *parseIf										(ZParser *);
 static ZNode *parseFor									(ZParser *);
 static ZNode *parseGoto									(ZParser *);
+static ZNode *skipMacro									(ZParser *);
 static ZNode *parseWhile								(ZParser *);
 static ZNode *parseBlock								(ZParser *);
 static ZNode *parseMatch								(ZParser *);
@@ -33,15 +32,21 @@ static ZNode *parseLabel								(ZParser *);
 static ZNode *parseReturn								(ZParser *);
 static ZNode *parseVarDef								(ZParser *);
 static ZNode *parseBinary								(ZParser *);
+static ZNode *parseImport								(ZParser *);
+static ZNode *parseTypedef							(ZParser *);
 static ZNode *parseVarDecl							(ZParser *);
 static ZNode *parseArrayLit							(ZParser *);
 static ZNode *parseTupleLit							(ZParser *);
+static ZNode *parseFuncDecl							(ZParser *);
+static ZNode *parseUnionDecl						(ZParser *);
 static ZNode *parseStructLit						(ZParser *);
+static ZNode *parseStructDecl						(ZParser *);
+static ZNode *parseForeignDecl					(ZParser *);
 static ZToken **parseGenericsDecl				(ZParser *);
 static ZMacroPattern *parseMacroPattern	(ZParser *, ZNode *);
 
 static ParseFunction stmtFunc[] = {
-	// parseBlock,
+	parseBlock,
 	parseIf,
 	parseFor,
 	parseGoto,
@@ -57,12 +62,24 @@ static ParseFunction stmtFunc[] = {
 };
 
 static ParseFunction exprFunc[] = {
-	parseBlock, // Block parsed as expression for now.
+	// parseBlock, // Block parsed as expression for now.
 	parseStructLit,
 	parseBinary,
 	parseArrayLit,
 	parseTupleLit,
 };
+
+static ParseFunction progFunc[] = {
+		parseImport,
+		parseForeignDecl,
+		parseTypedef,
+		parseFuncDecl,
+		parseStructDecl,
+		parseUnionDecl,
+		parseVarDef,
+		expandMacro,
+		skipMacro
+	};
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
 	ZParser *self = zalloc(ZParser);
@@ -1228,7 +1245,7 @@ static ZNode *parseMacro(ZParser *parser) {
 	node->macro.sourceTokens = parser->source->list;
 
 	// Arrow (->) is already consumed by macroPatternElement as the sentinel
-	expect(parser, TOK_LBRACKET);  // Consume opening {
+	expect(parser, TOK_LBRACKET);  // Consume opening '{'
 
 	node->macro.startBody = parser->source->current;  // First token after {
 	skipBlock(parser);
@@ -1241,11 +1258,13 @@ static ZNode *parseMacro(ZParser *parser) {
 	return node;
 }
 
-/* Macros captured the start token. */
+/* Macros captured the start token. Skip over the macro declaration in pass 2. */
 static ZNode *skipMacro(ZParser *parser) {
 	ZToken *curr = peek(parser);
 
-	expect(parser, TOK_MACRO);
+	match(parser, TOK_PUB);
+	if (!match(parser, TOK_MACRO)) return NULL;
+
 	ZNode *macro = NULL;
 
 	for (usize i = 0; i < veclen(parser->macros) && !macro; i++) {
@@ -1262,26 +1281,21 @@ static ZNode *skipMacro(ZParser *parser) {
 }
 
 static ZNode *parse(ZParser *parser) {
-	ParseFunction pf[] = {
-		parseImport,
-		parseForeignDecl,
-		parseTypedef,
-		parseFuncDecl,
-		parseStructDecl,
-		parseUnionDecl,
-		parseVarDef,
-		skipMacro
-	};
-	usize len = sizeof(pf) / sizeof(pf[0]);
-	return parseOrGrammar(parser, pf, len);
+	usize len = sizeof(progFunc) / sizeof(progFunc[0]);
+	return parseOrGrammar(parser, progFunc, len);
+}
+
+static bool checkPubMacro(ZParser *parser) {
+	if (!check(parser, TOK_PUB)) return false;
+	if (parser->source->current + 1 >= parser->source->end) return false;
+	return parser->source->list[parser->source->current + 1]->type == TOK_MACRO;
 }
 
 static void discoverMacros(ZParser *parser) {
 	usize saved = parser->source->current;
 	while (canPeek(parser)) {
-		if (check(parser, TOK_MACRO)) {
-			ZNode *macro = parseMacro(parser);
-			printNode(macro, 2);
+		if (check(parser, TOK_MACRO) || checkPubMacro(parser)) {
+			parseMacro(parser);
 		} else {
 			consume(parser);
 		}
