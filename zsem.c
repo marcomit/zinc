@@ -512,8 +512,8 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 static void analyze(ZSemantic *semantic, ZNode *root) {
 	(void)semantic;
 	(void)root;
-	// for (usize i = 0; i < veclen(root->program); i++) {
-	// 	ZNode *child = root->program[i];
+	for (usize i = 0; i < veclen(root->program); i++) {
+		ZNode *child = root->program[i];
 	// 	switch (child->type) {
 	// 	case NODE_VAR_DECL:
 	// 		analyzeFunc(semantic, child);
@@ -532,7 +532,7 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 	// 	default:
 	// 		break;
 	// 	}
-	// }
+	}
 }
 
 void zanalyze(ZState *state, ZNode *root) {

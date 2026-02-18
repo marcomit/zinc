@@ -327,6 +327,9 @@ ZNode *expandMacro(ZParser *parser) {
 	if (!macros || veclen(macros) == 0) return NULL;
 
 	for (usize i = 0; i < veclen(macros); i++) {
+		// Skip macros that are currently being expanded (avoid clobbering captured vars)
+		if (macros[i] == parser->currentMacro) continue;
+
 		usize saved = parser->source->current;
 		ZTokenStream *savedStream = parser->source;
 
@@ -343,7 +346,6 @@ ZNode *expandMacro(ZParser *parser) {
 			parser->source->current = saved;
 			continue;
 		}
-
 		ZNode *macro = macros[i];
 
 		ZToken **bodyTokens = NULL;

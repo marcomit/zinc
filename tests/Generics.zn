@@ -14,11 +14,9 @@ struct Node[T] {
     *Node[T] next
 }
 
-type Ptr[T] *T
+// type List[T] [T]
 
-type List[T] [T]
-
-type Result[T, E] Pair[T, E]
+// type Result[T, E] Pair[T, E]
 
 void swap[T](*T a, *T b) {
     T tmp = *a
@@ -39,7 +37,7 @@ Pair[K, V] makePair[K, V](K key, V value) {
     return p
 }
 
-void push[T](T item) Vec[T] self {
+pub void push[T](T item) Vec[T] self {
     if self.len >= self.cap {
         self.grow()
     }

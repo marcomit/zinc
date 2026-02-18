@@ -55,8 +55,8 @@ static ParseFunction stmtFunc[] = {
 	parseDefer,
 	parseLabel,
 	parseReturn,
-	parseVarDef,
 	expandMacro,
+	parseVarDef,
 	parseExpr,
 	parseVarDecl,
 };
@@ -76,8 +76,8 @@ static ParseFunction progFunc[] = {
 		parseFuncDecl,
 		parseStructDecl,
 		parseUnionDecl,
-		parseVarDef,
 		expandMacro,
+		parseVarDef,
 		skipMacro
 	};
 
@@ -759,9 +759,6 @@ static ZNode *parseFor(ZParser *parser) {
 	ensure(check(parser, TOK_IDENT));
 	ZToken *ident = consume(parser);
 
-	expect(parser, TOK_IN);
-	
-	ZNode *node = makenode(NODE_FOR);
 
 	ZNode *expr = wrapNode(parser, parseExpr);
 	if (!expr) {
@@ -772,6 +769,7 @@ static ZNode *parseFor(ZParser *parser) {
 	if (!block) {
 		error(parser->state, peek(parser), "Expected block after for loop header");
 	}
+	ZNode *node = makenode(NODE_FOR);
 	node->forStmt.ident = ident;
 	node->forStmt.iterator = expr;
 	node->forStmt.block = block;
@@ -1306,7 +1304,6 @@ static void discoverMacros(ZParser *parser) {
 static ZNode *parseProgram(ZParser *parser) {
 	ZNode *root = makenode(NODE_PROGRAM);
 	root->program = NULL;
-
 
 	while (canPeek(parser)) {
 		ZNode *child = parse(parser);

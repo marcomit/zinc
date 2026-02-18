@@ -4,6 +4,11 @@ macro unless $cond $body -> {
     }
 }
 
+
 u0 main() {
     unless x > 0 y
+
+    for u8 i = 0; i < 10; i = i + 1 {
+        print(i)
+    }
 }
