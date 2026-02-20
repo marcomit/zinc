@@ -13,5 +13,5 @@ macro repeat $body while $cond -> {
 
 u0 main() {
     i32 x = 10
-    unless x > 0 print("negative")
+    unless y > 0 print("negative")
 }

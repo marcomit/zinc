@@ -1,0 +1,1548 @@
+// ============================================================================
+// Semantic Analyzer Stress Test for Zinc Language
+//
+// This file exercises the semantic analysis phase:
+//   - Symbol resolution  (variables, functions, named types, structs)
+//   - Type checking and promotion across binary expressions
+//   - Scope nesting and variable visibility rules
+//   - Return-type validation across multiple return paths
+//   - Struct member access and chained member access
+//   - Pointer / dereference / address-of type resolution
+//   - For / if-else analysis with correct scope management
+//   - Defer statement analysis
+//   - Foreign-function declarations in scope
+//   - Type aliases resolved via the symbol table
+//   - Named-struct return types fully resolved for downstream use
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Foreign declarations — available throughout every scope
+// ----------------------------------------------------------------------------
+foreign *void malloc(u64)
+foreign void  free(*void)
+foreign *void realloc(*void, u64)
+foreign *void memcpy(*void, *void, u64)
+foreign *void memset(*void, i32, u64)
+foreign u64   strlen(*char)
+foreign i32   strcmp(*char, *char)
+foreign i32   printf(*char)
+
+// ----------------------------------------------------------------------------
+// Type aliases — exercised by resolveTypeRef when fields / params use them
+// ----------------------------------------------------------------------------
+type Byte   u8
+type Short  i16
+type Int    i32
+type Long   i64
+type UInt   u32
+type ULong  u64
+type Float  f32
+type Double f64
+type Index  u64
+type Size   u64
+
+// ----------------------------------------------------------------------------
+// Primitive-field structs — the building blocks
+// ----------------------------------------------------------------------------
+struct Vec2 {
+    f64 x
+    f64 y
+}
+
+struct Vec3 {
+    f64 x
+    f64 y
+    f64 z
+}
+
+struct Vec4 {
+    f64 x
+    f64 y
+    f64 z
+    f64 w
+}
+
+struct Color {
+    u8 r
+    u8 g
+    u8 b
+    u8 a
+}
+
+struct Range {
+    i32 start
+    i32 end
+    i32 step
+}
+
+struct Complex {
+    f64 real
+    f64 imag
+}
+
+struct Fraction {
+    i64 numerator
+    i64 denominator
+}
+
+struct Interval {
+    f64 lo
+    f64 hi
+}
+
+struct Statistics {
+    f64 mean
+    f64 variance
+    f64 minVal
+    f64 maxVal
+    i32 count
+}
+
+// ----------------------------------------------------------------------------
+// Nested-struct types — fields that reference other named structs
+// ----------------------------------------------------------------------------
+struct Line {
+    Vec2 start
+    Vec2 end
+}
+
+struct Triangle {
+    Vec2 a
+    Vec2 b
+    Vec2 c
+}
+
+struct AABB2 {
+    Vec2 min
+    Vec2 max
+}
+
+struct Ray3 {
+    Vec3 origin
+    Vec3 direction
+}
+
+struct AABB3 {
+    Vec3 min
+    Vec3 max
+}
+
+struct ColoredVertex {
+    Vec3  pos
+    Vec2  uv
+    Color color
+}
+
+struct Transform {
+    Vec3 position
+    Vec3 scale
+}
+
+// ----------------------------------------------------------------------------
+// Memory / buffer structs
+// ----------------------------------------------------------------------------
+struct Buffer {
+    *void data
+    u64   length
+    u64   capacity
+}
+
+struct StringView {
+    *char ptr
+    u64   length
+}
+
+// ============================================================================
+// Utility — integer math
+// ============================================================================
+
+i32 iabs(i32 n) {
+    if n < 0 {
+        return 0 - n
+    }
+    return n
+}
+
+i32 imax(i32 a, i32 b) {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+i32 imin(i32 a, i32 b) {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+i32 iclamp(i32 val, i32 lo, i32 hi) {
+    if val < lo {
+        return lo
+    }
+    if val > hi {
+        return hi
+    }
+    return val
+}
+
+i64 iabs64(i64 n) {
+    if n < 0 {
+        return 0 - n
+    }
+    return n
+}
+
+i64 imax64(i64 a, i64 b) {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+i64 imin64(i64 a, i64 b) {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+i32 add(i32 a, i32 b) {
+    return a + b
+}
+
+i32 sub(i32 a, i32 b) {
+    return a - b
+}
+
+i32 mul(i32 a, i32 b) {
+    return a * b
+}
+
+i32 divInt(i32 a, i32 b) {
+    return a / b
+}
+
+// ============================================================================
+// Utility — float math
+// ============================================================================
+
+f64 fabs(f64 n) {
+    if n < 0.0 {
+        return 0.0 - n
+    }
+    return n
+}
+
+f64 fmax(f64 a, f64 b) {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+f64 fmin(f64 a, f64 b) {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+f64 fclamp(f64 val, f64 lo, f64 hi) {
+    if val < lo {
+        return lo
+    }
+    if val > hi {
+        return hi
+    }
+    return val
+}
+
+f64 lerp(f64 a, f64 b, f64 t) {
+    return a + (b - a) * t
+}
+
+f64 addF(f64 a, f64 b) {
+    return a + b
+}
+
+f64 subF(f64 a, f64 b) {
+    return a - b
+}
+
+f64 mulF(f64 a, f64 b) {
+    return a * b
+}
+
+f64 divF(f64 a, f64 b) {
+    return a / b
+}
+
+// ============================================================================
+// Recursive functions — exercises scope + return-type checking at every level
+// ============================================================================
+
+i32 fibonacci(i32 n) {
+    if n <= 1 {
+        return n
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+i32 factorial(i32 n) {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+
+i32 power(i32 base, i32 exp) {
+    if exp == 0 {
+        return 1
+    }
+    return base * power(base, exp - 1)
+}
+
+i64 gcd(i64 a, i64 b) {
+    if b == 0 {
+        return a
+    }
+    return gcd(b, a - a / b * b)
+}
+
+i64 lcm(i64 a, i64 b) {
+    g := gcd(iabs64(a), iabs64(b))
+    return a / g * b
+}
+
+i32 sumDigits(i32 n) {
+    n = iabs(n)
+    if n < 10 {
+        return n
+    }
+    return n - n / 10 * 10 + sumDigits(n / 10)
+}
+
+i32 digitCount(i32 n) {
+    n = iabs(n)
+    if n == 0 {
+        return 1
+    }
+    count := 0
+    for n > 0 {
+        n = n / 10
+        count = count + 1
+    }
+    return count
+}
+
+// ============================================================================
+// For-loop control flow
+// ============================================================================
+
+i32 sumRange(i32 from, i32 to) {
+    sum := 0
+    i   := from
+    for i <= to {
+        sum = sum + i
+        i   = i + 1
+    }
+    return sum
+}
+
+i32 productRange(i32 from, i32 to) {
+    prod := 1
+    i    := from
+    for i <= to {
+        prod = prod * i
+        i    = i + 1
+    }
+    return prod
+}
+
+i32 collatz(i32 n) {
+    steps := 0
+    for n != 1 {
+        half   := n / 2
+        triple := n * 3 + 1
+        if n - half * 2 == 0 {
+            n = half
+        } else {
+            n = triple
+        }
+        steps = steps + 1
+    }
+    return steps
+}
+
+i32 binarySearch(i32 target, i32 lo, i32 hi) {
+    for lo <= hi {
+        mid := lo + (hi - lo) / 2
+        if mid == target {
+            return mid
+        } else if mid < target {
+            lo = mid + 1
+        } else {
+            hi = mid - 1
+        }
+    }
+    return 0 - 1
+}
+
+// ============================================================================
+// If/else chain stress — multiple return paths, all matching declared type
+// ============================================================================
+
+i32 sign(i32 n) {
+    if n > 0 {
+        return 1
+    } else if n < 0 {
+        return 0 - 1
+    } else {
+        return 0
+    }
+}
+
+i32 classify(i32 n) {
+    if n < 0 {
+        if n < 0 - 1000 {
+            return 0 - 3
+        } else if n < 0 - 100 {
+            return 0 - 2
+        } else {
+            return 0 - 1
+        }
+    } else if n == 0 {
+        return 0
+    } else {
+        if n > 1000 {
+            return 3
+        } else if n > 100 {
+            return 2
+        } else {
+            return 1
+        }
+    }
+}
+
+i32 fizzbuzz(i32 n) {
+    isFizz := n - n / 3 * 3 == 0
+    isBuzz := n - n / 5 * 5 == 0
+    if isFizz and isBuzz {
+        return 0
+    } else if isFizz {
+        return 1
+    } else if isBuzz {
+        return 2
+    } else {
+        return 3
+    }
+}
+
+f64 multiPathFloat(f64 a, f64 b, f64 c) {
+    if a > b {
+        if a > c {
+            return a
+        }
+        return c
+    }
+    if b > c {
+        return b
+    }
+    return c
+}
+
+// ============================================================================
+// Vec2 operations — member access on struct parameters
+// ============================================================================
+
+f64 vec2Dot(Vec2 a, Vec2 b) {
+    return a.x * b.x + a.y * b.y
+}
+
+f64 vec2LenSq(Vec2 v) {
+    return v.x * v.x + v.y * v.y
+}
+
+f64 vec2Cross(Vec2 a, Vec2 b) {
+    return a.x * b.y - a.y * b.x
+}
+
+Vec2 vec2Add(Vec2 a, Vec2 b) {
+    Vec2 r
+    r.x = a.x + b.x
+    r.y = a.y + b.y
+    return r
+}
+
+Vec2 vec2Sub(Vec2 a, Vec2 b) {
+    Vec2 r
+    r.x = a.x - b.x
+    r.y = a.y - b.y
+    return r
+}
+
+Vec2 vec2Scale(Vec2 v, f64 s) {
+    Vec2 r
+    r.x = v.x * s
+    r.y = v.y * s
+    return r
+}
+
+Vec2 vec2Negate(Vec2 v) {
+    Vec2 r
+    r.x = 0.0 - v.x
+    r.y = 0.0 - v.y
+    return r
+}
+
+Vec2 vec2Lerp(Vec2 a, Vec2 b, f64 t) {
+    Vec2 r
+    r.x = lerp(a.x, b.x, t)
+    r.y = lerp(a.y, b.y, t)
+    return r
+}
+
+Vec2 vec2Perp(Vec2 v) {
+    Vec2 r
+    r.x = 0.0 - v.y
+    r.y = v.x
+    return r
+}
+
+// ============================================================================
+// Vec3 operations
+// ============================================================================
+
+f64 vec3Dot(Vec3 a, Vec3 b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z
+}
+
+f64 vec3LenSq(Vec3 v) {
+    return v.x * v.x + v.y * v.y + v.z * v.z
+}
+
+Vec3 vec3Add(Vec3 a, Vec3 b) {
+    Vec3 r
+    r.x = a.x + b.x
+    r.y = a.y + b.y
+    r.z = a.z + b.z
+    return r
+}
+
+Vec3 vec3Sub(Vec3 a, Vec3 b) {
+    Vec3 r
+    r.x = a.x - b.x
+    r.y = a.y - b.y
+    r.z = a.z - b.z
+    return r
+}
+
+Vec3 vec3Scale(Vec3 v, f64 s) {
+    Vec3 r
+    r.x = v.x * s
+    r.y = v.y * s
+    r.z = v.z * s
+    return r
+}
+
+Vec3 vec3Cross(Vec3 a, Vec3 b) {
+    Vec3 r
+    r.x = a.y * b.z - a.z * b.y
+    r.y = a.z * b.x - a.x * b.z
+    r.z = a.x * b.y - a.y * b.x
+    return r
+}
+
+Vec3 vec3Lerp(Vec3 a, Vec3 b, f64 t) {
+    Vec3 r
+    r.x = lerp(a.x, b.x, t)
+    r.y = lerp(a.y, b.y, t)
+    r.z = lerp(a.z, b.z, t)
+    return r
+}
+
+Vec3 vec3Negate(Vec3 v) {
+    Vec3 r
+    r.x = 0.0 - v.x
+    r.y = 0.0 - v.y
+    r.z = 0.0 - v.z
+    return r
+}
+
+// ============================================================================
+// Chained member access — nested struct field resolution
+// ============================================================================
+
+f64 lineLength2(Line l) {
+    dx := l.end.x - l.start.x
+    dy := l.end.y - l.start.y
+    return dx * dx + dy * dy
+}
+
+Vec2 lineMidpoint(Line l) {
+    Vec2 mid
+    mid.x = (l.start.x + l.end.x) * 0.5
+    mid.y = (l.start.y + l.end.y) * 0.5
+    return mid
+}
+
+Vec2 lineDir(Line l) {
+    Vec2 d
+    d.x = l.end.x - l.start.x
+    d.y = l.end.y - l.start.y
+    return d
+}
+
+f64 triangleArea(Triangle t) {
+    ax := t.b.x - t.a.x
+    ay := t.b.y - t.a.y
+    bx := t.c.x - t.a.x
+    by := t.c.y - t.a.y
+    return (ax * by - ay * bx) * 0.5
+}
+
+f64 aabb2Area(AABB2 box) {
+    w := box.max.x - box.min.x
+    h := box.max.y - box.min.y
+    return w * h
+}
+
+Vec2 aabb2Center(AABB2 box) {
+    Vec2 c
+    c.x = (box.min.x + box.max.x) * 0.5
+    c.y = (box.min.y + box.max.y) * 0.5
+    return c
+}
+
+f64 aabb3Volume(AABB3 box) {
+    dx := box.max.x - box.min.x
+    dy := box.max.y - box.min.y
+    dz := box.max.z - box.min.z
+    return dx * dy * dz
+}
+
+f64 aabb3SurfaceArea(AABB3 box) {
+    dx := box.max.x - box.min.x
+    dy := box.max.y - box.min.y
+    dz := box.max.z - box.min.z
+    return 2.0 * (dx * dy + dy * dz + dz * dx)
+}
+
+Vec3 aabb3Center(AABB3 box) {
+    Vec3 c
+    c.x = (box.min.x + box.max.x) * 0.5
+    c.y = (box.min.y + box.max.y) * 0.5
+    c.z = (box.min.z + box.max.z) * 0.5
+    return c
+}
+
+AABB3 aabb3Union(AABB3 a, AABB3 b) {
+    AABB3 r
+    r.min.x = fmin(a.min.x, b.min.x)
+    r.min.y = fmin(a.min.y, b.min.y)
+    r.min.z = fmin(a.min.z, b.min.z)
+    r.max.x = fmax(a.max.x, b.max.x)
+    r.max.y = fmax(a.max.y, b.max.y)
+    r.max.z = fmax(a.max.z, b.max.z)
+    return r
+}
+
+AABB3 aabb3Expand(AABB3 box, Vec3 pt) {
+    AABB3 r
+    r.min.x = fmin(box.min.x, pt.x)
+    r.min.y = fmin(box.min.y, pt.y)
+    r.min.z = fmin(box.min.z, pt.z)
+    r.max.x = fmax(box.max.x, pt.x)
+    r.max.y = fmax(box.max.y, pt.y)
+    r.max.z = fmax(box.max.z, pt.z)
+    return r
+}
+
+// ============================================================================
+// Complex number operations
+// ============================================================================
+
+Complex complexAdd(Complex a, Complex b) {
+    Complex r
+    r.real = a.real + b.real
+    r.imag = a.imag + b.imag
+    return r
+}
+
+Complex complexSub(Complex a, Complex b) {
+    Complex r
+    r.real = a.real - b.real
+    r.imag = a.imag - b.imag
+    return r
+}
+
+Complex complexMul(Complex a, Complex b) {
+    Complex r
+    r.real = a.real * b.real - a.imag * b.imag
+    r.imag = a.real * b.imag + a.imag * b.real
+    return r
+}
+
+Complex complexConj(Complex c) {
+    Complex r
+    r.real = c.real
+    r.imag = 0.0 - c.imag
+    return r
+}
+
+f64 complexAbsSq(Complex c) {
+    return c.real * c.real + c.imag * c.imag
+}
+
+Complex complexScale(Complex c, f64 s) {
+    Complex r
+    r.real = c.real * s
+    r.imag = c.imag * s
+    return r
+}
+
+Complex complexNeg(Complex c) {
+    Complex r
+    r.real = 0.0 - c.real
+    r.imag = 0.0 - c.imag
+    return r
+}
+
+// ============================================================================
+// Fraction operations
+// ============================================================================
+
+Fraction fracAdd(Fraction a, Fraction b) {
+    Fraction r
+    r.numerator   = a.numerator * b.denominator + b.numerator * a.denominator
+    r.denominator = a.denominator * b.denominator
+    return r
+}
+
+Fraction fracSub(Fraction a, Fraction b) {
+    Fraction r
+    r.numerator   = a.numerator * b.denominator - b.numerator * a.denominator
+    r.denominator = a.denominator * b.denominator
+    return r
+}
+
+Fraction fracMul(Fraction a, Fraction b) {
+    Fraction r
+    r.numerator   = a.numerator * b.numerator
+    r.denominator = a.denominator * b.denominator
+    return r
+}
+
+Fraction fracSimplify(Fraction f) {
+    g := gcd(iabs64(f.numerator), iabs64(f.denominator))
+    Fraction r
+    r.numerator   = f.numerator   / g
+    r.denominator = f.denominator / g
+    return r
+}
+
+f64 fracToFloat(Fraction f) {
+    return f.numerator / f.denominator
+}
+
+// ============================================================================
+// Pointer operations — & and * type resolution
+// ============================================================================
+
+u0 swap(*i32 a, *i32 b) {
+    tmp := *a
+    *a  = *b
+    *b  = tmp
+}
+
+u0 increment(*i32 p) {
+    *p = *p + 1
+}
+
+u0 addTo(*i32 target, i32 val) {
+    *target = *target + val
+}
+
+i32 readPtr(*i32 p) {
+    return *p
+}
+
+u0 writePtr(*i32 p, i32 val) {
+    *p = val
+}
+
+*i32 selectPtr(*i32 a, *i32 b, i32 cond) {
+    if cond > 0 {
+        return a
+    }
+    return b
+}
+
+u0 swapF(*f64 a, *f64 b) {
+    tmp := *a
+    *a  = *b
+    *b  = tmp
+}
+
+// Pointer-to-struct member access
+f64 getVec2X(*Vec2 v) {
+    return v.x
+}
+
+f64 getVec2Y(*Vec2 v) {
+    return v.y
+}
+
+u0 setVec2(*Vec2 v, f64 x, f64 y) {
+    v.x = x
+    v.y = y
+}
+
+u0 translateVec2(*Vec2 v, f64 dx, f64 dy) {
+    v.x = v.x + dx
+    v.y = v.y + dy
+}
+
+u0 scaleVec2(*Vec2 v, f64 s) {
+    v.x = v.x * s
+    v.y = v.y * s
+}
+
+f64 getVec3Z(*Vec3 v) {
+    return v.z
+}
+
+u0 setVec3(*Vec3 v, f64 x, f64 y, f64 z) {
+    v.x = x
+    v.y = y
+    v.z = z
+}
+
+// ============================================================================
+// Array pointer operations
+// ============================================================================
+
+i32 arraySum(*i32 arr, u64 len) {
+    sum := 0
+    i   := 0
+    for i < len {
+        sum = sum + arr[i]
+        i   = i + 1
+    }
+    return sum
+}
+
+i32 arrayMin(*i32 arr, u64 len) {
+    min := arr[0]
+    i   := 1
+    for i < len {
+        v := arr[i]
+        if v < min {
+            min = v
+        }
+        i = i + 1
+    }
+    return min
+}
+
+i32 arrayMax(*i32 arr, u64 len) {
+    max := arr[0]
+    i   := 1
+    for i < len {
+        v := arr[i]
+        if v > max {
+            max = v
+        }
+        i = i + 1
+    }
+    return max
+}
+
+u0 arrayFill(*i32 arr, u64 len, i32 val) {
+    i := 0
+    for i < len {
+        arr[i] = val
+        i = i + 1
+    }
+}
+
+u0 arrayCopy(*i32 dst, *i32 src, u64 len) {
+    i := 0
+    for i < len {
+        dst[i] = src[i]
+        i = i + 1
+    }
+}
+
+u0 arrayReverse(*i32 arr, u64 len) {
+    left  := 0
+    right := len - 1
+    for left < right {
+        tmp       := arr[left]
+        arr[left]  = arr[right]
+        arr[right] = tmp
+        left  = left  + 1
+        right = right - 1
+    }
+}
+
+f64 arrayMean(*i32 arr, u64 len) {
+    sum := arraySum(arr, len)
+    return sum / len
+}
+
+// ============================================================================
+// Buffer management — defer + foreign calls
+// ============================================================================
+
+u0 bufferInit(*Buffer buf, u64 cap) {
+    buf.data     = malloc(cap)
+    buf.length   = 0
+    buf.capacity = cap
+}
+
+u0 bufferFree(*Buffer buf) {
+    free(buf.data)
+    buf.length   = 0
+    buf.capacity = 0
+}
+
+u0 bufferGrow(*Buffer buf) {
+    newCap  := buf.capacity * 2
+    newData := realloc(buf.data, newCap)
+    buf.data     = newData
+    buf.capacity = newCap
+}
+
+u0 bufferEnsure(*Buffer buf, u64 needed) {
+    for buf.capacity < needed {
+        bufferGrow(buf)
+    }
+}
+
+// ============================================================================
+// Scope nesting tests — variables must not leak between sibling scopes
+// ============================================================================
+
+i32 scopeBasic(i32 x) {
+    result := x * 2
+    if x > 0 {
+        inner := x + 10
+        result = result + inner
+    }
+    return result
+}
+
+i32 scopeSibling(i32 x, i32 y) {
+    total := 0
+    if x > y {
+        delta := x - y
+        total = total + delta
+        if delta > 10 {
+            bonus := delta * 2
+            total = total + bonus
+        }
+    } else {
+        delta := y - x
+        total = total - delta
+    }
+    return total
+}
+
+i32 scopeForNested(i32 limit) {
+    acc := 0
+    i   := 0
+    for i < limit {
+        if i - i / 2 * 2 == 0 {
+            sq  := i * i
+            acc = acc + sq
+        } else {
+            tri := i * 3
+            acc = acc + tri
+        }
+        i = i + 1
+    }
+    return acc
+}
+
+i32 scopeDeepNest(i32 a, i32 b, i32 c) {
+    if a > 0 {
+        if b > 0 {
+            if c > 0 {
+                if a > b {
+                    if b > c {
+                        return a + b + c
+                    } else {
+                        return a + b - c
+                    }
+                } else {
+                    return a - b + c
+                }
+            } else {
+                return a + b
+            }
+        } else {
+            return a
+        }
+    } else {
+        return 0
+    }
+}
+
+// Parameters must stay visible across all nested if/for scopes
+i32 scopeParamVisibility(i32 a, i32 b, i32 c) {
+    first := a + b
+    if first > c {
+        second := first - c
+        for second > a {
+            second = second - a
+        }
+        return second + b
+    }
+    return a + b + c
+}
+
+// ============================================================================
+// Defer patterns
+// ============================================================================
+
+u0 deferSingle() {
+    buf := malloc(1024)
+    defer free(buf)
+    use := buf
+}
+
+u0 deferMultiple() {
+    a := malloc(128)
+    defer free(a)
+    b := malloc(256)
+    defer free(b)
+    c := malloc(512)
+    defer free(c)
+    tmp := a
+}
+
+u0 deferInIf(i32 n) {
+    buf := malloc(256)
+    defer free(buf)
+    if n > 0 {
+        extra := malloc(128)
+        defer free(extra)
+        use := extra
+    }
+}
+
+u0 deferInFor(i32 n) {
+    i := 0
+    for i < n {
+        chunk := malloc(64)
+        defer free(chunk)
+        i = i + 1
+    }
+}
+
+u0 deferWithStruct() {
+    Buffer buf
+    bufferInit(&buf, 256)
+    defer bufferFree(&buf)
+    bufferEnsure(&buf, 512)
+    bufferGrow(&buf)
+}
+
+// ============================================================================
+// Complex expression stress
+// ============================================================================
+
+i32 exprArith(i32 a, i32 b, i32 c) {
+    return a * b + b * c - c * a
+}
+
+i32 exprChain(i32 a, i32 b, i32 c) {
+    x := a + b
+    y := b + c
+    z := c + a
+    return x * y - y * z + z * x
+}
+
+f64 exprFloat(f64 a, f64 b, f64 c) {
+    d := a * a - 4.0 * b * c
+    return d + a * b * c
+}
+
+i32 exprNestedCalls(i32 a, i32 b, i32 c) {
+    return add(mul(a, b), sub(mul(b, c), mul(a, c)))
+}
+
+f64 exprNestedCallsF(f64 a, f64 b, f64 c) {
+    return addF(mulF(a, b), subF(mulF(b, c), mulF(a, c)))
+}
+
+i32 exprChainedArith(i32 x) {
+    return mul(add(x, 1), sub(x, 1))
+}
+
+f64 exprBoolToArith(i32 x, i32 y) {
+    cmp := x > y
+    neg := x < y
+    eq  := x == y
+    return x + y
+}
+
+// ============================================================================
+// Type-alias resolved fields — exercises resolveTypeRef for alias types
+// ============================================================================
+
+struct Metrics {
+    Int   hits
+    Int   misses
+    ULong total
+    Float ratio
+}
+
+i32 metricsHitRate(Metrics m) {
+    if m.total == 0 {
+        return 0
+    }
+    return m.hits / m.total
+}
+
+Metrics metricsAdd(Metrics a, Metrics b) {
+    Metrics r
+    r.hits   = a.hits   + b.hits
+    r.misses = a.misses + b.misses
+    r.total  = a.total  + b.total
+    r.ratio  = a.ratio  + b.ratio
+    return r
+}
+
+// ============================================================================
+// Transform operations — 3-level nested member access
+// ============================================================================
+
+f64 transformDistSq(Transform a, Transform b) {
+    dx := a.position.x - b.position.x
+    dy := a.position.y - b.position.y
+    dz := a.position.z - b.position.z
+    return dx * dx + dy * dy + dz * dz
+}
+
+Vec3 transformApply(Transform t, Vec3 point) {
+    Vec3 r
+    r.x = point.x * t.scale.x + t.position.x
+    r.y = point.y * t.scale.y + t.position.y
+    r.z = point.z * t.scale.z + t.position.z
+    return r
+}
+
+// ============================================================================
+// Statistics helpers
+// ============================================================================
+
+Statistics statsInit(f64 first) {
+    Statistics s
+    s.mean    = first
+    s.variance = 0.0
+    s.minVal  = first
+    s.maxVal  = first
+    s.count   = 1
+    return s
+}
+
+Statistics statsUpdate(Statistics s, f64 val) {
+    s.count = s.count + 1
+    s.mean  = s.mean + val
+    if val < s.minVal {
+        s.minVal = val
+    }
+    if val > s.maxVal {
+        s.maxVal = val
+    }
+    return s
+}
+
+f64 statsMean(Statistics s) {
+    return s.mean / s.count
+}
+
+f64 statsRange(Statistics s) {
+    return s.maxVal - s.minVal
+}
+
+// ============================================================================
+// ColoredVertex operations — deeply nested struct access
+// ============================================================================
+
+f64 vertexBrightness(ColoredVertex v) {
+    r := v.color.r
+    g := v.color.g
+    b := v.color.b
+    return r + g + b
+}
+
+Vec2 vertexUV(ColoredVertex v) {
+    Vec2 uv
+    uv.x = v.uv.x
+    uv.y = v.uv.y
+    return uv
+}
+
+Vec3 vertexPos(ColoredVertex v) {
+    Vec3 p
+    p.x = v.pos.x
+    p.y = v.pos.y
+    p.z = v.pos.z
+    return p
+}
+
+// ============================================================================
+// Ray3 operations
+// ============================================================================
+
+Vec3 rayAt(Ray3 r, f64 t) {
+    Vec3 pt
+    pt.x = r.origin.x + r.direction.x * t
+    pt.y = r.origin.y + r.direction.y * t
+    pt.z = r.origin.z + r.direction.z * t
+    return pt
+}
+
+f64 rayDotDir(Ray3 r, Vec3 v) {
+    return vec3Dot(r.direction, v)
+}
+
+// ============================================================================
+// Main — integration test that exercises every declared function and struct
+// ============================================================================
+
+u0 main() {
+
+    // --- Basic integer arithmetic ---
+    a := add(10, 20)
+    b := sub(a, 5)
+    c := mul(b, 3)
+    d := divInt(c, 4)
+    e := imax(a, d)
+    f := imin(b, c)
+    g := iclamp(d, 0, 100)
+
+    // --- Integer recursion ---
+    fib := fibonacci(10)
+    fac := factorial(7)
+    pw  := power(2, 8)
+    gc  := gcd(48, 18)
+    lc  := lcm(12, 18)
+    sd  := sumDigits(12345)
+    dc  := digitCount(99999)
+
+    // --- For-loop functions ---
+    sr  := sumRange(1, 100)
+    pr  := productRange(1, 10)
+    col := collatz(27)
+    bs  := binarySearch(7, 1, 15)
+
+    // --- Classify / sign ---
+    s1  := sign(a)
+    s2  := sign(0 - b)
+    s3  := sign(0)
+    cl  := classify(d)
+    fb  := fizzbuzz(15)
+
+    // --- Float math ---
+    fa  := addF(1.5, 2.5)
+    fm  := mulF(fa, 3.0)
+    fab := fabs(subF(fm, 10.0))
+    fl  := lerp(0.0, 100.0, 0.5)
+    fcl := fclamp(fl, 0.0, 80.0)
+
+    // --- Vec2 operations ---
+    Vec2 v1
+    v1.x = 3.0
+    v1.y = 4.0
+
+    Vec2 v2
+    v2.x = 1.0
+    v2.y = 0.0
+
+    dot2  := vec2Dot(v1, v2)
+    lenSq := vec2LenSq(v1)
+    crss  := vec2Cross(v1, v2)
+    v3    := vec2Add(v1, v2)
+    v4    := vec2Sub(v1, v2)
+    v5    := vec2Scale(v1, 2.0)
+    v6    := vec2Lerp(v1, v2, 0.5)
+    v7    := vec2Perp(v1)
+    v8    := vec2Negate(v2)
+
+    // Member access on return value of vec2Add
+    sumX  := v3.x
+    sumY  := v3.y
+
+    // --- Vec3 operations ---
+    Vec3 u1
+    u1.x = 1.0
+    u1.y = 0.0
+    u1.z = 0.0
+
+    Vec3 u2
+    u2.x = 0.0
+    u2.y = 1.0
+    u2.z = 0.0
+
+    dot3  := vec3Dot(u1, u2)
+    ls3   := vec3LenSq(u1)
+    u3    := vec3Add(u1, u2)
+    u4    := vec3Cross(u1, u2)
+    u5    := vec3Scale(u1, 5.0)
+    u6    := vec3Lerp(u1, u2, 0.25)
+    u7    := vec3Negate(u2)
+
+    // Member access on cross product result
+    crossZ := u4.z
+
+    // --- Chained member access — Line ---
+    Line ln
+    ln.start.x = 0.0
+    ln.start.y = 0.0
+    ln.end.x   = 3.0
+    ln.end.y   = 4.0
+
+    llen  := lineLength2(ln)
+    lmid  := lineMidpoint(ln)
+    ldir  := lineDir(ln)
+
+    lmidX := lmid.x
+    ldirY := ldir.y
+
+    // --- Triangle ---
+    Triangle tri
+    tri.a.x = 0.0
+    tri.a.y = 0.0
+    tri.b.x = 4.0
+    tri.b.y = 0.0
+    tri.c.x = 0.0
+    tri.c.y = 3.0
+
+    tarea := triangleArea(tri)
+
+    // --- AABB2 ---
+    AABB2 box2
+    box2.min.x = 0.0
+    box2.min.y = 0.0
+    box2.max.x = 5.0
+    box2.max.y = 3.0
+
+    b2area   := aabb2Area(box2)
+    b2center := aabb2Center(box2)
+    b2cx     := b2center.x
+
+    // --- AABB3 ---
+    AABB3 box3a
+    box3a.min.x = 0.0
+    box3a.min.y = 0.0
+    box3a.min.z = 0.0
+    box3a.max.x = 2.0
+    box3a.max.y = 2.0
+    box3a.max.z = 2.0
+
+    AABB3 box3b
+    box3b.min.x = 1.0
+    box3b.min.y = 1.0
+    box3b.min.z = 1.0
+    box3b.max.x = 3.0
+    box3b.max.y = 3.0
+    box3b.max.z = 3.0
+
+    b3vol   := aabb3Volume(box3a)
+    b3surf  := aabb3SurfaceArea(box3a)
+    b3ctr   := aabb3Center(box3a)
+    b3union := aabb3Union(box3a, box3b)
+    b3exp   := aabb3Expand(box3a, u3)
+
+    b3cx := b3ctr.x
+    b3uy := b3union.max.y
+
+    // --- Complex numbers ---
+    Complex z1
+    z1.real = 1.0
+    z1.imag = 2.0
+
+    Complex z2c
+    z2c.real = 3.0
+    z2c.imag = 4.0
+
+    zsum   := complexAdd(z1, z2c)
+    zdiff  := complexSub(z1, z2c)
+    zprod  := complexMul(z1, z2c)
+    zconj  := complexConj(z1)
+    zscsld := complexScale(z1, 2.0)
+    zneg   := complexNeg(z2c)
+    zabs   := complexAbsSq(zsum)
+
+    zsumR  := zsum.real
+    zprodI := zprod.imag
+
+    // --- Fractions ---
+    Fraction fr1
+    fr1.numerator   = 1
+    fr1.denominator = 2
+
+    Fraction fr2
+    fr2.numerator   = 1
+    fr2.denominator = 3
+
+    frsum  := fracAdd(fr1, fr2)
+    frdiff := fracSub(fr1, fr2)
+    frprod := fracMul(fr1, fr2)
+    frsimp := fracSimplify(frsum)
+    frflt  := fracToFloat(frsimp)
+
+    frN := frsimp.numerator
+    frD := frsimp.denominator
+
+    // --- Pointer operations ---
+    i32 x = 10
+    i32 y = 20
+
+    swap(&x, &y)
+    increment(&x)
+    addTo(&y, 5)
+    xval := readPtr(&x)
+    writePtr(&y, 100)
+    sp   := selectPtr(&x, &y, 1)
+
+    f64 fx = 1.5
+    f64 fy = 2.5
+    swapF(&fx, &fy)
+
+    // --- Pointer-to-struct member access ---
+    Vec2 pv
+    pv.x = 0.0
+    pv.y = 0.0
+
+    setVec2(&pv, 5.0, 3.0)
+    translateVec2(&pv, 1.0, 2.0)
+    scaleVec2(&pv, 2.0)
+    pvx := getVec2X(&pv)
+    pvy := getVec2Y(&pv)
+
+    Vec3 pu
+    pu.x = 0.0
+    pu.y = 0.0
+    pu.z = 0.0
+    setVec3(&pu, 1.0, 2.0, 3.0)
+    puz := getVec3Z(&pu)
+
+    // --- Buffer with defer ---
+    Buffer buf
+    bufferInit(&buf, 256)
+    defer bufferFree(&buf)
+    bufferEnsure(&buf, 512)
+
+    // --- Scope tests ---
+    sc1 := scopeBasic(10)
+    sc2 := scopeSibling(5, 15)
+    sc3 := scopeForNested(20)
+    sc4 := scopeDeepNest(3, 2, 1)
+    sc5 := scopeParamVisibility(3, 7, 5)
+
+    // --- Defer patterns ---
+    deferSingle()
+    deferMultiple()
+    deferInIf(5)
+    deferInFor(3)
+    deferWithStruct()
+
+    // --- Complex expressions ---
+    e1  := exprArith(2, 3, 4)
+    e2  := exprChain(1, 2, 3)
+    ef  := exprFloat(1.0, 2.0, 3.0)
+    enc := exprNestedCalls(2, 3, 4)
+    enf := exprNestedCallsF(1.0, 2.0, 3.0)
+    eca := exprChainedArith(5)
+
+    // --- Metrics (type aliases as field types) ---
+    Metrics m
+    m.hits   = 90
+    m.misses = 10
+    m.total  = 100
+    m.ratio  = 0.9
+
+    hr   := metricsHitRate(m)
+
+    Metrics m2
+    m2.hits   = 50
+    m2.misses = 50
+    m2.total  = 100
+    m2.ratio  = 0.5
+
+    madd := metricsAdd(m, m2)
+    mth  := madd.hits
+
+    // --- Transform ---
+    Transform ta
+    ta.position.x = 1.0
+    ta.position.y = 2.0
+    ta.position.z = 3.0
+    ta.scale.x    = 2.0
+    ta.scale.y    = 2.0
+    ta.scale.z    = 2.0
+
+    Transform tb
+    tb.position.x = 4.0
+    tb.position.y = 5.0
+    tb.position.z = 6.0
+    tb.scale.x    = 1.0
+    tb.scale.y    = 1.0
+    tb.scale.z    = 1.0
+
+    tdist := transformDistSq(ta, tb)
+    tpt   := transformApply(ta, u1)
+    tptX  := tpt.x
+
+    // --- Statistics ---
+    st := statsInit(1.0)
+    st = statsUpdate(st, 2.0)
+    st = statsUpdate(st, 3.0)
+    st = statsUpdate(st, 4.0)
+    sm := statsMean(st)
+    sra := statsRange(st)
+
+    // --- ColoredVertex ---
+    ColoredVertex cv
+    cv.pos.x   = 1.0
+    cv.pos.y   = 2.0
+    cv.pos.z   = 3.0
+    cv.uv.x    = 0.5
+    cv.uv.y    = 0.5
+    cv.color.r = 255
+    cv.color.g = 128
+    cv.color.b = 64
+    cv.color.a = 255
+
+    br   := vertexBrightness(cv)
+    vuv  := vertexUV(cv)
+    vpos := vertexPos(cv)
+
+    vuvX  := vuv.x
+    vposZ := vpos.z
+
+    // --- Ray3 ---
+    Ray3 ray
+    ray.origin.x    = 0.0
+    ray.origin.y    = 0.0
+    ray.origin.z    = 0.0
+    ray.direction.x = 0.0
+    ray.direction.y = 0.0
+    ray.direction.z = 1.0
+
+    rpt  := rayAt(ray, 5.0)
+    rdd  := rayDotDir(ray, u2)
+
+    rptZ := rpt.z
+
+    // --- Final combined expression ---
+    final := add(sc1, add(sc2, add(sc3, add(sc4, sc5))))
+    totalF := addF(b3vol, addF(tarea, addF(b2area, zabs)))
+}

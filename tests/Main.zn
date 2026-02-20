@@ -20,15 +20,36 @@ struct Node[T] {
     *Node[T] prev
 }
 
-void Main() {
-    Map[*char, u8] test = 10
+i32 iabs(i32 n) { return n }
+
+i32 digitCount(i32 n) {
+    n = iabs(n)
+    if n == 0 {
+        return 1
+    }
+    count := 0
+    // for n > 0 {
+    //     n = n / 10
+    //     count = count + 1
+    // }
+    return count
 }
 
-// *void Main() {
-//     // mystr = "prova"
-//
-//     list := mystr.Split()
-//
-//    defer  list.free()
-// }
- 
+struct Vec2 {
+    f32 x
+    f32 y
+}
+
+u0 print(f32 val) { }
+
+u0 Main() {
+    u8 test = 10
+
+    Vec2 v = Vec2{x: 10, y: 10}
+
+    for text < 10 {
+
+    }
+
+    print(v.x + v.y)
+}
