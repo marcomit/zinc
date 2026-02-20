@@ -356,9 +356,10 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 			result = left;
 		} else {
 			result = typesCompatible(semantic->state, left, right);
-			if (!result)
+			if (!result) {
 				error(semantic->state, curr->binary.op,
 				      "Incompatible types in binary expression");
+			}
 		}
 		break;
 	}
@@ -470,7 +471,13 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 	ZType *arrType   = resolveType(semantic, curr->subscript.arr);
 	ZType *indexType = resolveType(semantic, curr->subscript.index);
 
-	if (!arrType || arrType->kind != Z_TYPE_ARRAY) {
+	printf("Array: %d ", arrType->kind);
+	printType(arrType->array.base);
+	printf("\n");
+
+	if (!arrType ||
+			(arrType->kind != Z_TYPE_ARRAY &&
+			arrType->kind != Z_TYPE_POINTER)) {
 		error(semantic->state, curr->tok,
 		      "Expected an array type for subscript");
 		return NULL;
@@ -482,6 +489,7 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 		      "Array index must be an integer");
 		return NULL;
 	}
+
 
 	return arrType->array.base;
 }

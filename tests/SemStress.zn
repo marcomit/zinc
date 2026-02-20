@@ -40,6 +40,7 @@ type Float  f32
 type Double f64
 type Index  u64
 type Size   u64
+type void   u0
 
 // ----------------------------------------------------------------------------
 // Primitive-field structs — the building blocks

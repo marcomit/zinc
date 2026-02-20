@@ -37,7 +37,7 @@ DEF(TOK_IN, 		 	"in",				TOK_FLOWS_MASK | TOK_OVERRIDABLE | 0x0C)
 DEF(TOK_MATCH, 	 	"match",		TOK_FLOWS_MASK | TOK_OVERRIDABLE | 0x0D)
 DEF(TOK_MACRO, 	 	"macro",		TOK_FLOWS_MASK | 0x0E)
 DEF(TOK_SNOT, 	 	"not",			TOK_FLOWS_MASK | 0x0F)
-DEF(TOK_SOR, 	 		"or",				TOK_FLOWS_MASK | 0x12)
+DEF(TOK_SOR, 	 		"or",				TOK_FLOWS_MASK | 0x10)
 DEF(TOK_SAND, 	 	"and",			TOK_FLOWS_MASK | 0x11)
 DEF(TOK_NONE, 	 	"none",			TOK_FLOWS_MASK | 0x12)
 #endif

@@ -1,6 +1,6 @@
 // Test: Semantic Analysis
 use "tests/Data.zn"
-// use "tests/MathUtil.zn"
+use "tests/MathUtil.zn"
 
 // foreign void bind()
 
@@ -20,36 +20,21 @@ struct Node[T] {
     *Node[T] prev
 }
 
-i32 iabs(i32 n) { return n }
-
-i32 digitCount(i32 n) {
-    n = iabs(n)
-    if n == 0 {
-        return 1
+i32 arraySum(*i32 arr, u64 len) {
+    sum := 0
+    i   := 0
+    for i < len {
+        sum = sum + arr[i]
+        i   = i + 1
     }
-    count := 0
-    // for n > 0 {
-    //     n = n / 10
-    //     count = count + 1
-    // }
-    return count
+    return sum
 }
 
-struct Vec2 {
-    f32 x
-    f32 y
-}
-
-u0 print(f32 val) { }
+struct Vec2 { f32 x f32 y}
 
 u0 Main() {
     u8 test = 10
 
-    Vec2 v = Vec2{x: 10, y: 10}
+    v := Vec2{x: 10, y: 10}
 
-    for text < 10 {
-
-    }
-
-    print(v.x + v.y)
 }
