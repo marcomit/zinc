@@ -20,7 +20,7 @@
 
 int main(int argc, char **argv) {
 	if (argc < 2) {
-		printf("Usage: %s, <filename>", *argv);
+		printf("Usage: %s <filename>", *argv);
 		return 1;
 	}
     allocator.open();
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 	ZNode *root = zparse(state, tokens);
 
 	printNode(root, 0);
-	// zanalyze(state, root);
+	zanalyze(state, root);
 	// zcompile(state, root, state->output);
 
 

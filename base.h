@@ -13,6 +13,8 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
+#define let __auto_type
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;

@@ -778,7 +778,7 @@ static ZNode *parseFor(ZParser *parser) {
 }
 
 static ZNode *parseWhile(ZParser *parser) {
-	expect(parser, TOK_WHILE);
+	expect(parser, TOK_FOR);
 
 	ZNode *cond = wrapNode(parser, parseExpr);
 	if (!cond) {
