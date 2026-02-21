@@ -105,8 +105,7 @@ void printType(ZType *type) {
 
 	switch(type->kind) {
 	case Z_TYPE_POINTER:
-		// printf("*");
-		printf("pointer of ");
+		printf("*");
 		printType(type->base);
 		break;
 	case Z_TYPE_PRIMITIVE:
@@ -131,10 +130,9 @@ void printType(ZType *type) {
 		printf("}");
 		break;
 	case Z_TYPE_ARRAY:
-		// printf("[");
-		printf("array of ");
+		printf("[");
 		printType(type->array.base);
-		// printf("]");
+		printf("; %zu]", type->array.size);
 		break;
 	case Z_TYPE_TUPLE:
 		printf("(");
@@ -295,9 +293,13 @@ void printNode(ZNode *node, u8 depth) {
 		printNode(node->whileStmt.branch, depth);
 		break;
 	case NODE_FOR:
-		printToken(node->forStmt.ident);
 		printf("\n");
-		printNode(node->forStmt.iterator, depth);
+		printNode(node->forStmt.var, depth);
+		printf("\n");
+		printNode(node->forStmt.cond, depth);
+		printf("\n");
+		printNode(node->forStmt.incr, depth);
+		printf("\n");
 		printNode(node->forStmt.block, depth);
 		break;
 	case NODE_PROGRAM:

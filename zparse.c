@@ -15,6 +15,11 @@
 		return NULL;																																					\
 	}
 
+#define invalid(...) {																																	\
+		error(parser->state, peek(parser), __VA_ARGS__);																		\
+		return NULL;																																					\
+}
+
 typedef ZNode *(*ParseFunction)(ZParser *);
 
 ZType *parseType												(ZParser *);
@@ -104,12 +109,6 @@ ZType *maketype(ZTypeKind kind) {
 	self->kind = kind;
 	return self;
 }
-
-// ZMacro *makemacro(ZMacroType kind) {
-// 	ZMacro *self = zalloc(ZMacro);
-// 	self->kind = kind;
-// 	return self;
-// }
 
 static ZNode *makenodevar(ZNode *ident, ZType *type, ZNode *expr) {
 	ZNode *node = makenode(NODE_VAR_DECL);
@@ -384,7 +383,12 @@ static ZNode *parseUnary(ZParser *parser) {
 	ZNode *node = wrapNode(parser, parsePostfixExpr);
 
 	if (node) return node;
-	ZTokenType valids[] = {TOK_PLUS, TOK_MINUS, TOK_NOT, TOK_SNOT, TOK_STAR, TOK_REF};
+
+	ZTokenType valids[] = {
+		TOK_PLUS, TOK_MINUS, TOK_NOT,
+		TOK_SNOT, TOK_STAR, TOK_REF
+	};
+
 	usize len = sizeof(valids) / sizeof(valids[0]);
 
 	if (!isValidToken(parser, valids, len)) {
@@ -481,11 +485,18 @@ static ZType *parseTypeArray(ZParser *parser) {
 	expect(parser, TOK_LSBRACKET);
 	ZType *type = wrapType(parser, parseType);
 	ensure(type);
+	usize size = 0;
+	
+	if (match(parser, TOK_SEMICOLON)) {
+		if (!check(parser, TOK_INT_LIT)) invalid("Expected the array size");
+		size = consume(parser)->integer;
+	}
+
 	expect(parser, TOK_RSBRACKET);
 
 	ZType *arr = maketype(Z_TYPE_ARRAY);
 	arr->array.base = type;
-	arr->array.size = 0;
+	arr->array.size = size;
 	return arr;
 }
 
@@ -567,7 +578,10 @@ ZType *parseType(ZParser *parser) {
 
 static ZNode *parseDefer(ZParser *parser) {
 	expect(parser, TOK_DEFER);
-	ZNode *expr = wrapNode(parser, parseExpr);
+	ZNode *expr = parseExpr(parser);
+
+	if (!expr) invalid("Expected an expression after 'defer' keyword")
+
 	ZNode *node = makenode(NODE_DEFER);
 	node->deferStmt.expr = expr;
 	return node;
@@ -619,11 +633,12 @@ static ZNode *parseBlock(ZParser *parser) {
 	} while (stmt);
 
 	if (!check(parser, TOK_RBRACKET)) {
-		error(parser->state, peek(parser), "Expected '}' to close block, got '%s'", stoken(peek(parser)));
+		error(parser->state, peek(parser), "A statement cannot be parsed");
+		while (canPeek(parser) && !match(parser, TOK_RBRACKET));
+		if (!canPeek(parser)) invalid("Expected a '}' to close the block")
 	}
 
 	expect(parser, TOK_RBRACKET);
-
 
 	return block;
 }
@@ -756,24 +771,31 @@ static ZNode *parseIf(ZParser *parser) {
 static ZNode *parseFor(ZParser *parser) {
 	expect(parser, TOK_FOR);
 
-	ensure(check(parser, TOK_IDENT));
-	ZToken *ident = consume(parser);
+	ZNode *var = parseVarDef(parser);
 
+	if (!var) invalid("Expected a variable declaration")
 
-	ZNode *expr = wrapNode(parser, parseExpr);
-	if (!expr) {
-		error(parser->state, peek(parser), "Expected iterable expression after 'in'");
-	}
+	expect(parser, TOK_SEMICOLON);
 
-	ZNode *block = wrapNode(parser, parseBlock);
-	if (!block) {
-		error(parser->state, peek(parser), "Expected block after for loop header");
-	}
+	ZNode *cond = parseExpr(parser);
+
+	if (!cond) invalid("Expected an expression")
+
+	expect(parser, TOK_SEMICOLON);
+
+	ZNode *incr = parseExpr(parser);
+
+	if (!incr) invalid("Expected an expression")
+
+	ZNode *block = parseBlock(parser);
+
+	if (!block) invalid("Expected a block")
+
 	ZNode *node = makenode(NODE_FOR);
-	node->forStmt.ident = ident;
-	node->forStmt.iterator = expr;
+	node->forStmt.var = var;
+	node->forStmt.cond = cond;
+	node->forStmt.incr = incr;
 	node->forStmt.block = block;
-
 	return node;
 }
 

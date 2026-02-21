@@ -4,8 +4,23 @@ macro unless $cond $body -> {
     }
 }
 
+macro do $body while $cond -> {
+    $body
+    for $cond {
+        $body
+    }
+}
+
+u0 print(u8 i) {
+    if i {
+        print(i - 1)
+    }
+}
 
 u0 main() {
+    x := 0
+    y := 0
+
     unless x > 0 y
 
     for u8 i = 0; i < 10; i = i + 1 {

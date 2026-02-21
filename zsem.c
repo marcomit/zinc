@@ -39,9 +39,10 @@ static ZSymbol *makesymbol(ZSymType kind) {
 }
 
 static ZSymTable *makesymtable(void) {
-	ZSymTable *self  = zalloc(ZSymTable);
-	self->global     = makescope(NULL);
-	self->current    = self->global;
+	ZSymTable *self  	= zalloc(ZSymTable);
+	self->global     	= makescope(NULL);
+	self->current    	= self->global;
+	self->funcs  	= NULL;
 	return self;
 }
 
@@ -52,6 +53,7 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
 	self->loopDepth       = 0;
 	self->state           = state;
 	self->table           = makesymtable();
+	
 	return self;
 }
 
@@ -61,7 +63,29 @@ static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
 	vecpush(scope->symbols, symbol);
 }
 
+static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
+	let receiver = node->funcDef.receiver;
+	let funcs = semantic->table->funcs;
+	for (usize i = 0; i < veclen(funcs); i++) {
+		if (typesEqual(funcs[i]->receiver, receiver->field.type)) {
+			vecpush(funcs[i]->funcDef, receiver);
+			return;
+		}
+	}
+
+	ZFuncTable *func = zalloc(ZFuncTable);
+	func->receiver = receiver->field.type;
+	func->funcDef = NULL;
+	vecpush(func->funcDef, node);
+	vecpush(funcs, func);
+}
+
 static void putFunc(ZSemantic *semantic, ZNode *node) {
+	if (node->funcDef.receiver) {
+		putReceiverFunc(semantic, node);
+		return;
+	}
+
 	ZSymbol *symbol   = makesymbol(Z_SYM_FUNC);
 	symbol->name      = node->funcDef.ident->str;
 	symbol->type      = node->funcDef.ret;
@@ -414,6 +438,24 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 			if (calleeType && calleeType->kind == Z_TYPE_FUNCTION)
 				result = resolveTypeRef(semantic, calleeType->func.ret);
 		}
+
+		// usize argLen = veclen(curr->call.args);
+		// usize resolvedArgLen = veclen(result->func.args);
+
+		// if (argLen != resolvedArgLen) {
+		// 	error(semantic->state, curr->tok,
+		// 				"Expected %zu arguments, got %zu", resolvedArgLen, argLen);
+		// }
+
+		// for (usize i = 0; i < veclen(curr->call.args); i++) {
+		// 	ZNode *node = curr->call.args[i];
+		// 	ZType *resolved = resolveType(semantic, node);
+		//
+		// 	if (!typesCompatible(semantic->state, resolved, result->func.args[i])) {
+		// 		error(semantic->state, node->tok, "Mismatch types");
+		// 	}
+		// }
+
 		break;
 	}
 
@@ -433,12 +475,53 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 			result = resolveType(semantic, curr->varDecl.rvalue);
 		break;
 
+	case NODE_STRUCT_LIT: {
+		for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
+			let field = curr->structlit.fields[i]->varDecl;
+			ZType *type = resolveType(semantic, field.rvalue);
+			if (!typesCompatible(semantic->state, field.type, type)) {
+				error(semantic->state, field.ident->identTok, "Mismatch types");
+			}
+		}
+		let resolved = resolve(semantic, curr->structlit.ident);
+
+		if (!resolved) {
+			error(semantic->state, curr->structlit.ident, "Unknown struct literal");
+		} else {
+			if (resolved->kind != Z_SYM_STRUCT) {
+				error(semantic->state, curr->structlit.ident, "This is not a struct literal");
+			}
+			result = resolved->type;
+		}
+
+		break;
+	}
+
 	default:
 		break;
 	}
 
 	curr->resolved = result;
 	return result;
+}
+
+static ZType *resolveReceiverCall(ZSemantic *semantic, ZType *caller, ZToken *name) {
+	let table = semantic->table->funcs;
+	ZNode **funcs = NULL;
+	for (usize i = 0; i < veclen(table) && !funcs; i++) {
+		if (typesEqual(table[i]->receiver, caller)) {
+			funcs = table[i]->funcDef;
+		}
+	}
+	if (!funcs) return NULL;
+
+	for (usize i = 0; i < veclen(funcs); i++) {
+		if (tokeneq(funcs[i]->funcDef.ident, name)) {
+			return funcs[i]->resolved;
+		}
+	}
+
+	return NULL;
 }
 
 static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
@@ -461,6 +544,8 @@ static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
 		if (tokeneq(fields[i]->field.identifier, curr->memberAccess.field))
 			return resolveTypeRef(semantic, fields[i]->field.type);
 	}
+
+	// resolveReceiverCall(semantic, );
 
 	error(semantic->state, curr->memberAccess.field,
 	      "Member '%s' not found in struct", curr->memberAccess.field->str);
@@ -497,6 +582,13 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 /* ================== Statement analysis ================== */
 
 static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
+	ZToken *var = curr->varDecl.ident->identTok;
+	if (resolve(semantic, var)) {
+		error(semantic->state, var,
+					"Redefinition of variable %s",
+					stoken(var));
+	}
+
 	ZType *rvalueType   = NULL;
 	ZType *declaredType = NULL;
 
@@ -524,7 +616,7 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
 	curr->resolved = declaredType;
 
 	ZSymbol *symbol   = makesymbol(Z_SYM_VAR);
-	symbol->name      = curr->varDecl.ident->identTok->str;
+	symbol->name      = var->str;
 	symbol->type      = declaredType;
 	symbol->node      = curr;
 	symbol->isPublic  = isGlobal;
@@ -532,7 +624,14 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
 }
 
 static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
-	resolveType(semantic, curr->ifStmt.cond);
+	ZType *cond = resolveType(semantic, curr->ifStmt.cond);
+	
+	if (!cond) {
+		error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
+	} else if (!(cond->kind & Z_TYPE_COMPARABLE_MASK)) {
+		error(semantic->state, curr->ifStmt.cond->tok, "Condition must be a comparable value");
+	}
+
 	analyzeBlock(semantic, curr->ifStmt.body, true);
 
 	if (curr->ifStmt.elseBranch) {
@@ -552,20 +651,14 @@ static void analyzeWhile(ZSemantic *semantic, ZNode *curr) {
 }
 
 static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
-	ZType *iterType = resolveType(semantic, curr->forStmt.iterator);
+	let f = curr->forStmt;
+	analyzeVar(semantic, f.var, false);
 
-	beginScope(semantic);
+	ZType *cond = resolveType(semantic, f.cond);
 
-	ZType *elemType = NULL;
-	if (iterType && iterType->kind == Z_TYPE_ARRAY)
-		elemType = iterType->array.base;
+	if (!cond || cond->kind != Z_TYPE_PRIMITIVE) {
 
-	ZSymbol *sym = makesymbol(Z_SYM_VAR);
-	sym->name    = curr->forStmt.ident->str;
-	sym->type    = elemType;
-	sym->node    = curr;
-	sym->isPublic = false;
-	putSymbol(semantic, sym);
+	}
 
 	semantic->loopDepth++;
 	analyzeBlock(semantic, curr->forStmt.block, false);
@@ -634,6 +727,36 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 		}
 		break;
 	}
+	case NODE_CALL: {
+		ZType *resolved = resolveType(semantic, curr->call.callee);
+		if (!resolved) {
+			error(semantic->state, curr->tok, "Unknown function");
+			break;
+		}
+
+		if (resolved->kind != Z_TYPE_FUNCTION) {
+			error(semantic->state, curr->tok, "Must be a function type");
+			break;
+		}
+
+		usize expected = veclen(resolved->func.args);
+		usize got = veclen(curr->call.args);
+
+		if (expected != got) {
+			error(semantic->state, curr->tok, "Expected %zu arguments, got %zu", expected, got);
+			break;
+		}
+
+		for (usize i = 0; i < got; i++) {
+				ZType *argType = resolveType(semantic, curr->call.args[i]);
+			if (!typesCompatible(semantic->state,
+														argType, resolved->func.args[i])) {
+				error(semantic->state, curr->tok, "Unexpected type");
+			}
+		}
+
+		break;
+	}
 	}
 }
 
@@ -656,6 +779,9 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 		switch (child->type) {
 
 		case NODE_FUNC:
+			// if (child->funcDef.receiver) {
+			//
+			// }
 			putFunc(semantic, child);
 			break;
 

@@ -1,40 +1,31 @@
-// Test: Semantic Analysis
-use "tests/Data.zn"
-use "tests/MathUtil.zn"
+foreign f32 cos(f32)
+foreign f32 sin(f32)
+foreign f32 tan(f32)
+foreign f32 atan(f32)
 
-// foreign void bind()
-
-// type Arru8 [u8]
-// type ArrPou8eru8 [*u8]
-
-// type Vector Vec2
-
-// void Main() {
-// 	i32 prova = 0
-
-// }
-
-struct Node[T] {
-    T data
-    *Node[T] next
-    *Node[T] prev
+pub struct Vec2 {
+    f32 x
+    f32 y
 }
 
-i32 arraySum(*i32 arr, u64 len) {
-    sum := 0
-    i   := 0
-    for i < len {
-        sum = sum + arr[i]
-        i   = i + 1
+pub Vec2 origin() {
+    return Vec2 { x: 0, y: 0 }
+}
+
+pub f32 angle() Vec2 v {
+    return atan(v.y / v.x)
+}
+
+u8 main() {
+    u8 x = 1
+    // x := 1
+
+    o := origin()
+
+    o.angle()
+
+    if o.x {
+        return 1
     }
-    return sum
-}
-
-struct Vec2 { f32 x f32 y}
-
-u0 Main() {
-    u8 test = 10
-
-    v := Vec2{x: 10, y: 10}
-
+    return 0
 }

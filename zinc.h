@@ -111,11 +111,16 @@ typedef struct ZNode ZNode;
 typedef struct ZType ZType;
 
 typedef enum ZTypeKind {
+	Z_TYPE_COMPARABLE_MASK = 1 << 8,
+
 	Z_TYPE_PRIMITIVE,
+	Z_TYPE_POINTER,
+
+	Z_TYPE_COMPOSED_MASK = 1 << 9,
+
 	Z_TYPE_STRUCT,
 	Z_TYPE_ARRAY,
 	Z_TYPE_FUNCTION,
-	Z_TYPE_POINTER,
 	Z_TYPE_TUPLE,
 	Z_TYPE_GENERIC		// Instantiated generic type, e.g. List[int]
 } ZTypeKind;
@@ -210,8 +215,9 @@ struct ZNode {
 		} whileStmt;
 
 		struct {
-			ZToken *ident;
-			ZNode *iterator;
+			ZNode *var;
+			ZNode *cond;
+			ZNode *incr;
 			ZNode *block;
 		} forStmt;
 
@@ -388,9 +394,20 @@ typedef struct ZScope {
 	u32 					depth;
 } ZScope;
 
+/* Contains a type with a list of functions that accept
+ * that type as a receiver. */
+typedef struct ZFuncTable {
+	/* The receiver type, could be every possible type (e.g. u8 or *MyStruct) */
+	ZType *receiver;
+
+	/* A list of functions that have [receiver] as a receiver type */
+	ZNode **funcDef;
+} ZFuncTable;
+
 typedef struct ZSymTable {
 	ZScope *global;
 	ZScope *current;
+	ZFuncTable **funcs;
 } ZSymTable;
 
 typedef struct ZSemantic {
