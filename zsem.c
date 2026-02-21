@@ -108,7 +108,7 @@ static void putStruct(ZSemantic *semantic, ZNode *node) {
 	type->strct.generics = NULL;
 	symbol->type       = type;
 
-	vecpush(semantic->table->current->symbols, symbol);
+	putSymbol(semantic, symbol);
 }
 
 static void beginScope(ZSemantic *semantic) {
@@ -805,9 +805,10 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 
 		case NODE_MODULE:
 			if (child->module.root) {
-				beginScope(semantic);
+				ZScope *prev = semantic->table->current;
+				semantic->table->current = makescope(semantic->table->global);
 				discoverGlobalScope(semantic, child->module.root);
-				endScope(semantic);
+				semantic->table->current = prev;
 			}
 			break;
 

@@ -7,7 +7,7 @@ struct Header {
 }
 
 
-void InitPackage(*Package p) {
-    p.head.id = 100
-    p.priority = 1  // Testing member access depth
+u0 InitPackage(*Header h) {
+    h.id = 0
+    h.tag = 10
 }

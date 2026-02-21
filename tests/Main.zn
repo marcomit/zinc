@@ -1,3 +1,5 @@
+use "tests/Data"
+
 foreign f32 cos(f32)
 foreign f32 sin(f32)
 foreign f32 tan(f32)
@@ -12,7 +14,7 @@ pub Vec2 origin(u8 test) {
     return Vec2 { x: 0, y: 0 }
 }
 
-pub f32 angle() *Vec2 v {
+pub f32 angle() Vec2 v {
     return atan(v.y / v.x)
 }
 
