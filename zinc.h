@@ -92,7 +92,6 @@ typedef enum {
 	NODE_SUBSCRIPT,
 	NODE_MEMBER,
 	NODE_MODULE,
-	NODE_PROGRAM,
 	NODE_UNION,
 	NODE_FIELD,
 	NODE_TYPEDEF,
@@ -252,6 +251,8 @@ struct ZNode {
 			ZNode **args;
 
 			ZNode *body;
+
+			/* NODE_FIELD */
 			ZNode *receiver;
 
 			ZToken **generics;
@@ -319,8 +320,8 @@ struct ZNode {
 		} typeDef;
 
 		struct {
-			ZToken *name;
-			ZNode *root;
+			char 	*name;
+			ZNode **root;
 		} module;
 
 		/* For macros don't parse the body.
@@ -340,8 +341,6 @@ struct ZNode {
 
 		ZToken *gotoLabel;  // For NODE_GOTO and NODE_LABEL
 
-		ZNode **program;
-
 		ZToken *literalTok;
 		ZToken *identTok;
 	};
@@ -355,19 +354,19 @@ typedef struct ZTokenStream {
 } ZTokenStream;
 
 typedef struct ZParser {
-	ZState *state;
-	ZTokenStream *source;
+	ZState 				*state;
+	ZTokenStream 	*source;
 	/*
 	 * Used to track temporary errors and find a valid path.
 	 */
-	usize *errstack;
-	ZNode **macros;
+	usize 				*errstack;
+	ZNode 				**macros;
 
 	/* Setted when it parses the body of a macro. */
-	ZNode *currentMacro;
+	ZNode 				*currentMacro;
 
 	/* Stack of macros currently being expanded (for cycle detection) */
-	ZNode **expandingMacros;
+	ZNode 				**expandingMacros;
 
 	u8 depth;
 } ZParser;
@@ -381,11 +380,11 @@ typedef enum {
 } ZSymType;
 
 typedef struct ZSymbol {
-	ZSymType 	kind;
-	char 			*name;
-	ZType 		*type;
-	ZNode 		*node;
-	bool 			isPublic;
+	ZSymType 			kind;
+	char 					*name;
+	ZType 				*type;
+	ZNode 				*node;
+	bool 					isPublic;
 } ZSymbol;
 
 typedef struct ZScope {
@@ -398,24 +397,31 @@ typedef struct ZScope {
  * that type as a receiver. */
 typedef struct ZFuncTable {
 	/* The receiver type, could be every possible type (e.g. u8 or *MyStruct) */
-	ZType *receiver;
+	ZType 				*receiver;
 
 	/* A list of functions that have [receiver] as a receiver type */
-	ZNode **funcDef;
+	ZNode 				**funcDef;
 } ZFuncTable;
 
 typedef struct ZSymTable {
-	ZScope *global;
-	ZScope *current;
-	ZFuncTable **funcs;
+	ZScope 				*global;
+	ZScope 				*current;
+	ZScope 				*temp;
+	ZFuncTable 		**funcs;
 } ZSymTable;
 
+typedef struct ZScopeTable {
+	ZNode 				*module;
+	ZScope 				*scope;
+} ZScopeTable;
+
 typedef struct ZSemantic {
-	ZState 		*state;
-	ZNode 		*root;
-	ZSymTable *table;
-	ZType 		*currentFuncRet;
-	u16 			loopDepth;
+	ZState 				*state;
+	ZNode 				*root;
+	ZSymTable 		*table;
+	ZScopeTable 	**scopes;
+	ZType 				*currentFuncRet;
+	u16 					loopDepth;
 } ZSemantic;
 
 /* Lexer */
@@ -477,6 +483,7 @@ void printTokens(ZToken **);
 
 void printType(ZType *);
 void printNode(ZNode *, u8);
+void printSymbol(ZSymbol *);
 
 void printScope(ZScope *);
 

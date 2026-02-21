@@ -9,7 +9,7 @@
 static char *nodeLabels[] = {
 	"BLOCK", "IF", "WHILE", "FOR", "RETURN", "VAR_DECL",
 	"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
-	"STRUCT", "SUBSCRIPT", "MEMBER", "MODULE", "PROGRAM",
+	"STRUCT", "SUBSCRIPT", "MEMBER", "MODULE",
 	"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
 	"TUPLE_LIT", "ARRAY_LIT", "MACRO"
 };
@@ -302,12 +302,6 @@ void printNode(ZNode *node, u8 depth) {
 		printf("\n");
 		printNode(node->forStmt.block, depth);
 		break;
-	case NODE_PROGRAM:
-		printf("\n");
-		for (usize i = 0; i < veclen(node->program); i++) {
-			printNode(node->program[i], depth);
-		}
-		break;
 	case NODE_STRUCT:
 		if (node->structDef.pub) printf("pub ");
 		printf("%s[", node->structDef.ident->str);
@@ -327,8 +321,10 @@ void printNode(ZNode *node, u8 depth) {
 		printNode(node->unary.operand, depth);
 		break;
 	case NODE_MODULE:
-		printf("Name: %s\n", stoken(node->module.name));
-		printNode(node->module.root, depth);
+		printf("Name: %s\n", node->module.name);
+		for (usize i = 0; i < veclen(node->module.root); i++) {
+			printNode(node->module.root[i], depth);
+		}
 		break;
 	
 	case NODE_MEMBER:
@@ -414,12 +410,12 @@ void printSymbol(ZSymbol *symbol) {
 
 void printScope(ZScope *scope) {
 	if (!scope) return;
-	printf("\n\nScope(%zu)\n", veclen(scope->symbols));
+	printf("\n\n==== Scope(len: %zu, depth: %d) ====\n", veclen(scope->symbols), scope->depth);
 
 	for (usize i = 0; i < veclen(scope->symbols); i++) {
 		printSymbol(scope->symbols[i]);
 	}
-	printf("\nEnd scope\n");
+	printf("\n==== End scope ====\n");
 	printScope(scope->parent);
 }
 

@@ -6,6 +6,9 @@ struct Header {
     u8 tag
 }
 
+u0 printVec(PrivateStruct self) {
+    self.y
+}
 
 u0 InitPackage(*Header h) {
     h.id = 0

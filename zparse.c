@@ -1087,17 +1087,14 @@ static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
 	ZNode *node = makenode(NODE_MODULE);
 
 	if (!canVisit) {
-		node->module.name = name;
+		node->module.name = name->str;
 		node->module.root = NULL;
 		return node;
 	}
 
 	ZToken **tokens = ztokenize(parser->state);
 
-
-
-	node->module.root = zparse(parser->state, tokens);
-	node->module.name = name;
+	node = zparse(parser->state, tokens);
 
 	undoVisit(parser->state);
 	return node;
@@ -1332,14 +1329,16 @@ static void discoverMacros(ZParser *parser) {
 	parser->source->current = saved;
 }
 
-static ZNode *parseProgram(ZParser *parser) {
-	ZNode *root = makenode(NODE_PROGRAM);
-	root->program = NULL;
+static ZNode *parseModule(ZParser *parser) {
+	ZNode *root = makenode(NODE_MODULE);
+
+	root->module.root = NULL;
+	root->module.name = parser->state->filename;
 
 	while (canPeek(parser)) {
 		ZNode *child = parse(parser);
 		if (!child) break;
-		vecpush(root->program, child);
+		vecpush(root->module.root, child);
 	}
 	return root;
 }
@@ -1350,7 +1349,7 @@ ZNode *zparse(ZState *state, ZToken **tokens) {
 
 	discoverMacros(parser);
 
-	ZNode *root = parseProgram(parser);
+	ZNode *root = parseModule(parser);
 
 	if (canPeek(parser)) {
 		error(state, peek(parser), "Unexpected token '%s', expected a top-level declaration", stoken(peek(parser)));

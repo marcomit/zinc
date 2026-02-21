@@ -1,21 +1,20 @@
 use "tests/Data"
 
-foreign f32 cos(f32)
-foreign f32 sin(f32)
-foreign f32 tan(f32)
-foreign f32 atan(f32)
-
-pub struct Vec2 {
+struct Vec2 {
     f32 x
     f32 y
 }
 
-pub Vec2 origin(u8 test) {
+struct PrivateStruct {
+    f32 y
+}
+
+Vec2 origin(u8 test) {
     return Vec2 { x: 0, y: 0 }
 }
 
-pub f32 angle() Vec2 v {
-    return atan(v.y / v.x)
+f32 angle() Vec2 v {
+    return v.y
 }
 
 u8 main() {

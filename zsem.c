@@ -42,7 +42,8 @@ static ZSymTable *makesymtable(void) {
 	ZSymTable *self  	= zalloc(ZSymTable);
 	self->global     	= makescope(NULL);
 	self->current    	= self->global;
-	self->funcs  	= NULL;
+	self->temp 				= NULL;
+	self->funcs  			= NULL;
 	return self;
 }
 
@@ -53,6 +54,7 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
 	self->loopDepth       = 0;
 	self->state           = state;
 	self->table           = makesymtable();
+	self->scopes 					= NULL;
 	
 	return self;
 }
@@ -60,6 +62,12 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
 static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
 	ZScope *scope = semantic->table->current;
 	if (symbol->isPublic) scope = semantic->table->global;
+
+	if (symbol->isPublic) {
+		printf("Registered a global symbol\n");
+		printSymbol(symbol);
+	}
+
 	vecpush(scope->symbols, symbol);
 }
 
@@ -109,6 +117,32 @@ static void putStruct(ZSemantic *semantic, ZNode *node) {
 	symbol->type       = type;
 
 	putSymbol(semantic, symbol);
+}
+
+static void registerModule(ZSemantic *semantic, ZNode *module) {
+	ZScope *scope = NULL;
+	for (usize i = 0; i < veclen(semantic->scopes); i++) {
+		if (semantic->scopes[i]->module == module) {
+			scope = semantic->scopes[i]->scope;
+			goto setScope;
+		}
+	}
+
+	ZScopeTable *table = zalloc(ZScopeTable);
+	table->module = module;
+	table->scope = makescope(semantic->table->global);
+
+	vecpush(semantic->scopes, table);
+	scope = table->scope;
+
+setScope:
+	semantic->table->temp = semantic->table->current;
+	semantic->table->current = scope;
+}
+
+static void endModule(ZSemantic *semantic) {
+	if (!semantic || !semantic->table || !semantic->table->temp) return;
+	semantic->table->current = semantic->table->temp;
 }
 
 static void beginScope(ZSemantic *semantic) {
@@ -244,8 +278,9 @@ static ZSymbol *resolve(ZSemantic *semantic, ZToken *ident) {
 	ZScope *curr = semantic->table->current;
 	while (curr) {
 		for (usize i = 0; i < veclen(curr->symbols); i++) {
-			if (strcmp(curr->symbols[i]->name, ident->str) == 0)
+			if (strcmp(curr->symbols[i]->name, ident->str) == 0) {
 				return curr->symbols[i];
+			}
 		}
 		curr = curr->parent;
 	}
@@ -666,10 +701,26 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 		ZNode  *arg     = curr->funcDef.args[i];
 		ZType  *argType = resolveTypeRef(semantic, arg->field.type);
 
+		if (!argType) {
+			error(semantic->state, curr->tok, "Unknown type");
+		}
+
 		ZSymbol *sym  = makesymbol(Z_SYM_VAR);
 		sym->name     = arg->field.identifier->str;
 		sym->type     = argType;
 		sym->node     = arg;
+		sym->isPublic = false;
+		putSymbol(semantic, sym);
+	}
+
+	if (curr->funcDef.receiver) {
+		ZNode *receiver = curr->funcDef.receiver;
+		ZType *recType = resolveTypeRef(semantic, receiver->field.type);
+
+		ZSymbol *sym = makesymbol(Z_SYM_VAR);
+		sym->name 		= receiver->field.identifier->str;
+		sym->type 		= recType;
+		sym->node 		= curr->funcDef.receiver;
 		sym->isPublic = false;
 		putSymbol(semantic, sym);
 	}
@@ -765,21 +816,12 @@ static void analyzeBlock(ZSemantic *semantic, ZNode *block, bool scoped) {
 /* ================== Global scope discovery ================== */
 
 static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
-	for (usize i = 0; i < veclen(root->program); i++) {
-		ZNode *child = root->program[i];
+	for (usize i = 0; i < veclen(root->module.root); i++) {
+		ZNode *child = root->module.root[i];
 
 		switch (child->type) {
-
-		case NODE_FUNC:
-			// if (child->funcDef.receiver) {
-			//
-			// }
-			putFunc(semantic, child);
-			break;
-
-		case NODE_STRUCT:
-			putStruct(semantic, child);
-			break;
+		case NODE_FUNC: 	putFunc(semantic, child); 	break;
+		case NODE_STRUCT: putStruct(semantic, child); break;
 
 		case NODE_TYPEDEF: {
 			/* Register a type alias so named references to it can be resolved. */
@@ -805,15 +847,13 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 
 		case NODE_MODULE:
 			if (child->module.root) {
-				ZScope *prev = semantic->table->current;
-				semantic->table->current = makescope(semantic->table->global);
-				discoverGlobalScope(semantic, child->module.root);
-				semantic->table->current = prev;
+				registerModule(semantic, child);
+				discoverGlobalScope(semantic, child);
+				endModule(semantic);
 			}
 			break;
 
-		default:
-			break;
+		default: break;
 		}
 	}
 }
@@ -821,23 +861,18 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 /* ================== Main analysis pass ================== */
 
 static void analyze(ZSemantic *semantic, ZNode *root) {
-	for (usize i = 0; i < veclen(root->program); i++) {
-		ZNode *child = root->program[i];
+	for (usize i = 0; i < veclen(root->module.root); i++) {
+		ZNode *child = root->module.root[i];
 
 		switch (child->type) {
-		case NODE_FUNC:
-			analyzeFunc(semantic, child);
-			break;
-
-		case NODE_VAR_DECL:
-			analyzeVar(semantic, child, true);
-			break;
+		case NODE_FUNC: 		analyzeFunc(semantic, child); 			break;
+		case NODE_VAR_DECL: analyzeVar(semantic, child, true); 	break;
 
 		case NODE_MODULE:
 			if (child->module.root) {
-				beginScope(semantic);
-				analyze(semantic, child->module.root);
-				endScope(semantic);
+				registerModule(semantic, child);
+				analyze(semantic, child);
+				endModule(semantic);
 			}
 			break;
 
@@ -848,6 +883,7 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 
 void zanalyze(ZState *state, ZNode *root) {
 	ZSemantic *semantic = makesemantic(state, root);
+	registerModule(semantic, root);
 	discoverGlobalScope(semantic, root);
 	analyze(semantic, root);
 }
