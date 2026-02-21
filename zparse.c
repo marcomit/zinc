@@ -15,8 +15,8 @@
 		return NULL;																																					\
 	}
 
-#define invalid(...) {																																	\
-		error(parser->state, peek(parser), __VA_ARGS__);																		\
+#define invalid(...) {																																		\
+		error(parser->state, peek(parser), __VA_ARGS__);																			\
 		return NULL;																																					\
 }
 
@@ -75,16 +75,16 @@ static ParseFunction exprFunc[] = {
 };
 
 static ParseFunction progFunc[] = {
-		parseImport,
-		parseForeignDecl,
-		parseTypedef,
-		parseFuncDecl,
-		parseStructDecl,
-		parseUnionDecl,
-		expandMacro,
-		parseVarDef,
-		skipMacro
-	};
+	parseImport,
+	parseForeignDecl,
+	parseTypedef,
+	parseFuncDecl,
+	parseStructDecl,
+	parseUnionDecl,
+	expandMacro,
+	parseVarDef,
+	skipMacro
+};
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
 	ZParser *self = zalloc(ZParser);
@@ -899,6 +899,15 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	node->funcDef.receiver = receiver;
 	node->funcDef.generics = generics;
 
+	ZType *func = maketype(Z_TYPE_FUNCTION);
+	func->func.ret = ret;
+	func->func.args = NULL;
+
+	for (usize i = 0; i < veclen(args); i++) {
+		vecpush(func->func.args, args[i]->field.type);
+	}
+
+	node->resolved = func;
 	return node;
 }
 

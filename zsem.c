@@ -64,11 +64,12 @@ static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
 }
 
 static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
+	printf("Register a receiver function %s\n", stoken(node->funcDef.ident));
 	let receiver = node->funcDef.receiver;
 	let funcs = semantic->table->funcs;
 	for (usize i = 0; i < veclen(funcs); i++) {
 		if (typesEqual(funcs[i]->receiver, receiver->field.type)) {
-			vecpush(funcs[i]->funcDef, receiver);
+			vecpush(funcs[i]->funcDef, node);
 			return;
 		}
 	}
@@ -77,7 +78,8 @@ static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
 	func->receiver = receiver->field.type;
 	func->funcDef = NULL;
 	vecpush(func->funcDef, node);
-	vecpush(funcs, func);
+	vecpush(semantic->table->funcs, func);
+
 }
 
 static void putFunc(ZSemantic *semantic, ZNode *node) {
@@ -205,6 +207,7 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
 
 bool typesEqual(ZType *a, ZType *b) {
 	if (!a || !b) return false;
+
 	if (a->kind != b->kind) return false;
 
 	switch (a->kind) {
@@ -432,29 +435,14 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		 * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
 		 * result is used downstream (e.g. for member access on return value). */
 			result = resolveTypeRef(semantic, sym->type);
+		} else if (callee->type == NODE_MEMBER) {
+
 		} else {
 			/* Expression call: resolve callee type and extract return type. */
 			ZType *calleeType = resolveType(semantic, callee);
 			if (calleeType && calleeType->kind == Z_TYPE_FUNCTION)
 				result = resolveTypeRef(semantic, calleeType->func.ret);
 		}
-
-		// usize argLen = veclen(curr->call.args);
-		// usize resolvedArgLen = veclen(result->func.args);
-
-		// if (argLen != resolvedArgLen) {
-		// 	error(semantic->state, curr->tok,
-		// 				"Expected %zu arguments, got %zu", resolvedArgLen, argLen);
-		// }
-
-		// for (usize i = 0; i < veclen(curr->call.args); i++) {
-		// 	ZNode *node = curr->call.args[i];
-		// 	ZType *resolved = resolveType(semantic, node);
-		//
-		// 	if (!typesCompatible(semantic->state, resolved, result->func.args[i])) {
-		// 		error(semantic->state, node->tok, "Mismatch types");
-		// 	}
-		// }
 
 		break;
 	}
@@ -506,10 +494,13 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 }
 
 static ZType *resolveReceiverCall(ZSemantic *semantic, ZType *caller, ZToken *name) {
-	let table = semantic->table->funcs;
+	ZFuncTable **table = semantic->table->funcs;
 	ZNode **funcs = NULL;
+
 	for (usize i = 0; i < veclen(table) && !funcs; i++) {
-		if (typesEqual(table[i]->receiver, caller)) {
+		ZType *receiverType = resolveTypeRef(semantic, table[i]->receiver);
+		table[i]->receiver = receiverType;
+		if (typesEqual(receiverType, caller)) {
 			funcs = table[i]->funcDef;
 		}
 	}
@@ -545,7 +536,8 @@ static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
 			return resolveTypeRef(semantic, fields[i]->field.type);
 	}
 
-	// resolveReceiverCall(semantic, );
+	ZType *result = resolveReceiverCall(semantic, objType, curr->memberAccess.field);
+	if (result) return result;
 
 	error(semantic->state, curr->memberAccess.field,
 	      "Member '%s' not found in struct", curr->memberAccess.field->str);
@@ -832,7 +824,6 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 		ZNode *child = root->program[i];
 
 		switch (child->type) {
-
 		case NODE_FUNC:
 			analyzeFunc(semantic, child);
 			break;
@@ -849,8 +840,7 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 			}
 			break;
 
-		default:
-			break;
+		default: break;
 		}
 	}
 }
