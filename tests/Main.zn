@@ -1,6 +1,6 @@
 use "tests/Data"
 
-struct Vec2 {
+pub struct Vec2 {
     f32 x
     f32 y
 }
@@ -14,7 +14,7 @@ Vec2 origin(u8 test) {
 }
 
 f32 angle() Vec2 v {
-    return v.y
+    return v.y / v.x
 }
 
 u8 main() {
@@ -22,6 +22,8 @@ u8 main() {
     // x := 1
 
     o := origin(test)
+
+    *u8 ptr = none
 
     o.angle()
 

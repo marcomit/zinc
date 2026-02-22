@@ -63,16 +63,10 @@ static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
 	ZScope *scope = semantic->table->current;
 	if (symbol->isPublic) scope = semantic->table->global;
 
-	if (symbol->isPublic) {
-		printf("Registered a global symbol\n");
-		printSymbol(symbol);
-	}
-
 	vecpush(scope->symbols, symbol);
 }
 
 static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
-	printf("Register a receiver function %s\n", stoken(node->funcDef.ident));
 	let receiver = node->funcDef.receiver;
 	let funcs = semantic->table->funcs;
 	for (usize i = 0; i < veclen(funcs); i++) {

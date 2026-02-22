@@ -274,17 +274,23 @@ static ZNode *parsePrimary(ZParser *parser) {
 		return getMacroCapturedVar(parser->currentMacro, tok);
 	} else if (check(parser, TOK_LPAREN)) {
 		consume(parser);
-		ZNode *node = wrapNode(parser, parseExpr);
+		ZNode *node 			= wrapNode(parser, parseExpr);
 		expect(parser, TOK_RPAREN);
 		return node;
 	} else if (check(parser, TOK_IDENT)) {
-		ZNode *node = makenode(NODE_IDENTIFIER);
-		node->identTok = consume(parser);
+		ZNode *node 			= makenode(NODE_IDENTIFIER);
+		node->identTok 		= consume(parser);
+		node->tok 				= node->identTok;
 		return node;
 	} else if (checkMask(parser, TOK_LITERAL)) {
-		ZNode *node = makenode(NODE_LITERAL);
-		node->literalTok = consume(parser);
+		ZNode *node 			= makenode(NODE_LITERAL);
+		node->literalTok 	= consume(parser);
+		node->tok					= node->literalTok;
 		return node;
+	} else if (check(parser, TOK_NONE)) {
+		ZNode *node 			= makenode(NODE_LITERAL);
+		node->literalTok 	= consume(parser);
+		node->tok 				= node->literalTok;
 	}
 
 	return NULL;

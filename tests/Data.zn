@@ -1,13 +1,17 @@
 // Test: Advanced Structs and Types
-use "tests/Main.zn"
+use "tests/Main"
 
 struct Header {
     u8 id
     u8 tag
 }
 
-u0 printVec(PrivateStruct self) {
+u0 usePrivateStruct(PrivateStruct self) {
     self.y
+}
+
+u0 printVec(Vec2 self) {
+    self.x
 }
 
 u0 InitPackage(*Header h) {

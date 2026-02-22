@@ -438,7 +438,8 @@ char *readfile(char *filename) {
 	FILE *fd = fopen(filename, "r");
 	
 	if (!fd) {
-		perror("open()");
+		fprintf(stderr, "open(%s)", filename);
+		perror("");
 		return NULL;
 	}
 
