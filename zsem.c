@@ -672,6 +672,7 @@ static void analyzeWhile(ZSemantic *semantic, ZNode *curr) {
 }
 
 static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
+	beginScope(semantic);
 	let f = curr->forStmt;
 	analyzeVar(semantic, f.var, false);
 
@@ -861,6 +862,17 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 		switch (child->type) {
 		case NODE_FUNC: 		analyzeFunc(semantic, child); 			break;
 		case NODE_VAR_DECL: analyzeVar(semantic, child, true); 	break;
+
+		case NODE_STRUCT:
+			for (usize i = 0; i < veclen(child->structDef.fields); i++) {
+				let field = child->structDef.fields[i]->field;
+				resolveTypeRef(semantic, field.type);
+			}
+			break;
+
+		case NODE_UNION:
+			warning(semantic->state, root->tok, "'union' not yet analyzed");
+			break;
 
 		case NODE_MODULE:
 			if (child->module.root) {

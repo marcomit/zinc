@@ -165,6 +165,9 @@ struct ZType {
 		} generic;
 	};
 
+	/* Future implementation:
+	 * Contant values for now are not checked in the semantic analyzer.
+	 * So you can assign a value to a constant variable. */
 	bool constant;
 };
 
