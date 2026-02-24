@@ -103,7 +103,10 @@ typedef enum {
 	NODE_MACRO,
 	NODE_GOTO,
 	NODE_LABEL,
-	NODE_TYPE
+	NODE_TYPE,
+	NODE_ENUM,
+	NODE_BREAK,
+	NODE_CONTINUE
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -121,7 +124,8 @@ typedef enum ZTypeKind {
 	Z_TYPE_ARRAY,
 	Z_TYPE_FUNCTION,
 	Z_TYPE_TUPLE,
-	Z_TYPE_GENERIC		// Instantiated generic type, e.g. List[int]
+	Z_TYPE_GENERIC,		// Instantiated generic type, e.g. List[int]
+	Z_TYPE_NONE
 } ZTypeKind;
 
 struct ZType {
@@ -379,14 +383,16 @@ typedef enum {
 	Z_SYM_VAR,
 	Z_SYM_FUNC,
 	Z_SYM_STRUCT,
-	Z_SYM_RECFUN
+	// TODO: remove this
+	// Z_SYM_RECFUN
 } ZSymType;
 
 typedef struct ZSymbol {
 	ZSymType 			kind;
-	char 					*name;
+	ZToken				*name;
 	ZType 				*type;
 	ZNode 				*node;
+	usize 				useCount;
 	bool 					isPublic;
 } ZSymbol;
 

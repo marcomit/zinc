@@ -6,9 +6,9 @@ struct Header {
     u8 tag
 }
 
-u0 usePrivateStruct(PrivateStruct self) {
-    self.y
-}
+// u0 usePrivateStruct(PrivateStruct self) {
+//     self.y
+// }
 
 u0 printVec(Vec2 self) {
     self.x

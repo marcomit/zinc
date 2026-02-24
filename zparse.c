@@ -30,6 +30,7 @@ static ZNode *parseFor									(ZParser *);
 static ZNode *parseGoto									(ZParser *);
 static ZNode *skipMacro									(ZParser *);
 static ZNode *parseWhile								(ZParser *);
+static ZNode *parseBreak								(ZParser *);
 static ZNode *parseBlock								(ZParser *);
 static ZNode *parseMatch								(ZParser *);
 static ZNode *parseDefer								(ZParser *);
@@ -40,9 +41,11 @@ static ZNode *parseBinary								(ZParser *);
 static ZNode *parseImport								(ZParser *);
 static ZNode *parseTypedef							(ZParser *);
 static ZNode *parseVarDecl							(ZParser *);
+static ZNode *parseContinue							(ZParser *);
 static ZNode *parseArrayLit							(ZParser *);
 static ZNode *parseTupleLit							(ZParser *);
 static ZNode *parseFuncDecl							(ZParser *);
+static ZNode *parseEnumDecl							(ZParser *);
 static ZNode *parseUnionDecl						(ZParser *);
 static ZNode *parseStructLit						(ZParser *);
 static ZNode *parseStructDecl						(ZParser *);
@@ -64,6 +67,8 @@ static ParseFunction stmtFunc[] = {
 	parseVarDef,
 	parseExpr,
 	parseVarDecl,
+	parseBreak,
+	parseContinue
 };
 
 static ParseFunction exprFunc[] = {
@@ -80,6 +85,7 @@ static ParseFunction progFunc[] = {
 	parseTypedef,
 	parseFuncDecl,
 	parseStructDecl,
+	parseEnumDecl,
 	parseUnionDecl,
 	expandMacro,
 	parseVarDef,
@@ -291,6 +297,7 @@ static ZNode *parsePrimary(ZParser *parser) {
 		ZNode *node 			= makenode(NODE_LITERAL);
 		node->literalTok 	= consume(parser);
 		node->tok 				= node->literalTok;
+		return node;
 	}
 
 	return NULL;
@@ -640,7 +647,7 @@ static ZNode *parseBlock(ZParser *parser) {
 
 	if (!check(parser, TOK_RBRACKET)) {
 		error(parser->state, peek(parser), "A statement cannot be parsed");
-		while (canPeek(parser) && !match(parser, TOK_RBRACKET));
+		while (canPeek(parser) && !check(parser, TOK_RBRACKET));
 		if (!canPeek(parser)) invalid("Expected a '}' to close the block")
 	}
 
@@ -665,8 +672,25 @@ static ZNode *parseField(ZParser *parser) {
 	return node;
 }
 
+// TODO: To implement
+static ZNode *parseEnumDecl(ZParser *parser) {
+	// bool isPublic = match(parser, TOK_PUB);
+	//
+	expect(parser, TOK_ENUM);
+	// ensure(check(parser, TOK_IDENT));
+	// let name = consume(parser);
+	//
+	// let node = makenode(NODE_ENUM);
+	//
+	return NULL;
+}
+
 static ZNode *parseUnionDecl(ZParser *parser) {
 	expect(parser, TOK_UNION);
+	ensure(check(parser, TOK_IDENT));
+
+	let name = consume(parser);
+
 	expect(parser, TOK_RBRACKET);
 
 	ZNode **fields = NULL;
@@ -678,23 +702,18 @@ static ZNode *parseUnionDecl(ZParser *parser) {
 	ZNode *node = makenode(NODE_UNION);
 
 	node->unionDef.fields = fields;
-	node->unionDef.ident = NULL;
+	node->unionDef.ident = name;
 
 	return node;
 }
 
 static ZNode *parseStructDecl(ZParser *parser) {
 	bool public = match(parser, TOK_PUB);
-	ensure(match(parser, TOK_STRUCT));
-	ZToken *name = NULL;
+	expect(parser, TOK_STRUCT);
+	ensure(check(parser, TOK_IDENT));
+
+	ZToken *name = consume(parser);
 	ZToken **generics = NULL;
-
-	if (check(parser, TOK_IDENT)) name = consume(parser);
-
-	if (!name) {
-		error(parser->state, peek(parser), "Expected an identifier after 'struct'");
-		return NULL;
-	}
 
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseGenericsDecl(parser);
@@ -969,6 +988,23 @@ static ZNode *parseVarDef(ZParser *parser) {
 	return parseOrGrammar(parser, func, 2);
 }
 
+static ZNode *parseBreak(ZParser *parser) {
+	ensure(check(parser, TOK_BREAK));
+
+	ZNode *node = makenode(NODE_BREAK);
+	node->tok = consume(parser);
+	return NULL;
+}
+
+static ZNode *parseContinue(ZParser *parser) {
+	ensure(check(parser, TOK_CONTINUE));
+
+	ZNode *node = makenode(NODE_CONTINUE);
+	node->tok = consume(parser);
+
+	return NULL;
+}
+
 static ZNode *parseVarDecl(ZParser *parser) {
 	ZNode *identNode = NULL;
 	ZType *type = wrapType(parser, parseType);
@@ -998,10 +1034,8 @@ static ZNode *parseTupleLit(ZParser *parser) {
 	ZNode **fields = NULL;
 	while (( expr = wrapNode(parser, parseExpr) )) {
 		if (check(parser, TOK_RPAREN)) break;
-		if (!match(parser, TOK_COMMA)) {
-			error(parser->state, peek(parser), "Expected comma");
-			return NULL;
-		}
+		if (!match(parser, TOK_COMMA)) break;
+
 		vecpush(fields, expr);
 	}
 	expect(parser, TOK_RPAREN);
@@ -1058,9 +1092,8 @@ static ZNode *parseStructLit(ZParser *parser) {
 
 	while (true) {
 		if (!check(parser, TOK_IDENT)) break;
-		ZToken *ident = consume(parser);
 		ZNode *node = makenode(NODE_IDENTIFIER);
-		node->identTok = ident;
+		node->identTok = consume(parser);
 		if (!match(parser, TOK_COLON)) {
 			error(parser->state, peek(parser), "Expected a ':', got %s", stoken(peek(parser)));
 			return NULL;
@@ -1083,12 +1116,13 @@ static ZNode *parseStructLit(ZParser *parser) {
 
 static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
 	usize len = strlen(name->str);
-	char *filename = znalloc(char, len + 2);
+	char *filename = znalloc(char, len + 4);
 	// memcpy(filename, name->str);
 	memcpy(filename, name->str, len);
 	filename[len] = '.';
 	filename[len+1] = 'z';
 	filename[len+2] = 'n';
+	filename[len+3] = '\0';
 	bool canVisit = visit(parser->state, filename);
 	ZNode *node = makenode(NODE_MODULE);
 

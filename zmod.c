@@ -391,15 +391,15 @@ void printNode(ZNode *node, u8 depth) {
 void printSymbol(ZSymbol *symbol) {
 	switch (symbol->kind) {
 	case Z_SYM_VAR:
-		printf("Var(%s) ", symbol->name);
+		printf("Var(%s) ", symbol->name->str);
 		printType(symbol->type);
 		break;
 	case Z_SYM_FUNC:
-		printf("Func(%s)", symbol->name);
+		printf("Func(%s)", symbol->name->str);
 		printType(symbol->type);
 		break;
 	case Z_SYM_STRUCT:
-		printf("Struct(%s)", symbol->name);
+		printf("Struct(%s)", symbol->name->str);
 		printType(symbol->type);
 		break;
 	default:

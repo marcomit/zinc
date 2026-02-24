@@ -24,6 +24,8 @@ static ZType *resolveTypeRef(ZSemantic *, ZType *);
 
 /* ================== Scope / Symbol helpers ================== */
 
+static ZType *none = NULL;
+
 static ZScope *makescope(ZScope *parent) {
 	ZScope *self = zalloc(ZScope);
 	self->depth   = parent ? parent->depth + 1 : 0;
@@ -35,6 +37,7 @@ static ZScope *makescope(ZScope *parent) {
 static ZSymbol *makesymbol(ZSymType kind) {
 	ZSymbol *self = zalloc(ZSymbol);
 	self->kind = kind;
+	self->useCount = 0;
 	return self;
 }
 
@@ -91,7 +94,7 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 	}
 
 	ZSymbol *symbol   = makesymbol(Z_SYM_FUNC);
-	symbol->name      = node->funcDef.ident->str;
+	symbol->name      = node->funcDef.ident;
 	symbol->type      = node->funcDef.ret;
 	symbol->node      = node;
 	symbol->isPublic  = node->funcDef.pub;
@@ -100,7 +103,7 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 
 static void putStruct(ZSemantic *semantic, ZNode *node) {
 	ZSymbol *symbol   = makesymbol(Z_SYM_STRUCT);
-	symbol->name      = node->structDef.ident->str;
+	symbol->name      = node->structDef.ident;
 	symbol->node      = node;
 	symbol->isPublic  = node->structDef.pub;
 
@@ -134,8 +137,46 @@ setScope:
 	semantic->table->current = scope;
 }
 
+static void warnUnused(ZSemantic *semantic, ZSymbol *symbol) {
+	printf("Type: %d\n", symbol->kind);
+	switch (symbol->kind) {
+	case Z_SYM_FUNC:
+		warning(semantic->state,
+						symbol->name,
+						"Unused function '%s'",
+						symbol->name->str);
+		break;
+	case Z_SYM_STRUCT:
+		warning(semantic->state,
+						symbol->name,
+						"Unused struct '%s'",
+						symbol->name->str);
+		break;
+	case Z_SYM_VAR:
+		warning(semantic->state,
+						symbol->name,
+						"Unused variable '%s'",
+						symbol->name->str);
+		break;
+	default:
+		warning(semantic->state, symbol->name, "Unused a generic symbol");
+		break;
+	}
+}
+
+static void checkUnusedSymbols(ZSemantic *semantic) {
+	ZScope *scope = semantic->table->current;
+	for (usize i = 0; i < veclen(scope->symbols); i++) {
+		let symbol = scope->symbols[i];
+		if (symbol->useCount == 0) {
+			warnUnused(semantic, symbol);
+		}
+	}
+}
+
 static void endModule(ZSemantic *semantic) {
 	if (!semantic || !semantic->table || !semantic->table->temp) return;
+	checkUnusedSymbols(semantic);
 	semantic->table->current = semantic->table->temp;
 }
 
@@ -149,6 +190,7 @@ static void endScope(ZSemantic *semantic) {
 		printf("Cannot end scope: already at the top\n");
 		return;
 	}
+	checkUnusedSymbols(semantic);
 	semantic->table->current = semantic->table->current->parent;
 }
 
@@ -190,6 +232,13 @@ static ZTokenType toSigned(u8 rank) {
  * */
 ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
 	if (!a || !b) return NULL;
+	
+	if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
+		return a;
+	} else if (b->kind == Z_TYPE_POINTER && a->kind == Z_TYPE_NONE) {
+		return b;
+	}
+
 	if (typesEqual(a, b)) return a;
 
 	if (a->kind != Z_TYPE_PRIMITIVE || b->kind != Z_TYPE_PRIMITIVE)
@@ -272,7 +321,8 @@ static ZSymbol *resolve(ZSemantic *semantic, ZToken *ident) {
 	ZScope *curr = semantic->table->current;
 	while (curr) {
 		for (usize i = 0; i < veclen(curr->symbols); i++) {
-			if (strcmp(curr->symbols[i]->name, ident->str) == 0) {
+			if (tokeneq(curr->symbols[i]->name, ident)) {
+				curr->symbols[i]->useCount++;
 				return curr->symbols[i];
 			}
 		}
@@ -289,6 +339,11 @@ static ZType *derefType(ZType *t) {
 }
 
 static ZType *resolveLiteralType(ZNode *curr) {
+	// None guard
+	if (curr->literalTok->type == TOK_NONE) {
+		return none;
+	}
+
 	ZType *t = maketype(Z_TYPE_PRIMITIVE);
 	switch (curr->literalTok->type) {
 	case TOK_INT_LIT: {
@@ -637,7 +692,7 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
 	curr->resolved = declaredType;
 
 	ZSymbol *symbol   = makesymbol(Z_SYM_VAR);
-	symbol->name      = var->str;
+	symbol->name      = var;
 	symbol->type      = declaredType;
 	symbol->node      = curr;
 	symbol->isPublic  = isGlobal;
@@ -701,7 +756,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 		}
 
 		ZSymbol *sym  = makesymbol(Z_SYM_VAR);
-		sym->name     = arg->field.identifier->str;
+		sym->name     = arg->field.identifier;
 		sym->type     = argType;
 		sym->node     = arg;
 		sym->isPublic = false;
@@ -713,7 +768,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 		ZType *recType = resolveTypeRef(semantic, receiver->field.type);
 
 		ZSymbol *sym = makesymbol(Z_SYM_VAR);
-		sym->name 		= receiver->field.identifier->str;
+		sym->name 		= receiver->field.identifier;
 		sym->type 		= recType;
 		sym->node 		= curr->funcDef.receiver;
 		sym->isPublic = false;
@@ -821,7 +876,7 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 		case NODE_TYPEDEF: {
 			/* Register a type alias so named references to it can be resolved. */
 			ZSymbol *symbol   = makesymbol(Z_SYM_STRUCT);
-			symbol->name      = child->typeDef.alias->str;
+			symbol->name      = child->typeDef.alias;
 			symbol->node      = child;
 			symbol->type      = child->typeDef.type;
 			symbol->isPublic  = false;
@@ -832,7 +887,7 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 		case NODE_FOREIGN: {
 			/* Foreign functions are callable like regular functions. */
 			ZSymbol *symbol   = makesymbol(Z_SYM_FUNC);
-			symbol->name      = child->foreignFunc.tok->str;
+			symbol->name      = child->foreignFunc.tok;
 			symbol->node      = child;
 			symbol->type      = child->foreignFunc.ret;
 			symbol->isPublic  = true;
@@ -889,6 +944,9 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 
 void zanalyze(ZState *state, ZNode *root) {
 	ZSemantic *semantic = makesemantic(state, root);
+
+	if (!none) none = maketype(Z_TYPE_NONE);
+
 	registerModule(semantic, root);
 	discoverGlobalScope(semantic, root);
 	analyze(semantic, root);
