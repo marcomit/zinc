@@ -413,9 +413,17 @@ typedef struct ZFuncTable {
 } ZFuncTable;
 
 typedef struct ZSymTable {
+	/* Global scope used to store globam symbols. */
 	ZScope 				*global;
+
 	ZScope 				*current;
-	ZScope 				*temp;
+
+	/* Used to track the current module. */
+	ZScope 				*module;
+
+	/* Imagine this like an hashmap where:
+	 * the key is the type 
+	 * the value is a list of receiver functions for that type. */
 	ZFuncTable 		**funcs;
 } ZSymTable;
 

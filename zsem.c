@@ -45,7 +45,7 @@ static ZSymTable *makesymtable(void) {
 	ZSymTable *self  	= zalloc(ZSymTable);
 	self->global     	= makescope(NULL);
 	self->current    	= self->global;
-	self->temp 				= NULL;
+	self->module 				= NULL;
 	self->funcs  			= NULL;
 	return self;
 }
@@ -101,6 +101,17 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 	putSymbol(semantic, symbol);
 }
 
+static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
+	ZSymbol *symbol = makesymbol(Z_SYM_VAR);
+
+	symbol->name = node->varDecl.ident->identTok;
+	symbol->type = node->varDecl.type;
+	symbol->node = node;
+	symbol->isPublic = isGlobal;
+
+	putSymbol(semantic, symbol);
+}
+
 static void putStruct(ZSemantic *semantic, ZNode *node) {
 	ZSymbol *symbol   = makesymbol(Z_SYM_STRUCT);
 	symbol->name      = node->structDef.ident;
@@ -133,12 +144,11 @@ static void registerModule(ZSemantic *semantic, ZNode *module) {
 	scope = table->scope;
 
 setScope:
-	semantic->table->temp = semantic->table->current;
+	semantic->table->module = semantic->table->current;
 	semantic->table->current = scope;
 }
 
 static void warnUnused(ZSemantic *semantic, ZSymbol *symbol) {
-	printf("Type: %d\n", symbol->kind);
 	switch (symbol->kind) {
 	case Z_SYM_FUNC:
 		warning(semantic->state,
@@ -175,9 +185,9 @@ static void checkUnusedSymbols(ZSemantic *semantic) {
 }
 
 static void endModule(ZSemantic *semantic) {
-	if (!semantic || !semantic->table || !semantic->table->temp) return;
+	if (!semantic || !semantic->table || !semantic->table->module) return;
 	checkUnusedSymbols(semantic);
-	semantic->table->current = semantic->table->temp;
+	semantic->table->current = semantic->table->module;
 }
 
 static void beginScope(ZSemantic *semantic) {
@@ -362,9 +372,9 @@ static ZType *resolveLiteralType(ZNode *curr) {
 		/* String literals are *char */
 		ZType *base = maketype(Z_TYPE_PRIMITIVE);
 		base->primitive.token = maketoken(TOK_CHAR);
-		ZType *ptr  = maketype(Z_TYPE_POINTER);
-		ptr->base   = base;
-		return ptr;
+		t->kind = Z_TYPE_POINTER;
+		t->base   = base;
+		return t;
 	}
 	default: {
 		t->primitive.token = maketoken(TOK_VOID);
@@ -569,7 +579,38 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		break;
 	}
 
+	case NODE_ARRAY_LIT: {
+		ZType *arrType = NULL;
+		usize size = veclen(curr->arraylit.fields);
+
+		for (usize i = 0; i < size; i++) {
+			let field = curr->arraylit.fields[i];
+			printf("Field: ");
+			printNode(curr, 0);
+			resolveType(semantic, field);
+			// let fieldType = resolveType(semantic, field);
+			if (!arrType) {
+				// arrType = fieldType;
+			} else {
+				// arrType = typesCompatible(semantic->state, arrType, fieldType);
+				//
+				// if (!arrType) {
+				// 	error(semantic->state, fieldType->tok,
+				// 	 			"This type is not compatible with others");
+				// }
+			}
+		}
+
+		result->kind = Z_TYPE_ARRAY;
+		result->array.base = arrType;
+		result->array.size = size;
+
+		break;
+	}
+
 	default:
+		warning(semantic->state, NULL,
+						"Trying to resolve the type of node's type %d", curr->type);
 		break;
 	}
 
@@ -870,8 +911,9 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 		ZNode *child = root->module.root[i];
 
 		switch (child->type) {
-		case NODE_FUNC: 	putFunc(semantic, child); 	break;
-		case NODE_STRUCT: putStruct(semantic, child); break;
+		case NODE_FUNC: 		putFunc(semantic, child); 			break;
+		case NODE_STRUCT: 	putStruct(semantic, child); 		break;
+		case NODE_VAR_DECL: putVar(semantic, child, false); break;
 
 		case NODE_TYPEDEF: {
 			/* Register a type alias so named references to it can be resolved. */

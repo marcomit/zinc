@@ -402,8 +402,7 @@ void printSymbol(ZSymbol *symbol) {
 		printf("Struct(%s)", symbol->name->str);
 		printType(symbol->type);
 		break;
-	default:
-		return;
+	default: return;
 	}
 	printf("\n");
 }

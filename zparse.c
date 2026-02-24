@@ -1054,10 +1054,7 @@ static ZNode *parseArrayLit(ZParser *parser) {
 	while (( expr = wrapNode(parser, parseExpr) )) {
 		vecpush(values, expr);
 		if (check(parser, TOK_RSBRACKET)) break;
-		if (!match(parser, TOK_COMMA)) {
-			error(parser->state, peek(parser), "Expected ',', got %s", stoken(peek(parser)));
-			return NULL;
-		}
+		if (!match(parser, TOK_COMMA)) break;
 	}
 
 	expect(parser, TOK_RSBRACKET);
