@@ -67,8 +67,8 @@ static ParseFunction stmtFunc[] = {
 	parseVarDef,
 	parseExpr,
 	parseVarDecl,
-	// parseBreak,
-	// parseContinue
+	parseBreak,
+	parseContinue
 };
 
 static ParseFunction exprFunc[] = {
@@ -637,6 +637,7 @@ ZNode *parseStmt(ZParser *parser) {
 }
 
 static ZNode *parseBlock(ZParser *parser) {
+	let start = peek(parser);
 	expect(parser, TOK_LBRACKET);
 
 	ZNode *block = makenode(NODE_BLOCK);
@@ -648,11 +649,15 @@ static ZNode *parseBlock(ZParser *parser) {
 
 	if (!check(parser, TOK_RBRACKET)) {
 		error(parser->state, peek(parser), "A statement cannot be parsed");
-		while (canPeek(parser) && !check(parser, TOK_RBRACKET));
+		while (canPeek(parser) && !check(parser, TOK_RBRACKET)) consume(parser);
 		if (!canPeek(parser)) invalid("Expected a '}' to close the block")
 	}
 
 	expect(parser, TOK_RBRACKET);
+
+	if (veclen(block->block) == 0) {
+		warning(parser->state, start, "A block cannot be empty");
+	}
 
 	return block;
 }
@@ -692,7 +697,7 @@ static ZNode *parseUnionDecl(ZParser *parser) {
 
 	let name = consume(parser);
 
-	expect(parser, TOK_RBRACKET);
+	expect(parser, TOK_LBRACKET);
 
 	ZNode **fields = NULL;
 	ZNode *field = NULL;
@@ -994,7 +999,7 @@ static ZNode *parseBreak(ZParser *parser) {
 
 	ZNode *node = makenode(NODE_BREAK);
 	node->tok = consume(parser);
-	return NULL;
+	return node;
 }
 
 static ZNode *parseContinue(ZParser *parser) {
@@ -1003,7 +1008,7 @@ static ZNode *parseContinue(ZParser *parser) {
 	ZNode *node = makenode(NODE_CONTINUE);
 	node->tok = consume(parser);
 
-	return NULL;
+	return node;
 }
 
 static ZNode *parseVarDecl(ZParser *parser) {
@@ -1034,10 +1039,9 @@ static ZNode *parseTupleLit(ZParser *parser) {
 	ZNode *expr = NULL;
 	ZNode **fields = NULL;
 	while (( expr = wrapNode(parser, parseExpr) )) {
+		vecpush(fields, expr);
 		if (check(parser, TOK_RPAREN)) break;
 		if (!match(parser, TOK_COMMA)) break;
-
-		vecpush(fields, expr);
 	}
 	expect(parser, TOK_RPAREN);
 
@@ -1084,9 +1088,9 @@ static ZNode *parseStructLit(ZParser *parser) {
 
 	expect(parser, TOK_LBRACKET);
 
-	ZNode *node = makenode(NODE_STRUCT_LIT);
-	node->structlit.ident = ident;
-	node->structlit.generics = generics;
+	ZNode *structlit = makenode(NODE_STRUCT_LIT);
+	structlit->structlit.ident = ident;
+	structlit->structlit.generics = generics;
 
 	while (true) {
 		if (!check(parser, TOK_IDENT)) break;
@@ -1099,7 +1103,7 @@ static ZNode *parseStructLit(ZParser *parser) {
 		ZNode *expr = wrapNode(parser, parseExpr);
 		if (!expr) return NULL;
 		ZNode *var = makenodevar(node, NULL, expr);
-		vecpush(node->structlit.fields, var);
+		vecpush(structlit->structlit.fields, var);
 		if (check(parser, TOK_RBRACKET)) break;
 		if (!match(parser, TOK_COMMA)) {
 			error(parser->state, peek(parser), "Expected a ',', got %s", stoken(peek(parser)));
@@ -1109,7 +1113,7 @@ static ZNode *parseStructLit(ZParser *parser) {
 
 	expect(parser, TOK_RBRACKET);
 
-	return node;
+	return structlit;
 }
 
 static ZNode *getModuleByName(ZParser *parser, ZToken *name) {

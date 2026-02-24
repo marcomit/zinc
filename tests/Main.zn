@@ -43,5 +43,7 @@ u8 main() {
 
     foreach x in o
 
+    {}
+
     return 0
 }

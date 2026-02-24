@@ -163,18 +163,26 @@ static bool matchMacroPattern(ZParser *parser,
 			}
 			return true;
 
-		default:
-			return false;
+		case Z_MACRO_OM:
+			if (!matchMacroPattern(parser, macro, pattern->oneOrMore)) {
+				return false;
+			}
+			while (matchMacroPattern(parser, macro, pattern->oneOrMore));
+			return true;
+
+		case Z_MACRO_ZM:
+			while (matchMacroPattern(parser, macro, pattern->zeroOrMore));
+			return true;
+
+		default: return false;
 	}
 }
 
 ZToken **copytokens(ZToken **source, usize start, usize end) {
 	ZToken **copy = NULL;
-	printf("Copy from %zu to %zu\n", start, end);
 	for (usize i = start; i < end; i++) {
 		vecpush(copy, source[i]);
 	}
-	printf("Copied\n");
 	return copy;
 }
 
@@ -223,13 +231,11 @@ ZNode *expandMacro(ZParser *parser) {
 		parser->currentMacro = macro;
 
 		// Parse the body as a sequence of statements
-		printf("Parse statements\n");
 		ZNode *block = makenode(NODE_BLOCK);
 		block->block = NULL;
 		ZNode *stmt = NULL;
 		while (parser->source->current < parser->source->end) {
 			stmt = parseStmt(parser);
-			printf("Parsing block\n");
 			if (stmt) vecpush(block->block, stmt);
 			else break;
 		}
@@ -253,7 +259,7 @@ ZNode *expandMacro(ZParser *parser) {
 ZNode *getMacroCapturedVar(ZNode *macro, ZToken *name) {
 	ZMacroVar **vars = macro->macro.captured;
 	for (usize i = 0; i < veclen(vars); i++) {
-		if (strcmp(vars[i]->name->str, name->str) == 0) {
+		if (tokeneq(vars[i]->name, name)) {
 			vars[i]->useCount++;
 			return vars[i]->captured;
 		}

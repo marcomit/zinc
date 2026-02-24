@@ -496,6 +496,7 @@ bool visit(ZState *, char *);
 void undoVisit(ZState *);
 
 char *stoken(ZToken *);
+void stype(ZType *, char **);
 char *tokname(ZTokenType);
 void printToken(ZToken *);
 void printTokens(ZToken **);

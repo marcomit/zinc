@@ -93,9 +93,11 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 		return;
 	}
 
+	ZType *type = maketype(Z_TYPE_FUNCTION);
+
 	ZSymbol *symbol   = makesymbol(Z_SYM_FUNC);
 	symbol->name      = node->funcDef.ident;
-	symbol->type      = node->funcDef.ret;
+	symbol->type      = node->resolved; /* Type calculated during parsing. */
 	symbol->node      = node;
 	symbol->isPublic  = node->funcDef.pub;
 	putSymbol(semantic, symbol);
@@ -197,7 +199,7 @@ static void beginScope(ZSemantic *semantic) {
 
 static void endScope(ZSemantic *semantic) {
 	if (!semantic->table->current || !semantic->table->current->parent) {
-		printf("Cannot end scope: already at the top\n");
+		error(semantic->state, NULL, "Called endScope at the highest level");
 		return;
 	}
 	checkUnusedSymbols(semantic);
@@ -562,7 +564,14 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 			let field = curr->structlit.fields[i]->varDecl;
 			ZType *type = resolveType(semantic, field.rvalue);
 			if (!typesCompatible(semantic->state, field.type, type)) {
-				error(semantic->state, field.ident->identTok, "Mismatch types");
+				// char *expected = NULL;
+				// char *got = NULL;
+				// stype(field.type, &expected);
+				// vecpush(expected, '\0');
+				// stype(type, &got);
+				// vecpush(got, '\0');
+				// error(semantic->state, field.ident->identTok,
+				// 			"Expected '%s', got '%s'", expected, got);
 			}
 		}
 		let resolved = resolve(semantic, curr->structlit.ident);
@@ -689,10 +698,6 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 	ZType *arrType   = resolveType(semantic, curr->subscript.arr);
 	ZType *indexType = resolveType(semantic, curr->subscript.index);
 
-	printf("Array: %d ", arrType->kind);
-	printType(arrType->array.base);
-	printf("\n");
-
 	if (!arrType ||
 			(arrType->kind != Z_TYPE_ARRAY &&
 			arrType->kind != Z_TYPE_POINTER)) {
@@ -709,7 +714,7 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 	}
 
 
-	return arrType->array.base;
+	return arrType->base;
 }
 
 /* ================== Statement analysis ================== */
@@ -761,7 +766,7 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 	
 	if (!cond) {
 		error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
-	} else if (!(cond->kind & Z_TYPE_COMPARABLE_MASK)) {
+	} else if ((cond->kind & Z_TYPE_COMPARABLE_MASK) != 0) {
 		error(semantic->state, curr->ifStmt.cond->tok, "Condition must be a comparable value");
 	}
 
@@ -790,9 +795,12 @@ static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
 
 	ZType *cond = resolveType(semantic, f.cond);
 
+	/* Check if the type is a valid condition. */
 	if (!cond || cond->kind != Z_TYPE_PRIMITIVE) {
 
 	}
+
+	resolveType(semantic, f.incr);
 
 	semantic->loopDepth++;
 	analyzeBlock(semantic, curr->forStmt.block, false);
