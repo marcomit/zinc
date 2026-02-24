@@ -538,19 +538,31 @@ void undoVisit(ZState *state) {
 }
 
 static void printLineHighlight(ZToken *tok, const char *color) {
-    char *lineStart = tok->sourceLinePtr;
-    
-    while (*lineStart && *lineStart != '\n') {
-        putchar(*lineStart);
-        lineStart++;
-    }
-    putchar('\n');
+	char *lineStart = tok->sourceLinePtr;
+	
+	while (*lineStart && *lineStart != '\n') {
+			putchar(*lineStart);
+			lineStart++;
+	}
+	lineStart = tok->sourceLinePtr;
+	putchar('\n');
 
-    for (u32 i = 1; i < tok->col; i++) {
-        putchar(' ');
-    }
-    
-    printf("%s^\033[0m\n", color);
+	
+	printf("%s", color);
+	u32 i = 1;
+	
+	while (lineStart++ != tok->start) {
+		putchar(' ');
+		i++;
+	}
+	putchar('^');
+	i++;
+
+	for (; i < tok->col; i++) {
+		putchar('~');
+	}
+	
+	printf("\033[0m\n");
 }
 
 void printLogs(ZState *state) {
@@ -564,10 +576,10 @@ void printLogs(ZState *state) {
 	for (usize i = 0; i < veclen(state->errors); i++) {
 		ZLog *log = state->errors[i];
 		printf("%s:", log->filename);
-		printf(" %s%s\033[0m:", colors[log->level], level[log->level]);
 		if (log->token) {
-			printf("%zu,%zu: ", log->token->row, log->token->col);
+			printf("%zu:%zu: ", log->token->row, log->token->col);
 		}
+		printf("%s%s\033[0m: ", colors[log->level], level[log->level]);
 		printf("%s\n", log->message);
 
 		if (log->token) printLineHighlight(log->token, colors[log->level]);

@@ -118,6 +118,7 @@ ZType *maketype(ZTypeKind kind) {
 
 static ZNode *makenodevar(ZNode *ident, ZType *type, ZNode *expr) {
 	ZNode *node = makenode(NODE_VAR_DECL);
+	node->tok = ident->identTok;
 	node->varDecl.ident = ident;
 	node->varDecl.type = type;
 	node->varDecl.rvalue = expr;

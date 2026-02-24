@@ -267,7 +267,7 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
 		if (minRank <= 2)
 			return ra > rb ? a : b;
 		ZType *promoted = maketype(Z_TYPE_PRIMITIVE);
-		promoted->primitive.token = maketoken(TOK_F64);
+		promoted->primitive.token = maketoken(TOK_F64, NULL);
 		return promoted;
 	}
 
@@ -288,7 +288,7 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
 	}
 
 	ZType *promoted = maketype(Z_TYPE_PRIMITIVE);
-	promoted->primitive.token = maketoken(toSigned(signedRank + 1));
+	promoted->primitive.token = maketoken(toSigned(signedRank + 1), NULL);
 	return promoted;
 }
 
@@ -357,27 +357,27 @@ static ZType *resolveLiteralType(ZNode *curr) {
 	ZType *t = maketype(Z_TYPE_PRIMITIVE);
 	switch (curr->literalTok->type) {
 	case TOK_INT_LIT: {
-		t->primitive.token = maketoken(TOK_I32);
+		t->primitive.token = maketoken(TOK_I32, NULL);
 		return t;
 	}
 	case TOK_FLOAT_LIT: {
-		t->primitive.token = maketoken(TOK_F64);
+		t->primitive.token = maketoken(TOK_F64, NULL);
 		return t;
 	}
 	case TOK_BOOL_LIT: {
-		t->primitive.token = maketoken(TOK_BOOL);
+		t->primitive.token = maketoken(TOK_BOOL, NULL);
 		return t;
 	}
 	case TOK_STR_LIT: {
 		/* String literals are *char */
 		ZType *base = maketype(Z_TYPE_PRIMITIVE);
-		base->primitive.token = maketoken(TOK_CHAR);
+		base->primitive.token = maketoken(TOK_CHAR, NULL);
 		t->kind = Z_TYPE_POINTER;
 		t->base   = base;
 		return t;
 	}
 	default: {
-		t->primitive.token = maketoken(TOK_VOID);
+		t->primitive.token = maketoken(TOK_VOID, NULL);
 		return t;
 	}
 	}
@@ -470,7 +470,7 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		    op == TOK_AND  || op == TOK_OR    ||
 		    op == TOK_SAND || op == TOK_SOR) {
 			ZType *boolType = maketype(Z_TYPE_PRIMITIVE);
-			boolType->primitive.token = maketoken(TOK_BOOL);
+			boolType->primitive.token = maketoken(TOK_BOOL, NULL);
 			result = boolType;
 		} else if (op == TOK_EQ) {
 			/* Assignment yields the type of the left-hand side. */
@@ -581,29 +581,45 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 
 	case NODE_ARRAY_LIT: {
 		ZType *arrType = NULL;
-		usize size = veclen(curr->arraylit.fields);
+		usize len = veclen(curr->arraylit.fields);
 
-		for (usize i = 0; i < size; i++) {
-			let field = curr->arraylit.fields[i];
-			printf("Field: ");
-			printNode(curr, 0);
-			resolveType(semantic, field);
-			// let fieldType = resolveType(semantic, field);
+		for (int i = 0; i < (int)len; i++) {
+			ZNode *field = curr->arraylit.fields[i];
+			ZType *fieldType = resolveType(semantic, field);
+
 			if (!arrType) {
-				// arrType = fieldType;
+				arrType = fieldType;
 			} else {
-				// arrType = typesCompatible(semantic->state, arrType, fieldType);
-				//
-				// if (!arrType) {
-				// 	error(semantic->state, fieldType->tok,
-				// 	 			"This type is not compatible with others");
-				// }
+				arrType = typesCompatible(semantic->state, arrType, fieldType);
+
+				if (!arrType) {
+					error(semantic->state, fieldType->tok,
+					 			"Array literals should have the same type");
+				}
 			}
 		}
 
-		result->kind = Z_TYPE_ARRAY;
+		// for (int i = 0; i < 5; i++) {
+		// 	ZNode *field = curr->arraylit.fields[i];
+		// 	printf("Field %d: %p\n", i, field);
+		// 	// printNode(field, 0);
+		// 	// resolveType(semantic, field);
+		// 	// let fieldType = resolveType(semantic, field);
+		// 	// if (!arrType) {
+		// 		// arrType = fieldType;
+		// 	// } else {
+		// 		// arrType = typesCompatible(semantic->state, arrType, fieldType);
+		// 		//
+		// 		// if (!arrType) {
+		// 		// 	error(semantic->state, fieldType->tok,
+		// 		// 	 			"This type is not compatible with others");
+		// 		// }
+		// 	// }
+		// }
+
+		result = maketype(Z_TYPE_ARRAY);
 		result->array.base = arrType;
-		result->array.size = size;
+		result->array.size = len;
 
 		break;
 	}

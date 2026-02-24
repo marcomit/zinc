@@ -27,7 +27,7 @@ u8 main() {
 
     o.angle()
 
-    [u8] list = [1, 2, 3, 4, 5]
+    [u8; 5] list = [1, 2, 3, 4, 5]
 
     if o.x {
         return 1
