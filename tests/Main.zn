@@ -9,12 +9,20 @@ struct PrivateStruct {
     f32 y
 }
 
+// macro fields $( @f , )+ -> {
+//     $( @f: @f )+
+// }
+
 Vec2 origin(u8 test) {
     return Vec2 { x: 0, y: 0 }
 }
 
 f32 angle() Vec2 v {
     return v.y / v.x
+}
+
+macro foreach @name in @arr {
+    @arr.angle()
 }
 
 u8 main() {
@@ -27,10 +35,13 @@ u8 main() {
 
     o.angle()
 
-    [u8; 5] list = [1, 2, 3, 4, 5]
+    [u8; 5] list = [1, 2,  3, 4, 5]
 
     if o.x {
         return 1
     }
+
+    foreach x in o
+
     return 0
 }

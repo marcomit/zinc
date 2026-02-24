@@ -558,7 +558,7 @@ static void printLineHighlight(ZToken *tok, const char *color) {
 	putchar('^');
 	i++;
 
-	for (; i < tok->col; i++) {
+	for (; i <= tok->col; i++) {
 		putchar('~');
 	}
 	

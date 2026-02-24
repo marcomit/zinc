@@ -67,8 +67,8 @@ static ParseFunction stmtFunc[] = {
 	parseVarDef,
 	parseExpr,
 	parseVarDecl,
-	parseBreak,
-	parseContinue
+	// parseBreak,
+	// parseContinue
 };
 
 static ParseFunction exprFunc[] = {
@@ -1207,6 +1207,7 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
 		var->name = self->ident;
 		var->startIndex = 0;
 		var->endIndex = 0;
+		var->useCount = 0;
 		vecpush(macro->macro.captured, var);
 		return self;
 
@@ -1315,8 +1316,14 @@ static ZNode *parseMacro(ZParser *parser) {
 	skipBlock(parser);
 	node->macro.endBody = parser->source->current - 1;  // Exclude closing }
 
+	if (node->macro.endBody - node->macro.startBody == 0) {
+		error(parser->state, start, "Body's macro cannot be empty");
+		return NULL;
+	}
+
 	node->macro.consumed = parser->source->current - saved;
 
+	
 	vecpush(parser->macros, node);
 
 	return node;

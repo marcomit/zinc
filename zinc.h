@@ -202,6 +202,7 @@ typedef struct ZMacroVar {
 	usize startIndex;   // Start index into source token array
 	usize endIndex;     // End index (exclusive)
 	ZNode *captured;    // The parsed AST node for this captured variable
+	usize useCount;			// Count how many timee the variable is used in the body
 } ZMacroVar;
 
 struct ZNode {
