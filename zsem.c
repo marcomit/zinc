@@ -25,6 +25,8 @@ static ZType *resolveTypeRef(ZSemantic *, ZType *);
 /* ================== Scope / Symbol helpers ================== */
 
 static ZType *none = NULL;
+static ZType *ztrue = NULL;
+static ZType *zfalse = NULL;
 
 static ZScope *makescope(ZScope *parent) {
 	ZScope *self = zalloc(ZScope);
@@ -93,8 +95,6 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 		return;
 	}
 
-	ZType *type = maketype(Z_TYPE_FUNCTION);
-
 	ZSymbol *symbol   = makesymbol(Z_SYM_FUNC);
 	symbol->name      = node->funcDef.ident;
 	symbol->type      = node->resolved; /* Type calculated during parsing. */
@@ -153,18 +153,21 @@ setScope:
 static void warnUnused(ZSemantic *semantic, ZSymbol *symbol) {
 	switch (symbol->kind) {
 	case Z_SYM_FUNC:
+		if (semantic->state->unusedFunc) break;
 		warning(semantic->state,
 						symbol->name,
 						"Unused function '%s'",
 						symbol->name->str);
 		break;
 	case Z_SYM_STRUCT:
+		if (semantic->state->unusedStruct) break;
 		warning(semantic->state,
 						symbol->name,
 						"Unused struct '%s'",
 						symbol->name->str);
 		break;
 	case Z_SYM_VAR:
+		if (semantic->state->unusedVar) break;
 		warning(semantic->state,
 						symbol->name,
 						"Unused variable '%s'",
@@ -767,7 +770,12 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 	if (!cond) {
 		error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
 	} else if ((cond->kind & Z_TYPE_COMPARABLE_MASK) != 0) {
-		error(semantic->state, curr->ifStmt.cond->tok, "Condition must be a comparable value");
+		printf("Unresolved condition if: ");
+		printType(cond);
+		printf("\n");
+		error(semantic->state,
+					curr->tok,
+					"Condition must be a comparable value");
 	}
 
 	analyzeBlock(semantic, curr->ifStmt.body, true);
@@ -817,7 +825,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 		ZType  *argType = resolveTypeRef(semantic, arg->field.type);
 
 		if (!argType) {
-			error(semantic->state, curr->tok, "Unknown type");
+			error(semantic->state, curr->funcDef.ident, "Unknown type");
 		}
 
 		ZSymbol *sym  = makesymbol(Z_SYM_VAR);
@@ -1009,9 +1017,12 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 }
 
 void zanalyze(ZState *state, ZNode *root) {
+	state->currentPhase = Z_PHASE_SEMANTIC;
 	ZSemantic *semantic = makesemantic(state, root);
 
 	if (!none) none = maketype(Z_TYPE_NONE);
+	if (!ztrue) ztrue = maketype(Z_TYPE_PRIMITIVE);
+	if (!zfalse) zfalse = maketype(Z_TYPE_PRIMITIVE);
 
 	registerModule(semantic, root);
 	discoverGlobalScope(semantic, root);

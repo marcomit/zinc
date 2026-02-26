@@ -24,12 +24,15 @@ foreign u64 strlen(*u8)
 // ----------------------------------------------------------------------------
 // Type Aliases (typedef)
 // ----------------------------------------------------------------------------
+type bool u1
+type void u0
+
 type Byte u8
 type Word u16
 type DWord u32
 type QWord u64
 type Size u64
-type Pointer *void
+type Pointer *u0
 type String *u8
 type ByteArray [u8]
 type IntArray [i32]
@@ -37,6 +40,7 @@ type FloatArray [f64]
 type PointerArray [*void]
 type Matrix [[f64]]
 type NestedArray [[[i32]]]
+
 
 // Generic type aliases
 /* type Optional[T] *T
@@ -280,24 +284,27 @@ void zeroOut(*i32 ptr) {
 }
 
 void copyBytes(*u8 dest, *u8 src, u64 count) {
-    for i in count {
+    for i < count {
         dest[i] = src[i]
+        i = i + 1
     }
 }
 
 // Array parameters
 i32 sumArray([i32] arr, u64 len) {
     i32 sum = 0
-    for i in len {
+    for i < len {
         sum = sum + arr[i]
+        i = i + 1
     }
     return sum
 }
 
 f64 averageArray([f64] arr, u64 len) {
     f64 sum = 0.0
-    for i in len {
+    for i < len {
         sum = sum + arr[i]
+        i = i + 1
     }
     return sum / len
 }
@@ -377,8 +384,9 @@ R apply[T, R](T value, R(T) func) {
 
 R fold[T, R](R initial, [T] arr, u64 len, R(R, T) func) {
     R result = initial
-    for i in len {
+    for i < len {
         result = func(result, arr[i])
+        i = i + i
     }
     return result
 }
@@ -481,10 +489,10 @@ void initArray(u64 elemSize) *DynamicArray self {
 }
 
 void freeArray() *DynamicArray self {
-    if self.data != null {
+    if self.data != none {
         free(self.data)
     }
-    self.data = null
+    self.data = none
     self.length = 0
     self.capacity = 0
 }
@@ -505,7 +513,7 @@ void initStringBuilder() *StringBuilder self {
 
 void append(*u8 str) *StringBuilder self {
     len := strlen(str)
-    while self.length + len >= self.capacity {
+    for self.length + len >= self.capacity {
         newCap := self.capacity * 2
         newBuf := realloc(self.buffer, newCap)
         self.buffer = newBuf
@@ -600,7 +608,7 @@ i32 factorial(i32 n) {
 }
 
 i32 gcd(i32 a, i32 b) {
-    while b != 0 {
+    for b != 0 {
         temp := b
         b = a - a / b * b
         a = temp
@@ -610,7 +618,7 @@ i32 gcd(i32 a, i32 b) {
 
 i32 power(i32 base, i32 exp) {
     result := 1
-    while exp > 0 {
+    for exp > 0 {
         result = result * base
         exp = exp - 1
     }
@@ -628,7 +636,7 @@ bool isPrime(i32 n) {
         return false
     }
     i := 3
-    while i * i <= n {
+    for i * i <= n {
         if n - n / i * i == 0 {
             return false
         }
@@ -687,43 +695,46 @@ i32 deepNesting(i32 a, i32 b, i32 c) {
 
 // For loops
 void countUp(i32 n) {
-    for i in n {
+    for i < n {
         x := i * 2
+        i = i + 1
     }
 }
 
 void nestedLoops(i32 n, i32 m) {
-    for i in n {
-        for j in m {
+    for i < n {
+        for j < m {
             result := i * m + j
+            j = j + 1
         }
+        i = i + 1
     }
 }
 
 void tripleNestedLoops(i32 a, i32 b, i32 c) {
-    for i in a {
-        for j in b {
-            for k in c {
+    for i < a {
+        for j < b {
+            for k < c {
                 index := i * b * c + j * c + k
             }
         }
     }
 }
 
-// While loops
+// for loops
 i32 countDown(i32 n) {
     count := 0
-    while n > 0 {
+    for n > 0 {
         count = count + 1
         n = n - 1
     }
     return count
 }
 
-i32 sumWhile(i32 n) {
+i32 sumfor(i32 n) {
     sum := 0
     i := 1
-    while i <= n {
+    for i <= n {
         sum = sum + i
         i = i + 1
     }
@@ -733,10 +744,10 @@ i32 sumWhile(i32 n) {
 // Mixed control flow
 i32 mixedControl(i32 n) {
     sum := 0
-    for i in n {
+    for i < n {
         if i - i / 2 * 2 == 0 {
             j := i
-            while j > 0 {
+            for j > 0 {
                 sum = sum + j
                 j = j - 1
             }
@@ -766,7 +777,7 @@ void deferMultiple() {
 }
 
 void deferInLoop(i32 n) {
-    for i in n {
+    for i < n {
         ptr := malloc(64)
         defer free(ptr)
     }
@@ -967,12 +978,12 @@ void explicitTypes() {
 }
 
 void pointerTypes() {
-    *i32 ptr = null
-    *i32 ptrPtr = null
-    ***i32 ptrPtrPtr = null
-    *void voidPtr = null
-    *u8 bytePtr = null
-    *Point pointPtr = null
+    *i32 ptr = none
+    *i32 ptrPtr = none
+    ***i32 ptrPtrPtr = none
+    *void voidPtr = none
+    *u8 bytePtr = none
+    *Point pointPtr = none
 }
 
 void arrayTypes() {
@@ -985,8 +996,8 @@ void arrayTypes() {
 
 void constTypes() {
     const i32 constant = 42
-    const *i32 constPtr = null
-    const i32 ptrToConst = null
+    const *i32 constPtr = none
+    const i32 ptrToConst = none
 }
 
 void genericTypes() {
@@ -1052,8 +1063,8 @@ void main() {
         total = 0
     }
 
-    // While loop
-    while running {
+    // for loop
+    for running {
         counter = counter + 1
         if counter >= 100 {
             running = false
@@ -1061,8 +1072,9 @@ void main() {
     }
 
     // For loop
-    for i in 10 {
+    for i < 10 {
         counter = counter + i
+        i = i + 1
     }
 
     // Defer

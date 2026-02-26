@@ -12,8 +12,22 @@ static char *nodeLabels[] = {
 	"BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
 	"STRUCT", "SUBSCRIPT", "MEMBER", "MODULE",
 	"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
-	"TUPLE_LIT", "ARRAY_LIT", "MACRO"
+	"TUPLE_LIT", "ARRAY_LIT", "MACRO", "GOTO", "LABEL", "TYPE",
+	"ENUM", "BREAK", "CONTINUE"
 };
+
+static char *levels[] = {
+	"error",
+	"warning",
+	"info"
+};
+static char *colors[] = {
+	"\033[38;2;220;53;69m",   // Error   (red)
+	"\033[38;2;255;193;7m",   // Warning (yellow/orange)
+	"\033[38;2;23;162;184m",  // Info    (cyan/blue)
+};
+
+static void printLog(ZLog *);
 
 char *stoken(ZToken *token) {
 	if (!token) return "(null)";
@@ -449,6 +463,9 @@ void printNode(ZNode *node, u8 depth) {
 			printNode(fields[i], depth);
 		}
 		break;
+	case NODE_LABEL:
+		printf("Label: %s", stoken(node->gotoLabel));
+		break;
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);
 			break;
@@ -495,6 +512,12 @@ ZState *makestate(char *filename) {
 	self->errors 						= NULL;
 	self->verbose			 			= false;
 	self->pathFiles					= NULL;
+	self->debug							= false;
+
+	self->unusedFunc				=	false;
+	self->unusedStruct			= false;
+	self->unusedVar					= false;
+
 	self->visitedFiles			= NULL;
 	self->optimizationLevel = 0;
 
@@ -544,10 +567,9 @@ ZLog *vmakelog(ZLogLevel level,
 		vsnprintf(log->message, (size_t)len + 1, fmt, args);
 	}
 
+	// printLog(log);
 	return log;
 }
-
-
 
 void error(ZState *state, ZToken *tok, const char *fmt, ...) {
 	va_list args;
@@ -633,24 +655,21 @@ static void printLineHighlight(ZToken *tok, const char *color) {
 	printf("\033[0m\n");
 }
 
+static void printLog(ZLog *log) {
+	printf("%s:", log->filename);
+	if (log->token) {
+		printf("%zu:%zu: ", log->token->row, log->token->col);
+	}
+	printf("%s%s\033[0m: ", colors[log->level], levels[log->level]);
+	printf("%s\n", log->message);
+
+	if (log->token) printLineHighlight(log->token, colors[log->level]);
+}
+
 void printLogs(ZState *state) {
-	char *colors[] = {
-    "\033[38;2;220;53;69m",   // Error   (red)
-    "\033[38;2;255;193;7m",   // Warning (yellow/orange)
-    "\033[38;2;23;162;184m",  // Info    (cyan/blue)
-	};
-	char *level[] = { "error", "warning", "info" };
 	printf("\n\n========= Start Logs (%zu) =========\n", veclen(state->errors));
 	for (usize i = 0; i < veclen(state->errors); i++) {
-		ZLog *log = state->errors[i];
-		printf("%s:", log->filename);
-		if (log->token) {
-			printf("%zu:%zu: ", log->token->row, log->token->col);
-		}
-		printf("%s%s\033[0m: ", colors[log->level], level[log->level]);
-		printf("%s\n", log->message);
-
-		if (log->token) printLineHighlight(log->token, colors[log->level]);
+		printLog(state->errors[i]);
 	}
 	printf("\n\n========= End Logs =========\n");
 }

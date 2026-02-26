@@ -69,6 +69,13 @@ typedef struct {
 
 	char 		**pathFiles;
 	char 		**visitedFiles;
+
+	bool 		debug;
+
+	bool 		unusedVar;
+	bool		unusedFunc;
+	bool		unusedStruct;
+
 	/* Not yet implemented */
 	bool 		verbose;
 	u8 			optimizationLevel;

@@ -1,49 +1,6 @@
-use "tests/Data"
+type bool u1
+type void u0
 
-pub struct Vec2 {
-    f32 x
-    f32 y
-}
-
-struct PrivateStruct {
-    f32 y
-}
-
-// macro fields $( @f , )+ -> {
-//     $( @f: @f )+
-// }
-
-Vec2 origin(u8 test) {
-    return Vec2 { x: 0, y: 0 }
-}
-
-f32 angle() Vec2 v {
-    return v.y / v.x
-}
-
-macro foreach @name in @arr {
-    @arr.angle()
-}
-
-u8 main() {
-    u8 x = 1
-    // x := 1
-
-    o := origin(test)
-
-    *u8 ptr = none
-
-    o.angle()
-
-    [u8; 5] list = [1, 2,  3, 4, 5]
-
-    if o.x {
-        return 1
-    }
-
-    foreach x in o
-
-    {}
-
+bool main() {
     return 0
 }

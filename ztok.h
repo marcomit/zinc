@@ -40,11 +40,13 @@ DEF(TOK_SNOT, 	 	"not",			TOK_FLOWS_MASK | 0x0F)
 DEF(TOK_SOR, 	 		"or",				TOK_FLOWS_MASK | 0x10)
 DEF(TOK_SAND, 	 	"and",			TOK_FLOWS_MASK | 0x11)
 DEF(TOK_NONE, 	 	"none",			TOK_FLOWS_MASK | 0x12)
+DEF(TOK_TRUE, 	 	"true",			TOK_FLOWS_MASK | 0x13)
+DEF(TOK_FALSE, 	 	"false",		TOK_FLOWS_MASK | 0x14)
 #endif
 
 #ifdef TOK_TYPES
 DEF(TOK_VOID,    	"u0", 	  	TOK_TYPES_MASK 															| 0x20)
-DEF(TOK_BOOL,   	"u1", 		 	TOK_TYPES_SIGNATURE_MASK 										| 0x21)
+DEF(TOK_BOOL,   	"u1", 		 	TOK_TYPES_MASK | TOK_SIGNED									| 0x21)
 DEF(TOK_CHAR,    	"char",   	TOK_TYPES_MASK 															| 0x22)
 DEF(TOK_F32,     	"f32",    	TOK_TYPES_MASK | TOK_FLOAT 									| 0x23)
 DEF(TOK_F64,     	"f64",    	TOK_TYPES_MASK | TOK_FLOAT 									| 0x24)

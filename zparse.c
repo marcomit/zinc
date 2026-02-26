@@ -351,6 +351,7 @@ static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
 	ZNode *node = makenode(NODE_CALL);
 	node->call.args = args;
 	node->call.callee = previous;
+	node->tok = previous->tok;
 	return node;
 }
 
@@ -775,6 +776,7 @@ static ZNode *parseReturn(ZParser *parser) {
 }
 
 static ZNode *parseIf(ZParser *parser) {
+	ZToken *start = peek(parser);
 	expect(parser, TOK_IF);
 	
 	ZNode *cond = wrapNode(parser, parseExpr);
@@ -796,10 +798,12 @@ static ZNode *parseIf(ZParser *parser) {
 
 	node->ifStmt.cond = cond;
 	node->ifStmt.body = body;
+	node->tok 				= start;
 	return node;
 }
 
 static ZNode *parseFor(ZParser *parser) {
+	ZToken *start = peek(parser);
 	expect(parser, TOK_FOR);
 
 	ZNode *var = parseVarDef(parser);
@@ -823,14 +827,17 @@ static ZNode *parseFor(ZParser *parser) {
 	if (!block) invalid("Expected a block")
 
 	ZNode *node = makenode(NODE_FOR);
-	node->forStmt.var = var;
-	node->forStmt.cond = cond;
-	node->forStmt.incr = incr;
+	node->forStmt.var 	= var;
+	node->forStmt.cond 	= cond;
+	node->forStmt.incr 	= incr;
 	node->forStmt.block = block;
+	node->tok 					= start;
 	return node;
 }
 
+/* While parsed with 'for' token instead of standard while. */
 static ZNode *parseWhile(ZParser *parser) {
+	ZToken *start = peek(parser);
 	expect(parser, TOK_FOR);
 
 	ZNode *cond = wrapNode(parser, parseExpr);
@@ -840,8 +847,9 @@ static ZNode *parseWhile(ZParser *parser) {
 	ZNode *body = wrapNode(parser, parseBlock);
 
 	ZNode *node = makenode(NODE_WHILE);
-	node->whileStmt.branch = body;
-	node->whileStmt.cond = cond;
+	node->whileStmt.branch 	= body;
+	node->whileStmt.cond 		= cond;
+	node->tok								= start;
 	return node;
 }
 
