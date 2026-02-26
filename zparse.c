@@ -73,10 +73,10 @@ static ParseFunction stmtFunc[] = {
 
 static ParseFunction exprFunc[] = {
 	// parseBlock, // Block parsed as expression for now.
+	parseBinary,
 	parseStructLit,
 	parseArrayLit,
 	parseTupleLit,
-	parseBinary,
 };
 
 static ParseFunction progFunc[] = {
@@ -280,8 +280,7 @@ static ZNode *parsePrimary(ZParser *parser) {
 		}
 		ZToken *tok = consume(parser);
 		return getMacroCapturedVar(parser->currentMacro, tok);
-	} else if (check(parser, TOK_LPAREN)) {
-		consume(parser);
+	} else if (match(parser, TOK_LPAREN)) {
 		ZNode *node 			= wrapNode(parser, parseExpr);
 		expect(parser, TOK_RPAREN);
 		return node;
@@ -770,10 +769,12 @@ ZNode *parseExpr(ZParser *parser) {
 }
 
 static ZNode *parseReturn(ZParser *parser) {
+	ZToken *start = peek(parser);
 	ensure(canPeek(parser) && match(parser, TOK_RETURN));
 	ZNode *ret = makenode(NODE_RETURN);
 
 	ret->returnStmt.expr = parseExpr(parser);
+	ret->tok = start;
 	return ret;
 }
 
@@ -989,6 +990,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
 	if (match(parser, TOK_EQ)) {
 		expr = wrapNode(parser, parseExpr);
 		if (!expr) {
+			printf("Expression not parsed\n");
 			error(parser->state, peek(parser), "Expected expression after '='");
 			return NULL;
 		}
@@ -1039,6 +1041,8 @@ static ZNode *parseVarDecl(ZParser *parser) {
 }
 
 static ZNode *parseTupleLit(ZParser *parser) {
+	ZToken *start = peek(parser);
+
 	expect(parser, TOK_LPAREN);
 	ZNode *expr = NULL;
 	ZNode **fields = NULL;
@@ -1051,6 +1055,10 @@ static ZNode *parseTupleLit(ZParser *parser) {
 
 	ZNode *node = makenode(NODE_TUPLE_LIT);
 	node->tuplelit.fields = fields;
+
+	if (veclen(fields) < 2) {
+		error(parser->state, start, "Expected at least 2 itesm");
+	}
 
 	return node;
 }

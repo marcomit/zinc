@@ -404,6 +404,7 @@ typedef struct ZSymbol {
 typedef struct ZScope {
 	ZSymbol 			**symbols;
 	struct ZScope *parent;
+	ZNode 				*node;
 	u32 					depth;
 } ZScope;
 
@@ -443,6 +444,7 @@ typedef struct ZSemantic {
 	ZSymTable 		*table;
 	ZScopeTable 	**scopes;
 	ZType 				*currentFuncRet;
+	ZNode 				*currentFunc;
 	u16 					loopDepth;
 } ZSemantic;
 

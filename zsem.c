@@ -28,10 +28,11 @@ static ZType *none = NULL;
 static ZType *ztrue = NULL;
 static ZType *zfalse = NULL;
 
-static ZScope *makescope(ZScope *parent) {
+static ZScope *makescope(ZScope *parent, ZNode *node) {
 	ZScope *self = zalloc(ZScope);
 	self->depth   = parent ? parent->depth + 1 : 0;
 	self->parent  = parent;
+	self->node		= node;
 	self->symbols = NULL;
 	return self;
 }
@@ -45,7 +46,7 @@ static ZSymbol *makesymbol(ZSymType kind) {
 
 static ZSymTable *makesymtable(void) {
 	ZSymTable *self  	= zalloc(ZSymTable);
-	self->global     	= makescope(NULL);
+	self->global     	= makescope(NULL, NULL);
 	self->current    	= self->global;
 	self->module 				= NULL;
 	self->funcs  			= NULL;
@@ -56,6 +57,7 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
 	ZSemantic *self       = zalloc(ZSemantic);
 	self->root            = root;
 	self->currentFuncRet  = NULL;
+	self->currentFunc			= NULL;
 	self->loopDepth       = 0;
 	self->state           = state;
 	self->table           = makesymtable();
@@ -140,7 +142,7 @@ static void registerModule(ZSemantic *semantic, ZNode *module) {
 
 	ZScopeTable *table = zalloc(ZScopeTable);
 	table->module = module;
-	table->scope = makescope(semantic->table->global);
+	table->scope = makescope(semantic->table->global, module);
 
 	vecpush(semantic->scopes, table);
 	scope = table->scope;
@@ -195,8 +197,8 @@ static void endModule(ZSemantic *semantic) {
 	semantic->table->current = semantic->table->module;
 }
 
-static void beginScope(ZSemantic *semantic) {
-	ZScope *scope         = makescope(semantic->table->current);
+static void beginScope(ZSemantic *semantic, ZNode *curr) {
+	ZScope *scope         = makescope(semantic->table->current, curr);
 	semantic->table->current = scope;
 }
 
@@ -257,8 +259,6 @@ static bool isComparable(ZSemantic *semantic, ZType *type) {
 	type = resolveTypeRef(semantic, type);
 	if (!type) return false;
 
-	printType(type);
-	
 	if (type->kind == Z_TYPE_FUNCTION ||
 			type->kind == Z_TYPE_ARRAY		||
 			type->kind == Z_TYPE_GENERIC	||
@@ -515,8 +515,14 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		} else {
 			result = typesCompatible(semantic->state, left, right);
 			if (!result) {
+				char *leftType 	= NULL;
+				char *rightType = NULL;
+
+				stype(left, &leftType);
+				stype(right, &rightType);
+
 				error(semantic->state, curr->binary.op,
-				      "Incompatible types in binary expression");
+				      "%s type incompatible with %s type", leftType, rightType);
 			}
 		}
 		break;
@@ -565,12 +571,13 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 			/* sym->type is the raw parsed return type — resolve it so that named
 		 * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
 		 * result is used downstream (e.g. for member access on return value). */
-			result = resolveTypeRef(semantic, sym->type);
+			result = resolveTypeRef(semantic, sym->node->funcDef.ret);
 		} else {
 			/* Expression call: resolve callee type and extract return type. */
 			ZType *calleeType = resolveType(semantic, callee);
-			if (calleeType && calleeType->kind == Z_TYPE_FUNCTION)
+			if (calleeType && calleeType->kind == Z_TYPE_FUNCTION) {
 				result = resolveTypeRef(semantic, calleeType->func.ret);
+			}
 		}
 
 		break;
@@ -688,7 +695,7 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
  	}
 
 	default:
-		warning(semantic->state, NULL,
+		warning(semantic->state, curr->tok,
 						"Trying to resolve the type of node's type %d", curr->type);
 		break;
 	}
@@ -820,9 +827,6 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 	if (!cond) {
 		error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
 	} else if (!isComparable(semantic, cond)) {
-		printf("Unresolved condition if: ");
-		printType(cond);
-		printf("\n");
 		error(semantic->state,
 					curr->ifStmt.cond->tok,
 					"Condition must be a comparable value");
@@ -847,7 +851,7 @@ static void analyzeWhile(ZSemantic *semantic, ZNode *curr) {
 }
 
 static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
-	beginScope(semantic);
+	beginScope(semantic, curr);
 	let f = curr->forStmt;
 	analyzeVar(semantic, f.var, false);
 
@@ -868,7 +872,7 @@ static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
 }
 
 static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
-	beginScope(semantic);
+	beginScope(semantic, curr);
 
 	for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
 		ZNode  *arg     = curr->funcDef.args[i];
@@ -898,12 +902,17 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 		putSymbol(semantic, sym);
 	}
 
-	ZType *savedRet          = semantic->currentFuncRet;
-	semantic->currentFuncRet = resolveTypeRef(semantic, curr->funcDef.ret);
+	ZType *savedRet          	= semantic->currentFuncRet;
+	ZNode *savedFunc					= semantic->currentFunc;
+
+	semantic->currentFuncRet 	= resolveTypeRef(semantic, curr->funcDef.ret);
+	semantic->currentFunc			= curr;
 
 	analyzeBlock(semantic, curr->funcDef.body, false);
 
-	semantic->currentFuncRet = savedRet;
+	semantic->currentFuncRet 	= savedRet;
+	semantic->currentFunc			= savedFunc;
+	
 	endScope(semantic);
 }
 
@@ -925,20 +934,26 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 		curr->resolved = retType;
 
 		if (semantic->currentFuncRet) {
-			bool isVoidRet  = (retType == NULL);
+			bool isVoidRet  = retType == NULL;
 			bool isVoidFunc = semantic->currentFuncRet->kind == Z_TYPE_PRIMITIVE &&
 			                  semantic->currentFuncRet->primitive.token->type == TOK_VOID;
 
 			if (isVoidFunc && !isVoidRet) {
-				error(semantic->state, curr->tok,
+				error(semantic->state, semantic->currentFunc->tok,
 				      "Unexpected return value in void function");
 			} else if (!isVoidFunc && isVoidRet) {
-				error(semantic->state, curr->tok,
+				error(semantic->state, semantic->currentFunc->tok,
 				      "Expected a return value");
 			} else if (!isVoidFunc && !isVoidRet &&
 			           !typesCompatible(semantic->state, retType, semantic->currentFuncRet)) {
+				char *expected 	= NULL;
+				char *got 			= NULL;
+
+				stype(semantic->currentFuncRet, &expected);
+				stype(retType, &got);
+
 				error(semantic->state, curr->tok,
-				      "Return type does not match function signature");
+				      "Expected type %s, got %s", expected, got);
 			}
 		}
 		break;
@@ -951,7 +966,6 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 		}
 
 		if (resolved->kind != Z_TYPE_FUNCTION) {
-			printType(resolved);
 			error(semantic->state, curr->tok, "Must be a function type");
 			break;
 		}
@@ -978,7 +992,7 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 }
 
 static void analyzeBlock(ZSemantic *semantic, ZNode *block, bool scoped) {
-	if (scoped) beginScope(semantic);
+	if (scoped) beginScope(semantic, block);
 
 	ZNode **stmts = block->block;
 	for (usize i = 0; i < veclen(stmts); i++)
