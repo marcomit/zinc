@@ -239,6 +239,24 @@ static ZTokenType toSigned(u8 rank) {
 	}
 }
 
+static bool isComparable(ZType *type) {
+	if (!type) return false;
+
+	if (type->kind == Z_TYPE_FUNCTION ||
+			type->kind == Z_TYPE_ARRAY		||
+			type->kind == Z_TYPE_GENERIC	||
+			type->kind == Z_TYPE_STRUCT		||
+			type->kind == Z_TYPE_TUPLE) {
+		return false;
+	}
+
+	if (type->kind == Z_TYPE_PRIMITIVE) {
+		return isComparable(type->primitive.base);
+	}
+
+	return true;
+}
+
 /* An implementation note:
  * if a or b is a float the return type is always a float.
  * if a and b are both signed or unsigned return the type with the highest rank.
@@ -534,8 +552,6 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		 * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
 		 * result is used downstream (e.g. for member access on return value). */
 			result = resolveTypeRef(semantic, sym->type);
-		} else if (callee->type == NODE_MEMBER) {
-
 		} else {
 			/* Expression call: resolve callee type and extract return type. */
 			ZType *calleeType = resolveType(semantic, callee);
@@ -563,18 +579,32 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		break;
 
 	case NODE_STRUCT_LIT: {
+		ZSymbol *structSym = resolve(semantic, curr->structlit.ident);
+
+		if (!structSym) {
+			error(semantic->state, curr->tok, "struct '%s' not found", curr->tok);
+		}
+		if (structSym->kind != Z_SYM_STRUCT) {
+			error(semantic->state, structSym->name,
+						"'%s' is not a struct", structSym->name);
+			return NULL;
+		}
+
 		for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
-			let field = curr->structlit.fields[i]->varDecl;
-			ZType *type = resolveType(semantic, field.rvalue);
-			if (!typesCompatible(semantic->state, field.type, type)) {
-				// char *expected = NULL;
-				// char *got = NULL;
-				// stype(field.type, &expected);
-				// vecpush(expected, '\0');
-				// stype(type, &got);
-				// vecpush(got, '\0');
-				// error(semantic->state, field.ident->identTok,
-				// 			"Expected '%s', got '%s'", expected, got);
+			ZNode *field = curr->structlit.fields[i];
+
+			for (usize j = 0; j < veclen(structType->strct.fields); i++) {
+
+			}
+
+			ZType *type = resolveType(semantic, field->varDecl.rvalue);
+			if (!typesCompatible(semantic->state, type, type)) {
+				char *expected = NULL;
+				char *got = NULL;
+				stype(type, &expected);
+				stype(type, &got);
+				error(semantic->state, field->varDecl.ident->identTok,
+							"Expected %s, got %s", expected, got);
 			}
 		}
 		let resolved = resolve(semantic, curr->structlit.ident);
@@ -595,7 +625,7 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		ZType *arrType = NULL;
 		usize len = veclen(curr->arraylit.fields);
 
-		for (int i = 0; i < (int)len; i++) {
+		for (usize i = 0; i < len; i++) {
 			ZNode *field = curr->arraylit.fields[i];
 			ZType *fieldType = resolveType(semantic, field);
 
@@ -611,30 +641,32 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 			}
 		}
 
-		// for (int i = 0; i < 5; i++) {
-		// 	ZNode *field = curr->arraylit.fields[i];
-		// 	printf("Field %d: %p\n", i, field);
-		// 	// printNode(field, 0);
-		// 	// resolveType(semantic, field);
-		// 	// let fieldType = resolveType(semantic, field);
-		// 	// if (!arrType) {
-		// 		// arrType = fieldType;
-		// 	// } else {
-		// 		// arrType = typesCompatible(semantic->state, arrType, fieldType);
-		// 		//
-		// 		// if (!arrType) {
-		// 		// 	error(semantic->state, fieldType->tok,
-		// 		// 	 			"This type is not compatible with others");
-		// 		// }
-		// 	// }
-		// }
-
 		result = maketype(Z_TYPE_ARRAY);
 		result->array.base = arrType;
 		result->array.size = len;
 
 		break;
 	}
+
+	case NODE_TUPLE_LIT: {
+		ZType **types = NULL;
+		ZType *fieldType = NULL;
+
+		ZNode **fields = curr->tuplelit.fields;
+		for (usize i = 0; i < veclen(fields); i++) {
+			fieldType = resolveType(semantic, fields[i]);
+			if (!fieldType) {
+				error(semantic->state, fields[i]->tok, "Unresolved type of tuple");
+			} else {
+				vecpush(types, fieldType);
+			}
+		}
+
+		result = maketype(Z_TYPE_TUPLE);
+		result->tuple = types;
+
+		break;
+ 	}
 
 	default:
 		warning(semantic->state, NULL,
@@ -701,9 +733,12 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 	ZType *arrType   = resolveType(semantic, curr->subscript.arr);
 	ZType *indexType = resolveType(semantic, curr->subscript.index);
 
-	if (!arrType ||
-			(arrType->kind != Z_TYPE_ARRAY &&
-			arrType->kind != Z_TYPE_POINTER)) {
+	/* Type not resolved */
+	if (!arrType) return NULL;
+
+
+	if (arrType->kind != Z_TYPE_ARRAY &&
+			arrType->kind != Z_TYPE_POINTER) {
 		error(semantic->state, curr->tok,
 		      "Expected an array type for subscript");
 		return NULL;
@@ -746,10 +781,6 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
 		}
 	} else {
 		/* Inferred type (:= syntax) */
-		if (!rvalueType) {
-			error(semantic->state, curr->tok,
-			      "Cannot infer type without an initializer");
-		}
 		declaredType         = rvalueType;
 		curr->varDecl.type   = rvalueType;
 	}
@@ -769,7 +800,7 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 	
 	if (!cond) {
 		error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
-	} else if ((cond->kind & Z_TYPE_COMPARABLE_MASK) != 0) {
+	} else if (isComparable(cond)) {
 		printf("Unresolved condition if: ");
 		printType(cond);
 		printf("\n");
@@ -901,6 +932,7 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 		}
 
 		if (resolved->kind != Z_TYPE_FUNCTION) {
+			printType(resolved);
 			error(semantic->state, curr->tok, "Must be a function type");
 			break;
 		}
@@ -963,7 +995,7 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 			ZSymbol *symbol   = makesymbol(Z_SYM_FUNC);
 			symbol->name      = child->foreignFunc.tok;
 			symbol->node      = child;
-			symbol->type      = child->foreignFunc.ret;
+			symbol->type      = child->resolved;
 			symbol->isPublic  = true;
 			putSymbol(semantic, symbol);
 			break;

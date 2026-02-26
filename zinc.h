@@ -121,12 +121,8 @@ typedef struct ZNode ZNode;
 typedef struct ZType ZType;
 
 typedef enum ZTypeKind {
-	Z_TYPE_COMPARABLE_MASK = 1 << 8,
-
 	Z_TYPE_PRIMITIVE,
 	Z_TYPE_POINTER,
-
-	Z_TYPE_COMPOSED_MASK = 1 << 9,
 
 	Z_TYPE_STRUCT,
 	Z_TYPE_ARRAY,

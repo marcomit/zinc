@@ -1055,6 +1055,7 @@ static ZNode *parseTupleLit(ZParser *parser) {
 
 	ZNode *node = makenode(NODE_TUPLE_LIT);
 	node->tuplelit.fields = fields;
+
 	return node;
 }
 
@@ -1198,6 +1199,12 @@ static ZNode *parseForeignDecl(ZParser *parser) {
 	node->foreignFunc.ret = ret;
 	node->foreignFunc.tok = name;
 	node->foreignFunc.args = args;
+	
+	ZType *type = maketype(Z_TYPE_FUNCTION);
+	type->func.ret = ret;
+	type->func.args = args;
+
+	node->resolved = type;
 	return node;
 }
 

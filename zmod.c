@@ -113,7 +113,7 @@ void printTokens(ZToken **tokens) {
 	printf("\n==== End tokens ====\n");
 }
 
-void stype(ZType *type, char **buff) {
+static void _stype(ZType *type, char **buff) {
 	if (!type) {
 		vecunion(*buff, "unknown", 7);
 		return;
@@ -122,16 +122,18 @@ void stype(ZType *type, char **buff) {
 	switch (type->kind) {
 	case Z_TYPE_POINTER:
 		vecpush(*buff, '*');
-		stype(type->base, buff);
+		_stype(type->base, buff);
 		break;
-	case Z_TYPE_PRIMITIVE:
-		vecunion(*buff, type->primitive.token->str, strlen(type->primitive.token->str));
+	case Z_TYPE_PRIMITIVE: {
+		char *str = stoken(type->primitive.token);
+		vecunion(*buff, str, strlen(str));
 		break;
+	}
 	case Z_TYPE_FUNCTION:
-		stype(type->func.ret, buff);
+		_stype(type->func.ret, buff);
 		vecpush(*buff, '(');
 		for (usize i = 0; i < veclen(type->func.args); i++) {
-			stype(type->func.args[i], buff);
+			_stype(type->func.args[i], buff);
 			if (i < veclen(type->func.args) - 1) vecunion(*buff, ", ", 2);
 		}
 		vecpush(*buff, ')');
@@ -142,7 +144,7 @@ void stype(ZType *type, char **buff) {
 
 		for (usize i = 0; i < veclen(type->strct.fields); i++) {
 			ZNode *field = type->strct.fields[i];
-			stype(field->field.type, buff);
+			_stype(field->field.type, buff);
 			vecpush(*buff, ' ');
 			vecunion(*buff, field->field.identifier->str, strlen(field->field.identifier->str));
 			if (i < veclen(type->strct.fields) - 1) vecunion(*buff, ", ", 2);
@@ -151,13 +153,13 @@ void stype(ZType *type, char **buff) {
 		break;
 	case Z_TYPE_ARRAY:
 		vecpush(*buff, '[');
-		stype(type->array.base, buff);
+		_stype(type->array.base, buff);
 		vecpush(*buff, ']');
 		break;
 	case Z_TYPE_TUPLE:
 		vecpush(*buff, '(');
 		for (usize i = 0; i < veclen(type->tuple); i++) {
-			stype(type->tuple[i], buff);
+			_stype(type->tuple[i], buff);
 			if (i < veclen(type->tuple) - 1) vecpush(*buff, ',');
 		}
 		vecpush(*buff, ')');
@@ -167,7 +169,7 @@ void stype(ZType *type, char **buff) {
 		vecpush(*buff, '[');
 
 		for (usize i = 0; i < veclen(type->generic.args); i++) {
-			stype(type->generic.args[i], buff);
+			_stype(type->generic.args[i], buff);
 			if (i < veclen(type->generic.args) - 1) vecpush(*buff, ',');
 		}
 		vecpush(*buff, ']');
@@ -175,6 +177,11 @@ void stype(ZType *type, char **buff) {
 	default:
 		break;
 	}
+}
+
+void stype(ZType *type, char **buff) {
+	_stype(type, buff);
+	vecpush(*buff, '\0');
 }
 
 void printType(ZType *type) {
