@@ -210,7 +210,7 @@ void printType(ZType *type) {
 		printf(")");
 		break;
 	case Z_TYPE_STRUCT:
-		printf("struct %s {", type->strct.name->str);
+		printf("struct %s {\n", type->strct.name->str);
 		for (usize i = 0; i < veclen(type->strct.fields); i++) {
 			ZNode *field = type->strct.fields[i];
 			printType(field->field.type);

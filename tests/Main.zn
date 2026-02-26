@@ -1,6 +1,30 @@
 type bool u1
 type void u0
 
+foreign u0 printf(u8)
+
+struct Point {
+    f32 x
+    f32 y
+}
+
+f32 square() Point self {
+    return self.y + self.x
+}
+
 bool main() {
+    Point p = Point{ x: 10, y: 20}
+
+    if p.x {
+        printf(p.x)
+    }
+
+    x := p.square()
+
+    y := 10
+
+    printf(y)
+    printf(0)
+
     return 0
 }

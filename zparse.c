@@ -74,9 +74,9 @@ static ParseFunction stmtFunc[] = {
 static ParseFunction exprFunc[] = {
 	// parseBlock, // Block parsed as expression for now.
 	parseStructLit,
-	parseBinary,
 	parseArrayLit,
 	parseTupleLit,
+	parseBinary,
 };
 
 static ParseFunction progFunc[] = {
@@ -263,6 +263,7 @@ static ZNode *parseGenericBinary(ZParser *parser,
 		node->binary.op = op;
 		node->binary.left = left;
 		node->binary.right = right;
+		node->tok = op;
 		left = node;
 	}
 
@@ -561,6 +562,7 @@ static ZType *parseAtom(ZParser *parser) {
 	if (checkMask(parser, TOK_TYPES_MASK) || check(parser, TOK_IDENT)) {
 		ZType *base = maketype(Z_TYPE_PRIMITIVE);
 		base->primitive.token = consume(parser);
+		base->primitive.base 	= NULL;
 		return base;
 	}
 	return NULL;
@@ -977,7 +979,7 @@ static ZNode *parseVarInferred(ZParser *parser) {
 static ZNode *parseVarDefTyped(ZParser *parser) {
 	ZType *type = wrapType(parser, parseType);
 
-	ensure(type && check(parser, TOK_IDENT));
+	ensure(type && check(parser, TOK_IDENT) && !peek(parser)->newlineBefore);
 
 	ZToken *ident = consume(parser);
 	ZNode *node = makenode(NODE_IDENTIFIER);
@@ -1023,7 +1025,7 @@ static ZNode *parseVarDecl(ZParser *parser) {
 	ZNode *identNode = NULL;
 	ZType *type = wrapType(parser, parseType);
 
-	ensure(type && check(parser, TOK_IDENT));
+	ensure(type && check(parser, TOK_IDENT) && !peek(parser)->newlineBefore);
 
 	ZToken *ident = consume(parser);
 	identNode = makenode(NODE_IDENTIFIER);
@@ -1031,15 +1033,9 @@ static ZNode *parseVarDecl(ZParser *parser) {
 
 	expect(parser, TOK_EQ);
 
-	ZNode *node = makenode(NODE_VAR_DECL);
-
 	ZNode *rvalue = wrapNode(parser, parseExpr);
 
-	node->varDecl.ident = identNode;
-	node->varDecl.rvalue = rvalue;
-	node->varDecl.type = type;
-
-	return node;
+	return makenodevar(identNode, type, rvalue);
 }
 
 static ZNode *parseTupleLit(ZParser *parser) {

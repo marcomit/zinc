@@ -239,19 +239,33 @@ static ZTokenType toSigned(u8 rank) {
 	}
 }
 
-static bool isComparable(ZType *type) {
+// static bool isComparable(ZType *type) {
+// 	if (!type) return false;
+//
+// 	if (type->kind == Z_TYPE_FUNCTION ||
+// 			type->kind == Z_TYPE_ARRAY		||
+// 			type->kind == Z_TYPE_GENERIC	||
+// 			type->kind == Z_TYPE_STRUCT		||
+// 			type->kind == Z_TYPE_TUPLE) {
+// 		return false;
+// 	}
+//
+// 	return true;
+// }
+
+static bool isComparable(ZSemantic *semantic, ZType *type) {
+	type = resolveTypeRef(semantic, type);
 	if (!type) return false;
 
+	printType(type);
+	
 	if (type->kind == Z_TYPE_FUNCTION ||
 			type->kind == Z_TYPE_ARRAY		||
 			type->kind == Z_TYPE_GENERIC	||
 			type->kind == Z_TYPE_STRUCT		||
 			type->kind == Z_TYPE_TUPLE) {
+		printf("not comparable\n");
 		return false;
-	}
-
-	if (type->kind == Z_TYPE_PRIMITIVE) {
-		return isComparable(type->primitive.base);
 	}
 
 	return true;
@@ -590,11 +604,16 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 			return NULL;
 		}
 
+		ZNode **structFields = structSym->type->strct.fields;
+		usize structLen = veclen(structFields);
+
 		for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
 			ZNode *field = curr->structlit.fields[i];
 
-			for (usize j = 0; j < veclen(structType->strct.fields); i++) {
+			for (usize j = 0; j < structLen; j++) {
+				if (tokeneq(structFields[i]->field.identifier, field->tok)) {
 
+				}
 			}
 
 			ZType *type = resolveType(semantic, field->varDecl.rvalue);
@@ -800,12 +819,12 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 	
 	if (!cond) {
 		error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
-	} else if (isComparable(cond)) {
+	} else if (!isComparable(semantic, cond)) {
 		printf("Unresolved condition if: ");
 		printType(cond);
 		printf("\n");
 		error(semantic->state,
-					curr->tok,
+					curr->ifStmt.cond->tok,
 					"Condition must be a comparable value");
 	}
 
@@ -946,7 +965,7 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 		}
 
 		for (usize i = 0; i < got; i++) {
-				ZType *argType = resolveType(semantic, curr->call.args[i]);
+			ZType *argType = resolveType(semantic, curr->call.args[i]);
 			if (!typesCompatible(semantic->state,
 														argType, resolved->func.args[i])) {
 				error(semantic->state, curr->tok, "Unexpected type");
@@ -996,7 +1015,7 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 			symbol->name      = child->foreignFunc.tok;
 			symbol->node      = child;
 			symbol->type      = child->resolved;
-			symbol->isPublic  = true;
+			symbol->isPublic  = false;
 			putSymbol(semantic, symbol);
 			break;
 		}
