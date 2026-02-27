@@ -1,0 +1,33 @@
+foreign *u0 malloc(u64)
+foreign *u0 malloc(*u0, u64)
+
+pub struct Vec[T] {
+    u64 len
+    u64 cap
+    *u0 data
+}
+
+pub Vec[T] Vec::new[T]() {
+
+    defaultCapacity := 16
+
+    data := malloc(sizeof(T) * defaultCapacity)
+    return Vec { len: 0, cap: defaultCapacity, data: data }
+}
+
+u1 filled[T]() Vec[T] self {
+    return self.len >= self.cap
+}
+
+u0 grow[T]() Vec[T] self {
+    self.cap = self.cap * 2
+    self.data = realloc(self.data, self.cap)
+}
+
+pub u0 push[T](T item) Vec[T] self {
+    if self.filled() {
+        self.grow()
+    }
+    self.data[self.len] = item
+    self.len = self.len + 1
+}

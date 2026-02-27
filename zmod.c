@@ -342,7 +342,7 @@ void printNode(ZNode *node, u8 depth) {
 			printToken(node->funcDef.receiver->field.identifier);
 			printf(" ");
 		}
-		printf("%s, Type: ", node->funcDef.ident->str);
+		printf("%s, Type: ", node->funcDef.name->str);
 		printType(node->funcDef.ret);
 		printf("\n");
 		for (usize i = 0; i < veclen(node->funcDef.generics); i++) {

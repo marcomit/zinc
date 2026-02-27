@@ -19,9 +19,12 @@
 // #endif
 
 static void usage(char *program) {
-	printf("Usage: %s <filename>\n", program);
+	printf("Usage: %s <filename> [options]\n", program);
 	printf("Options:\n");
-	printf("\t --debug -d Used for debug mode and inspect the insight of the compilation\n");
+	printf("\t --debug -d Enable debug mode\n");
+	printf("\t --unused-variable Suppress 'unsused variable' warnings\n");
+	printf("\t --unused-function Suppress 'unsused function' warnings\n");
+	printf("\t --unused-struct Suppress 'unsused struct' warnings\n");
 }
 
 #define cmp(s, l) (strcmp(s, l) == 0)
@@ -66,13 +69,24 @@ ZState *loadState(int argc, char **argv) {
 				goto stateErr;
 			}
 			state->unusedVar = true;
-		} else if (cmp(arg, "--unused-parameter")) {
+		} else if (cmp(arg, "--unused-struct")) {
 			if (state->unusedStruct) {
 				err = "Unused struct flag already setted";
 				goto stateErr;
 			}
 			state->unusedStruct = true;
-		}	else {
+		}	else if (cmp(arg, "--output"), cmp(arg, "-o")) {
+			if (state->output) {
+				err = "Output already setted";
+				goto stateErr;
+			}
+			i++;
+			if (i >= argc) {
+				err = "Missing output file";
+				goto stateErr;
+			}
+			state->output = argv[i];
+		} else {
 			err = "Undefined argument";
 			goto stateErr;
 		}
@@ -103,7 +117,7 @@ int main(int argc, char **argv) {
 
 	printNode(root, 0);
 	zanalyze(state, root);
-	// zcompile(state, root, state->output);
+	zcompile(state, root, state->output);
 
 
 	printLogs(state);

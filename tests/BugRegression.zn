@@ -60,7 +60,7 @@ u0 testStatementLevelCall() {
     printf("test\n")
 }
 u0 testForIncrementNotAnalyzed() {
-    i32 i = 0
+    // i32 i = 0
     i32 limit = 10
     // Currently: no error about 'ghostVar' because incr is never analyzed
     // After fix: should error on undefined 'ghostVar'
@@ -91,6 +91,10 @@ u0 testMethodCallReturnsNull() {
     p.x = 42
     p.y = 0
     result := p.getX()
+}
+
+u0 testMatch(u8 val) {
+
 }
 
 u0 main() {

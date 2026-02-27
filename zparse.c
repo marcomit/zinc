@@ -879,6 +879,16 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 	if (!ret || !canPeek(parser) || !check(parser, TOK_IDENT)) return NULL;
 
 	ZToken *name = consume(parser);
+	ZToken *base = NULL;
+
+
+	if (match(parser, TOK_COLON) &&
+			match(parser, TOK_COLON) &&
+			check(parser, TOK_IDENT)) {
+		base = name;
+		name = consume(parser);
+	}
+
 	ZToken **generics = NULL;
 
 	if (check(parser, TOK_LSBRACKET)) {
@@ -934,7 +944,8 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 
 	ZNode *node = makenode(NODE_FUNC);
 	node->funcDef.ret = ret;
-	node->funcDef.ident = name;
+	node->funcDef.name = name;
+	node->funcDef.base = base;
 	node->funcDef.args = args;
 	node->funcDef.body = body;
 	node->funcDef.pub = public;
@@ -1085,9 +1096,8 @@ static ZNode *parseArrayLit(ZParser *parser) {
 }
 
 static ZNode *parseStructLit(ZParser *parser) {
-	if (!check(parser, TOK_IDENT)) {
-		return NULL;
-	}
+	if (!check(parser, TOK_IDENT)) return NULL;
+
 	ZToken *ident = consume(parser);
 	ZType **generics = NULL;
 
@@ -1109,18 +1119,21 @@ static ZNode *parseStructLit(ZParser *parser) {
 		if (!check(parser, TOK_IDENT)) break;
 		ZNode *node = makenode(NODE_IDENTIFIER);
 		node->identTok = consume(parser);
+
 		if (!match(parser, TOK_COLON)) {
 			error(parser->state, peek(parser), "Expected a ':', got %s", stoken(peek(parser)));
 			return NULL;
 		}
+
 		ZNode *expr = wrapNode(parser, parseExpr);
+
 		if (!expr) return NULL;
+
 		ZNode *var = makenodevar(node, NULL, expr);
 		vecpush(structlit->structlit.fields, var);
 		if (check(parser, TOK_RBRACKET)) break;
 		if (!match(parser, TOK_COMMA)) {
-			error(parser->state, peek(parser), "Expected a ',', got %s", stoken(peek(parser)));
-			return NULL;
+			break;
 		}
 	}
 

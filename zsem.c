@@ -98,7 +98,7 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 	}
 
 	ZSymbol *symbol   = makesymbol(Z_SYM_FUNC);
-	symbol->name      = node->funcDef.ident;
+	symbol->name      = node->funcDef.name;
 	symbol->type      = node->resolved; /* Type calculated during parsing. */
 	symbol->node      = node;
 	symbol->isPublic  = node->funcDef.pub;
@@ -488,7 +488,7 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		ZSymbol *sym = resolve(semantic, curr->identTok);
 		if (!sym) {
 			error(semantic->state, curr->identTok,
-			      "Undefined variable '%s'", curr->identTok->str);
+			      "Undefined identifier '%s'", curr->identTok->str);
 			return NULL;
 		}
 		result = sym->type;
@@ -718,7 +718,7 @@ static ZType *resolveReceiverCall(ZSemantic *semantic, ZType *caller, ZToken *na
 	if (!funcs) return NULL;
 
 	for (usize i = 0; i < veclen(funcs); i++) {
-		if (tokeneq(funcs[i]->funcDef.ident, name)) {
+		if (tokeneq(funcs[i]->funcDef.name, name)) {
 			return funcs[i]->resolved;
 		}
 	}
@@ -827,9 +827,11 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 	if (!cond) {
 		error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
 	} else if (!isComparable(semantic, cond)) {
+		char *got = NULL;
+		stype(cond, &got);
 		error(semantic->state,
 					curr->ifStmt.cond->tok,
-					"Condition must be a comparable value");
+					"%s cannot be used as a condition", got);
 	}
 
 	analyzeBlock(semantic, curr->ifStmt.body, true);
@@ -879,7 +881,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 		ZType  *argType = resolveTypeRef(semantic, arg->field.type);
 
 		if (!argType) {
-			error(semantic->state, curr->funcDef.ident, "Unknown type");
+			error(semantic->state, curr->funcDef.name, "Unknown type");
 		}
 
 		ZSymbol *sym  = makesymbol(Z_SYM_VAR);
@@ -960,10 +962,7 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 	}
 	case NODE_CALL: {
 		ZType *resolved = resolveType(semantic, curr->call.callee);
-		if (!resolved) {
-			error(semantic->state, curr->tok, "Unknown function");
-			break;
-		}
+		if (!resolved) break;
 
 		if (resolved->kind != Z_TYPE_FUNCTION) {
 			error(semantic->state, curr->tok, "Must be a function type");

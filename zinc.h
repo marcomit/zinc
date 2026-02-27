@@ -258,7 +258,8 @@ struct ZNode {
 
 		struct {
 			ZType *ret;
-			ZToken *ident;
+			ZToken *name;
+			ZToken *base;
 
 			ZNode **args;
 
