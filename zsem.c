@@ -918,15 +918,20 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 	endScope(semantic);
 }
 
+static bool isType(ZType *type, ZTokenType tok) {
+	if (type->kind != Z_TYPE_PRIMITIVE) return false;
+	return type->primitive.token->type == tok;
+}
+
 static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 	switch (curr->type) {
-	case NODE_VAR_DECL: analyzeVar(semantic, curr, false); break;
-	case NODE_IF: analyzeIf(semantic, curr); break;
-	case NODE_WHILE: analyzeWhile(semantic, curr); break;
-	case NODE_FOR: analyzeFor(semantic, curr); break;
-	case NODE_BLOCK: analyzeBlock(semantic, curr, false); break;
-	case NODE_DEFER: resolveType(semantic, curr->deferStmt.expr); break;
-	default: resolveType(semantic, curr); break;
+	case NODE_VAR_DECL: analyzeVar(semantic, curr, false); 						break;
+	case NODE_IF: 			analyzeIf(semantic, curr); 										break;
+	case NODE_WHILE: 		analyzeWhile(semantic, curr); 								break;
+	case NODE_FOR: 			analyzeFor(semantic, curr); 									break;
+	case NODE_BLOCK: 		analyzeBlock(semantic, curr, false); 					break;
+	case NODE_DEFER: 		resolveType(semantic, curr->deferStmt.expr); 	break;
+	default: 						resolveType(semantic, curr); 									break;
 
 	case NODE_RETURN: {
 		ZType *retType = NULL;
@@ -937,8 +942,7 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
 
 		if (semantic->currentFuncRet) {
 			bool isVoidRet  = retType == NULL;
-			bool isVoidFunc = semantic->currentFuncRet->kind == Z_TYPE_PRIMITIVE &&
-			                  semantic->currentFuncRet->primitive.token->type == TOK_VOID;
+			bool isVoidFunc = isType(semantic->currentFuncRet, TOK_VOID);
 
 			if (isVoidFunc && !isVoidRet) {
 				error(semantic->state, semantic->currentFunc->tok,
