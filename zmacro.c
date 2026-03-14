@@ -187,12 +187,12 @@ ZToken **copytokens(ZToken **source, usize start, usize end) {
 }
 
 ZNode *expandMacro(ZParser *parser) {
-	ZNode **macros = parser->macros;
+	ZNode **macros = parser->macroParser.macros;
 	if (!macros || veclen(macros) == 0) return NULL;
 
 	for (usize i = 0; i < veclen(macros); i++) {
 		// Skip macros that are currently being expanded (avoid clobbering captured vars)
-		if (macros[i] == parser->currentMacro) continue;
+		if (macros[i] == parser->macroParser.currentMacro) continue;
 
 		usize saved = parser->source->current;
 		ZTokenStream *savedStream = parser->source;
@@ -224,11 +224,11 @@ ZNode *expandMacro(ZParser *parser) {
 
 		// Save parser state
 		ZTokenStream *savedSource = parser->source;
-		ZNode *savedCurrentMacro = parser->currentMacro;
+		ZNode *savedCurrentMacro = parser->macroParser.currentMacro;
 
 		// Switch to body token stream
 		parser->source = bodyStream;
-		parser->currentMacro = macro;
+		parser->macroParser.currentMacro = macro;
 
 		// Parse the body as a sequence of statements
 		ZNode *block = makenode(NODE_BLOCK);
@@ -242,7 +242,7 @@ ZNode *expandMacro(ZParser *parser) {
 
 		// Restore parser state
 		parser->source = savedSource;
-		parser->currentMacro = savedCurrentMacro;
+		parser->macroParser.currentMacro = savedCurrentMacro;
 
 		let vars = macro->macro.captured;
 		for (usize i = 0; i < veclen(vars); i++) {

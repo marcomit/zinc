@@ -5,7 +5,6 @@ program = { declaration } ;
 
 declaration = function_declaration
             | foreign_function_declaration
-            | receiver_function
             | variable_declaration
             | struct_declaration
             | union_declaration
@@ -15,7 +14,7 @@ declaration = function_declaration
 
 (* ============ Generics ============ *)
 
-(* Generic parameter list: [T] or [T, U] or [T, U, V] *)
+(* Generic parameter list: [T] or [T, U] *)
 generic_params = "[", identifier, { ",", identifier }, "]" ;
 
 (* Generic argument list: [i32] or [i32, Error] *)
@@ -23,57 +22,64 @@ generic_args = "[", type, { ",", type }, "]" ;
 
 (* ============ Imports ============ *)
 
-import_declaration = "module", string_literal ;
+import_declaration = "use", string_literal ;
 
 (* ============ Functions ============ *)
 
-function_declaration = return_type, identifier, [ generic_params ], "(", [ parameter_list ], ")", block ;
+(* Optional 'pub'. Optional 'base::' prefix for namespace. Optional receiver
+   field (type ident) after params for method syntax. *)
+function_declaration = [ "pub" ], return_type, [ identifier, "::", ], identifier,
+                       [ generic_params ], "(", [ parameter_list ], ")",
+                       [ receiver ], block ;
+
+receiver = type, identifier ;
+
+return_type = type ;
 
 foreign_function_declaration = "foreign", type, identifier, "(", [ foreign_parameter_list ], ")" ;
 
 foreign_parameter_list = type, { ",", type } ;
 
-receiver_function = return_type, identifier, [ generic_params ], "(", [ parameter_list ], ")", type, identifier, block ;
-
 parameter_list = parameter, { ",", parameter } ;
 
 parameter = type, identifier ;
 
-return_type = type ;
-
 (* ============ Macros ============ *)
 
-(* macro unless $cond $body { if not ($cond) $body } *)
-macro_declaration = "macro", macro_pattern, block ;
+(* Macro body uses '->' as separator between pattern and block. *)
+macro_declaration = [ "pub" ], "macro", macro_pattern, "->", block ;
 
-(* Pattern: sequence of literal tokens and capture variables *)
+(* Pattern: sequence of literal tokens and capture variables.
+   Terminated by '->' in the parser. *)
 macro_pattern = { macro_pattern_element }+ ;
 
-macro_pattern_element = identifier                              (* literal keyword: unless, in, from *)
-                      | "$", identifier                         (* expr capture: $cond *)
-                      | "@", identifier                         (* ident capture: @name *)
-                      | "#", identifier                         (* type capture: #T *)
-                      | macro_repetition ;                      (* repetition: $(...)* *)
+macro_pattern_element = overridable_token                          (* literal keyword or symbol *)
+                      | "'", token                                 (* quoted token: forces literal match *)
+                      | "$", identifier                            (* expr capture: $cond *)
+                      | "@", identifier                            (* ident capture: @name *)
+                      | "#", identifier                            (* type capture: #T *)
+                      | macro_repetition ;                         (* repetition: $(...)* *)
 
-(* Repetition: $(, $rest)* or $(pattern)+ *)
+(* Repetition: $(pattern)* or $(pattern)+ *)
 macro_repetition = "$", "(", { macro_pattern_element }, ")", ( "*" | "+" ) ;
 
 (* ============ Variables ============ *)
 
-(* Explicit type declaration *)
-variable_declaration = type, identifier, "=", expression
-                     | identifier, ":=", expression ;
+(* Inferred: identifier := expression *)
+(* Typed with optional initializer: type identifier [= expression] *)
+variable_declaration = identifier, ":=", expression
+                     | type, identifier, [ "=", expression ] ;
 
 (* ============ Structs ============ *)
 
-(* Struct with optional generics: struct Vec[T] { *T data } *)
-struct_declaration = "struct", identifier, [ generic_params ], "{", { struct_field }, "}" ;
+(* Optional 'pub' and optional generics: [pub] struct Vec[T] { *T data } *)
+struct_declaration = [ "pub" ], "struct", identifier, [ generic_params ], "{", { struct_field }, "}" ;
 
 struct_field = type, identifier ;
 
 (* ============ Unions ============ *)
 
-union_declaration = "union", "{", { struct_field }, "}" ;
+union_declaration = "union", identifier, "{", { struct_field }, "}" ;
 
 (* ============ Type Aliases ============ *)
 
@@ -89,25 +95,22 @@ base_type = basic_type
           | identifier ;
 
 basic_type = "char"
+           | "u0"                                                  (* void *)
+           | "u1"                                                  (* bool *)
            | "u8" | "u16" | "u32" | "u64"
            | "i8" | "i16" | "i32" | "i64"
-           | "f32" | "f64"
-           | "void" ;
+           | "f32" | "f64" ;
 
-(* Pointer type: *T, **T *)
-(* Handled by { "*" } prefix in type rule *)
+(* Pointer type: *T, **T — handled by { "*" } prefix in type rule *)
 
-(* Array type: [i32], [[u8]] *)
-array_type = "[", type, "]" ;
+(* Array type: [i32] or [u8; 16] (sized) *)
+array_type = "[", type, [ ";", integer_constant ], "]" ;
 
-(* Tuple type: (i32, bool), (i32, i32, i32) *)
+(* Tuple type: (i32, bool) — requires at least 2 types *)
 tuple_type = "(", type, ",", type, { ",", type }, ")" ;
 
-(* Function type suffix: i32(i32, i32) or void()[T] *)
-function_suffix = "(", [ type, { ",", type } ], ")", [ generic_args ] ;
-
-(* Generic type instantiation: Vec[i32], Map[str, i32] *)
-(* Handled by optional generic_args suffix in type rule *)
+(* Function type suffix: i32(i32, i32) *)
+function_suffix = "(", [ type, { ",", type } ], ")" ;
 
 (* ============ Statements ============ *)
 
@@ -116,24 +119,28 @@ block = "{", { statement }, "}" ;
 statement = variable_declaration
           | expression_statement
           | if_statement
+          | for_statement
           | while_statement
-          | for_in_statement
           | match_statement
           | return_statement
           | defer_statement
           | goto_statement
           | label_statement
+          | break_statement
+          | continue_statement
           | block ;
 
 expression_statement = expression ;
 
 if_statement = "if", expression, block, [ "else", ( if_statement | block ) ] ;
 
-while_statement = "while", expression, block ;
+(* C-style for loop: for vardef; cond; incr { } *)
+for_statement = "for", variable_declaration, ";", expression, ";", expression, block ;
 
-(* Range-based for: for i in expr { } *)
-for_in_statement = "for", identifier, "in", expression, block ;
+(* While loop uses 'for' keyword: for expr { } *)
+while_statement = "for", expression, block ;
 
+(* match is a stub: parses but generates no code *)
 match_statement = "match", expression, "{", "}" ;
 
 return_statement = "return", [ expression ] ;
@@ -144,15 +151,22 @@ goto_statement = "goto", identifier ;
 
 label_statement = identifier, ":" ;
 
+break_statement = "break" ;
+
+continue_statement = "continue" ;
+
 (* ============ Expressions ============ *)
 
-expression = assignment_expression ;
+expression = assignment_expression
+           | struct_literal
+           | array_literal
+           | tuple_literal ;
 
 assignment_expression = logical_or_expression, [ "=", assignment_expression ] ;
 
-logical_or_expression = logical_and_expression, { "or", logical_and_expression } ;
+logical_or_expression = logical_and_expression, { ( "or" | "||" ), logical_and_expression } ;
 
-logical_and_expression = equality_expression, { "and", equality_expression } ;
+logical_and_expression = equality_expression, { ( "and" | "&&" ), equality_expression } ;
 
 equality_expression = relational_expression, { ( "==" | "!=" ), relational_expression } ;
 
@@ -163,32 +177,33 @@ additive_expression = multiplicative_expression, { ( "+" | "-" ), multiplicative
 multiplicative_expression = unary_expression, { ( "*" | "/" ), unary_expression } ;
 
 unary_expression = postfix_expression
-                 | ( "+" | "-" | "not" | "*" | "&" ), unary_expression ;
+                 | ( "+" | "-" | "!" | "not" | "*" | "&" ), unary_expression ;
 
 postfix_expression = primary_expression, { postfix_operator } ;
 
-postfix_operator = "[", expression, "]"                           (* subscript *)
-                 | "(", [ argument_list ], ")"                    (* call *)
-                 | ".", identifier ;                              (* member access *)
+postfix_operator = "[", expression, "]"                            (* subscript *)
+                 | "(", [ argument_list ], ")"                     (* call *)
+                 | ".", identifier ;                               (* member access *)
 
 primary_expression = identifier
                    | constant
                    | string_literal
-                   | array_literal
-                   | struct_literal
                    | "(", expression, ")" ;
 
 argument_list = expression, { ",", expression } ;
 
 (* Array literal: [1, 2, 3] *)
-array_literal = "[", [ expression, { ",", expression }, [ "," ] ], "]" ;
+array_literal = "[", [ expression, { ",", expression } ], "]" ;
 
 (* Struct literal: Point { x: 3.0, y: 4.0 } or Point[T] { x: val } *)
 struct_literal = identifier, [ generic_args ], "{", [ struct_field_list ], "}" ;
 
-struct_field_list = struct_field_init, { ",", struct_field_init }, [ "," ] ;
+struct_field_list = struct_field_init, { ",", struct_field_init } ;
 
 struct_field_init = identifier, ":", expression ;
+
+(* Tuple literal: (a, b) — requires at least 2 elements *)
+tuple_literal = "(", expression, ",", expression, { ",", expression }, ")" ;
 
 (* ============ Lexical Elements ============ *)
 
@@ -196,9 +211,8 @@ identifier = letter, { letter | digit | "_" } ;
 
 constant = integer_constant
          | float_constant
-         | char_constant
          | boolean_constant
-         | null_constant ;
+         | none_constant ;
 
 integer_constant = digit, { digit }
                  | "0x", hex_digit, { hex_digit }                  (* hex: 0xFF *)
@@ -207,11 +221,9 @@ integer_constant = digit, { digit }
 float_constant = digit, { digit }, ".", { digit }
                | digit, { digit }, ".", { digit }, "e", [ "+" | "-" ], digit, { digit } ;
 
-char_constant = "'", character, "'" ;
-
 boolean_constant = "true" | "false" ;
 
-null_constant = "null" ;
+none_constant = "none" ;
 
 string_literal = '"', { string_char }, '"' ;
 
@@ -233,5 +245,3 @@ digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
 hex_digit = digit | "a" | ... | "f" | "A" | ... | "F" ;
 
 binary_digit = "0" | "1" ;
-
-character = ? any valid character ? ;

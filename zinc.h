@@ -366,6 +366,23 @@ typedef struct ZTokenStream {
 	struct ZTokenStream *prev;
 } ZTokenStream;
 
+typedef struct ZMacroParser {
+	ZNode 				**macros;
+
+	/* Setted when it parses the body of a macro. */
+	ZNode 				*currentMacro;
+
+
+	/* Stack of macros currently being expanded (for cycle detection) */
+	ZNode 				**expandingMacros;
+
+	/* Current pattern list. */
+	ZMacroPattern	*currentList;
+
+	/* Used for list expansion. */
+	usize 				currentIndex;
+} ZMacroParser;
+
 typedef struct ZParser {
 	ZState 				*state;
 	ZTokenStream 	*source;
@@ -373,15 +390,10 @@ typedef struct ZParser {
 	 * Used to track temporary errors and find a valid path.
 	 */
 	usize 				*errstack;
-	ZNode 				**macros;
 
-	/* Setted when it parses the body of a macro. */
-	ZNode 				*currentMacro;
+	ZMacroParser 	macroParser;
 
-	/* Stack of macros currently being expanded (for cycle detection) */
-	ZNode 				**expandingMacros;
-
-	u8 depth;
+	u8 						depth;
 } ZParser;
 
 /* ================== Semantic analysis	================== */
@@ -389,8 +401,6 @@ typedef enum {
 	Z_SYM_VAR,
 	Z_SYM_FUNC,
 	Z_SYM_STRUCT,
-	// TODO: remove this
-	// Z_SYM_RECFUN
 } ZSymType;
 
 typedef struct ZSymbol {

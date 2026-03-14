@@ -98,9 +98,10 @@ static ZParser *makeparser(ZState *state, ZToken **tokens) {
 	self->errstack = NULL;
 	self->depth = 0;
 	self->state = state;
-	self->macros = NULL;
-	self->currentMacro = NULL;
-	self->expandingMacros = NULL;
+	self->macroParser.currentMacro = NULL;
+	self->macroParser.expandingMacros = NULL;
+	self->macroParser.currentIndex = 0;
+	self->macroParser.macros=NULL;
 	return self;
 }
 
@@ -273,13 +274,13 @@ static ZNode *parseGenericBinary(ZParser *parser,
 static ZNode *parsePrimary(ZParser *parser) {
 	ensure(canPeek(parser));
 
-	if (parser->currentMacro && match(parser, TOK_MACRO_IDENT)) {
+	if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_IDENT)) {
 		if (!check(parser, TOK_IDENT)) {
 			error(parser->state, peek(parser), "Expected an identifier after @");
 			return NULL;
 		}
 		ZToken *tok = consume(parser);
-		return getMacroCapturedVar(parser->currentMacro, tok);
+		return getMacroCapturedVar(parser->macroParser.currentMacro, tok);
 	} else if (match(parser, TOK_LPAREN)) {
 		ZNode *node 			= wrapNode(parser, parseExpr);
 		expect(parser, TOK_RPAREN);
@@ -633,6 +634,30 @@ static ZNode *parseLabel(ZParser *parser) {
 	return node;
 }
 
+/* Not handled yet. */
+ZNode *expandListMacro(ZParser *parser) {
+	if (!parser->macroParser.currentMacro) return NULL;
+
+	expect(parser, TOK_MACRO_EXPR);
+	expect(parser, TOK_LPAREN);
+
+	ZNode *stmt = parseStmt(parser);
+
+	// Failed to parse statement
+	if (!stmt) return NULL;
+
+	if (!match(parser, TOK_RPAREN)) {
+		error(parser->state, peek(parser),
+					"Expected ')' to close the macro pattern");
+		return NULL;
+	}
+
+	ZNode *node = makenode(NODE_BLOCK);
+	node->block = NULL;
+
+	return node;
+}
+
 ZNode *parseStmt(ZParser *parser) {
 	usize len = sizeof(stmtFunc) / sizeof(stmtFunc[0]);
 	return parseOrGrammar(parser, stmtFunc, len);
@@ -750,7 +775,7 @@ static ZNode *parseStructDecl(ZParser *parser) {
 }
 
 ZNode *parseExpr(ZParser *parser) {
-	if (!parser->currentMacro || !match(parser, TOK_MACRO_EXPR)) {
+	if (!parser->macroParser.currentMacro || !match(parser, TOK_MACRO_EXPR)) {
 		return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
 	}
 
@@ -760,7 +785,7 @@ ZNode *parseExpr(ZParser *parser) {
 	}
 
 	ZToken *var = consume(parser);
-	ZNode *placeholder = getMacroCapturedVar(parser->currentMacro, var);
+	ZNode *placeholder = getMacroCapturedVar(parser->macroParser.currentMacro, var);
 	if (!placeholder) {
 		error(parser->state, peek(parser), "%s is not a valid macro variable", var->str);
 		return NULL;
@@ -967,8 +992,8 @@ static ZNode *parseFuncDecl(ZParser *parser) {
 static ZNode *parseVarInferred(ZParser *parser) {
 	ZNode *identNode = NULL;
 	
-	if (parser->currentMacro && match(parser, TOK_MACRO_IDENT)) {
-		identNode = getMacroCapturedVar(parser->currentMacro, consume(parser));
+	if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_IDENT)) {
+		identNode = getMacroCapturedVar(parser->macroParser.currentMacro, consume(parser));
 		if (!identNode) {
 			error(parser->state, peek(parser), "Unknown var");	
 		}
@@ -1226,6 +1251,24 @@ static ZNode *parseForeignDecl(ZParser *parser) {
 }
 
 
+/* Parse the pattern of the macro.
+ * The pattern can be formed by a combination of these elements:
+ * - ident: this captures an identifier (like a variable name or the name of a struct ...).
+ * - key: tcaptures a keyword like if or for.
+ * - expr: captures an expression (expressions is whatever you get a result).
+ * - block: captures a block of code like function body or the body of a loop.
+ * - stmt: captures a statement.
+ * 
+ * These operations can compbined with each other into a list:
+ * - a sequence: the pattern must follow all elements in the sequence.
+ *   When the parser see elements separated by a space it parses elements like a sequence.
+ * - optional [element]: an optional element wrapped by '[]' is an element not required.
+ *   An example is the 'else' after the if block.
+ * - zero or more (element)+: captures a list of zero or more elements.
+ * - one or more (element)*: captures a list of at least one element.
+ *
+ * Note: you cannot define a pattern that can be accepted by an empty pattern.
+ * */
 static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
 	ZMacroPattern *self = zalloc(ZMacroPattern);
 	ZMacroVar *var = zalloc(ZMacroVar);
@@ -1360,7 +1403,7 @@ static ZNode *parseMacro(ZParser *parser) {
 	node->macro.consumed = parser->source->current - saved;
 
 	
-	vecpush(parser->macros, node);
+	vecpush(parser->macroParser.macros, node);
 
 	return node;
 }
@@ -1374,8 +1417,10 @@ static ZNode *skipMacro(ZParser *parser) {
 
 	ZNode *macro = NULL;
 
-	for (usize i = 0; i < veclen(parser->macros) && !macro; i++) {
-		if (parser->macros[i]->macro.start == curr) macro = parser->macros[i];
+	for (usize i = 0; i < veclen(parser->macroParser.macros) && !macro; i++) {
+		if (parser->macroParser.macros[i]->macro.start == curr) {
+			macro = parser->macroParser.macros[i];
+		}
 	}
 
 	if (!macro) return NULL;

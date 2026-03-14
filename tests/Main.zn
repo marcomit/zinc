@@ -3,6 +3,18 @@ type void u0
 
 foreign u0 printf(u8)
 
+/* Ternary operator
+ * Usage:
+ * "odd" if n % 2 == 0 else "even"
+*/
+macro $tbody if $cond else $fbody -> {
+    if $cond {
+        $tbody
+    } else {
+        $fbody
+    }
+}
+
 struct Vec2 {
     f64 x
     f64 y
