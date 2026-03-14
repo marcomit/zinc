@@ -1,55 +1,12 @@
-type bool u1
-type void u0
-
-foreign u0 printf(u8)
-
-/* Ternary operator
- * Usage:
- * "odd" if n % 2 == 0 else "even"
-*/
-macro $tbody if $cond else $fbody -> {
-    if $cond {
-        $tbody
-    } else {
-        $fbody
-    }
-}
-
 struct Vec2 {
-    f64 x
-    f64 y
+    f32 x
+    f32 y
 }
 
-struct Triangle {
-    Vec2 a
-    Vec2 b
-    Vec2 c
+Vec2 Vec2::zero() {
+    return Vec2{ x: 0, y: 0 }
 }
 
-f32 square() Vec2 self {
-    return self.y + self.x
-}
-
-f64 triangleArea(Triangle t) {
-    ax := t.b.x - t.a.x
-    ay := t.b.y - t.a.y
-    bx := t.c.x - t.a.x
-    by := t.c.y - t.a.y
-    return (ax * by - ay * bx) * 0.5
-}
-
-bool main() {
-
-    p := Vec2{ x: 10, y: 20, }
-    if p.x {
-        printf(p.x)
-    }
-
-    x := p.square()
-
-
-    printf(x)
-    printf(0)
-
+i8 main() {
     return 0
 }

@@ -75,7 +75,7 @@ ZState *loadState(int argc, char **argv) {
 				goto stateErr;
 			}
 			state->unusedStruct = true;
-		}	else if (cmp(arg, "--output"), cmp(arg, "-o")) {
+		}	else if (cmp(arg, "--output") || cmp(arg, "-o")) {
 			if (state->output) {
 				err = "Output already setted";
 				goto stateErr;
@@ -115,8 +115,8 @@ int main(int argc, char **argv) {
 
 	ZNode *root = zparse(state, tokens);
 
-	printNode(root, 0);
 	zanalyze(state, root);
+	printNode(root, 0);
 	zcompile(state, root, state->output);
 
 

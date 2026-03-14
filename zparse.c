@@ -73,10 +73,10 @@ static ParseFunction stmtFunc[] = {
 
 static ParseFunction exprFunc[] = {
 	// parseBlock, // Block parsed as expression for now.
-	parseBinary,
 	parseStructLit,
 	parseArrayLit,
 	parseTupleLit,
+	parseBinary,
 };
 
 static ParseFunction progFunc[] = {
@@ -604,6 +604,7 @@ static ZNode *parseDefer(ZParser *parser) {
 	return node;
 }
 
+//FIXME: Not yet implemented. Use else-if chain instead.
 static ZNode *parseMatch(ZParser *parser) {
 	expect(parser, TOK_MATCH);
 
@@ -707,15 +708,13 @@ static ZNode *parseField(ZParser *parser) {
 
 // TODO: To implement
 static ZNode *parseEnumDecl(ZParser *parser) {
-	// bool isPublic = match(parser, TOK_PUB);
-	//
-	expect(parser, TOK_ENUM);
-	// ensure(check(parser, TOK_IDENT));
-	// let name = consume(parser);
-	//
-	// let node = makenode(NODE_ENUM);
-	//
+	error(parser->state, peek(parser), "Enum declaration are not yet supported");
 	return NULL;
+	expect(parser, TOK_ENUM);
+
+	ZNode *node = makenode(NODE_ENUM);
+	
+	return node;
 }
 
 static ZNode *parseUnionDecl(ZParser *parser) {
@@ -1090,7 +1089,7 @@ static ZNode *parseTupleLit(ZParser *parser) {
 	expect(parser, TOK_RPAREN);
 
 	ZNode *node = makenode(NODE_TUPLE_LIT);
-	node->tuplelit.fields = fields;
+	node->tuplelit = fields;
 
 	if (veclen(fields) < 2) {
 		error(parser->state, start, "Expected at least 2 itesm");
@@ -1115,7 +1114,7 @@ static ZNode *parseArrayLit(ZParser *parser) {
 
 	ZNode *node = makenode(NODE_ARRAY_LIT);
 
-	node->arraylit.fields = values;
+	node->arraylit = values;
 
 	return node;
 }
@@ -1137,8 +1136,9 @@ static ZNode *parseStructLit(ZParser *parser) {
 	expect(parser, TOK_LBRACKET);
 
 	ZNode *structlit = makenode(NODE_STRUCT_LIT);
-	structlit->structlit.ident = ident;
+	structlit->structlit.ident 		= ident;
 	structlit->structlit.generics = generics;
+	structlit->tok 								= ident;
 
 	while (true) {
 		if (!check(parser, TOK_IDENT)) break;

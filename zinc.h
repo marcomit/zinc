@@ -295,6 +295,31 @@ struct ZNode {
 			ZNode **fields;
 		} unionDef;
 
+		/* Enums are the combination of a union with an integer
+		 * that indicates which field is 'active'.
+		 * enum Shape {
+		 * 	Square(f32),
+		 * 	Rectangle(f32, f32),
+		 * 	Circle(f32)
+		 * }
+		 * */
+		struct {
+			/* The name of the enum. */
+			ZToken *name;
+
+			/* Fields are a list of enumField. */
+			ZNode **fields;
+		} enumDef;
+
+		/* Representation of an enum's field.
+		 * It stores the name of the field (e.g. Square or Circle)
+		 * and its captured types.
+		 * */
+		struct {
+			ZToken *name;
+			ZType **captured;
+		} enumField;
+
 		struct {
 			ZNode *object;
 			ZToken *field;
@@ -313,13 +338,9 @@ struct ZNode {
 			ZNode *index;
 		} subscript;
 
-		struct {
-			ZNode **fields;
-		} tuplelit;
+		ZNode **tuplelit;
 
-		struct {
-			ZNode **fields;
-		} arraylit;
+		ZNode **arraylit;
 
 		struct {
 			ZToken *ident;

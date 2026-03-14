@@ -439,8 +439,8 @@ void printNode(ZNode *node, u8 depth) {
 		break;
 	case NODE_ARRAY_LIT:
 		printf("\n");
-		for(usize i = 0; i < veclen(node->arraylit.fields); i++) {
-			printNode(node->arraylit.fields[i], depth);
+		for(usize i = 0; i < veclen(node->arraylit); i++) {
+			printNode(node->arraylit[i], depth);
 		}
 		break;
 	case NODE_STRUCT_LIT:
@@ -465,7 +465,7 @@ void printNode(ZNode *node, u8 depth) {
 		break;
 	case NODE_TUPLE_LIT:
 		printf("\n");
-		ZNode **fields = node->tuplelit.fields;
+		ZNode **fields = node->tuplelit;
 		for (usize i = 0; i < veclen(fields); i++) {
 			printNode(fields[i], depth);
 		}

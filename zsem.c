@@ -264,7 +264,6 @@ static bool isComparable(ZSemantic *semantic, ZType *type) {
 			type->kind == Z_TYPE_GENERIC	||
 			type->kind == Z_TYPE_STRUCT		||
 			type->kind == Z_TYPE_TUPLE) {
-		printf("not comparable\n");
 		return false;
 	}
 
@@ -603,7 +602,8 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		ZSymbol *structSym = resolve(semantic, curr->structlit.ident);
 
 		if (!structSym) {
-			error(semantic->state, curr->tok, "struct '%s' not found", curr->tok);
+			error(semantic->state, curr->tok, "struct '%s' not found", curr->tok->str);
+			return NULL;
 		}
 		if (structSym->kind != Z_SYM_STRUCT) {
 			error(semantic->state, structSym->name,
@@ -614,23 +614,26 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		ZNode **structFields = structSym->type->strct.fields;
 		usize structLen = veclen(structFields);
 
+		if (veclen(curr->structlit.fields) < structLen) {
+			warning(semantic->state, curr->tok, "Some fields not initialized");
+		}
+
 		for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
 			ZNode *field = curr->structlit.fields[i];
+			ZType *type = resolveType(semantic, field->varDecl.rvalue);
 
 			for (usize j = 0; j < structLen; j++) {
-				if (tokeneq(structFields[i]->field.identifier, field->tok)) {
-
+				if (!tokeneq(structFields[j]->field.identifier, field->tok)) continue;
+				ZType *expectedType = resolveTypeRef(semantic, structFields[j]->field.type);
+				if (!typesCompatible(semantic->state, expectedType, type)) {
+					char *expected = NULL;
+					char *got = NULL;
+					stype(expectedType, &expected);
+					stype(type, &got);
+					error(semantic->state, field->varDecl.ident->identTok,
+								"Expected %s, got %s", expected, got);
 				}
-			}
-
-			ZType *type = resolveType(semantic, field->varDecl.rvalue);
-			if (!typesCompatible(semantic->state, type, type)) {
-				char *expected = NULL;
-				char *got = NULL;
-				stype(type, &expected);
-				stype(type, &got);
-				error(semantic->state, field->varDecl.ident->identTok,
-							"Expected %s, got %s", expected, got);
+				break;
 			}
 		}
 		let resolved = resolve(semantic, curr->structlit.ident);
@@ -649,10 +652,10 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 
 	case NODE_ARRAY_LIT: {
 		ZType *arrType = NULL;
-		usize len = veclen(curr->arraylit.fields);
+		usize len = veclen(curr->arraylit);
 
 		for (usize i = 0; i < len; i++) {
-			ZNode *field = curr->arraylit.fields[i];
+			ZNode *field = curr->arraylit[i];
 			ZType *fieldType = resolveType(semantic, field);
 
 			if (!arrType) {
@@ -661,7 +664,9 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 				arrType = typesCompatible(semantic->state, arrType, fieldType);
 
 				if (!arrType) {
-					error(semantic->state, fieldType->tok,
+					ZToken *tok = NULL;
+					if (fieldType) tok = fieldType->tok;
+					error(semantic->state, field->tok,
 					 			"Array literals should have the same type");
 				}
 			}
@@ -678,7 +683,7 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		ZType **types = NULL;
 		ZType *fieldType = NULL;
 
-		ZNode **fields = curr->tuplelit.fields;
+		ZNode **fields = curr->tuplelit;
 		for (usize i = 0; i < veclen(fields); i++) {
 			fieldType = resolveType(semantic, fields[i]);
 			if (!fieldType) {
