@@ -114,7 +114,8 @@ typedef enum {
 	NODE_TYPE,
 	NODE_ENUM,
 	NODE_BREAK,
-	NODE_CONTINUE
+	NODE_CONTINUE,
+	NODE_ENUM_FIELD
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -279,20 +280,21 @@ struct ZNode {
 		} foreignFunc;
 
 		struct {
-			ZNode *callee;
-			ZNode ** args;
+			ZNode 	*callee;
+			ZNode 	** args;
 		} call;
 
 		struct {
-			ZToken *ident;
-			ZNode **fields;
-			ZToken **generics;
+			ZToken 	*ident;
+			ZNode 	**fields;
+			ZToken 	**generics;
 			bool pub;
 		} structDef;
 
 		struct {
-			ZToken *ident;
-			ZNode **fields;
+			ZToken 	*ident;
+			ZNode 	**fields;
+			bool 		pub;
 		} unionDef;
 
 		/* Enums are the combination of a union with an integer
@@ -308,7 +310,9 @@ struct ZNode {
 			ZToken *name;
 
 			/* Fields are a list of enumField. */
-			ZNode **fields;
+			ZNode 	**fields;
+
+			bool 		pub;
 		} enumDef;
 
 		/* Representation of an enum's field.
@@ -316,46 +320,47 @@ struct ZNode {
 		 * and its captured types.
 		 * */
 		struct {
-			ZToken *name;
-			ZType **captured;
+			ZToken 	*name;
+			ZType 	**captured;
 		} enumField;
 
 		struct {
-			ZNode *object;
-			ZToken *field;
+			ZNode 	*object;
+			ZToken 	*field;
 		} memberAccess;
 
 		struct {
-			ZNode *expr; // Can be NULL for void returns
+			ZNode 	*expr; // Can be NULL for void returns
 		} returnStmt;
 
 		struct {
-			ZNode *expr;
+			ZNode 	*expr;
 		} deferStmt;
 
 		struct {
-			ZNode *arr;
-			ZNode *index;
+			ZNode 	*arr;
+			ZNode 	*index;
 		} subscript;
 
-		ZNode **tuplelit;
+		ZNode 		**tuplelit;
 
-		ZNode **arraylit;
+		ZNode 		**arraylit;
 
 		struct {
-			ZToken *ident;
-			ZNode **fields;
-			ZType **generics;
+			ZToken 	*ident;
+			ZNode 	**fields;
+			ZType 	**generics;
 		} structlit;
 
 		struct {
-			ZToken *alias;
-			ZType *type;
+			ZToken 	*alias;
+			ZType 	*type;
+			bool 		pub;
 		} typeDef;
 
 		struct {
-			char 	*name;
-			ZNode **root;
+			char 		*name;
+			ZNode 	**root;
 		} module;
 
 		/* For macros don't parse the body.
@@ -364,19 +369,19 @@ struct ZNode {
 		 **/
 		struct {
 			ZMacroPattern *pattern;
-			usize startBody;        // Index of first token after {
-			usize endBody;          // Index of } (exclusive)
-			ZMacroVar **captured;
-			ZToken *start;          // First token of macro definition
-			usize consumed;         // Tokens consumed by pattern + body
-			ZToken **sourceTokens;  // Original token array where the macro was defined
-			bool pub;
+			usize 				startBody;        // Index of first token after {
+			usize 				endBody;          // Index of } (exclusive)
+			ZMacroVar 		**captured;
+			ZToken 				*start;          // First token of macro definition
+			usize 				consumed;         // Tokens consumed by pattern + body
+			ZToken 				**sourceTokens;  // Original token array where the macro was defined
+			bool 					pub;
 		} macro;
 
-		ZToken *gotoLabel;  // For NODE_GOTO and NODE_LABEL
+		ZToken 					*gotoLabel;  // For NODE_GOTO and NODE_LABEL
 
-		ZToken *literalTok;
-		ZToken *identTok;
+		ZToken 					*literalTok;
+		ZToken 					*identTok;
 	};
 };
 
@@ -422,6 +427,7 @@ typedef enum {
 	Z_SYM_VAR,
 	Z_SYM_FUNC,
 	Z_SYM_STRUCT,
+	Z_SYM_TYPEDEF
 } ZSymType;
 
 typedef struct ZSymbol {

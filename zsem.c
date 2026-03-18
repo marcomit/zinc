@@ -117,17 +117,28 @@ static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
 }
 
 static void putStruct(ZSemantic *semantic, ZNode *node) {
-	ZSymbol *symbol   = makesymbol(Z_SYM_STRUCT);
-	symbol->name      = node->structDef.ident;
-	symbol->node      = node;
-	symbol->isPublic  = node->structDef.pub;
+	ZSymbol *symbol				= makesymbol(Z_SYM_STRUCT);
+	symbol->name					= node->structDef.ident;
+	symbol->node      		= node;
+	symbol->isPublic  		= node->structDef.pub;
 
-	ZType *type        = maketype(Z_TYPE_STRUCT);
-	type->strct.name   = node->structDef.ident;
-	type->strct.fields = node->structDef.fields;
-	type->strct.generics = NULL;
-	symbol->type       = type;
+	ZType *type						= maketype(Z_TYPE_STRUCT);
+	type->strct.name   		= node->structDef.ident;
+	type->strct.fields 		= node->structDef.fields;
+	type->strct.generics 	= NULL;
+	symbol->type					= type;
 
+	putSymbol(semantic, symbol);
+}
+
+static void putTypedef(ZSemantic *semantic, ZNode *node) {
+	ZSymbol *symbol 			= makesymbol(Z_SYM_TYPEDEF);
+
+	symbol->name					= node->typeDef.alias;
+	symbol->type 					= node->typeDef.type;
+	symbol->isPublic			= node->typeDef.pub;
+	symbol->node = node;
+	
 	putSymbol(semantic, symbol);
 }
 
@@ -607,7 +618,7 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		}
 		if (structSym->kind != Z_SYM_STRUCT) {
 			error(semantic->state, structSym->name,
-						"'%s' is not a struct", structSym->name);
+						"'%s' is not a struct", stoken(structSym->name));
 			return NULL;
 		}
 
@@ -666,7 +677,7 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 				if (!arrType) {
 					ZToken *tok = NULL;
 					if (fieldType) tok = fieldType->tok;
-					error(semantic->state, field->tok,
+					error(semantic->state, tok,
 					 			"Array literals should have the same type");
 				}
 			}
@@ -1021,13 +1032,7 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 		case NODE_VAR_DECL: putVar(semantic, child, false); break;
 
 		case NODE_TYPEDEF: {
-			/* Register a type alias so named references to it can be resolved. */
-			ZSymbol *symbol   = makesymbol(Z_SYM_STRUCT);
-			symbol->name      = child->typeDef.alias;
-			symbol->node      = child;
-			symbol->type      = child->typeDef.type;
-			symbol->isPublic  = false;
-			putSymbol(semantic, symbol);
+			putTypedef(semantic, child);
 			break;
 		}
 

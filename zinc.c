@@ -33,15 +33,10 @@ ZState *loadState(int argc, char **argv) {
 	char *err = NULL;
 	if (argc < 2) goto stateErr;
 
-	for (int i = 0; i < argc; i++) {
-		printf("Arg %d: %s\n", i, argv[i]);
-	}
-	printf("End args\n");
-
 	ZState *state = makestate(argv[1]);
-	printf("State created\n");
 
 	char *arg;
+
 	for (int i = 2; i < argc; i++) {
 		arg = argv[i];
 		if (cmp(arg, "--debug") || cmp(arg, "-d")) {
