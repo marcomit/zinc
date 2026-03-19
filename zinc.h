@@ -412,9 +412,9 @@ typedef struct ZMacroParser {
 typedef struct ZParser {
 	ZState 				*state;
 	ZTokenStream 	*source;
-	/*
-	 * Used to track temporary errors and find a valid path.
-	 */
+	usize					tokenIndex;
+
+	/* Used to track temporary errors and find a valid path. */
 	usize 				*errstack;
 
 	ZMacroParser 	macroParser;

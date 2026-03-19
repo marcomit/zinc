@@ -349,7 +349,6 @@ void zhelloworld(ZState *state, const char *output) {
 }
 
 void zcompile(ZState *state, ZNode *root, const char *output) {
-	return;
 	ZCodegen *ctx = makecodegen(state, NULL);
 	initNativeTypes(ctx);
 	compile(ctx, root);

@@ -440,6 +440,12 @@ static ZType *resolveLiteralType(ZNode *curr) {
  *
  * For compound types (pointer, array, function, tuple) it recurses into their
  * sub-types so that e.g. `*MyStruct` gets fully resolved.
+ *
+ * NOTE: this function doesn't handle cycles.
+ * So a struct that has a pointer to itself
+ * (like linked-lists, trees, graphs ...) cause an in infinite loop.
+ * To handle it properly the function have to early return
+ * if the current type is already visited.
  */
 static ZType *resolveTypeRef(ZSemantic *semantic, ZType *type) {
 	if (!type) return NULL;
@@ -470,8 +476,7 @@ static ZType *resolveTypeRef(ZSemantic *semantic, ZType *type) {
 		for (usize i = 0; i < veclen(type->tuple); i++)
 			type->tuple[i] = resolveTypeRef(semantic, type->tuple[i]);
 		return type;
-	default:
-		return type;
+	default: return type;
 	}
 }
 
@@ -1077,10 +1082,6 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 			}
 			break;
 
-		case NODE_UNION:
-			warning(semantic->state, root->tok, "'union' not yet analyzed");
-			break;
-
 		case NODE_MODULE:
 			if (child->module.root) {
 				registerModule(semantic, child);
@@ -1089,7 +1090,11 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 			}
 			break;
 
-		default: break;
+		default: 
+			warning(semantic->state, root->tok,
+							"node '%zu' not yet analyzed",
+							root->type);
+			break;
 		}
 	}
 }
@@ -1098,9 +1103,9 @@ void zanalyze(ZState *state, ZNode *root) {
 	state->currentPhase = Z_PHASE_SEMANTIC;
 	ZSemantic *semantic = makesemantic(state, root);
 
-	if (!none) none = maketype(Z_TYPE_NONE);
-	if (!ztrue) ztrue = maketype(Z_TYPE_PRIMITIVE);
-	if (!zfalse) zfalse = maketype(Z_TYPE_PRIMITIVE);
+	if (!none) 		none		= maketype(Z_TYPE_NONE);
+	if (!ztrue)		ztrue 	= maketype(Z_TYPE_PRIMITIVE);
+	if (!zfalse)	zfalse	= maketype(Z_TYPE_PRIMITIVE);
 
 	registerModule(semantic, root);
 	discoverGlobalScope(semantic, root);

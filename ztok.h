@@ -40,8 +40,8 @@ DEF(TOK_SNOT, 	 	"not",			TOK_FLOWS_MASK | 0x0F)
 DEF(TOK_SOR, 	 		"or",				TOK_FLOWS_MASK | 0x10)
 DEF(TOK_SAND, 	 	"and",			TOK_FLOWS_MASK | 0x11)
 DEF(TOK_NONE, 	 	"none",			TOK_FLOWS_MASK | 0x12)
-DEF(TOK_TRUE, 	 	"true",			TOK_FLOWS_MASK | 0x13)
-DEF(TOK_FALSE, 	 	"false",		TOK_FLOWS_MASK | 0x14)
+DEF(TOK_TRUE, 	 	"true",			TOK_FLOWS_MASK | TOK_LITERAL | 0x13)
+DEF(TOK_FALSE, 	 	"false",		TOK_FLOWS_MASK | TOK_LITERAL | 0x14)
 #endif
 
 #ifdef TOK_TYPES

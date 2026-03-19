@@ -3,10 +3,18 @@ struct Vec2 {
     f32 y
 }
 
-Vec2 Vec2::zero() {
-    return Vec2{ x: 0, y: 0 }
+struct Node {
+    *u0 data
+    *Node next
 }
 
-i8 main() {
+struct List {
+    *Node head
+    *Node tail
+}
+
+
+
+u8 main() {
     return 0
 }
