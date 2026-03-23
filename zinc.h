@@ -76,6 +76,8 @@ typedef struct {
 	bool		unusedFunc;
 	bool		unusedStruct;
 
+	bool		emitLLVM;   /* --emit-llvm: write .ll IR file instead of native binary */
+
 	/* Not yet implemented */
 	bool 		verbose;
 	u8 			optimizationLevel;

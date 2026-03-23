@@ -21,10 +21,11 @@
 static void usage(char *program) {
 	printf("Usage: %s <filename> [options]\n", program);
 	printf("Options:\n");
-	printf("\t --debug -d Enable debug mode\n");
-	printf("\t --unused-variable Suppress 'unsused variable' warnings\n");
-	printf("\t --unused-function Suppress 'unsused function' warnings\n");
-	printf("\t --unused-struct Suppress 'unsused struct' warnings\n");
+	printf("\t --debug -d           Enable debug mode\n");
+	printf("\t --emit-llvm          Emit LLVM IR (.ll) instead of a native binary\n");
+	printf("\t --unused-variable    Suppress 'unused variable' warnings\n");
+	printf("\t --unused-function    Suppress 'unused function' warnings\n");
+	printf("\t --unused-struct      Suppress 'unused struct' warnings\n");
 }
 
 #define cmp(s, l) (strcmp(s, l) == 0)
@@ -52,6 +53,12 @@ ZState *loadState(int argc, char **argv) {
 				goto stateErr;
 			}
 			state->verbose = true;
+		} else if (cmp(arg, "--emit-llvm")) {
+			if (state->emitLLVM) {
+				err = "emit-llvm already set";
+				goto stateErr;
+			}
+			state->emitLLVM = true;
 		} else if (cmp(arg, "--unused-function")) {
 			if (state->unusedFunc) {
 				err = "Unused function flag already setted";

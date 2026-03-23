@@ -14,11 +14,17 @@ typedef struct {
 	LLVMBuilderRef builder;
 	ZSemantic *semantic;
 	ZState *state;
+
+	/* Struct type cache — parallel arrays keyed by name */
+	char        **structNames;
+	LLVMTypeRef  *structTypes;
 } ZCodegen;
 
 static LLVMValueRef genExpr(ZCodegen *, ZNode *);
 
 /* ========== Native types ==========*/
+static LLVMTypeRef i0Type 	= NULL;
+static LLVMTypeRef i1Type 	= NULL;
 static LLVMTypeRef i8Type 	= NULL;
 static LLVMTypeRef i16Type 	= NULL;
 static LLVMTypeRef i32Type 	= NULL;
@@ -29,6 +35,8 @@ static LLVMTypeRef f64Type 	= NULL;
 
 static void initNativeTypes(ZCodegen *ctx) {
 	if (i8Type) return;
+	i0Type	= LLVMVoidTypeInContext(ctx->ctx);
+	i1Type 	= LLVMInt1TypeInContext(ctx->ctx);
 	i8Type 	= LLVMInt8TypeInContext(ctx->ctx);
 	i16Type = LLVMInt16TypeInContext(ctx->ctx);
 	i32Type = LLVMInt32TypeInContext(ctx->ctx);
@@ -54,6 +62,8 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 	self->ctx = LLVMContextCreate();
 
 	self->modules = NULL;
+	self->structNames = NULL;
+	self->structTypes = NULL;
 	beginModule(self, "main");
 	self->builder = LLVMCreateBuilderInContext(self->ctx);
 	self->state = state;
@@ -84,31 +94,127 @@ usize typeSize(ZType *type) {
 }
 
 static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
+	if (!type) return LLVMVoidTypeInContext(ctx->ctx);
+
 	switch (type->kind) {
-	case Z_TYPE_FUNCTION:
-	case Z_TYPE_POINTER:
-		return LLVMPointerType(genType(ctx, type->base), 0);
+
+	case Z_TYPE_PRIMITIVE: {
+		const ZToken *name = type->primitive.token;
+		switch (name->type) {
+		case TOK_VOID: 	return i0Type;
+		case TOK_BOOL: 	return i0Type;
+		case TOK_CHAR:
+		case TOK_I8:
+		case TOK_U8: 		return i0Type;
+		case TOK_I16:
+		case TOK_U16: 	return i16Type;
+		case TOK_I32:
+		case TOK_U32:		return i32Type;
+		case TOK_I64:
+		case TOK_U64: 	return i64Type;
+		case TOK_F32:		return f32Type;
+		case TOK_F64:		return f64Type;
+		default:
+			error(ctx->state,
+						type->primitive.token,
+						"unknown primitive type '%s'",
+						name->str);
+			return NULL;
+		}
+	}
+
+	case Z_TYPE_POINTER: {
+		/* void* → i8* (LLVM doesn't allow pointer-to-void) */
+		ZType *base = type->base;
+		if (base && base->kind == Z_TYPE_PRIMITIVE &&
+		    strcmp(base->primitive.token->str, "void") == 0) {
+			return LLVMPointerType(i8Type, 0);
+		}
+		return LLVMPointerType(genType(ctx, base), 0);
+	}
+
 	case Z_TYPE_ARRAY: {
 		LLVMTypeRef base = genType(ctx, type->array.base);
-		return LLVMArrayType(base, type->array.size);
+		if (!base) return NULL;
+		return LLVMArrayType(base, (unsigned)type->array.size);
 	}
-	default: return NULL;
+
+	case Z_TYPE_FUNCTION: {
+		usize argc = veclen(type->func.args);
+		LLVMTypeRef *params = znalloc(LLVMTypeRef, argc ? argc : 1);
+		for (usize i = 0; i < argc; i++) {
+			params[i] = genType(ctx, type->func.args[i]);
+			if (!params[i]) return NULL;
+		}
+		LLVMTypeRef ret = genType(ctx, type->func.ret);
+		return LLVMFunctionType(ret, params, (unsigned)argc, 0);
 	}
-	return NULL;
+
+	case Z_TYPE_STRUCT: {
+		const char *name = type->strct.name->str;
+
+		/* Check cache */
+		for (usize i = 0; i < veclen(ctx->structNames); i++) {
+			if (strcmp(ctx->structNames[i], name) == 0)
+				return ctx->structTypes[i];
+		}
+
+		/* Create opaque named struct first (handles self-referential types) */
+		LLVMTypeRef strct = LLVMStructCreateNamed(ctx->ctx, name);
+		vecpush(ctx->structNames, (char *)name);
+		vecpush(ctx->structTypes, strct);
+
+		usize nfields = veclen(type->strct.fields);
+		LLVMTypeRef *ftypes = znalloc(LLVMTypeRef, nfields ? nfields : 1);
+		for (usize i = 0; i < nfields; i++) {
+			ftypes[i] = genType(ctx, type->strct.fields[i]->field.type);
+			if (!ftypes[i]) return NULL;
+		}
+		LLVMStructSetBody(strct, ftypes, (unsigned)nfields, /*packed=*/0);
+		return strct;
+	}
+
+	case Z_TYPE_TUPLE: {
+		usize len = veclen(type->tuple);
+		LLVMTypeRef *elems = znalloc(LLVMTypeRef, len ? len : 1);
+		for (usize i = 0; i < len; i++) {
+			elems[i] = genType(ctx, type->tuple[i]);
+			if (!elems[i]) return NULL;
+		}
+		return LLVMStructTypeInContext(ctx->ctx, elems, (unsigned)len, 0);
+	}
+
+	case Z_TYPE_NONE:
+		/* none literal — represent as i8* null */
+		return LLVMPointerType(i8Type, 0);
+
+	default:
+		error(ctx->state, NULL, "genType: unhandled type kind %d", type->kind);
+		return NULL;
+	}
 }
 
 static LLVMTypeRef genStruct(ZCodegen *ctx, ZNode *node) {
-	LLVMTypeRef strct = LLVMStructCreateNamed(ctx->ctx, node->structDef.ident->str);
+	/* Delegate to genType via the resolved struct type on the node */
+	if (node->resolved) return genType(ctx, node->resolved);
 
-	usize fieldsLen = veclen(node->structDef.fields);
-
-	LLVMTypeRef fieldTypes[fieldsLen];
-	ZNode **fields = node->structDef.fields;
-
-	for (usize i = 0; i < fieldsLen; i++) {
-		fieldTypes[i] = genType(ctx, fields[i]->resolved);
+	/* Fallback: build directly from the AST node */
+	const char *name = node->structDef.ident->str;
+	for (usize i = 0; i < veclen(ctx->structNames); i++) {
+		if (strcmp(ctx->structNames[i], name) == 0)
+			return ctx->structTypes[i];
 	}
 
+	LLVMTypeRef strct = LLVMStructCreateNamed(ctx->ctx, name);
+	vecpush(ctx->structNames, (char *)name);
+	vecpush(ctx->structTypes, strct);
+
+	usize nfields = veclen(node->structDef.fields);
+	LLVMTypeRef *ftypes = znalloc(LLVMTypeRef, nfields ? nfields : 1);
+	for (usize i = 0; i < nfields; i++) {
+		ftypes[i] = genType(ctx, node->structDef.fields[i]->resolved);
+	}
+	LLVMStructSetBody(strct, ftypes, (unsigned)nfields, 0);
 	return strct;
 }
 
@@ -202,18 +308,15 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	return NULL;
 }
 
-static LLVMTypeRef convertType(ZType *type) {
-	(void)type;
-	return NULL;
-}
-
 static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
-	LLVMTypeRef ret = convertType(node->foreignFunc.ret);
+	LLVMTypeRef ret = genType(ctx, node->foreignFunc.ret);
 	usize argc = veclen(node->foreignFunc.args);
 
-	LLVMTypeRef *paramTypes = znalloc(LLVMTypeRef, argc);
-	LLVMTypeRef funcType = LLVMFunctionType(ret, paramTypes, argc, 0);
-
+	LLVMTypeRef *paramTypes = znalloc(LLVMTypeRef, argc ? argc : 1);
+	for (usize i = 0; i < argc; i++) {
+		paramTypes[i] = genType(ctx, node->foreignFunc.args[i]);
+	}
+	LLVMTypeRef funcType = LLVMFunctionType(ret, paramTypes, (unsigned)argc, 0);
 
 	LLVMValueRef func = LLVMAddFunction(
 		ctx->mod,
@@ -361,6 +464,18 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 		return;
 	}
 	LLVMDisposeMessage(errmsg);
+
+	if (state->emitLLVM) {
+		const char *llfile = output ? output : "output.ll";
+		if (LLVMPrintModuleToFile(ctx->mod, llfile, &errmsg)) {
+			error(state, NULL, "Failed to write IR file: %s", errmsg);
+			LLVMDisposeMessage(errmsg);
+		} else {
+			printf("LLVM IR written to %s\n", llfile);
+		}
+		freeCodegen(ctx);
+		return;
+	}
 
 	const char *objfile = "output.o";
 	if (!emitObjectFile(ctx, objfile)) {
