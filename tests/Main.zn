@@ -14,7 +14,8 @@ struct List {
 }
 
 
-
 u8 main() {
-    return 0
+    *u8 str = none
+    u64 i = str as u64
+    return i
 }

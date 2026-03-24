@@ -118,7 +118,9 @@ typedef enum {
 	NODE_ENUM,
 	NODE_BREAK,
 	NODE_CONTINUE,
-	NODE_ENUM_FIELD
+	NODE_ENUM_FIELD,
+	NODE_CAST,
+	NODE_SIZEOF
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -385,6 +387,15 @@ struct ZNode {
 
 		ZToken 				*literalTok;
 		ZToken 				*identTok;
+
+		struct {
+			ZType  *toType;
+			ZNode  *expr;
+		} castExpr;
+
+		struct {
+			ZType  *type;
+		} sizeofExpr;
 	};
 };
 

@@ -74,10 +74,29 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 usize typeSize(ZType *type) {
 	usize res = 0;
 	switch (type->kind) {
+	case Z_TYPE_PRIMITIVE:
+		switch (type->primitive.token->type) {
+		case TOK_VOID:  return 0;
+		case TOK_BOOL:
+		case TOK_I8:
+		case TOK_U8:
+		case TOK_CHAR:  return 1;
+		case TOK_I16:
+		case TOK_U16:   return 2;
+		case TOK_I32:
+		case TOK_U32:
+		case TOK_F32:   return 4;
+		case TOK_I64:
+		case TOK_U64:
+		case TOK_F64:   return 8;
+		default:        return 0;
+		}
+	case Z_TYPE_POINTER:
+		return 8; /* 64-bit pointer */
 	case Z_TYPE_ARRAY:
 		return typeSize(type->array.base) * type->array.size;
 	case Z_TYPE_FUNCTION:
-		return 64;
+		return 8; /* function pointer */
 	case Z_TYPE_STRUCT: {
 		for (usize i = 0; i < veclen(type->strct.fields); i++) {
 			res += typeSize(type->strct.fields[i]->field.type);
@@ -298,11 +317,84 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 	}
 }
 
+static LLVMValueRef genCast(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZType *to) {
+	LLVMTypeRef toType = genType(ctx, to);
+	if (!toType) return NULL;
+
+	bool fromIsFloat = false, toIsFloat = false;
+	bool fromIsPtr   = (from->kind == Z_TYPE_POINTER);
+	bool toIsPtr     = (to->kind   == Z_TYPE_POINTER);
+	bool fromIsSigned = false;
+
+	if (from->kind == Z_TYPE_PRIMITIVE) {
+		ZTokenType tt = from->primitive.token->type;
+		fromIsFloat   = (tt == TOK_F32 || tt == TOK_F64);
+		fromIsSigned  = (tt & TOK_SIGNED) != 0;
+	}
+	if (to->kind == Z_TYPE_PRIMITIVE) {
+		ZTokenType tt = to->primitive.token->type;
+		toIsFloat = (tt == TOK_F32 || tt == TOK_F64);
+	}
+
+	if (fromIsPtr && toIsPtr)
+		return LLVMBuildBitCast(ctx->builder, val, toType, "ptrtmp");
+
+	if (fromIsPtr && !toIsFloat)
+		return LLVMBuildPtrToInt(ctx->builder, val, toType, "ptrtmp");
+
+	if (!fromIsFloat && toIsPtr)
+		return LLVMBuildIntToPtr(ctx->builder, val, toType, "ptrtmp");
+
+	if (fromIsFloat && toIsFloat) {
+		/* f64 -> f32: truncate; f32 -> f64: extend */
+		if (from->primitive.token->type == TOK_F64 &&
+		    to->primitive.token->type   == TOK_F32)
+			return LLVMBuildFPTrunc(ctx->builder, val, toType, "fptmp");
+		return LLVMBuildFPExt(ctx->builder, val, toType, "fptmp");
+	}
+
+	if (fromIsFloat)
+		return fromIsSigned
+			? LLVMBuildFPToSI(ctx->builder, val, toType, "fptmp")
+			: LLVMBuildFPToUI(ctx->builder, val, toType, "fptmp");
+
+	if (toIsFloat)
+		return fromIsSigned
+			? LLVMBuildSIToFP(ctx->builder, val, toType, "fptmp")
+			: LLVMBuildUIToFP(ctx->builder, val, toType, "fptmp");
+
+	/* Both integers: trunc or extend */
+	LLVMTypeRef fromType = LLVMTypeOf(val);
+	unsigned fromBits = LLVMGetIntTypeWidth(fromType);
+	unsigned toBits   = LLVMGetIntTypeWidth(toType);
+	if (fromBits > toBits)
+		return LLVMBuildTrunc(ctx->builder, val, toType, "trunctmp");
+	if (fromBits < toBits)
+		return fromIsSigned
+			? LLVMBuildSExt(ctx->builder, val, toType, "exttmp")
+			: LLVMBuildZExt(ctx->builder, val, toType, "exttmp");
+
+	return LLVMBuildBitCast(ctx->builder, val, toType, "casttmp");
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	switch (node->type) {
 		case NODE_BINARY:
 			return genBinary(ctx, node);
-			break;
+
+		case NODE_CAST: {
+			LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
+			if (!val) return NULL;
+			ZType *from = node->castExpr.expr->resolved;
+			ZType *to   = node->castExpr.toType;
+			return genCast(ctx, val, from, to);
+		}
+
+		case NODE_SIZEOF: {
+			usize size = typeSize(node->sizeofExpr.type);
+			return LLVMConstInt(i64Type, (unsigned long long)size, /*sign_extend=*/0);
+		}
+
 		default: break;
 	}
 	return NULL;

@@ -711,6 +711,20 @@ static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 		break;
  	}
 
+	case NODE_CAST: {
+		/* Resolve the inner expression type (for side-effects / validation). */
+		resolveType(semantic, curr->castExpr.expr);
+		result = resolveTypeRef(semantic, curr->castExpr.toType);
+		break;
+	}
+
+	case NODE_SIZEOF: {
+		/* sizeof yields u64. */
+		result = maketype(Z_TYPE_PRIMITIVE);
+		result->primitive.token = maketoken(TOK_U64, "u64");
+		break;
+	}
+
 	default:
 		warning(semantic->state, curr->tok,
 						"Trying to resolve the type of node's type %d", curr->type);

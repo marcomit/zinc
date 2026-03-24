@@ -303,6 +303,17 @@ static ZNode *parsePrimary(ZParser *parser) {
 		node->literalTok 	= consume(parser);
 		node->tok 				= node->literalTok;
 		return node;
+	} else if (match(parser, TOK_SIZEOF)) {
+		ZToken *tok = peek(parser);
+		ZType *type = parseType(parser);
+		if (!type) {
+			error(parser->state, tok, "Expected type argument to sizeof");
+			return NULL;
+		}
+		ZNode *node = makenode(NODE_SIZEOF);
+		node->sizeofExpr.type = type;
+		node->tok             = tok;
+		return node;
 	}
 
 	return NULL;
@@ -359,6 +370,20 @@ static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
 	return node;
 }
 
+static ZNode *parseCast(ZParser *parser, ZNode *previous) {
+	ZToken *tok = peek(parser);
+	ensure(match(parser, TOK_CAST), "Expected 'as' keyword for casting types");
+	ZType *type = parseType(parser);
+
+	guard(type);
+
+	ZNode *node = makenode(NODE_CAST);
+	node->castExpr.expr = previous;
+	node->castExpr.toType = type;
+    node->tok = tok;
+	return node;
+}
+
 static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
 	usize saved = parser->source->current;
 	pushErrorCheckpoint(parser);
@@ -367,7 +392,9 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
 		res = parseArrSubscript(parser, previous);
 	} else if (check(parser, TOK_LPAREN)) {
 		res = parseFuncCall(parser, previous);
-	} else {
+	} else if (check(parser, TOK_CAST)) {
+		res = parseCast(parser, previous);
+	} else if (check(parser, TOK_DOT)){
 		res = parseMemberAccess(parser, previous);
 	}
 
@@ -1141,7 +1168,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
 	} else if (!check(parser, TOK_IDENT)) {
 		error(parser->state, start, "Expected an identifier");
 		return NULL;
-	} else if (!peek(parser)->newlineBefore) {
+	} else if (!start->newlineBefore) {
 		error(parser->state, start,
 				"Variable declaration must be defined in the same line");
 	}

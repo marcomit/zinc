@@ -13,7 +13,7 @@ static char *nodeLabels[] = {
 	"STRUCT", "SUBSCRIPT", "MEMBER", "MODULE",
 	"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
 	"TUPLE_LIT", "ARRAY_LIT", "MACRO", "GOTO", "LABEL", "TYPE",
-	"ENUM", "BREAK", "CONTINUE"
+	"ENUM", "BREAK", "CONTINUE", "SIZEOF", "CAST"
 };
 
 static char *levels[] = {
@@ -457,6 +457,15 @@ void printNode(ZNode *node, u8 depth) {
 	case NODE_LABEL:
 		printf("Label: %s", stoken(node->gotoLabel));
 		break;
+    case NODE_CAST:
+        printf("\n");
+        printNode(node->castExpr.expr, depth);
+        printf("as ");
+        printType(node->castExpr.toType);
+        break;
+    case NODE_SIZEOF:
+        printType(node->sizeofExpr.type);
+        break;
 	default:
 			printf("(details not implemented in printer for node %d)", node->type);
 			break;
