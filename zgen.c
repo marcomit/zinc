@@ -1,3 +1,4 @@
+#include "base.h"
 #include "zinc.h"
 
 #include <llvm-c/Core.h>
@@ -120,19 +121,19 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 	case Z_TYPE_PRIMITIVE: {
 		const ZToken *name = type->primitive.token;
 		switch (name->type) {
-		case TOK_VOID: 	return i0Type;
-		case TOK_BOOL: 	return i0Type;
+		case TOK_VOID:  return i0Type;
+		case TOK_BOOL:  return i0Type;
 		case TOK_CHAR:
 		case TOK_I8:
-		case TOK_U8: 		return i0Type;
+		case TOK_U8: 	return i0Type;
 		case TOK_I16:
 		case TOK_U16: 	return i16Type;
 		case TOK_I32:
-		case TOK_U32:		return i32Type;
+		case TOK_U32:	return i32Type;
 		case TOK_I64:
 		case TOK_U64: 	return i64Type;
-		case TOK_F32:		return f32Type;
-		case TOK_F64:		return f64Type;
+		case TOK_F32:	return f32Type;
+		case TOK_F64:	return f64Type;
 		default:
 			error(ctx->state,
 						type->primitive.token,
@@ -235,6 +236,35 @@ static LLVMTypeRef genStruct(ZCodegen *ctx, ZNode *node) {
 	}
 	LLVMStructSetBody(strct, ftypes, (unsigned)nfields, 0);
 	return strct;
+}
+
+static LLVMValueRef genIntLit(ZCodegen *ctx, ZNode *node) {
+    return LLVMConstInt(i32Type, node->tok->integer, true);
+    return NULL;
+}
+
+static LLVMValueRef genBoolLit(ZCodegen *ctx, ZNode *node) {
+    return LLVMConstInt(i1Type, node->tok->boolean, false);
+    return NULL;
+}
+
+static LLVMValueRef genStrLit(ZCodegen *ctx, ZNode *node) {
+    return LLVMConstStringInContext(ctx->ctx, "", 1, false);
+    return NULL;
+}
+
+static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
+    switch (tok->type) {
+    case TOK_STR_LIT:
+        return LLVMConstStringInContext(ctx->ctx, tok->str, strlen(tok->str), false);
+    case TOK_INT_LIT:
+        return LLVMConstInt(i32Type, tok->integer, true);
+    case TOK_BOOL_LIT:
+        return LLVMConstInt(i1Type, tok->boolean, false);
+    case TOK_FLOAT_LIT:
+        return LLVMConstReal(f64Type, tok->floating);
+    default: return NULL;
+    }
 }
 
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
@@ -381,6 +411,9 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	switch (node->type) {
 		case NODE_BINARY:
 			return genBinary(ctx, node);
+
+        case NODE_LITERAL:
+            return genLit(ctx, node->tok);
 
 		case NODE_CAST: {
 			LLVMValueRef val = genExpr(ctx, node->castExpr.expr);

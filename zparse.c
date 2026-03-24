@@ -10,17 +10,18 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
-#define ensure(c, msg) do {			\
-	if (!(c)) {										\
-		return NULL;								\
-	}															\
+#define ensure(c, msg) do {			                                        \
+	if (!(c)) {										                        \
+		return NULL;								                        \
+	}								                                        \
 } while (0)
 
 #define guard(c) if (!(c)) return NULL
 
-#define expect(l, t) if (!match(l, t)) {																									\
-		error((l)->state, peek(l), "Expected %s, got %s", tokname(t), stoken(peek(parser)));	\
-		return NULL;																																					\
+#define expect(l, t) if (!match(l, t)) {									\
+		error((l)->state, peek(l),                                          \
+                "Expected %s, got %s", tokname(t), stoken(peek(parser)));	\
+		return NULL;													    \
 	}
 
 #define invalid(parser, ...) {																																		\
@@ -30,35 +31,35 @@
 
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
-ZType *parseType												(ZParser *);
-ZNode	*parseExpr												(ZParser *);
-static ZNode *parse											(ZParser *);
-static ZNode *parseIf										(ZParser *);
-static ZNode *parseGoto									(ZParser *);
-static ZNode *parseBreak								(ZParser *);
-static ZNode *parseBlock								(ZParser *);
-static ZNode *parseMatch								(ZParser *);
-static ZNode *parseDefer								(ZParser *);
-static ZNode *parseLabel								(ZParser *);
-static ZNode *parseLoops								(ZParser *);
-static ZNode *parseReturn								(ZParser *);
-static ZNode *parseVarDef								(ZParser *);
-static ZNode *parseBinary								(ZParser *);
-static ZNode *parseContinue							(ZParser *);
-static ZNode *parseArrayLit							(ZParser *);
-static ZNode *parseTupleLit							(ZParser *);
-static ZNode *parseStructLit						(ZParser *);
+ZType *parseType								(ZParser *);
+ZNode	*parseExpr								(ZParser *);
+static ZNode *parse								(ZParser *);
+static ZNode *parseIf							(ZParser *);
+static ZNode *parseGoto							(ZParser *);
+static ZNode *parseBreak						(ZParser *);
+static ZNode *parseBlock						(ZParser *);
+static ZNode *parseMatch						(ZParser *);
+static ZNode *parseDefer						(ZParser *);
+static ZNode *parseLabel						(ZParser *);
+static ZNode *parseLoops						(ZParser *);
+static ZNode *parseReturn						(ZParser *);
+static ZNode *parseVarDef						(ZParser *);
+static ZNode *parseBinary						(ZParser *);
+static ZNode *parseContinue						(ZParser *);
+static ZNode *parseArrayLit						(ZParser *);
+static ZNode *parseTupleLit						(ZParser *);
+static ZNode *parseStructLit					(ZParser *);
 static ZNode *parseVarInferred					(ZParser *);
 static ZNode *parseVarDefTyped					(ZParser *);
 
 /* File-level parsing functions */
-static ZNode *parseImport								(ZParser *);
-static ZNode *skipMacro									(ZParser *, bool);
-static ZNode *parseTypedef							(ZParser *, bool);
-static ZNode *parseFuncDecl							(ZParser *, bool);
-static ZNode *parseUnionDecl						(ZParser *, bool);
-static ZNode *parseEnumDecl							(ZParser *, bool);
-static ZNode *parseStructDecl						(ZParser *, bool);
+static ZNode *parseImport						(ZParser *);
+static ZNode *skipMacro							(ZParser *, bool);
+static ZNode *parseTypedef						(ZParser *, bool);
+static ZNode *parseFuncDecl						(ZParser *, bool);
+static ZNode *parseUnionDecl					(ZParser *, bool);
+static ZNode *parseEnumDecl						(ZParser *, bool);
+static ZNode *parseStructDecl					(ZParser *, bool);
 static ZNode *parseForeignDecl					(ZParser *);
 
 static ZToken **parseGenericsDecl				(ZParser *);
