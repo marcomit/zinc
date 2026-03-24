@@ -1,3 +1,4 @@
+#include "zhset.h"
 #include "zinc.h"
 #include "zvec.h"
 
@@ -705,14 +706,14 @@ ZNode *parseStmt(ZParser *parser) {
 	}
 
 	switch (t) {
-	case TOK_IF: 				return parseIf(parser);
-	case TOK_FOR: 			return parseLoops(parser);
-	case TOK_MATCH: 		return parseMatch(parser);
-	case TOK_DEFER: 		return parseDefer(parser);
-	case TOK_RETURN: 		return parseReturn(parser);
-	case TOK_BREAK: 		return parseBreak(parser);
-	case TOK_CONTINUE: 	return parseContinue(parser);
-	case TOK_GOTO: 			return parseGoto(parser);
+	case TOK_IF:        return parseIf(parser);
+	case TOK_FOR:       return parseLoops(parser);
+	case TOK_MATCH:     return parseMatch(parser);
+	case TOK_DEFER:     return parseDefer(parser);
+	case TOK_RETURN:    return parseReturn(parser);
+	case TOK_BREAK:     return parseBreak(parser);
+	case TOK_CONTINUE:  return parseContinue(parser);
+	case TOK_GOTO:      return parseGoto(parser);
 	case TOK_LBRACKET: 	return parseBlock(parser);
 	default: {
 		ZParseFunc f[] = {
@@ -787,9 +788,9 @@ static ZNode *parseEnumField(ZParser *parser) {
 
 	ZNode *node = makenode(NODE_ENUM_FIELD);
 
-	node->enumField.name 			= name;
-	node->tok 								= name;
-	node->enumField.captured 	= types;
+	node->enumField.name 		= name;
+	node->tok 					= name;
+	node->enumField.captured    = types;
 
 	return node;
 }
@@ -816,9 +817,9 @@ static ZNode *parseEnumDecl(ZParser *parser, bool public) {
 
 	ZNode *node = makenode(NODE_ENUM);
 
-	node->enumDef.name 	= consume(parser);
-	node->enumDef.pub		= public;
-	node->tok 					= node->enumDef.name;
+	node->enumDef.name  = consume(parser);
+	node->enumDef.pub	= public;
+	node->tok 			= node->enumDef.name;
 	
 	return node;
 }
@@ -835,17 +836,18 @@ static ZNode *parseUnionDecl(ZParser *parser, bool public) {
 			TOK_RSBRACKET, TOK_LSBRACKET,
 			parseField, false);
 
-	ZNode *node 					= makenode(NODE_UNION);
-	node->tok 						= ident;
+	ZNode *node 			= makenode(NODE_UNION);
+	node->tok 				= ident;
 	node->unionDef.ident 	= ident;
-	node->unionDef.fields = fields;
+	node->unionDef.fields   = fields;
 	node->unionDef.pub 		= public;
 	return node;
 }
 
 static ZNode *parseStructDecl(ZParser *parser, bool public) {
 	expect(parser, TOK_STRUCT);
-	ensure(check(parser, TOK_IDENT), "Expected an identifier");
+	ensure(check(parser, TOK_IDENT),
+            "Expected an identifier");
 
 	ZToken *name = consume(parser);
 	ZToken **generics = NULL;
@@ -853,7 +855,8 @@ static ZNode *parseStructDecl(ZParser *parser, bool public) {
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseGenericsDecl(parser);
 		if (!generics) {
-			error(parser->state, peek(parser), "Expected generic parameters after struct name");
+			error(parser->state, peek(parser),
+                    "Expected generic parameters after struct name");
 		}
 	}
 
@@ -861,11 +864,21 @@ static ZNode *parseStructDecl(ZParser *parser, bool public) {
 			TOK_LBRACKET, TOK_RBRACKET,
 			parseField, false);
 
-	ZNode *node 							= makenode(NODE_STRUCT);
+    hashset_t seen = NULL;
+	for (usize i = 0; i < veclen(fields); i++) {
+		ZToken *ti = fields[i]->field.identifier;
+		if (!hashset_insert(&seen, ti->str)) {
+            error(parser->state, ti,
+                    "Field '%s' already declared", ti->str);
+        }
+	}
+    hashset_free(&seen);
+
+	ZNode *node 				= makenode(NODE_STRUCT);
 	node->structDef.fields 		= fields;
 	node->structDef.generics 	= generics;
 	node->structDef.ident 		= name;
-	node->structDef.pub 			= public;
+	node->structDef.pub 		= public;
 	return node;
 }
 
@@ -879,10 +892,12 @@ ZNode *parseExpr(ZParser *parser) {
 		return NULL;
 	}
 
-	ZToken *var = consume(parser);
-	ZNode *placeholder = getMacroCapturedVar(parser->macroParser.currentMacro, var);
+	ZToken *var         = consume(parser);
+    ZNode *currentMacro = parser->macroParser.currentMacro;
+	ZNode *placeholder  = getMacroCapturedVar(currentMacro, var);
 	if (!placeholder) {
-		error(parser->state, peek(parser), "%s is not a valid macro variable", var->str);
+		error(parser->state, peek(parser),
+                "%s is not a valid macro variable", var->str);
 		return NULL;
 	}
 	return placeholder;
@@ -959,7 +974,8 @@ static ZNode *parseWhile(ZParser *parser) {
 
 	ZNode *cond = wrapNode(parser, parseExpr);
 	if (!cond) {
-		error(parser->state, peek(parser), "Expected condition expression after 'while'");
+		error(parser->state, peek(parser),
+                "Expected condition expression after 'while'");
 	}
 	ZNode *body = wrapNode(parser, parseBlock);
 
@@ -1024,7 +1040,8 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
 
 	if (match(parser, TOK_COLON)) {
 		if (!match(parser, TOK_COLON)) {
-			error(parser->state, peek(parser), "Expected '::' got a single colon");
+			error(parser->state, peek(parser),
+                    "Expected '::' got a single colon");
 			return NULL;
 		} else if (!check(parser, TOK_IDENT)) {
 			error(parser->state, peek(parser), "Expected an identifier");
@@ -1039,7 +1056,8 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
 	if (check(parser, TOK_LSBRACKET)) {
 		generics = parseGenericsDecl(parser);
 		if (!generics) {
-			error(parser->state, peek(parser), "Expected generic type parameters after function name");
+			error(parser->state, peek(parser),
+                    "Expected generic type parameters after function name");
 		}
 	}
 
@@ -1052,14 +1070,16 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
 	if (!check(parser, TOK_LBRACKET)) {
 		receiver = wrapNode(parser, parseField);
 		if (!receiver) {
-			error(parser->state, peek(parser), "Expected receiver declaration or function body");
+			error(parser->state, peek(parser),
+                    "Expected receiver declaration or function body");
 		}
 	}
 
 	ZNode *body = wrapNode(parser, parseBlock);
 
 	if (!body) {
-		error(parser->state, peek(parser), "Expected function body '{...}' after declaration");
+		error(parser->state, peek(parser),
+                "Expected function body '{...}' after declaration");
 	}
 
 	guard(body);
@@ -1090,7 +1110,8 @@ static ZNode *parseVarInferred(ZParser *parser) {
 	ZNode *identNode = NULL;
 	
 	if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_IDENT)) {
-		identNode = getMacroCapturedVar(parser->macroParser.currentMacro, consume(parser));
+		identNode = getMacroCapturedVar(parser->macroParser.currentMacro,
+                                        consume(parser));
 		if (!identNode) {
 			error(parser->state, peek(parser), "Unknown var");	
 		}
@@ -1591,7 +1612,7 @@ static ZNode *parse(ZParser *parser) {
 }
 
 ZNode *zparse(ZState *state, ZToken **tokens) {
-	state->currentPhase = Z_PHASE_SYNTAX;
+    state->currentPhase = Z_PHASE_SYNTAX;
 	ZParser *parser = makeparser(state, tokens);
 
 

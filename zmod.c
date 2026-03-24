@@ -140,16 +140,6 @@ static void _stype(ZType *type, char **buff) {
 		break;
 	case Z_TYPE_STRUCT:
 		vecunion(*buff, type->strct.name->str, strlen(type->strct.name->str));
-		vecpush(*buff, '{');
-
-		for (usize i = 0; i < veclen(type->strct.fields); i++) {
-			ZNode *field = type->strct.fields[i];
-			_stype(field->field.type, buff);
-			vecpush(*buff, ' ');
-			vecunion(*buff, field->field.identifier->str, strlen(field->field.identifier->str));
-			if (i < veclen(type->strct.fields) - 1) vecunion(*buff, ", ", 2);
-		}
-		vecpush(*buff, '}');
 		break;
 	case Z_TYPE_ARRAY:
 		vecpush(*buff, '[');
@@ -210,13 +200,7 @@ void printType(ZType *type) {
 		printf(")");
 		break;
 	case Z_TYPE_STRUCT:
-		printf("struct %s {\n", type->strct.name->str);
-		for (usize i = 0; i < veclen(type->strct.fields); i++) {
-			ZNode *field = type->strct.fields[i];
-			printType(field->field.type);
-			printf("%s\n", field->field.identifier->str);
-		}
-		printf("}");
+		printf("struct %s", type->strct.name->str);
 		break;
 	case Z_TYPE_ARRAY:
 		printf("[");

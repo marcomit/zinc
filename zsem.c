@@ -29,11 +29,12 @@ static ZType *ztrue = NULL;
 static ZType *zfalse = NULL;
 
 static ZScope *makescope(ZScope *parent, ZNode *node) {
-	ZScope *self = zalloc(ZScope);
-	self->depth   = parent ? parent->depth + 1 : 0;
-	self->parent  = parent;
+	ZScope *self    = zalloc(ZScope);
+	self->depth     = parent ? parent->depth + 1 : 0;
+	self->parent    = parent;
 	self->node		= node;
-	self->symbols = NULL;
+	self->symbols   = NULL;
+    self->seen      = NULL;
 	return self;
 }
 
@@ -45,32 +46,42 @@ static ZSymbol *makesymbol(ZSymType kind) {
 }
 
 static ZSymTable *makesymtable(void) {
-	ZSymTable *self  	= zalloc(ZSymTable);
-	self->global     	= makescope(NULL, NULL);
-	self->current    	= self->global;
-	self->module 				= NULL;
-	self->funcs  			= NULL;
+	ZSymTable *self = zalloc(ZSymTable);
+	self->global 	= makescope(NULL, NULL);
+	self->current   = self->global;
+	self->module 	= NULL;
+	self->funcs 	= NULL;
 	return self;
 }
 
 static ZSemantic *makesemantic(ZState *state, ZNode *root) {
-	ZSemantic *self       = zalloc(ZSemantic);
-	self->root            = root;
-	self->currentFuncRet  = NULL;
-	self->currentFunc			= NULL;
-	self->loopDepth       = 0;
-	self->state           = state;
-	self->table           = makesymtable();
-	self->scopes 					= NULL;
+	ZSemantic *self         = zalloc(ZSemantic);
+	self->root              = root;
+	self->currentFuncRet    = NULL;
+	self->currentFunc   	= NULL;
+	self->loopDepth         = 0;
+	self->state             = state;
+	self->table             = makesymtable();
+	self->scopes 			= NULL;
+    self->seen              = NULL;
 	
 	return self;
 }
 
+
 static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
 	ZScope *scope = semantic->table->current;
-	if (symbol->isPublic) scope = semantic->table->global;
 
-	vecpush(scope->symbols, symbol);
+	if (symbol->isPublic) scope = semantic->table->global;
+    
+    if (!hashset_insert(&scope->seen, symbol->name->str)) {
+        error(semantic->state, symbol->name,
+                "'%s' already defined in the same scope",
+                symbol->name->str);
+    } else {
+        vecpush(scope->symbols, symbol);
+    }
+
 }
 
 static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
@@ -117,25 +128,24 @@ static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
 }
 
 static void putStruct(ZSemantic *semantic, ZNode *node) {
-	ZSymbol *symbol				= makesymbol(Z_SYM_STRUCT);
-	symbol->name					= node->structDef.ident;
+	ZSymbol *symbol			= makesymbol(Z_SYM_STRUCT);
+	symbol->name			= node->structDef.ident;
 	symbol->node      		= node;
 	symbol->isPublic  		= node->structDef.pub;
 
-	ZType *type						= maketype(Z_TYPE_STRUCT);
+	ZType *type				= maketype(Z_TYPE_STRUCT);
 	type->strct.name   		= node->structDef.ident;
 	type->strct.fields 		= node->structDef.fields;
 	type->strct.generics 	= NULL;
-	symbol->type					= type;
+	symbol->type			= type;
 
 	putSymbol(semantic, symbol);
 }
 
 static void putTypedef(ZSemantic *semantic, ZNode *node) {
 	ZSymbol *symbol 			= makesymbol(Z_SYM_TYPEDEF);
-
-	symbol->name					= node->typeDef.alias;
-	symbol->type 					= node->typeDef.type;
+	symbol->name				= node->typeDef.alias;
+	symbol->type 				= node->typeDef.type;
 	symbol->isPublic			= node->typeDef.pub;
 	symbol->node = node;
 	
@@ -168,23 +178,23 @@ static void warnUnused(ZSemantic *semantic, ZSymbol *symbol) {
 	case Z_SYM_FUNC:
 		if (semantic->state->unusedFunc) break;
 		warning(semantic->state,
-						symbol->name,
-						"Unused function '%s'",
-						symbol->name->str);
+                symbol->name,
+                "Unused function '%s'",
+                symbol->name->str);
 		break;
 	case Z_SYM_STRUCT:
 		if (semantic->state->unusedStruct) break;
 		warning(semantic->state,
-						symbol->name,
-						"Unused struct '%s'",
-						symbol->name->str);
+                symbol->name,
+                "Unused struct '%s'",
+                symbol->name->str);
 		break;
 	case Z_SYM_VAR:
 		if (semantic->state->unusedVar) break;
 		warning(semantic->state,
-						symbol->name,
-						"Unused variable '%s'",
-						symbol->name->str);
+                symbol->name,
+                "Unused variable '%s'",
+                symbol->name->str);
 		break;
 	default:
 		warning(semantic->state, symbol->name, "Unused a generic symbol");
@@ -251,20 +261,6 @@ static ZTokenType toSigned(u8 rank) {
 	default: return TOK_I32;
 	}
 }
-
-// static bool isComparable(ZType *type) {
-// 	if (!type) return false;
-//
-// 	if (type->kind == Z_TYPE_FUNCTION ||
-// 			type->kind == Z_TYPE_ARRAY		||
-// 			type->kind == Z_TYPE_GENERIC	||
-// 			type->kind == Z_TYPE_STRUCT		||
-// 			type->kind == Z_TYPE_TUPLE) {
-// 		return false;
-// 	}
-//
-// 	return true;
-// }
 
 static bool isComparable(ZSemantic *semantic, ZType *type) {
 	type = resolveTypeRef(semantic, type);
@@ -1077,9 +1073,10 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 
 		case NODE_STRUCT:
 			for (usize i = 0; i < veclen(child->structDef.fields); i++) {
-				let field = child->structDef.fields[i]->field;
-				resolveTypeRef(semantic, field.type);
+				let field = child->structDef.fields[i];
+				field->field.type = resolveTypeRef(semantic, field->field.type);
 			}
+			printf("struct evaluated\n");
 			break;
 
 		case NODE_MODULE:

@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -Wall -Wextra -O2 $(shell llvm-config --cflags)
+CFLAGS = -g -Wall -Wextra -O2 $(shell llvm-config --cflags)
 LDFLAGS = $(shell llvm-config --ldflags --libs core)
 TARGET = zinc
 SRC = zinc.c zmem.c zparse.c zlex.c zmod.c zsem.c zmacro.c zgen.c
