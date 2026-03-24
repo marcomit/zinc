@@ -3,6 +3,7 @@
 
 #include "base.h"
 #include "zvec.h"
+#include "zhset.h"
 #include "zmem.h"
 
 typedef enum {
@@ -48,8 +49,8 @@ typedef enum {
 } ZLogLevel;
 
 typedef struct {
-	char 			*filename;
-	char 			*message;
+	char 		*filename;
+	char 		*message;
 	ZToken 		*token;
 	ZLogLevel level;
 } ZLog;
@@ -64,7 +65,7 @@ typedef enum {
 typedef struct {
 	char 		*output;
 	ZLog 		**errors;
-	ZPhase 	currentPhase;
+	ZPhase 	    currentPhase;
 	char 		*filename;
 
 	char 		**pathFiles;
@@ -292,8 +293,8 @@ struct ZNode {
 		} structDef;
 
 		struct {
-			ZToken 	*ident;
-			ZNode 	**fields;
+			ZToken 	    *ident;
+			ZNode 	    **fields;
 			bool 		pub;
 		} unionDef;
 
@@ -355,11 +356,11 @@ struct ZNode {
 		struct {
 			ZToken 	*alias;
 			ZType 	*type;
-			bool 		pub;
+			bool 	pub;
 		} typeDef;
 
 		struct {
-			char 		*name;
+			char 	*name;
 			ZNode 	**root;
 		} module;
 
@@ -368,20 +369,20 @@ struct ZNode {
 		 * When it tries to expand a macro it parse the body recursively.
 		 **/
 		struct {
-			ZMacroPattern *pattern;
-			usize 				startBody;        // Index of first token after {
-			usize 				endBody;          // Index of } (exclusive)
+			ZMacroPattern   *pattern;
+			usize 			startBody;        // Index of first token after {
+			usize 			endBody;          // Index of } (exclusive)
 			ZMacroVar 		**captured;
-			ZToken 				*start;          // First token of macro definition
-			usize 				consumed;         // Tokens consumed by pattern + body
-			ZToken 				**sourceTokens;  // Original token array where the macro was defined
-			bool 					pub;
+			ZToken 			*start;          // First token of macro definition
+			usize 			consumed;         // Tokens consumed by pattern + body
+			ZToken 			**sourceTokens;  // Original token array where the macro was defined
+			bool 			pub;
 		} macro;
 
-		ZToken 					*gotoLabel;  // For NODE_GOTO and NODE_LABEL
+		ZToken 				*gotoLabel;  // For NODE_GOTO and NODE_LABEL
 
-		ZToken 					*literalTok;
-		ZToken 					*identTok;
+		ZToken 				*literalTok;
+		ZToken 				*identTok;
 	};
 };
 
@@ -393,33 +394,33 @@ typedef struct ZTokenStream {
 } ZTokenStream;
 
 typedef struct ZMacroParser {
-	ZNode 				**macros;
+	ZNode 			**macros;
 
 	/* Setted when it parses the body of a macro. */
-	ZNode 				*currentMacro;
+	ZNode 			*currentMacro;
 
 
 	/* Stack of macros currently being expanded (for cycle detection) */
-	ZNode 				**expandingMacros;
+	ZNode 			**expandingMacros;
 
 	/* Current pattern list. */
 	ZMacroPattern	*currentList;
 
 	/* Used for list expansion. */
-	usize 				currentIndex;
+	usize 			currentIndex;
 } ZMacroParser;
 
 typedef struct ZParser {
-	ZState 				*state;
+	ZState 			*state;
 	ZTokenStream 	*source;
-	usize					tokenIndex;
+	usize			tokenIndex;
 
 	/* Used to track temporary errors and find a valid path. */
-	usize 				*errstack;
+	usize 			*errstack;
 
 	ZMacroParser 	macroParser;
 
-	u8 						depth;
+	u8 				depth;
 } ZParser;
 
 /* ================== Semantic analysis	================== */
@@ -431,59 +432,63 @@ typedef enum {
 } ZSymType;
 
 typedef struct ZSymbol {
-	ZSymType 			kind;
-	ZToken				*name;
-	ZType 				*type;
-	ZNode 				*node;
-	usize 				useCount;
-	bool 					isPublic;
+	ZSymType		kind;
+	ZToken			*name;
+	ZType			*type;
+	ZNode 			*node;
+	usize 			useCount;
+	bool 			isPublic;
 } ZSymbol;
 
 typedef struct ZScope {
-	ZSymbol 			**symbols;
-	struct ZScope *parent;
-	ZNode 				*node;
-	u32 					depth;
+	ZSymbol 		**symbols;
+	struct ZScope   *parent;
+	ZNode 		    *node;
+	u32             depth;
+    hashset_t       seen;
 } ZScope;
 
 /* Contains a type with a list of functions that accept
  * that type as a receiver. */
 typedef struct ZFuncTable {
 	/* The receiver type, could be every possible type (e.g. u8 or *MyStruct) */
-	ZType 				*receiver;
+	ZType 		*receiver;
 
 	/* A list of functions that have [receiver] as a receiver type */
-	ZNode 				**funcDef;
+	ZNode 		**funcDef;
 } ZFuncTable;
 
 typedef struct ZSymTable {
 	/* Global scope used to store globam symbols. */
-	ZScope 				*global;
+	ZScope 		*global;
 
-	ZScope 				*current;
+	ZScope 		*current;
 
 	/* Used to track the current module. */
-	ZScope 				*module;
+	ZScope 		*module;
 
 	/* Imagine this like an hashmap where:
 	 * the key is the type 
 	 * the value is a list of receiver functions for that type. */
-	ZFuncTable 		**funcs;
+	ZFuncTable 	**funcs;
 } ZSymTable;
 
 typedef struct ZScopeTable {
-	ZNode 				*module;
-	ZScope 				*scope;
+	ZNode		*module;
+	ZScope	    *scope;
 } ZScopeTable;
 
 typedef struct ZSemantic {
-	ZState 				*state;
-	ZNode 				*root;
-	ZSymTable 		*table;
-	ZScopeTable 	**scopes;
-	ZType 				*currentFuncRet;
-	ZNode 				*currentFunc;
-	u16 					loopDepth;
+	ZState 		*state;
+	ZNode 		*root;
+	ZSymTable	*table;
+	ZScopeTable **scopes;
+	ZType 		*currentFuncRet;
+	ZNode 		*currentFunc;
+	u16 		loopDepth;
+
+    /* Set of seen symbols (by name) */
+    hashset_t   seen;    
 } ZSemantic;
 
 /* Lexer */
