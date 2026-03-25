@@ -66,6 +66,7 @@ typedef struct {
 	char 		*output;
 	ZLog 		**errors;
 	ZPhase 	    currentPhase;
+    char        *currentPath;
 	char 		*filename;
 
 	char 		**pathFiles;
@@ -125,6 +126,7 @@ typedef enum {
 
 typedef struct ZNode ZNode;
 typedef struct ZType ZType;
+typedef struct ZScope ZScope;
 
 typedef enum ZTypeKind {
 	Z_TYPE_PRIMITIVE,
@@ -255,8 +257,15 @@ struct ZNode {
 			ZNode *rvalue; // Null if not initialized
 		} varDecl;
 
-		ZNode ** block;
-
+        struct {
+            /* Scope is assigned in the semantic analyzer.
+             * Used for every type of block statement (e.g. if/for/functions...)
+             * The scope is used to lookup symbols during the code generation.
+             * */
+            ZScope *scope;
+            /* The list of statements. */
+            ZNode **block;
+        };
 		struct {
 			ZType *type;
 			ZToken *identifier;
@@ -297,9 +306,9 @@ struct ZNode {
 		} structDef;
 
 		struct {
-			ZToken 	    *ident;
-			ZNode 	    **fields;
-			bool 		pub;
+			ZToken 	*ident;
+			ZNode   **fields;
+			bool    pub;
 		} unionDef;
 
 		/* Enums are the combination of a union with an integer
@@ -312,12 +321,12 @@ struct ZNode {
 		 * */
 		struct {
 			/* The name of the enum. */
-			ZToken *name;
+			ZToken  *name;
 
 			/* Fields are a list of enumField. */
-			ZNode 	**fields;
+			ZNode   **fields;
 
-			bool 		pub;
+			bool    pub;
 		} enumDef;
 
 		/* Representation of an enum's field.
@@ -366,6 +375,9 @@ struct ZNode {
 		struct {
 			char 	*name;
 			ZNode 	**root;
+
+            /* Initialized in the semantic analyzer with all top-level symbols. */
+            ZScope  *scope;
 		} module;
 
 		/* For macros don't parse the body.
@@ -533,6 +545,8 @@ ZNode *makenode(ZNodeType);
 ZType *maketype(ZTypeKind);
 
 /* Semantic */
+ZType *resolveType(ZSemantic *, ZNode *);
+ZSymbol *resolve(ZSemantic *, ZToken *);
 void zanalyze(ZState *, ZNode *);
 
 /* Code generation */

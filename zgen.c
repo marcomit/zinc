@@ -15,6 +15,7 @@ typedef struct {
 	LLVMBuilderRef builder;
 	ZSemantic *semantic;
 	ZState *state;
+    ZScope *current;
 
 	/* Struct type cache — parallel arrays keyed by name */
 	char        **structNames;
@@ -54,19 +55,22 @@ static void beginModule(ZCodegen *ctx, char *name) {
 }
 
 static void endModule(ZCodegen *ctx) {
-	if (veclen(ctx->modules) == 0) return;
+	if (veclen(ctx->modules) == 0) {
+        printf("Invalid call 'endModule'. The stack of modules is empty\n");
+        return;
+    }
 	ctx->mod = vecpop(ctx->modules);
 }
 
 ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 	ZCodegen *self = zalloc(ZCodegen);
 	self->ctx = LLVMContextCreate();
+    self->builder = LLVMCreateBuilderInContext(self->ctx);
 
 	self->modules = NULL;
 	self->structNames = NULL;
 	self->structTypes = NULL;
 	beginModule(self, "main");
-	self->builder = LLVMCreateBuilderInContext(self->ctx);
 	self->state = state;
 	self->semantic = semantic;
 	return self;
@@ -238,21 +242,6 @@ static LLVMTypeRef genStruct(ZCodegen *ctx, ZNode *node) {
 	return strct;
 }
 
-static LLVMValueRef genIntLit(ZCodegen *ctx, ZNode *node) {
-    return LLVMConstInt(i32Type, node->tok->integer, true);
-    return NULL;
-}
-
-static LLVMValueRef genBoolLit(ZCodegen *ctx, ZNode *node) {
-    return LLVMConstInt(i1Type, node->tok->boolean, false);
-    return NULL;
-}
-
-static LLVMValueRef genStrLit(ZCodegen *ctx, ZNode *node) {
-    return LLVMConstStringInContext(ctx->ctx, "", 1, false);
-    return NULL;
-}
-
 static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
     switch (tok->type) {
     case TOK_STR_LIT:
@@ -263,8 +252,14 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
         return LLVMConstInt(i1Type, tok->boolean, false);
     case TOK_FLOAT_LIT:
         return LLVMConstReal(f64Type, tok->floating);
+    case TOK_NONE:
+        return LLVMConstPointerNull(i0Type);
     default: return NULL;
     }
+}
+
+static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
+    return NULL;
 }
 
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {

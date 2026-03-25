@@ -286,27 +286,27 @@ static ZNode *parsePrimary(ZParser *parser) {
 		ZToken *tok = consume(parser);
 		return getMacroCapturedVar(parser->macroParser.currentMacro, tok);
 	} else if (match(parser, TOK_LPAREN)) {
-		ZNode *node 			= wrapNode(parser, parseExpr);
+		ZNode *node			= wrapNode(parser, parseExpr);
 		expect(parser, TOK_RPAREN);
 		return node;
 	} else if (check(parser, TOK_IDENT)) {
-		ZNode *node 			= makenode(NODE_IDENTIFIER);
+		ZNode *node 		= makenode(NODE_IDENTIFIER);
 		node->identTok 		= consume(parser);
-		node->tok 				= node->identTok;
+		node->tok 			= node->identTok;
 		return node;
 	} else if (checkMask(parser, TOK_LITERAL)) {
-		ZNode *node 			= makenode(NODE_LITERAL);
-		node->literalTok 	= consume(parser);
-		node->tok					= node->literalTok;
+		ZNode *node 		= makenode(NODE_LITERAL);
+		node->literalTok    = consume(parser);
+		node->tok			= node->literalTok;
 		return node;
 	} else if (check(parser, TOK_NONE)) {
-		ZNode *node 			= makenode(NODE_LITERAL);
+		ZNode *node			= makenode(NODE_LITERAL);
 		node->literalTok 	= consume(parser);
-		node->tok 				= node->literalTok;
+		node->tok 			= node->literalTok;
 		return node;
 	} else if (match(parser, TOK_SIZEOF)) {
-		ZToken *tok = peek(parser);
-		ZType *type = parseType(parser);
+		ZToken *tok         = peek(parser);
+		ZType *type         = parseType(parser);
 		if (!type) {
 			error(parser->state, tok, "Expected type argument to sizeof");
 			return NULL;
@@ -356,6 +356,7 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
 
 	node->memberAccess.field = member;
 	node->memberAccess.object = previous;
+    node->tok = previous->tok;
 	return node;
 }
 
@@ -372,7 +373,6 @@ static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
 }
 
 static ZNode *parseCast(ZParser *parser, ZNode *previous) {
-	ZToken *tok = peek(parser);
 	ensure(match(parser, TOK_CAST), "Expected 'as' keyword for casting types");
 	ZType *type = parseType(parser);
 
@@ -381,7 +381,7 @@ static ZNode *parseCast(ZParser *parser, ZNode *previous) {
 	ZNode *node = makenode(NODE_CAST);
 	node->castExpr.expr = previous;
 	node->castExpr.toType = type;
-    node->tok = tok;
+    node->tok = previous->tok;
 	return node;
 }
 
@@ -873,9 +873,9 @@ static ZNode *parseUnionDecl(ZParser *parser, bool public) {
 }
 
 static ZNode *parseStructDecl(ZParser *parser, bool public) {
+    printf("Trying to parse struct\n");
 	expect(parser, TOK_STRUCT);
-	ensure(check(parser, TOK_IDENT),
-            "Expected an identifier");
+	ensure(check(parser, TOK_IDENT), "Expected an identifier");
 
 	ZToken *name = consume(parser);
 	ZToken **generics = NULL;
@@ -1625,17 +1625,22 @@ static ZNode *parse(ZParser *parser) {
 
 	bool public = match(parser, TOK_PUB);
 
+    guard(canPeek(parser));
+
+    t = peek(parser)->type;
+
 	if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
 		return parseVarInferred(parser);
 	}
 
+
 	switch (t) {
-	case TOK_TYPEDEF: return parseTypedef		(parser, public);
-	case TOK_STRUCT: 	return parseStructDecl(parser, public);
-	case TOK_MACRO:		return skipMacro			(parser, public);
-	case TOK_UNION: 	return parseUnionDecl	(parser, public);
-	case TOK_ENUM: 		return parseEnumDecl	(parser, public);
-	default: 					return parseFuncDecl	(parser, public);
+	case TOK_TYPEDEF:   return parseTypedef     (parser, public);
+	case TOK_STRUCT: 	return parseStructDecl  (parser, public);
+	case TOK_MACRO:		return skipMacro        (parser, public);
+	case TOK_UNION: 	return parseUnionDecl   (parser, public);
+	case TOK_ENUM: 		return parseEnumDecl    (parser, public);
+	default: 			return parseFuncDecl	(parser, public);
 	}
 }
 

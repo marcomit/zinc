@@ -19,7 +19,6 @@
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
-static ZType *resolveType(ZSemantic *, ZNode *);
 static ZType *resolveTypeRef(ZSemantic *, ZType *);
 
 /* ================== Scope / Symbol helpers ================== */
@@ -369,8 +368,7 @@ bool typesEqual(ZType *a, ZType *b) {
 }
 
 /* ================== Symbol lookup ================== */
-
-static ZSymbol *resolve(ZSemantic *semantic, ZToken *ident) {
+ZSymbol *resolve(ZSemantic *semantic, ZToken *ident) {
 	ZScope *curr = semantic->table->current;
 	while (curr) {
 		for (usize i = 0; i < veclen(curr->symbols); i++) {
@@ -483,7 +481,7 @@ static ZType *resolveArrSubscript(ZSemantic *, ZNode *);
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
  */
-static ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
+ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 	if (!curr)           return NULL;
 	if (curr->resolved)  return curr->resolved;
 
@@ -906,6 +904,8 @@ static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
 
 static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 	beginScope(semantic, curr);
+    curr->funcDef.body->scope = semantic->table->current;
+
 
 	for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
 		ZNode  *arg     = curr->funcDef.args[i];
@@ -1078,6 +1078,7 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 /* ================== Main analysis pass ================== */
 
 static void analyze(ZSemantic *semantic, ZNode *root) {
+    root->module.scope = semantic->table->current;
 	for (usize i = 0; i < veclen(root->module.root); i++) {
 		ZNode *child = root->module.root[i];
 
@@ -1090,7 +1091,6 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 				let field = child->structDef.fields[i];
 				field->field.type = resolveTypeRef(semantic, field->field.type);
 			}
-			printf("struct evaluated\n");
 			break;
 
 		case NODE_MODULE:
