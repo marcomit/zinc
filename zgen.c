@@ -7,8 +7,7 @@
 #include <llvm-c/Analysis.h>
 
 typedef struct {
-    const char *key;
-    ZNode *node;
+    char *key;
     LLVMValueRef value;
 } ZLLVMTable;
 
@@ -43,17 +42,16 @@ static LLVMTypeRef i64Type 	= NULL;
 static LLVMTypeRef f32Type 	= NULL;
 static LLVMTypeRef f64Type 	= NULL;
 
-static void putLLVMValueRef(ZCodegen *ctx, const char *key, LLVMValueRef value, ZNode *node) {
+static void putLLVMValueRef(ZCodegen *ctx, char *key, LLVMValueRef value) {
     ZLLVMTable *entry   = zalloc(ZLLVMTable);
     entry->key          = key;
     entry->value        = value;
-    entry->node         = node;
     vecpush(ctx->table, entry);
 }
 
-static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, const char *key) {
+static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
     for (usize i = 0;i < veclen(ctx->table); i++) {
-        if (strcmp(ctx->table[i]->key, key) == 0) {
+        if (strcmp(ctx->table[i]->key,  key) == 0) {
             return ctx->table[i]->value;
         }
     }
@@ -275,10 +273,7 @@ static LLVMTypeRef genStruct(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
     switch (tok->type) {
     case TOK_STR_LIT:
-        return LLVMConstStringInContext(
-                ctx->ctx,
-                tok->str,
-                strlen(tok->str), false);
+        return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, ".str");
     case TOK_INT_LIT:
         return LLVMConstInt(i32Type, tok->integer, true);
     case TOK_BOOL_LIT:
@@ -293,22 +288,50 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
 
 static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef val = getLLVMValueRef(ctx, node->tok->str);
-    error(ctx->state, node->tok, "Identifier not found in the current scope");
-    return NULL;
+    if (!val) {
+        error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
+        return NULL;
+    }
+    /* Local variables are stored as allocas — load to get the value.
+       Functions are stored directly — return as-is. */
+    if (LLVMGetValueKind(val) == LLVMInstructionValueKind) {
+        LLVMTypeRef type = genType(ctx, node->resolved);
+        return LLVMBuildLoad2(ctx->builder, type, val, node->tok->str);
+    }
+    return val;
 }
 
 static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
     LLVMTypeRef type = genType(ctx, node->resolved);
 
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, node->tok->str);
-    putLLVMValueRef(ctx, node->tok->str, val, node);
+    if (node->varDecl.rvalue) {
+        LLVMValueRef init = genExpr(ctx, node->varDecl.rvalue);
+        LLVMBuildStore(ctx->builder, init, val);
+    }
+    putLLVMValueRef(ctx, node->tok->str, val);
     return val;
 }
 
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef func = getLLVMValueRef(ctx, node->tok->str);
+    LLVMValueRef func = genExpr(ctx, node->call.callee);
+    LLVMTypeRef funcType = genType(ctx, node->call.callee->resolved);
 
-    // LLVMBuildCall2(ctx->builder, func);
+    LLVMValueRef *args = NULL;
+
+    for (usize i = 0; i < veclen(node->call.args); i++) {
+        LLVMValueRef arg = genExpr(ctx, node->call.args[i]);
+        vecpush(args, arg);
+    }
+
+    LLVMBuildCall2(
+        ctx->builder,
+        funcType,
+        func,
+        args,
+        veclen(args),
+        ""
+    );
     return NULL;
 }
 
@@ -486,6 +509,9 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
 		node->foreignFunc.tok->str,
 		funcType
 	);
+
+    putLLVMValueRef(ctx, node->foreignFunc.tok->str, func);
+
 	return func;
 }
 
@@ -500,15 +526,16 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     return LLVMBuildRet(ctx->builder, val);
 }
 
-static LLVMValueRef genStmt(ZCodegen *ctx, ZNode *stmt) {
+static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     switch (stmt->type) {
-    case NODE_VAR_DECL: return genVarDecl(ctx, stmt);
-    case NODE_RETURN:   return genRet(ctx, stmt);
+    case NODE_VAR_DECL: genVarDecl(ctx, stmt);  break;
+    case NODE_RETURN:   genRet(ctx, stmt);      break;
+    case NODE_BINARY:   genExpr(ctx, stmt);     break;
+    case NODE_CALL:     genCall(ctx, stmt);      break;
     default: 
         error(ctx->state, stmt->tok,
                 "Node '%d' does not compile yet",
                 stmt->type);
-        return NULL;
     }
 }
 
@@ -537,7 +564,7 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     genBlock(ctx, f->funcDef.body);
 
 
-    putLLVMValueRef(ctx, f->tok->str, func, f);
+    putLLVMValueRef(ctx, f->tok->str, func);
     return func;
 }
 

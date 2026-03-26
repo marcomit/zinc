@@ -1,9 +1,10 @@
 foreign u0 puts(*char)
 
 u32 main() {
-    *char str = "string literal"
 
-    puts(str)
+    puts("Hello world")
+    puts("Hello world 2")
+    
 
     return 10
 }
