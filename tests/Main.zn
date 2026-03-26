@@ -1,21 +1,9 @@
-struct Vec2 {
-    f32 x
-    f32 y
-}
+foreign u0 puts(*char)
 
-struct Node {
-    *u0 data
-    *Node next
-}
+u32 main() {
+    *char str = "string literal"
 
-struct List {
-    *Node head
-    *Node tail
-}
+    puts(str)
 
-
-u8 main() {
-    *u8 str = none
-    u64 i = str as u64
-    return i
+    return 10
 }

@@ -1,5 +1,5 @@
 /**
- * @file zhashset.h
+ * @file zhset.h
  * @brief A lightweight, header-only string hashset for C
  *
  * This library provides an open-addressing hashset for C strings using
@@ -21,7 +21,7 @@
  * @section usage Usage Example
  *
  * @code
- * #include "zhashset.h"
+ * #include "zhset.h"
  *
  * hashset_t set = NULL;
  *

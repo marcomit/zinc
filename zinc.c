@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
 
 	zanalyze(state, root);
 	printNode(root, 0);
-	// zcompile(state, root, state->output);
+	zcompile(state, root, state->output);
 
 
 	printLogs(state);

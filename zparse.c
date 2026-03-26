@@ -1113,18 +1113,19 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
 	guard(body);
 
 	ZNode *node = makenode(NODE_FUNC);
-	node->funcDef.ret = ret;
-	node->funcDef.name = name;
-	node->funcDef.base = base;
-	node->funcDef.args = args;
-	node->funcDef.body = body;
-	node->funcDef.pub = public;
-	node->funcDef.receiver = receiver;
-	node->funcDef.generics = generics;
+	node->funcDef.ret       = ret;
+	node->funcDef.name      = name;
+	node->funcDef.base      = base;
+	node->funcDef.args      = args;
+	node->funcDef.body      = body;
+	node->funcDef.pub       = public;
+	node->funcDef.receiver  = receiver;
+	node->funcDef.generics  = generics;
+    node->tok               = name;
 
-	ZType *func = maketype(Z_TYPE_FUNCTION);
-	func->func.ret = ret;
-	func->func.args = NULL;
+	ZType *func             = maketype(Z_TYPE_FUNCTION);
+	func->func.ret          = ret;
+	func->func.args         = NULL;
 
 	for (usize i = 0; i < veclen(args); i++) {
 		vecpush(func->func.args, args[i]->field.type);

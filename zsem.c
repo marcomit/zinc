@@ -831,8 +831,10 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
 		declaredType = resolveTypeRef(semantic, curr->varDecl.type);
 		if (rvalueType &&
 		    !typesCompatible(semantic->state, declaredType, rvalueType)) {
+            char *s = NULL;
+            stype(rvalueType, &s);
 			error(semantic->state, curr->tok,
-			      "Type mismatch: cannot assign value to variable of this type");
+			      "Type mismatch: cannot assign value to variable of '%s'", s);
 		}
 	} else {
 		/* Inferred type (:= syntax) */
@@ -902,6 +904,19 @@ static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
 	endScope(semantic);
 }
 
+static void analyzeForeign(ZSemantic *semantic, ZNode *curr) {
+    if (!resolveTypeRef(semantic, curr->foreignFunc.ret)) {
+        error(semantic->state, curr->tok, "Unknown type");
+    }
+    for (usize i = 0; i < veclen(curr->foreignFunc.args); i++) {
+        ZType *arg = curr->foreignFunc.args[i];
+        ZType *t = resolveTypeRef(semantic, arg);
+        if (!t) {
+            error(semantic->state, arg->tok, "Unknown type");
+        }
+    }
+}
+
 static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 	beginScope(semantic, curr);
     curr->funcDef.body->scope = semantic->table->current;
@@ -914,13 +929,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 		if (!argType) {
 			error(semantic->state, curr->funcDef.name, "Unknown type");
 		}
-
-		ZSymbol *sym  = makesymbol(Z_SYM_VAR);
-		sym->name     = arg->field.identifier;
-		sym->type     = argType;
-		sym->node     = arg;
-		sym->isPublic = false;
-		putSymbol(semantic, sym);
+		putVar(semantic, arg, false);
 	}
 
 	if (curr->funcDef.receiver) {
@@ -1042,8 +1051,8 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
 		ZNode *child = root->module.root[i];
 
 		switch (child->type) {
-		case NODE_FUNC: 		putFunc(semantic, child); 			break;
-		case NODE_STRUCT: 	putStruct(semantic, child); 		break;
+		case NODE_FUNC: 	putFunc(semantic, child); 		break;
+		case NODE_STRUCT: 	putStruct(semantic, child); 	break;
 		case NODE_VAR_DECL: putVar(semantic, child, false); break;
 
 		case NODE_TYPEDEF: {
@@ -1083,7 +1092,8 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
 		ZNode *child = root->module.root[i];
 
 		switch (child->type) {
-		case NODE_FUNC: 		analyzeFunc(semantic, child); 			break;
+        case NODE_FOREIGN:  analyzeForeign(semantic, child);    break;
+		case NODE_FUNC: 	analyzeFunc(semantic, child); 		break;
 		case NODE_VAR_DECL: analyzeVar(semantic, child, true); 	break;
 
 		case NODE_STRUCT:
