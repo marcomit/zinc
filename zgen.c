@@ -534,6 +534,15 @@ static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
     return ptr;
 }
 
+static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef object = genExpr(ctx, node->memberAccess.object);
+
+    LLVMTypeRef objType = genType(ctx, node->memberAccess.object->resolved);
+
+
+    return NULL;
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	switch (node->type) {
 		case NODE_BINARY:       return genBinary(ctx, node);
@@ -599,14 +608,38 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
 
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     switch (stmt->type) {
-    case NODE_VAR_DECL: genVarDecl(ctx, stmt);  break;
+    /* Variable already declared at the start of the function*/
+    case NODE_VAR_DECL:                         break;
     case NODE_RETURN:   genRet(ctx, stmt);      break;
     case NODE_BINARY:   genExpr(ctx, stmt);     break;
-    case NODE_CALL:     genCall(ctx, stmt);      break;
+    case NODE_CALL:     genCall(ctx, stmt);     break;
     default: 
         error(ctx->state, stmt->tok,
                 "Node '%d' does not compile yet",
                 stmt->type);
+    }
+}
+
+static void genFuncVars(ZCodegen *ctx, ZNode *node) {
+    switch (node->type) {
+    case NODE_VAR_DECL:
+        genVarDecl(ctx, node);
+        break;
+    case NODE_FOR:
+        genFuncVars(ctx, node->forStmt.block);
+        break; 
+    case NODE_WHILE:
+        genFuncVars(ctx, node->whileStmt.branch);
+        break;
+    case NODE_IF:
+        genFuncVars(ctx, node->ifStmt.body);
+        break;
+    case NODE_BLOCK:
+        for (usize i = 0; i < veclen(node->block); i++) {
+            genFuncVars(ctx, node->block[i]);
+        }
+        break;
+    default: break;
     }
 }
 
@@ -621,6 +654,11 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
     LLVMTypeRef *args = NULL;
 
+    if (f->funcDef.receiver) {
+        LLVMTypeRef receiverType = genType(ctx, f->funcDef.receiver->resolved);
+        vecpush(args, receiverType);
+    }
+
     for (usize i = 0; i < veclen(f->funcDef.args); i++) {
         LLVMTypeRef arg = genType(ctx, f->funcDef.args[i]->resolved);
         vecpush(args, arg);
@@ -631,6 +669,9 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     LLVMBasicBlockRef entry = LLVMAppendBasicBlock(func, "entry");
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
+
+    /* All variable declarations are declared ad the start of the function. */
+    genFuncVars(ctx, f->funcDef.body);
 
     genBlock(ctx, f->funcDef.body);
 

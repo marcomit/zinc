@@ -13,7 +13,7 @@ static char *nodeLabels[] = {
 	"STRUCT", "SUBSCRIPT", "MEMBER", "MODULE",
 	"UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
 	"TUPLE_LIT", "ARRAY_LIT", "MACRO", "GOTO", "LABEL", "TYPE",
-	"ENUM", "BREAK", "CONTINUE", "SIZEOF", "CAST"
+	"ENUM", "BREAK", "CONTINUE", "ENUM_FIELD", "CAST", "SIZEOF"
 };
 
 static char *levels[] = {

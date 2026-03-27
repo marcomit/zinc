@@ -5,12 +5,17 @@ struct Point {
     f32 y
 }
 
+u0 Point:print() {
+    printf("call Point:print")
+}
+
 u32 main() {
     Point p = Point {x: 10, y: 10}
 
     printf("Hello world\n")
     printf("Hello world 2\n")
 
+    Point:print()
 
-    return p.x
+    return 10
 }

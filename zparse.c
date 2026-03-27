@@ -32,7 +32,7 @@
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType								(ZParser *);
-ZNode	*parseExpr								(ZParser *);
+ZNode *parseExpr								(ZParser *);
 static ZNode *parse								(ZParser *);
 static ZNode *parseIf							(ZParser *);
 static ZNode *parseGoto							(ZParser *);
@@ -272,6 +272,15 @@ static ZNode *parseGenericBinary(ZParser *parser,
 	}
 
 	return node ? node : left;
+}
+
+static ZNode *parseStaticFuncCall(ZParser *parser) {
+    ZToken *start = peek(parser);
+    if (!check(parser, TOK_IDENT)) {
+        error(parser->state, start, "Expected an identifier");
+        return NULL;
+    }
+    return NULL;
 }
 
 static ZNode *parsePrimary(ZParser *parser) {
