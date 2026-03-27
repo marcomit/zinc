@@ -281,7 +281,9 @@ struct ZNode {
 		struct {
 			ZType *ret;
 			ZToken *name;
-			ZToken *base;
+
+            /* Always parsed as Z_TYPE_PRIMITIVE. */
+			ZType *base;
 
 			ZNode **args;
 
@@ -488,6 +490,11 @@ typedef struct ZFuncTable {
 
 	/* A list of functions that have [receiver] as a receiver type */
 	ZNode 		**funcDef;
+
+    /* A list of static functions for that type.
+     * A static function is available only when the type is an identifier.
+     */
+    ZNode       **staticFuncDef;
 } ZFuncTable;
 
 typedef struct ZSymTable {

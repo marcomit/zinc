@@ -1071,21 +1071,18 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
 		return NULL;
 	}
 
-	ZToken *name = consume(parser);
-	ZToken *base = NULL;
+	ZToken *name    = consume(parser);
+	ZType *base     = NULL;
 
 
-	if (match(parser, TOK_COLON)) {
-		if (!match(parser, TOK_COLON)) {
-			error(parser->state, peek(parser),
-                    "Expected '::' got a single colon");
-			return NULL;
-		} else if (!check(parser, TOK_IDENT)) {
+	if (match(parser, TOK_DOUBLE_COLON)) {
+		if (!check(parser, TOK_IDENT)) {
 			error(parser->state, peek(parser), "Expected an identifier");
 			return NULL;
 		}
-		base = name;
-		name = consume(parser);
+        base                    = maketype(Z_TYPE_PRIMITIVE);
+        base->primitive.token   = name;
+		name                    = consume(parser);
 	}
 
 	ZToken **generics = NULL;

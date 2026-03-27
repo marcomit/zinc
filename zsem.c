@@ -84,8 +84,17 @@ static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
 }
 
 static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
-	let receiver = node->funcDef.receiver;
-	let funcs = semantic->table->funcs;
+    if (!node->funcDef.receiver) {
+        error(semantic->state, node->tok, "receiver must be setted");
+        return;
+    } else if (node->funcDef.base) {
+        error(semantic->state, node->tok,
+                "receiver functions cannot have a base");
+        return;
+    }
+
+	ZNode *receiver     = node->funcDef.receiver;
+	ZFuncTable **funcs  = semantic->table->funcs;
 	for (usize i = 0; i < veclen(funcs); i++) {
 		if (typesEqual(funcs[i]->receiver, receiver->field.type)) {
 			vecpush(funcs[i]->funcDef, node);
@@ -93,12 +102,32 @@ static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
 		}
 	}
 
-	ZFuncTable *func = zalloc(ZFuncTable);
-	func->receiver = receiver->field.type;
-	func->funcDef = NULL;
+	ZFuncTable *func    = zalloc(ZFuncTable);
+	func->receiver      = receiver->field.type;
+	func->funcDef       = NULL;
+    func->staticFuncDef = NULL;
+
 	vecpush(func->funcDef, node);
 	vecpush(semantic->table->funcs, func);
+}
 
+static void putStaticFunc(ZSemantic *semantic, ZNode *node) {
+    ZToken *base = node->funcDef.base;
+    if (!base) {
+        error(semantic->state,
+                node->tok,
+                "Invalid 'putStaticFunc' call, base is not setted");
+        return;
+    } else if (node->funcDef.receiver) {
+        error(semantic->state,
+                node->tok,
+                "Invalid 'putStaticFunc' call, receiver cannot be setted");
+    }
+
+    
+    for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
+        
+    }
 }
 
 static void putFunc(ZSemantic *semantic, ZNode *node) {
@@ -922,6 +951,28 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 	beginScope(semantic, curr);
     curr->funcDef.body->scope = semantic->table->current;
 
+    if (curr->funcDef.base) {
+        curr->funcDef.base = resolveTypeRef(semantic, curr->funcDef.base);
+        if (!curr->funcDef.base) {
+            error(semantic->state,
+                    curr->funcDef.base->primitive.token,
+                    "'%s' is not a valid identifier",
+                    curr->funcDef.base->primitive.token);
+            return;
+        }
+    }
+
+    if (curr->funcDef.receiver) {
+		ZNode *receiver = curr->funcDef.receiver;
+		ZType *recType  = resolveTypeRef(semantic, receiver->field.type);
+
+		ZSymbol *sym = makesymbol(Z_SYM_VAR);
+		sym->name 		= receiver->field.identifier;
+		sym->type 		= recType;
+		sym->node 		= curr->funcDef.receiver;
+		sym->isPublic   = false;
+		putSymbol(semantic, sym);
+	}
 
 	for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
 		ZNode  *arg     = curr->funcDef.args[i];
@@ -933,28 +984,18 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 		putVar(semantic, arg, false);
 	}
 
-	if (curr->funcDef.receiver) {
-		ZNode *receiver = curr->funcDef.receiver;
-		ZType *recType = resolveTypeRef(semantic, receiver->field.type);
-
-		ZSymbol *sym = makesymbol(Z_SYM_VAR);
-		sym->name 		= receiver->field.identifier;
-		sym->type 		= recType;
-		sym->node 		= curr->funcDef.receiver;
-		sym->isPublic = false;
-		putSymbol(semantic, sym);
-	}
+	
 
 	ZType *savedRet          	= semantic->currentFuncRet;
-	ZNode *savedFunc					= semantic->currentFunc;
+	ZNode *savedFunc			= semantic->currentFunc;
 
 	semantic->currentFuncRet 	= resolveTypeRef(semantic, curr->funcDef.ret);
-	semantic->currentFunc			= curr;
+	semantic->currentFunc		= curr;
 
 	analyzeBlock(semantic, curr->funcDef.body, false);
 
 	semantic->currentFuncRet 	= savedRet;
-	semantic->currentFunc			= savedFunc;
+	semantic->currentFunc		= savedFunc;
 	
 	endScope(semantic);
 }

@@ -1,13 +1,16 @@
 foreign u0 printf(*char)
 
-struct Point {
+struct Point2 {
     f32 x
-    f32 y
 }
 
-u0 Point:print() {
-    printf("call Point:print")
+struct Point {
+    Point2 p
 }
+
+// u0 Point:print() {
+//     printf("call Point:print")
+// }
 
 u32 main() {
     Point p = Point {x: 10, y: 10}
@@ -15,7 +18,7 @@ u32 main() {
     printf("Hello world\n")
     printf("Hello world 2\n")
 
-    Point:print()
+    // Point:print()
 
     return 10
 }

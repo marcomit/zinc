@@ -517,7 +517,7 @@ static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
                 name->str);
 
         if (index == -1) {
-            error(ctx->state, name, "Unknown field '%s'", name);
+            error(ctx->state, name, "Unknown field '%s'", name->str);
         }
 
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
