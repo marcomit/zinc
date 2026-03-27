@@ -137,6 +137,7 @@ static void putStruct(ZSemantic *semantic, ZNode *node) {
 	type->strct.fields 		= node->structDef.fields;
 	type->strct.generics 	= NULL;
 	symbol->type			= type;
+    node->resolved          = type;
 
 	putSymbol(semantic, symbol);
 }

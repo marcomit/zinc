@@ -85,6 +85,11 @@ typedef struct {
 	u8 			optimizationLevel;
 } ZState;
 
+// FIXME: use these masks in the enum
+#define NODE_STMT_MASK (1 << 0x08)
+#define NODE_EXPR_MASK (1 << 0x09)
+#define NODE_DATA_MASK (1 << 0x0A)
+#define NODE_DECL_MASK (1 << 0x0B)
 
 /* ================== Syntax analysis	================== */
 typedef enum {
@@ -157,6 +162,8 @@ struct ZType {
 
 		struct {
 			ZToken *name;
+
+            /* Array of NODE_FIELD */
 			ZNode **fields;
 			ZType **generics;
 		} strct;

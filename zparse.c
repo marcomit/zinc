@@ -873,7 +873,6 @@ static ZNode *parseUnionDecl(ZParser *parser, bool public) {
 }
 
 static ZNode *parseStructDecl(ZParser *parser, bool public) {
-    printf("Trying to parse struct\n");
 	expect(parser, TOK_STRUCT);
 	ensure(check(parser, TOK_IDENT), "Expected an identifier");
 
@@ -907,6 +906,7 @@ static ZNode *parseStructDecl(ZParser *parser, bool public) {
 	node->structDef.generics 	= generics;
 	node->structDef.ident 		= name;
 	node->structDef.pub 		= public;
+
 	return node;
 }
 

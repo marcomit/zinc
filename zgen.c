@@ -12,24 +12,27 @@ typedef struct {
 } ZLLVMTable;
 
 typedef struct {
-	LLVMContextRef ctx;
+	LLVMContextRef  ctx;
 
-	LLVMModuleRef *modules;
-	LLVMModuleRef mod;
+	LLVMModuleRef   *modules;
+	LLVMModuleRef   mod;
 
-	LLVMBuilderRef builder;
-	ZSemantic *semantic;
-	ZState *state;
-    ZScope *current;
+	LLVMBuilderRef  builder;
+	ZSemantic       *semantic;
+	ZState          *state;
+    ZScope          *current;
 
-    ZLLVMTable **table;
+    ZLLVMTable      **table;
 
 	/* Struct type cache — parallel arrays keyed by name */
-	char        **structNames;
-	LLVMTypeRef  *structTypes;
+	char            **structNames;
+	LLVMTypeRef     *structTypes;
+
+    usize           count;
 } ZCodegen;
 
 static LLVMValueRef genExpr(ZCodegen *, ZNode *);
+static LLVMTypeRef genType(ZCodegen *, ZType *);
 
 /* ========== Native types ==========*/
 static LLVMTypeRef i0Type 	= NULL;
@@ -98,8 +101,11 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
     self->table         = NULL;
 	self->state         = state;
 	self->semantic      = semantic;
+    self->count         = 0;
 	return self;
 }
+
+// static inline usize useCount(ZCodegen *ctx) { return ctx->count++; }
 
 usize typeSize(ZType *type) {
 	usize res = 0;
@@ -140,6 +146,65 @@ usize typeSize(ZType *type) {
 		return res;
 	default: return 0;
 	}
+}
+
+/* LLVM automatically calculate the offset for the struct fields */
+// usize typeOffset(ZType *strct, char *fieldName) {
+//     usize offset = 0;
+//     for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+//         ZNode *field = strct->strct.fields[i];
+//         if (strcmp(field->field.identifier->str, fieldName) == 0) {
+//             return offset;
+//         }
+//         offset += typeSize(field->field.type);
+//     }
+//     return offset;
+// }
+
+static i32 typeIndex(ZType *strct, char *fieldName) {
+    for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+        ZNode *field = strct->strct.fields[i];
+        if (strcmp(field->field.identifier->str, fieldName) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static LLVMTypeRef getCachedStruct(ZCodegen *ctx, const char *name) {
+    for (usize i = 0; i < veclen(ctx->structNames); i++) {
+        if (strcmp(ctx->structNames[i], name) == 0) {
+            return ctx->structTypes[i];
+        }
+    }
+    return NULL;
+}
+
+static void putStructInCache(ZCodegen *ctx, char *name, LLVMTypeRef strct) {
+    vecpush(ctx->structNames, name);
+    vecpush(ctx->structTypes, strct);
+}
+
+static LLVMTypeRef genStruct(ZCodegen *ctx, ZType *strct) {
+    LLVMTypeRef structType = LLVMStructCreateNamed(ctx->ctx,
+            strct->strct.name->str);
+
+    ZNode **fields = strct->strct.fields;
+    usize nfields = veclen(fields);
+    LLVMTypeRef *ftypes = znalloc(LLVMTypeRef, nfields ? nfields : 1);
+
+    for (usize i = 0; i < nfields; i++) {
+
+        if (!fields[i]->field.type) {
+            error(ctx->state, strct->strct.name, "Type not found");
+        }
+
+        ftypes[i] = genType(ctx, fields[i]->field.type);
+        if (!ftypes[i]) return NULL;
+    }
+    LLVMStructSetBody(structType, ftypes, (unsigned)nfields, /*packed=*/0);
+
+    return structType;
 }
 
 static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
@@ -206,24 +271,12 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 		const char *name = type->strct.name->str;
 
 		/* Check cache */
-		for (usize i = 0; i < veclen(ctx->structNames); i++) {
-			if (strcmp(ctx->structNames[i], name) == 0)
-				return ctx->structTypes[i];
-		}
+		LLVMTypeRef cached = getCachedStruct(ctx, name);
+        if (cached) return cached;
 
-		/* Create opaque named struct first (handles self-referential types) */
-		LLVMTypeRef strct = LLVMStructCreateNamed(ctx->ctx, name);
-		vecpush(ctx->structNames, (char *)name);
-		vecpush(ctx->structTypes, strct);
-
-		usize nfields = veclen(type->strct.fields);
-		LLVMTypeRef *ftypes = znalloc(LLVMTypeRef, nfields ? nfields : 1);
-		for (usize i = 0; i < nfields; i++) {
-			ftypes[i] = genType(ctx, type->strct.fields[i]->field.type);
-			if (!ftypes[i]) return NULL;
-		}
-		LLVMStructSetBody(strct, ftypes, (unsigned)nfields, /*packed=*/0);
-		return strct;
+        LLVMTypeRef structType = genStruct(ctx, type);
+        putStructInCache(ctx, (char *)name, structType);
+        return structType;
 	}
 
 	case Z_TYPE_TUPLE: {
@@ -233,7 +286,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 			elems[i] = genType(ctx, type->tuple[i]);
 			if (!elems[i]) return NULL;
 		}
-		return LLVMStructTypeInContext(ctx->ctx, elems, (unsigned)len, 0);
+		return LLVMStructTypeInContext(ctx->ctx, elems, len, 0);
 	}
 
 	case Z_TYPE_NONE:
@@ -244,30 +297,6 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 		error(ctx->state, NULL, "genType: unhandled type kind %d", type->kind);
 		return NULL;
 	}
-}
-
-static LLVMTypeRef genStruct(ZCodegen *ctx, ZNode *node) {
-	/* Delegate to genType via the resolved struct type on the node */
-	if (node->resolved) return genType(ctx, node->resolved);
-
-	/* Fallback: build directly from the AST node */
-	const char *name = node->structDef.ident->str;
-	for (usize i = 0; i < veclen(ctx->structNames); i++) {
-		if (strcmp(ctx->structNames[i], name) == 0)
-			return ctx->structTypes[i];
-	}
-
-	LLVMTypeRef strct = LLVMStructCreateNamed(ctx->ctx, name);
-	vecpush(ctx->structNames, (char *)name);
-	vecpush(ctx->structTypes, strct);
-
-	usize nfields = veclen(node->structDef.fields);
-	LLVMTypeRef *ftypes = znalloc(LLVMTypeRef, nfields ? nfields : 1);
-	for (usize i = 0; i < nfields; i++) {
-		ftypes[i] = genType(ctx, node->structDef.fields[i]->resolved);
-	}
-	LLVMStructSetBody(strct, ftypes, (unsigned)nfields, 0);
-	return strct;
 }
 
 static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
@@ -333,10 +362,6 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         ""
     );
     return NULL;
-}
-
-static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
-	return NULL;
 }
 
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
@@ -470,11 +495,51 @@ static LLVMValueRef genCast(ZCodegen *ctx, LLVMValueRef val,
 	return LLVMBuildBitCast(ctx->builder, val, toType, "casttmp");
 }
 
+static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
+    LLVMTypeRef structType = genType(ctx, node->resolved);
+
+    LLVMValueRef ptr = LLVMBuildAlloca(ctx->builder, structType, "struct");
+
+    ZNode **fields = node->structlit.fields;
+
+    for (usize i = 0; i < veclen(fields); i++) {
+        ZNode *var = fields[i];
+        ZToken *name = var->varDecl.ident->identTok;
+        if (!var->varDecl.rvalue) {
+            error(ctx->state,
+                    var->tok,
+                    "Missing rvalue in struct literal for field '%s'",
+                    var->varDecl.ident->identTok);
+        }
+        LLVMValueRef val = genExpr(ctx, var->varDecl.rvalue);
+
+        i32 index = typeIndex(node->resolved,
+                name->str);
+
+        if (index == -1) {
+            error(ctx->state, name, "Unknown field '%s'", name);
+        }
+
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
+            ctx->builder,
+            structType,
+            ptr,
+            index,
+            name->str
+        );
+
+        LLVMBuildStore(ctx->builder, val, fieldPtr);
+
+    }
+    return ptr;
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	switch (node->type) {
 		case NODE_BINARY:       return genBinary(ctx, node);
         case NODE_LITERAL:      return genLit(ctx, node->tok);
         case NODE_IDENTIFIER:   return genIdent(ctx, node);
+        case NODE_STRUCT_LIT:   return genStructLit(ctx, node);
 
 		case NODE_CAST: {
 			LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
@@ -489,7 +554,13 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 			return LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
 		}
 
-		default: break;
+		default: 
+            printf("Node not handled\n");
+            error(ctx->state,
+                    node->tok,
+                    "Node '%d' not yet implemented in the code generator",
+                    node->type);
+            break;
 	}
 	return NULL;
 }
@@ -570,13 +641,10 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
 static void compile(ZCodegen *ctx, ZNode *root) {
 	switch (root->type) {
-	case NODE_BINARY:
-		genExpr(ctx, root);
-		break;
-	case NODE_FOREIGN:
-		genForeign(ctx, root); 
-		break;
-	
+	case NODE_FOREIGN:  genForeign  (ctx, root);    break;
+    case NODE_FUNC:     genFunc     (ctx, root);            break;
+    case NODE_STRUCT:   genType     (ctx, root->resolved);  break;
+
 	case NODE_MODULE:
         beginModule(ctx, root);
 		for (usize i = 0; i < veclen(root->module.root); i++) {
@@ -584,9 +652,6 @@ static void compile(ZCodegen *ctx, ZNode *root) {
 		}
 		endModule(ctx);
 		break;
-    case NODE_FUNC: 
-        genFunc(ctx, root);
-        break;
 	default:
 		error(ctx->state, root->tok, "(compilation not yet implemented for %d)", root->type);
 		break;
