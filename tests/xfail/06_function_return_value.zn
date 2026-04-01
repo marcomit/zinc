@@ -1,0 +1,13 @@
+// xfail: NODE_CALL is not handled in genExpr, only in genStmt —
+// using a function's return value as an rvalue crashes the code generator.
+foreign u0 printf(*char)
+
+i32 answer() {
+    return 42
+}
+
+u32 main() {
+    i32 r = answer()
+    printf("ok\n")
+    return 0
+}
