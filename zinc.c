@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <getopt.h>
 
 // #ifdef VEC_ALLOC
 // #undef VEC_ALLOC
@@ -19,112 +20,102 @@
 // #endif
 
 static void usage(char *program) {
-	printf("Usage: %s <filename> [options]\n", program);
-	printf("Options:\n");
-	printf("\t --debug -d           Enable debug mode\n");
-	printf("\t --emit-llvm          Emit LLVM IR (.ll) instead of a native binary\n");
-	printf("\t --unused-variable    Suppress 'unused variable' warnings\n");
-	printf("\t --unused-function    Suppress 'unused function' warnings\n");
-	printf("\t --unused-struct      Suppress 'unused struct' warnings\n");
+    printf("Usage: %s <filename> [options]\n", program);
+    printf("Options:\n");
+    printf("\t --debug -d           Enable debug mode\n");
+    printf("\t --emit-llvm          Emit LLVM IR (.ll) instead of a native binary\n");
+    printf("\t --unused-variable    Suppress 'unused variable' warnings\n");
+    printf("\t --unused-function    Suppress 'unused function' warnings\n");
+    printf("\t --unused-struct      Suppress 'unused struct' warnings\n");
 }
 
-#define cmp(s, l) (strcmp(s, l) == 0)
+#define CHECK_FLAG(flag, name) if (flag) {                                  \
+    printf("Error %s already set\n", name);                                 \
+    usage(argv[0]);                                                         \
+    return NULL;                                                            \
+}
+
+#define SET_FLAG(flag, name) do {                                           \
+    CHECK_FLAG(flag, name)                                                  \
+    (flag) = true;                                                          \
+} while(0)
+
+#define SET_ARG(flag, name) do {                                            \
+    CHECK_FLAG(flag, name)                                                  \
+    (flag) = optarg;                                                        \
+} while (0)
+
+enum {
+    OPT_EMIT_LLVM = 1 << 8,
+    OPT_UNUSED_FUNC,
+    OPT_UNUSED_VAR,
+    OPT_UNUSED_STRUCT
+};
+
+static struct option long_options[] = {
+    {"debug",           no_argument,        NULL, 'd'               },
+    {"verbose",         no_argument,        NULL, 'v'               },
+    {"emit-llvm",       no_argument,        NULL, OPT_EMIT_LLVM     },
+    {"unused-function", no_argument,        NULL, OPT_UNUSED_FUNC   },
+    {"unused-variable", no_argument,        NULL, OPT_UNUSED_VAR    },
+    {"unused-struct",   no_argument,        NULL, OPT_UNUSED_STRUCT },
+    {"output",          required_argument,  NULL, 'o'               },
+    {NULL,              0,                  NULL, 0                 }
+};
 
 ZState *loadState(int argc, char **argv) {
-	char *err = NULL;
-	if (argc < 2) goto stateErr;
+    if (argc < 2) { usage(argv[0]); return NULL; }
 
-	ZState *state = makestate(argv[1]);
+    char *filename = argv[1];
 
-	char *arg;
+    argc--; argv++;
 
-	for (int i = 2; i < argc; i++) {
-		arg = argv[i];
-		if (cmp(arg, "--debug") || cmp(arg, "-d")) {
-			if (state->debug) {
-				err = "Debug mode already setted";
-				goto stateErr;
-			}
+    ZState *state = makestate(argv[1]);
 
-			state->debug = true;
-		} else if (cmp(arg, "--verbose") || cmp(arg, "-v")) {
-			if (state->verbose) {
-				err = "Verbose already setted";
-				goto stateErr;
-			}
-			state->verbose = true;
-		} else if (cmp(arg, "--emit-llvm")) {
-			if (state->emitLLVM) {
-				err = "emit-llvm already set";
-				goto stateErr;
-			}
-			state->emitLLVM = true;
-		} else if (cmp(arg, "--unused-function")) {
-			if (state->unusedFunc) {
-				err = "Unused function flag already setted";
-				goto stateErr;
-			}
-			state->unusedFunc = true;
-		} else if (cmp(arg, "--unused-variable")) {
-			if (state->unusedVar) {
-				err = "Unused variable flag already setted";
-				goto stateErr;
-			}
-			state->unusedVar = true;
-		} else if (cmp(arg, "--unused-struct")) {
-			if (state->unusedStruct) {
-				err = "Unused struct flag already setted";
-				goto stateErr;
-			}
-			state->unusedStruct = true;
-		}	else if (cmp(arg, "--output") || cmp(arg, "-o")) {
-			if (state->output) {
-				err = "Output already setted";
-				goto stateErr;
-			}
-			i++;
-			if (i >= argc) {
-				err = "Missing output file";
-				goto stateErr;
-			}
-			state->output = argv[i];
-		} else {
-			err = "Undefined argument";
-			goto stateErr;
-		}
-	}
+    int opt;   
 
-	return state;
+    while (( opt = getopt_long(argc, argv, "dvo:", long_options, NULL) ) != -1) {
+        switch (opt) {
+        case 'o':               SET_ARG(state->output,          "Output file");             break;
+        case 'd':               SET_FLAG(state->debug,          "Debug mode");              break;
+        case 'v':               SET_FLAG(state->verbose,        "Verbose");                 break;
+        case OPT_EMIT_LLVM:     SET_FLAG(state->emitLLVM,       "emit-llvm");               break;
+        case OPT_UNUSED_FUNC:   SET_FLAG(state->unusedFunc,     "Unused function flag");    break;
+        case OPT_UNUSED_VAR:    SET_FLAG(state->unusedVar,      "Unused function flag");    break;
+        case OPT_UNUSED_STRUCT: SET_FLAG(state->unusedStruct,   "Unused function flag");    break;
 
-stateErr:
-	if (err) printf("Error: %s\n", err);
-	usage(argv[0]);
-	return NULL;
+
+        default: usage(argv[0]); return NULL;
+        }
+    }
+
+    return state;
+
 }
 
 int main(int argc, char **argv) {
-	printf("Trying to load state\n");
-	allocator.open();
-	ZState *state = loadState(argc, argv);
+    printf("Trying to load state\n");
+    allocator.open();
+    ZState *state = loadState(argc, argv);
 
-	if (!state) return 1;
-	printf("State loaded\n");
+    if (!state) return 1;
+    printf("State loaded\n");
 
-	visit(state, argv[1]);
+    visit(state, argv[1]);
 
-	ZToken **tokens = ztokenize(state);
-	printTokens(tokens);
+    ZToken **tokens = ztokenize(state);
+    printTokens(tokens);
 
-	ZNode *root = zparse(state, tokens);
+    ZNode *root = zparse(state, tokens);
 
-	zanalyze(state, root);
-	printNode(root, 0);
-	zcompile(state, root, state->output);
+    printNode(root, 0);
+    zanalyze(state, root);
+    zcompile(state, root, state->output);
 
 
-	printLogs(state);
+    printLogs(state);
 
-	allocator.close();
+    allocator.close();
 
-	return 0;
+    return 0;
 }
