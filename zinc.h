@@ -26,63 +26,63 @@ typedef enum {
 } ZTokenType;
 
 typedef struct ZToken {
-	ZTokenType type;
-	union {
-		char *str;
-		i64 integer;
-		f64 floating;
-		bool boolean;
-	};
-	char *sourcePtr;
-	char *sourceLinePtr;
-	char *start;
-	usize row;
-	usize col;
-	bool newlineBefore;
+    ZTokenType type;
+    union {
+        char *str;
+        i64 integer;
+        f64 floating;
+        bool boolean;
+    };
+    char *sourcePtr;
+    char *sourceLinePtr;
+    char *start;
+    usize row;
+    usize col;
+    bool newlineBefore;
 } ZToken;
 
 typedef enum {
-	Z_ERROR,
-	Z_WARNING,
-	Z_INFO,
-	Z_DEBUG
+    Z_ERROR,
+    Z_WARNING,
+    Z_INFO,
+    Z_DEBUG
 } ZLogLevel;
 
 typedef struct {
-	char 		*filename;
-	char 		*message;
-	ZToken 		*token;
-	ZLogLevel level;
+    char            *filename;
+    char            *message;
+    ZToken          *token;
+    ZLogLevel level;
 } ZLog;
 
 typedef enum {
-	Z_PHASE_LEXICAL,
-	Z_PHASE_SYNTAX,
-	Z_PHASE_SEMANTIC,
-	Z_PHASE_GENERATE
+    Z_PHASE_LEXICAL,
+    Z_PHASE_SYNTAX,
+    Z_PHASE_SEMANTIC,
+    Z_PHASE_GENERATE
 } ZPhase;
 
 typedef struct {
-	char 		*output;
-	ZLog 		**errors;
-	ZPhase 	    currentPhase;
+    char        *output;
+    ZLog        **errors;
+    ZPhase      currentPhase;
     char        *currentPath;
-	char 		*filename;
+    char        *filename;
 
-	char 		**pathFiles;
-	char 		**visitedFiles;
+    char        **pathFiles;
+    char        **visitedFiles;
 
-	bool 		debug;
+    bool        debug;
 
-	bool 		unusedVar;
-	bool		unusedFunc;
-	bool		unusedStruct;
+    bool        unusedVar;
+    bool        unusedFunc;
+    bool        unusedStruct;
 
-	bool		emitLLVM;   /* --emit-llvm: write .ll IR file instead of native binary */
+    bool        emitLLVM;   /* --emit-llvm: write .ll IR file instead of native binary */
 
-	/* Not yet implemented */
-	bool 		verbose;
-	u8 			optimizationLevel;
+    /* Not yet implemented */
+    bool        verbose;
+    u8          optimizationLevel;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -91,42 +91,42 @@ typedef struct {
 #define NODE_DATA_MASK (1 << 0x0A)
 #define NODE_DECL_MASK (1 << 0x0B)
 
-/* ================== Syntax analysis	================== */
+/* ================== Syntax analysis    ================== */
 typedef enum {
-	NODE_BLOCK, 		// All inside a {} is a block. A list of statement
-	NODE_IF,
-	NODE_WHILE,
-	NODE_FOR,
-	NODE_RETURN,
-	NODE_VAR_DECL,
-	NODE_BINARY,
-	NODE_UNARY,
-	NODE_CALL,     	// Function call
-	NODE_FUNC,     	// Function definition
-	NODE_LITERAL,  	// Numbers, strings, etc.
-	NODE_IDENTIFIER,
-	NODE_STRUCT,
-	NODE_SUBSCRIPT,
-	NODE_MEMBER,
-	NODE_MODULE,
-	NODE_UNION,
-	NODE_FIELD,
-	NODE_TYPEDEF,
-	NODE_FOREIGN,
-	NODE_DEFER,
-	NODE_STRUCT_LIT,
-	NODE_TUPLE_LIT,
-	NODE_ARRAY_LIT,
-	NODE_MACRO,
-	NODE_GOTO,
-	NODE_LABEL,
-	NODE_TYPE,
-	NODE_ENUM,
-	NODE_BREAK,
-	NODE_CONTINUE,
-	NODE_ENUM_FIELD,
-	NODE_CAST,
-	NODE_SIZEOF
+    NODE_BLOCK,         // All inside a {} is a block. A list of statement
+    NODE_IF,
+    NODE_WHILE,
+    NODE_FOR,
+    NODE_RETURN,
+    NODE_VAR_DECL,
+    NODE_BINARY,
+    NODE_UNARY,
+    NODE_CALL,         // Function call
+    NODE_FUNC,         // Function definition
+    NODE_LITERAL,      // Numbers, strings, etc.
+    NODE_IDENTIFIER,
+    NODE_STRUCT,
+    NODE_SUBSCRIPT,
+    NODE_MEMBER,
+    NODE_MODULE,
+    NODE_UNION,
+    NODE_FIELD,
+    NODE_TYPEDEF,
+    NODE_FOREIGN,
+    NODE_DEFER,
+    NODE_STRUCT_LIT,
+    NODE_TUPLE_LIT,
+    NODE_ARRAY_LIT,
+    NODE_MACRO,
+    NODE_GOTO,
+    NODE_LABEL,
+    NODE_TYPE,
+    NODE_ENUM,
+    NODE_BREAK,
+    NODE_CONTINUE,
+    NODE_ENUM_FIELD,
+    NODE_CAST,
+    NODE_SIZEOF
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -134,135 +134,135 @@ typedef struct ZType ZType;
 typedef struct ZScope ZScope;
 
 typedef enum ZTypeKind {
-	Z_TYPE_PRIMITIVE,
-	Z_TYPE_POINTER,
+    Z_TYPE_PRIMITIVE,
+    Z_TYPE_POINTER,
 
-	Z_TYPE_STRUCT,
-	Z_TYPE_ARRAY,
-	Z_TYPE_FUNCTION,
-	Z_TYPE_TUPLE,
-	Z_TYPE_GENERIC,		// Instantiated generic type, e.g. List[int]
-	Z_TYPE_NONE
+    Z_TYPE_STRUCT,
+    Z_TYPE_ARRAY,
+    Z_TYPE_FUNCTION,
+    Z_TYPE_TUPLE,
+    Z_TYPE_GENERIC,        // Instantiated generic type, e.g. List[int]
+    Z_TYPE_NONE
 } ZTypeKind;
 
 struct ZType {
-	ZTypeKind kind;
+    ZTypeKind kind;
 
-	union {
-		ZToken *tok;
-		// For PRIMITIVE (e.g. void or int)
-		struct {
-			ZToken *token;
-			ZType *base;
-			ZType **generics;
-		} primitive;
+    union {
+        ZToken *tok;
+        // For PRIMITIVE (e.g. void or int)
+        struct {
+            ZToken *token;
+            ZType *base;
+            ZType **generics;
+        } primitive;
 
-		// For POINTER (The type the pointer points to)
-		ZType *base;
+        // For POINTER (The type the pointer points to)
+        ZType *base;
 
-		struct {
-			ZToken *name;
+        struct {
+            ZToken *name;
 
             /* Array of NODE_FIELD */
-			ZNode **fields;
-			ZType **generics;
-		} strct;
+            ZNode **fields;
+            ZType **generics;
+        } strct;
 
-		struct {
-			ZType *ret;
-			ZType **args;
-			ZType **generics;
-		} func;
+        struct {
+            ZType *ret;
+            ZType **args;
+            ZType **generics;
+        } func;
 
-		struct {
-			ZType *base;
-			usize size;
-		} array;
+        struct {
+            ZType *base;
+            usize size;
+        } array;
 
-		ZType **tuple;
+        ZType **tuple;
 
-		// For GENERIC instantiation (e.g. List[int], Map[str, int])
-		struct {
-			ZToken *name;		// The generic type name (e.g. "List")
-			ZType **args;		// The type arguments (e.g. [int])
-		} generic;
-	};
+        // For GENERIC instantiation (e.g. List[int], Map[str, int])
+        struct {
+            ZToken *name;        // The generic type name (e.g. "List")
+            ZType **args;        // The type arguments (e.g. [int])
+        } generic;
+    };
 
-	/* Future implementation:
-	 * Contant values for now are not checked in the semantic analyzer.
-	 * So you can assign a value to a constant variable. */
-	bool constant;
+    /* Future implementation:
+     * Contant values for now are not checked in the semantic analyzer.
+     * So you can assign a value to a constant variable. */
+    bool constant;
 };
 
 typedef enum {
-	Z_MACRO_KEY, 		// Captured keyword
-	Z_MACRO_EXPR, 	// Captured expression
-	Z_MACRO_IDENT, 	// Captured identifier
-	Z_MACRO_TYPE, 	// Captured type
-	Z_MACRO_ZM, 		// Zero or more
-	Z_MACRO_OM, 		// One or more
-	Z_MACRO_SEQ			// Sequence
+    Z_MACRO_KEY,         // Captured keyword
+    Z_MACRO_EXPR,     // Captured expression
+    Z_MACRO_IDENT,     // Captured identifier
+    Z_MACRO_TYPE,     // Captured type
+    Z_MACRO_ZM,         // Zero or more
+    Z_MACRO_OM,         // One or more
+    Z_MACRO_SEQ            // Sequence
 } ZMacroType;
 
 typedef struct ZMacroPattern {
-	ZMacroType kind;
-	union {
-		/* Used for keyword, expression and identifier*/
-		ZToken *ident;
-		struct ZMacroPattern *zeroOrMore;
-		struct ZMacroPattern *oneOrMore;
-		struct ZMacroPattern **sequence;
-	};
+    ZMacroType kind;
+    union {
+        /* Used for keyword, expression and identifier*/
+        ZToken *ident;
+        struct ZMacroPattern *zeroOrMore;
+        struct ZMacroPattern *oneOrMore;
+        struct ZMacroPattern **sequence;
+    };
 } ZMacroPattern;
 
 typedef struct ZMacroVar {
-	ZToken *name;
-	usize startIndex;   // Start index into source token array
-	usize endIndex;     // End index (exclusive)
-	ZNode *captured;    // The parsed AST node for this captured variable
-	usize useCount;			// Count how many timee the variable is used in the body
+    ZToken *name;
+    usize startIndex;   // Start index into source token array
+    usize endIndex;     // End index (exclusive)
+    ZNode *captured;    // The parsed AST node for this captured variable
+    usize useCount;            // Count how many timee the variable is used in the body
 } ZMacroVar;
 
 struct ZNode {
-	ZNodeType type;
-	ZType *resolved;
-	ZToken *tok;
-	union {
-		// Can be used for both if and ternary operator
-		struct {
-			ZNode *cond;
-			ZNode *body;
-			ZNode *elseBranch;
-		} ifStmt;
+    ZNodeType type;
+    ZType *resolved;
+    ZToken *tok;
+    union {
+        // Can be used for both if and ternary operator
+        struct {
+            ZNode *cond;
+            ZNode *body;
+            ZNode *elseBranch;
+        } ifStmt;
 
-		struct {
-			ZNode *cond;
-			ZNode *branch;
-		} whileStmt;
+        struct {
+            ZNode *cond;
+            ZNode *branch;
+        } whileStmt;
 
-		struct {
-			ZNode *var;
-			ZNode *cond;
-			ZNode *incr;
-			ZNode *block;
-		} forStmt;
+        struct {
+            ZNode *var;
+            ZNode *cond;
+            ZNode *incr;
+            ZNode *block;
+        } forStmt;
 
-		struct {
-			ZToken *op;
-			ZNode *left;
-			ZNode *right;
-		} binary;
+        struct {
+            ZToken *op;
+            ZNode *left;
+            ZNode *right;
+        } binary;
 
-		struct {
-			ZToken *operat;
-			ZNode *operand;
-		} unary;
+        struct {
+            ZToken *operat;
+            ZNode *operand;
+        } unary;
 
-		struct {
-			ZType *type;
-			ZNode *ident; // It is a NODE_IDENTIFIER
-			ZNode *rvalue; // Null if not initialized
-		} varDecl;
+        struct {
+            ZType *type;
+            ZNode *ident; // It is a NODE_IDENTIFIER
+            ZNode *rvalue; // Null if not initialized
+        } varDecl;
 
         struct {
             /* Scope is assigned in the semantic analyzer.
@@ -273,261 +273,261 @@ struct ZNode {
             /* The list of statements. */
             ZNode **block;
         };
-		struct {
-			ZType *type;
-			ZToken *identifier;
-		} field;
+        struct {
+            ZType *type;
+            ZToken *identifier;
+        } field;
 
-		struct {
-			ZType *ret;
-			ZToken *name;
+        struct {
+            ZType *ret;
+            ZToken *name;
 
             /* Always parsed as Z_TYPE_PRIMITIVE. */
-			ZType *base;
+            ZType *base;
 
-			ZNode **args;
+            ZNode **args;
 
-			ZNode *body;
+            ZNode *body;
 
-			/* NODE_FIELD */
-			ZNode *receiver;
+            /* NODE_FIELD */
+            ZNode *receiver;
 
-			ZToken **generics;
-			bool pub;
-		} funcDef;
+            ZToken **generics;
+            bool pub;
+        } funcDef;
 
-		struct {
-			ZType 	*ret;
-			ZToken 	*tok;
-			ZType 	**args;
-		} foreignFunc;
+        struct {
+            ZType     *ret;
+            ZToken     *tok;
+            ZType     **args;
+        } foreignFunc;
 
-		struct {
-			ZNode 	*callee;
-			ZNode 	** args;
-		} call;
+        struct {
+            ZNode     *callee;
+            ZNode     ** args;
+        } call;
 
-		struct {
-			ZToken 	*ident;
-			ZNode 	**fields;
-			ZToken 	**generics;
-			bool pub;
-		} structDef;
+        struct {
+            ZToken     *ident;
+            ZNode     **fields;
+            ZToken     **generics;
+            bool pub;
+        } structDef;
 
-		struct {
-			ZToken 	*ident;
-			ZNode   **fields;
-			bool    pub;
-		} unionDef;
+        struct {
+            ZToken     *ident;
+            ZNode   **fields;
+            bool    pub;
+        } unionDef;
 
-		/* Enums are the combination of a union with an integer
-		 * that indicates which field is 'active'.
-		 * enum Shape {
-		 * 	Square(f32),
-		 * 	Rectangle(f32, f32),
-		 * 	Circle(f32)
-		 * }
-		 * */
-		struct {
-			/* The name of the enum. */
-			ZToken  *name;
+        /* Enums are the combination of a union with an integer
+         * that indicates which field is 'active'.
+         * enum Shape {
+         *     Square(f32),
+         *     Rectangle(f32, f32),
+         *     Circle(f32)
+         * }
+         * */
+        struct {
+            /* The name of the enum. */
+            ZToken  *name;
 
-			/* Fields are a list of enumField. */
-			ZNode   **fields;
+            /* Fields are a list of enumField. */
+            ZNode   **fields;
 
-			bool    pub;
-		} enumDef;
+            bool    pub;
+        } enumDef;
 
-		/* Representation of an enum's field.
-		 * It stores the name of the field (e.g. Square or Circle)
-		 * and its captured types.
-		 * */
-		struct {
-			ZToken 	*name;
-			ZType 	**captured;
-		} enumField;
+        /* Representation of an enum's field.
+         * It stores the name of the field (e.g. Square or Circle)
+         * and its captured types.
+         * */
+        struct {
+            ZToken      *name;
+            ZType       **captured;
+        } enumField;
 
-		struct {
-			ZNode 	*object;
-			ZToken 	*field;
-		} memberAccess;
+        struct {
+            ZNode       *object;
+            ZToken      *field;
+        } memberAccess;
 
-		struct {
-			ZNode 	*expr; // Can be NULL for void returns
-		} returnStmt;
+        struct {
+            ZNode       *expr; // Can be NULL for void returns
+        } returnStmt;
 
-		struct {
-			ZNode 	*expr;
-		} deferStmt;
+        struct {
+            ZNode       *expr;
+        } deferStmt;
 
-		struct {
-			ZNode 	*arr;
-			ZNode 	*index;
-		} subscript;
+        struct {
+            ZNode       *arr;
+            ZNode       *index;
+        } subscript;
 
-		ZNode 		**tuplelit;
+        ZNode           **tuplelit;
 
-		ZNode 		**arraylit;
+        ZNode           **arraylit;
 
-		struct {
-			ZToken 	*ident;
-			ZNode 	**fields;
-			ZType 	**generics;
-		} structlit;
+        struct {
+            ZToken      *ident;
+            ZNode       **fields;
+            ZType       **generics;
+        } structlit;
 
-		struct {
-			ZToken 	*alias;
-			ZType 	*type;
-			bool 	pub;
-		} typeDef;
+        struct {
+            ZToken      *alias;
+            ZType       *type;
+            bool        pub;
+        } typeDef;
 
-		struct {
-			char 	*name;
-			ZNode 	**root;
+        struct {
+            char        *name;
+            ZNode       **root;
 
             /* Initialized in the semantic analyzer with all top-level symbols. */
-            ZScope  *scope;
-		} module;
+            ZScope      *scope;
+        } module;
 
-		/* For macros don't parse the body.
-		 * Just save where the body starts and ends.
-		 * When it tries to expand a macro it parse the body recursively.
-		 **/
-		struct {
-			ZMacroPattern   *pattern;
-			usize 			startBody;        // Index of first token after {
-			usize 			endBody;          // Index of } (exclusive)
-			ZMacroVar 		**captured;
-			ZToken 			*start;          // First token of macro definition
-			usize 			consumed;         // Tokens consumed by pattern + body
-			ZToken 			**sourceTokens;  // Original token array where the macro was defined
-			bool 			pub;
-		} macro;
+        /* For macros don't parse the body.
+         * Just save where the body starts and ends.
+         * When it tries to expand a macro it parse the body recursively.
+         **/
+        struct {
+            ZMacroPattern   *pattern;
+            usize           startBody;        // Index of first token after {
+            usize           endBody;          // Index of } (exclusive)
+            ZMacroVar       **captured;
+            ZToken          *start;          // First token of macro definition
+            usize           consumed;         // Tokens consumed by pattern + body
+            ZToken          **sourceTokens;  // Original token array where the macro was defined
+            bool            pub;
+        } macro;
 
-		ZToken 				*gotoLabel;  // For NODE_GOTO and NODE_LABEL
+        ZToken              *gotoLabel;  // For NODE_GOTO and NODE_LABEL
 
-		ZToken 				*literalTok;
-		ZToken 				*identTok;
+        ZToken              *literalTok;
+        ZToken              *identTok;
 
-		struct {
-			ZType  *toType;
-			ZNode  *expr;
-		} castExpr;
+        struct {
+            ZType           *toType;
+            ZNode           *expr;
+        } castExpr;
 
-		struct {
-			ZType  *type;
-		} sizeofExpr;
-	};
+        struct {
+            ZType           *type;
+        } sizeofExpr;
+    };
 };
 
 typedef struct ZTokenStream {
-	ZToken **list;
-	usize current;
-	usize end; // Cached vector length
-	struct ZTokenStream *prev;
+    ZToken **list;
+    usize current;
+    usize end; // Cached vector length
+    struct ZTokenStream *prev;
 } ZTokenStream;
 
 typedef struct ZMacroParser {
-	ZNode 			**macros;
+    ZNode             **macros;
 
-	/* Setted when it parses the body of a macro. */
-	ZNode 			*currentMacro;
+    /* Setted when it parses the body of a macro. */
+    ZNode             *currentMacro;
 
 
-	/* Stack of macros currently being expanded (for cycle detection) */
-	ZNode 			**expandingMacros;
+    /* Stack of macros currently being expanded (for cycle detection) */
+    ZNode             **expandingMacros;
 
-	/* Current pattern list. */
-	ZMacroPattern	*currentList;
+    /* Current pattern list. */
+    ZMacroPattern    *currentList;
 
-	/* Used for list expansion. */
-	usize 			currentIndex;
+    /* Used for list expansion. */
+    usize             currentIndex;
 } ZMacroParser;
 
 typedef struct ZParser {
-	ZState 			*state;
-	ZTokenStream 	*source;
-	usize			tokenIndex;
+    ZState          *state;
+    ZTokenStream    *source;
+    usize           tokenIndex;
 
-	/* Used to track temporary errors and find a valid path. */
-	usize 			*errstack;
+    /* Used to track temporary errors and find a valid path. */
+    usize           *errstack;
 
-	ZMacroParser 	macroParser;
+    ZMacroParser    macroParser;
 
-	u8 				depth;
+    u8              depth;
 } ZParser;
 
-/* ================== Semantic analysis	================== */
+/* ================== Semantic analysis    ================== */
 typedef enum {
-	Z_SYM_VAR,
-	Z_SYM_FUNC,
-	Z_SYM_STRUCT,
-	Z_SYM_TYPEDEF
+    Z_SYM_VAR,
+    Z_SYM_FUNC,
+    Z_SYM_STRUCT,
+    Z_SYM_TYPEDEF
 } ZSymType;
 
 typedef struct ZSymbol {
-	ZSymType		kind;
-	ZToken			*name;
-	ZType			*type;
-	ZNode 			*node;
-	usize 			useCount;
-	bool 			isPublic;
+    ZSymType        kind;
+    ZToken          *name;
+    ZType           *type;
+    ZNode           *node;
+    usize           useCount;
+    bool            isPublic;
 } ZSymbol;
 
 typedef struct ZScope {
-	ZSymbol 		**symbols;
-	struct ZScope   *parent;
-	ZNode 		    *node;
-	u32             depth;
+    ZSymbol         **symbols;
+    struct ZScope   *parent;
+    ZNode           *node;
+    u32             depth;
     hashset_t       seen;
 } ZScope;
 
 /* Contains a type with a list of functions that accept
  * that type as a receiver. */
 typedef struct ZFuncTable {
-	/* The receiver type, could be every possible type (e.g. u8 or *MyStruct) */
-	ZType 		*receiver;
+    /* The receiver type, could be every possible type (e.g. u8 or *MyStruct) */
+    ZType           *receiver;
 
-	/* A list of functions that have [receiver] as a receiver type */
-	ZNode 		**funcDef;
+    /* A list of functions that have [receiver] as a receiver type */
+    ZNode           **funcDef;
 
     /* A list of static functions for that type.
      * A static function is available only when the type is an identifier.
      */
-    ZNode       **staticFuncDef;
+    ZNode           **staticFuncDef;
 } ZFuncTable;
 
 typedef struct ZSymTable {
-	/* Global scope used to store globam symbols. */
-	ZScope 		*global;
+    /* Global scope used to store globam symbols. */
+    ZScope         *global;
 
-	ZScope 		*current;
+    ZScope         *current;
 
-	/* Used to track the current module. */
-	ZScope 		*module;
+    /* Used to track the current module. */
+    ZScope         *module;
 
-	/* Imagine this like an hashmap where:
-	 * the key is the type 
-	 * the value is a list of receiver functions for that type. */
-	ZFuncTable 	**funcs;
+    /* Imagine this like an hashmap where:
+     * the key is the type 
+     * the value is a list of receiver functions for that type. */
+    ZFuncTable     **funcs;
 } ZSymTable;
 
 typedef struct ZScopeTable {
-	ZNode		*module;
-	ZScope	    *scope;
+    ZNode           *module;
+    ZScope          *scope;
 } ZScopeTable;
 
 typedef struct ZSemantic {
-	ZState 		*state;
-	ZNode 		*root;
-	ZSymTable	*table;
-	ZScopeTable **scopes;
-	ZType 		*currentFuncRet;
-	ZNode 		*currentFunc;
-	u16 		loopDepth;
+    ZState          *state;
+    ZNode           *root;
+    ZSymTable       *table;
+    ZScopeTable     **scopes;
+    ZType           *currentFuncRet;
+    ZNode           *currentFunc;
+    u16             loopDepth;
 
     /* Set of seen symbols (by name) */
-    hashset_t   seen;    
+    hashset_t       seen;    
 } ZSemantic;
 
 /* Lexer */
@@ -574,10 +574,10 @@ ZState *makestate(char *);
 
 char *readfile(char *);
 
-void error	(ZState *, ZToken *, const char *, ...);
+void error  (ZState *, ZToken *, const char *, ...);
 void warning(ZState *, ZToken *, const char *, ...);
-void info		(ZState *, ZToken *, const char *, ...);
-void debug	(ZState *, ZToken *, const char *, ...);
+void info   (ZState *, ZToken *, const char *, ...);
+void debug  (ZState *, ZToken *, const char *, ...);
 
 void printLogs(ZState *state);
 
