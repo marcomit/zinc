@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM and Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev clang
+          # Ensure llvm-config is reachable as a plain command.
+          # On Ubuntu the package installs it as llvm-config-<version>.
+          if ! command -v llvm-config &>/dev/null; then
+            VERSIONED=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
+            if [ -n "$VERSIONED" ]; then
+              sudo ln -sf "$VERSIONED" /usr/local/bin/llvm-config
+            else
+              echo "::error::llvm-config not found after installing llvm-dev"
+              exit 1
+            fi
+          fi
+          echo "llvm-config: $(llvm-config --version)"
+          echo "clang:       $(clang --version | head -1)"
+
+      - name: Build zinc
+        run: make
+
+      - name: Run tests
+        run: bash run_tests.sh

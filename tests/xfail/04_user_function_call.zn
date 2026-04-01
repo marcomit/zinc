@@ -1,0 +1,11 @@
+// xfail: calling user-defined functions requires forward declaration support
+foreign u0 printf(*char)
+
+u0 greet() {
+    printf("hello from greet\n")
+}
+
+u32 main() {
+    greet()
+    return 0
+}

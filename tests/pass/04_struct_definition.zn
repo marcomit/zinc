@@ -1,0 +1,17 @@
+foreign u0 printf(*char)
+
+struct Vec2 {
+    f32 x
+    f32 y
+}
+
+struct Color {
+    u8 r
+    u8 g
+    u8 b
+}
+
+u32 main() {
+    printf("struct ok\n")
+    return 0
+}

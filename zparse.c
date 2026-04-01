@@ -31,39 +31,39 @@
 
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
-ZType *parseType                                (ZParser *);
-ZNode *parseExpr                                (ZParser *);
-static ZNode *parse                                (ZParser *);
-static ZNode *parseIf                            (ZParser *);
-static ZNode *parseGoto                            (ZParser *);
-static ZNode *parseBreak                        (ZParser *);
-static ZNode *parseBlock                        (ZParser *);
-static ZNode *parseMatch                        (ZParser *);
-static ZNode *parseDefer                        (ZParser *);
-static ZNode *parseLabel                        (ZParser *);
-static ZNode *parseLoops                        (ZParser *);
-static ZNode *parseReturn                        (ZParser *);
-static ZNode *parseVarDef                        (ZParser *);
-static ZNode *parseBinary                        (ZParser *);
-static ZNode *parseContinue                        (ZParser *);
-static ZNode *parseArrayLit                        (ZParser *);
-static ZNode *parseTupleLit                        (ZParser *);
-static ZNode *parseStructLit                    (ZParser *);
-static ZNode *parseVarInferred                    (ZParser *);
-static ZNode *parseVarDefTyped                    (ZParser *);
+ZType *parseType                            (ZParser *);
+ZNode *parseExpr                            (ZParser *);
+static ZNode *parse                         (ZParser *);
+static ZNode *parseIf                       (ZParser *);
+static ZNode *parseGoto                     (ZParser *);
+static ZNode *parseBreak                    (ZParser *);
+static ZNode *parseBlock                    (ZParser *);
+static ZNode *parseMatch                    (ZParser *);
+static ZNode *parseDefer                    (ZParser *);
+static ZNode *parseLabel                    (ZParser *);
+static ZNode *parseLoops                    (ZParser *);
+static ZNode *parseReturn                   (ZParser *);
+static ZNode *parseVarDef                   (ZParser *);
+static ZNode *parseBinary                   (ZParser *);
+static ZNode *parseContinue                 (ZParser *);
+static ZNode *parseArrayLit                 (ZParser *);
+static ZNode *parseTupleLit                 (ZParser *);
+static ZNode *parseStructLit                (ZParser *);
+static ZNode *parseVarInferred              (ZParser *);
+static ZNode *parseVarDefTyped              (ZParser *);
 
 /* File-level parsing functions */
-static ZNode *parseImport                        (ZParser *);
-static ZNode *skipMacro                            (ZParser *, bool);
-static ZNode *parseTypedef                        (ZParser *, bool);
-static ZNode *parseFuncDecl                        (ZParser *, bool);
-static ZNode *parseUnionDecl                    (ZParser *, bool);
-static ZNode *parseEnumDecl                        (ZParser *, bool);
-static ZNode *parseStructDecl                    (ZParser *, bool);
-static ZNode *parseForeignDecl                    (ZParser *);
+static ZNode *parseImport                   (ZParser *);
+static ZNode *skipMacro                     (ZParser *, bool);
+static ZNode *parseTypedef                  (ZParser *, bool);
+static ZNode *parseFuncDecl                 (ZParser *, bool);
+static ZNode *parseUnionDecl                (ZParser *, bool);
+static ZNode *parseEnumDecl                 (ZParser *, bool);
+static ZNode *parseStructDecl               (ZParser *, bool);
+static ZNode *parseForeignDecl              (ZParser *);
 
-static ZToken **parseGenericsDecl                (ZParser *);
-static ZMacroPattern *parseMacroPattern    (ZParser *, ZNode *);
+static ZToken **parseGenericsDecl           (ZParser *);
+static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 
 static ZParseFunc exprFunc[] = {
     parseStructLit,
@@ -73,15 +73,15 @@ static ZParseFunc exprFunc[] = {
 };
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
-    ZParser *self                         = zalloc(ZParser);
-    self->source                         = maketokstream(tokens, NULL);
+    ZParser *self                       = zalloc(ZParser);
+    self->source                        = maketokstream(tokens, NULL);
     self->tokenIndex                    = 0;
-    self->errstack                         = NULL;
+    self->errstack                      = NULL;
     self->depth                         = 0;
     self->state                         = state;
-    self->macroParser.currentMacro         = NULL;
+    self->macroParser.currentMacro      = NULL;
     self->macroParser.expandingMacros   = NULL;
-    self->macroParser.currentIndex         = 0;
+    self->macroParser.currentIndex      = 0;
     self->macroParser.macros            = NULL;
     return self;
 }
@@ -295,23 +295,23 @@ static ZNode *parsePrimary(ZParser *parser) {
         ZToken *tok = consume(parser);
         return getMacroCapturedVar(parser->macroParser.currentMacro, tok);
     } else if (match(parser, TOK_LPAREN)) {
-        ZNode *node            = wrapNode(parser, parseExpr);
+        ZNode *node         = wrapNode(parser, parseExpr);
         expect(parser, TOK_RPAREN);
         return node;
     } else if (check(parser, TOK_IDENT)) {
         ZNode *node         = makenode(NODE_IDENTIFIER);
-        node->identTok         = consume(parser);
-        node->tok             = node->identTok;
+        node->identTok      = consume(parser);
+        node->tok           = node->identTok;
         return node;
     } else if (checkMask(parser, TOK_LITERAL)) {
         ZNode *node         = makenode(NODE_LITERAL);
         node->literalTok    = consume(parser);
-        node->tok            = node->literalTok;
+        node->tok           = node->literalTok;
         return node;
     } else if (check(parser, TOK_NONE)) {
-        ZNode *node            = makenode(NODE_LITERAL);
-        node->literalTok     = consume(parser);
-        node->tok             = node->literalTok;
+        ZNode *node         = makenode(NODE_LITERAL);
+        node->literalTok    = consume(parser);
+        node->tok           = node->literalTok;
         return node;
     } else if (match(parser, TOK_SIZEOF)) {
         ZToken *tok         = peek(parser);
@@ -321,8 +321,8 @@ static ZNode *parsePrimary(ZParser *parser) {
             return NULL;
         }
         ZNode *node = makenode(NODE_SIZEOF);
-        node->sizeofExpr.type = type;
-        node->tok             = tok;
+        node->sizeofExpr.type   = type;
+        node->tok               = tok;
         return node;
     }
 

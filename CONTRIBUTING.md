@@ -6,6 +6,15 @@ Zinc is a personal project maintained by a single owner. All contributions are w
 
 ---
 
+## Setup
+
+After cloning, install the pre-push hook so tests run before every push:
+
+```bash
+cp hooks/pre-push .git/hooks/pre-push
+chmod +x .git/hooks/pre-push
+```
+
 ## How to Contribute
 
 ### Reporting Bugs
