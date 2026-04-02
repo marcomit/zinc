@@ -274,14 +274,14 @@ static ZNode *parseGenericBinary(ZParser *parser,
     return node ? node : left;
 }
 
-static ZNode *parseStaticFuncCall(ZParser *parser) {
-    ZToken *start = peek(parser);
-    if (!check(parser, TOK_IDENT)) {
-        error(parser->state, start, "Expected an identifier");
-        return NULL;
-    }
-    return NULL;
-}
+// static ZNode *parseStaticFuncCall(ZParser *parser) {
+//     ZToken *start = peek(parser);
+//     if (!check(parser, TOK_IDENT)) {
+//         error(parser->state, start, "Expected an identifier");
+//         return NULL;
+//     }
+//     return NULL;
+// }
 
 static ZNode *parsePrimary(ZParser *parser) {
     guard(canPeek(parser));

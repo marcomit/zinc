@@ -569,6 +569,7 @@ void zanalyze(ZState *, ZNode *);
 /* Code generation */
 void zcompile(ZState *, ZNode *, const char *output);
 
+bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
 ZType *typesCompatible(ZState *, ZType *, ZType *);
 

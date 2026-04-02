@@ -581,6 +581,8 @@ void _error(ZState *state, ZToken *tok, const char *src_file,
     log->phase = state->currentPhase;
     vecpush(state->errors, log);
 
+    if (state->debug) printLog(state, log);
+    
     va_end(args);
 }
 
@@ -597,6 +599,8 @@ void _warning(ZState *state, ZToken *tok, const char *src_file,
             args);
     log->phase = state->currentPhase;
     vecpush(state->errors, log);
+
+    if (state->debug) printLog(state, log);
 
     va_end(args);
 }
@@ -615,6 +619,8 @@ void _info(ZState *state, ZToken *tok, const char *src_file,
             args);
     log->phase = state->currentPhase;
     vecpush(state->errors, log);
+
+    if (state->debug) printLog(state, log);
 
     va_end(args);
 }
@@ -635,9 +641,9 @@ void _debug(ZState *state, ZToken *tok, const char *src_file,
     log->phase = state->currentPhase;
     vecpush(state->errors, log);
 
-    va_end(args);
+    if (state->debug) printLog(state, log);
 
-    printLog(state, log);
+    va_end(args);
 }
 
 bool visit(ZState *state, char *filename) {

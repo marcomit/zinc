@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <signal.h>
+#include <execinfo.h>
 
 // #ifdef VEC_ALLOC
 // #undef VEC_ALLOC
@@ -96,7 +98,21 @@ ZState *loadState(int argc, char **argv) {
 
 }
 
+void handler(int sig) {
+    (void)sig;
+    void *array[20];
+    size_t size;
+
+    size = backtrace(array, 20);
+    write(STDERR_FILENO, "Error: signal received\n", 23);
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+
+    _exit(1);
+}
+
 int main(int argc, char **argv) {
+    signal(SIGSEGV, handler);
+    signal(SIGTRAP, handler);
     allocator.open();
     ZState *state = loadState(argc, argv);
 
