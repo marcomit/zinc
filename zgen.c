@@ -711,8 +711,10 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     genBlock(ctx, f->funcDef.body);
 
-    LLVMPositionBuilderAtEnd(ctx->builder, entry);
-    LLVMBuildRetVoid(ctx->builder);
+    /* Add implicit ret void only if the block has no terminator yet. */
+    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+        LLVMBuildRetVoid(ctx->builder);
+    }
 
 
     putLLVMValueRef(ctx, f->funcDef.mangled, func);
