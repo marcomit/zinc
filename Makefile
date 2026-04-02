@@ -18,7 +18,7 @@ install: $(TARGET)
 
 test: $(TARGET)
 	make install
-	zinc tests/MathUtil.zn
+	./run_tests.sh
 
 clean:
 	rm -f $(TARGET)
