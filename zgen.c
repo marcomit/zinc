@@ -597,7 +597,6 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
 
 static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     if (!ret->returnStmt.expr) {
-        error(ctx->state, ret->tok, "void");
         return LLVMBuildRetVoid(ctx->builder);
     }
 
