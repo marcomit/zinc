@@ -48,19 +48,22 @@ typedef enum {
     Z_DEBUG
 } ZLogLevel;
 
-typedef struct {
-    char            *filename;
-    char            *message;
-    ZToken          *token;
-    ZLogLevel level;
-} ZLog;
-
 typedef enum {
     Z_PHASE_LEXICAL,
     Z_PHASE_SYNTAX,
     Z_PHASE_SEMANTIC,
     Z_PHASE_GENERATE
 } ZPhase;
+
+typedef struct {
+    char            *filename;
+    char            *message;
+    ZToken          *token;
+    ZLogLevel       level;
+    ZPhase          phase;
+    const char      *src_file;
+    int              src_line;
+} ZLog;
 
 typedef struct {
     char        *output;
@@ -574,10 +577,15 @@ ZState *makestate(char *);
 
 char *readfile(char *);
 
-void error  (ZState *, ZToken *, const char *, ...);
-void warning(ZState *, ZToken *, const char *, ...);
-void info   (ZState *, ZToken *, const char *, ...);
-void debug  (ZState *, ZToken *, const char *, ...);
+void _error  (ZState *, ZToken *, const char *, int, const char *, ...);
+void _warning(ZState *, ZToken *, const char *, int, const char *, ...);
+void _info   (ZState *, ZToken *, const char *, int, const char *, ...);
+void _debug  (ZState *, ZToken *, const char *, int, const char *, ...);
+
+#define error(state, tok, ...)   _error  (state, tok, __FILE__, __LINE__, __VA_ARGS__)
+#define warning(state, tok, ...) _warning(state, tok, __FILE__, __LINE__, __VA_ARGS__)
+#define info(state, tok, ...)    _info   (state, tok, __FILE__, __LINE__, __VA_ARGS__)
+#define debug(state, tok, ...)   _debug  (state, tok, __FILE__, __LINE__, __VA_ARGS__)
 
 void printLogs(ZState *state);
 

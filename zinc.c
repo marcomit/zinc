@@ -89,19 +89,19 @@ ZState *loadState(int argc, char **argv) {
         }
     }
 
+    printf("Visit %s", filename);
+    visit(state, filename);
+
     return state;
 
 }
 
 int main(int argc, char **argv) {
-    printf("Trying to load state\n");
     allocator.open();
     ZState *state = loadState(argc, argv);
 
     if (!state) return 1;
-    printf("State loaded\n");
 
-    visit(state, argv[1]);
 
     ZToken **tokens = ztokenize(state);
     printTokens(tokens);

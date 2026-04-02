@@ -27,7 +27,7 @@ static char *colors[] = {
     "\033[38;2;23;162;184m",  // Info    (cyan/blue)
 };
 
-static void printLog(ZLog *);
+static void printLog(ZState *, ZLog *);
 
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
@@ -457,7 +457,8 @@ void printNode(ZNode *node, u8 depth) {
         printType(node->sizeofExpr.type);
         break;
     default:
-            printf("(details not implemented in printer for node %d)", node->type);
+            printf("(details not implemented in printer for node %d)",
+                    node->type);
             break;
     }
     printf("\n");
@@ -484,7 +485,8 @@ void printSymbol(ZSymbol *symbol) {
 
 void printScope(ZScope *scope) {
     if (!scope) return;
-    printf("\n\n==== Scope(len: %zu, depth: %d) ====\n", veclen(scope->symbols), scope->depth);
+    printf("\n\n==== Scope(len: %zu, depth: %d) ====\n",
+            veclen(scope->symbols), scope->depth);
 
     for (usize i = 0; i < veclen(scope->symbols); i++) {
         printSymbol(scope->symbols[i]);
@@ -537,6 +539,8 @@ char *readfile(char *filename) {
 ZLog *vmakelog(ZLogLevel level,
                char *filename,
                ZToken *tok,
+               const char *src_file,
+               int src_line,
                const char *fmt,
                va_list args) {
     ZLog *log = zalloc(ZLog);
@@ -544,9 +548,11 @@ ZLog *vmakelog(ZLogLevel level,
     log->filename = filename;
     log->level = level;
     log->token = tok;
+    log->src_file = src_file;
+    log->src_line = src_line;
 
     va_list args_copy;
-    
+
     va_copy(args_copy, args);
 
     int len = vsnprintf(NULL, 0, fmt, args_copy);
@@ -557,51 +563,81 @@ ZLog *vmakelog(ZLogLevel level,
         vsnprintf(log->message, (size_t)len + 1, fmt, args);
     }
 
-    // printLog(log);
     return log;
 }
 
-void error(ZState *state, ZToken *tok, const char *fmt, ...) {
+void _error(ZState *state, ZToken *tok, const char *src_file,
+            int src_line, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
 
-    ZLog *log = vmakelog(Z_ERROR, state->filename, tok, fmt, args); 
-    vecpush(state->errors, log);
-    
-    va_end(args);
-}
-
-void warning(ZState *state, ZToken *tok, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-
-    ZLog *log = vmakelog(Z_WARNING, state->filename, tok, fmt, args); 
+    ZLog *log = vmakelog(Z_ERROR,
+            state->filename,
+            tok,
+            src_file,
+            src_line,
+            fmt,
+            args);
+    log->phase = state->currentPhase;
     vecpush(state->errors, log);
 
     va_end(args);
 }
 
-void info(ZState *state, ZToken *tok, const char *fmt, ...) {
+void _warning(ZState *state, ZToken *tok, const char *src_file,
+            int src_line, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
 
-    ZLog *log = vmakelog(Z_INFO, state->filename, tok, fmt, args); 
+    ZLog *log = vmakelog(Z_WARNING,
+            state->filename,
+            tok, src_file,
+            src_line,
+            fmt,
+            args);
+    log->phase = state->currentPhase;
+    vecpush(state->errors, log);
+
+    va_end(args);
+}
+
+void _info(ZState *state, ZToken *tok, const char *src_file,
+            int src_line, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+
+    ZLog *log = vmakelog(Z_INFO,
+            state->filename,
+            tok,
+            src_file,
+            src_line,
+            fmt,
+            args);
+    log->phase = state->currentPhase;
     vecpush(state->errors, log);
 
     va_end(args);
 }
 
 /* Debug logs are printed directly. */
-void debug(ZState *state, ZToken *tok, const char *fmt, ...) {
+void _debug(ZState *state, ZToken *tok, const char *src_file,
+            int src_line, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
 
-    ZLog *log = vmakelog(Z_DEBUG, state->filename, tok, fmt, args);
+    ZLog *log = vmakelog(Z_DEBUG,
+            state->filename,
+            tok,
+            src_file,
+            src_line,
+            fmt,
+            args);
+    log->phase = state->currentPhase;
     vecpush(state->errors, log);
 
     va_end(args);
 
-    printLog(log);
+    printLog(state, log);
 }
 
 bool visit(ZState *state, char *filename) {
@@ -648,8 +684,14 @@ static void printLineHighlight(ZToken *tok, const char *color) {
     printf("\033[0m\n");
 }
 
-static void printLog(ZLog *log) {
-    printf("%s:", log->filename);
+static void printLog(ZState *state, ZLog *log) {
+
+    printf("%s", log->filename);
+    if (state->debug) {
+        printf("[%s:%d]", log->src_file, log->src_line);
+    }
+    printf(":");
+
     if (log->token) {
         printf("%zu:%zu: ", log->token->row, log->token->col);
     }
@@ -662,7 +704,7 @@ static void printLog(ZLog *log) {
 void printLogs(ZState *state) {
     printf("\n\n========= Start Logs (%zu) =========\n", veclen(state->errors));
     for (usize i = 0; i < veclen(state->errors); i++) {
-        printLog(state->errors[i]);
+        printLog(state, state->errors[i]);
     }
     printf("\n\n========= End Logs =========\n");
 }
