@@ -123,7 +123,7 @@ static bool matchMacroPattern(ZParser *parser,
 			if (!check(parser, TOK_IDENT)) return false;
 			startIdx = parser->source->current;
 			node = makenode(NODE_IDENTIFIER);
-			node->identTok = consume(parser);
+			node->identNode.tok = consume(parser);
 			macrovar = findCapturedVar(macro, pattern->ident);
 			if (macrovar) {
 				macrovar->startIndex = startIdx;

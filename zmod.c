@@ -8,12 +8,14 @@
 #define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
 static char *nodeLabels[] = {
-    "BLOCK", "IF", "WHILE", "FOR", "RETURN", "VAR_DECL",
-    "BINARY", "UNARY", "CALL", "FUNC", "LITERAL", "IDENTIFIER", 
-    "STRUCT", "SUBSCRIPT", "MEMBER", "MODULE",
-    "UNION", "FIELD", "TYPEDEF", "FOREIGN", "DEFER", "STRUCT_LIT",
-    "TUPLE_LIT", "ARRAY_LIT", "MACRO", "GOTO", "LABEL", "TYPE",
-    "ENUM", "BREAK", "CONTINUE", "ENUM_FIELD", "CAST", "SIZEOF"
+    "BLOCK",    "IF",           "WHILE",        "FOR",          "RETURN",
+    "VAR_DECL", "BINARY",       "UNARY",        "CALL",         "FUNC",
+    "LITERAL",  "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
+    "MODULE",   "UNION",        "FIELD",        "TYPEDEF",      "FOREIGN",
+    "DEFER",    "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "MACRO",
+    "GOTO",     "LABEL",        "TYPE",         "ENUM",         "BREAK",
+    "CONTINUE", "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATIC_CALL"
+
 };
 
 static char *levels[] = {
@@ -279,7 +281,7 @@ void printNode(ZNode *node, u8 depth) {
         break;
 
     case NODE_IDENTIFIER:
-        printf("Name: %s", node->identTok->str);
+        printf("Name: %s", node->identNode.tok->str);
         break;
 
     case NODE_BINARY:
@@ -291,7 +293,7 @@ void printNode(ZNode *node, u8 depth) {
         return; // Return early to avoid the double newline
 
     case NODE_VAR_DECL:
-        printf("Var: %s Type: ", node->varDecl.ident->identTok->str);
+        printf("Var: %s Type: ", node->varDecl.ident->identNode.tok->str);
         printType(node->varDecl.type);
         if (node->varDecl.rvalue) {
             printf("\n");
@@ -456,12 +458,35 @@ void printNode(ZNode *node, u8 depth) {
     case NODE_SIZEOF:
         printType(node->sizeofExpr.type);
         break;
+
+    case NODE_STATIC_ACCESS:
+        printf("%s::%s",
+                node->staticAccess.base->str, node->staticAccess.prop->str);
+        break;
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
             break;
     }
     printf("\n");
+}
+
+void mangler(ZToken *segments[], char **mangled) {
+    if (strcmp((*segments)->str, "main") == 0) {
+        vecunion(*mangled, "main\0", 5);
+    }
+    vecunion(*mangled, "_ZN", 3);
+    while (*segments) {
+        int len = strlen((*segments)->str);
+        int tmp = len;
+        while (tmp) {
+            vecpush(*mangled, ('0' + tmp % 10));
+            tmp /= 10;
+        }
+        vecunion(*mangled, (*segments)->str, (usize)len);
+        segments++;
+    }
+    vecpush(*mangled, '\0');
 }
 
 void printSymbol(ZSymbol *symbol) {
@@ -580,7 +605,7 @@ void _error(ZState *state, ZToken *tok, const char *src_file,
             args);
     log->phase = state->currentPhase;
     vecpush(state->errors, log);
-
+    
     va_end(args);
 }
 
@@ -636,8 +661,6 @@ void _debug(ZState *state, ZToken *tok, const char *src_file,
     vecpush(state->errors, log);
 
     va_end(args);
-
-    printLog(state, log);
 }
 
 bool visit(ZState *state, char *filename) {

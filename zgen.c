@@ -6,10 +6,19 @@
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Analysis.h>
 
-typedef struct {
-    char *key;
+typedef struct ZLLVMSymbol {
+    ZToken *token;
+    char *name;
+    ZNode *node;
     LLVMValueRef value;
-} ZLLVMTable;
+    LLVMTypeRef type;
+} ZLLVMSymbol;
+
+typedef struct ZLLVMScope {
+    struct ZLLVMScope *parent;
+    
+    ZLLVMSymbol **symbols;
+} ZLLVMScope;
 
 typedef struct {
 	LLVMContextRef  ctx;
@@ -22,7 +31,7 @@ typedef struct {
 	ZState          *state;
     ZScope          *current;
 
-    ZLLVMTable      **table;
+    ZLLVMScope      *scope;
 
 	/* Struct type cache — parallel arrays keyed by name */
 	char            **structNames;
@@ -45,18 +54,44 @@ static LLVMTypeRef i64Type 	= NULL;
 static LLVMTypeRef f32Type 	= NULL;
 static LLVMTypeRef f64Type 	= NULL;
 
+static ZLLVMSymbol *makesymbol() {
+    ZLLVMSymbol *self = zalloc(ZLLVMSymbol);
+    return self;
+}
+
+static ZLLVMScope *makescope(ZLLVMScope *parent) {
+    ZLLVMScope *self    = zalloc(ZLLVMScope);
+    self->parent        = parent;
+    self->symbols       = NULL;
+    return self;
+}
+
+// static void beginScope(ZCodegen *ctx) {
+//     ctx->scope = makescope(ctx->scope);
+// }
+
+// static void endScope(ZCodegen *ctx) {
+//     if (!ctx->scope) return;
+//     if (!ctx->scope->parent) return;
+//     ctx->scope = ctx->scope->parent;
+// }
+
 static void putLLVMValueRef(ZCodegen *ctx, char *key, LLVMValueRef value) {
-    ZLLVMTable *entry   = zalloc(ZLLVMTable);
-    entry->key          = key;
-    entry->value        = value;
-    vecpush(ctx->table, entry);
+    ZLLVMSymbol *symbol = makesymbol();
+    symbol->name = key;
+    symbol->value = value;
+    vecpush(ctx->scope->symbols, symbol);
 }
 
 static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
-    for (usize i = 0;i < veclen(ctx->table); i++) {
-        if (strcmp(ctx->table[i]->key,  key) == 0) {
-            return ctx->table[i]->value;
+    ZLLVMScope *cur = ctx->scope;
+    while (cur) {
+        for (usize i = 0;i < veclen(cur->symbols); i++) {
+            if (strcmp(cur->symbols[i]->name,  key) == 0) {
+                return cur->symbols[i]->value;
+            }
         }
+        cur = cur->parent;
     }
     return NULL;
 }
@@ -98,7 +133,7 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 	self->modules       = NULL;
 	self->structNames   = NULL;
 	self->structTypes   = NULL;
-    self->table         = NULL;
+    self->scope         = makescope(NULL);
 	self->state         = state;
 	self->semantic      = semantic;
     self->count         = 0;
@@ -310,13 +345,22 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
     case TOK_FLOAT_LIT:
         return LLVMConstReal(f64Type, tok->floating);
     case TOK_NONE:
-        return LLVMConstPointerNull(i0Type);
+        return LLVMConstPointerNull(i8Type);
     default: return NULL;
     }
 }
 
 static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef val = getLLVMValueRef(ctx, node->tok->str);
+    if (!node) {
+        error(ctx->state, NULL, "'genIdent' called with a null node");
+        return NULL;
+    } else if (!node->tok) {
+        error(ctx->state, NULL,
+                "'genIdent' called with a null token on node %d", node->type);
+    }
+
+    char *key = node->identNode.mangled ? node->identNode.mangled : node->tok->str;
+    LLVMValueRef val = getLLVMValueRef(ctx, key);
     if (!val) {
         error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
         return NULL;
@@ -344,7 +388,7 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
 
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef func = genExpr(ctx, node->call.callee);
-    LLVMTypeRef funcType = genType(ctx, node->call.callee->resolved);
+    LLVMTypeRef funcType = LLVMGlobalGetValueType(func);
 
     LLVMValueRef *args = NULL;
 
@@ -353,7 +397,13 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         vecpush(args, arg);
     }
 
-    LLVMBuildCall2(
+    // char *name = "";
+    //
+    // if (!isVoid(node->resolved)) {
+    //     name = "res";
+    // }
+
+    LLVMValueRef call = LLVMBuildCall2(
         ctx->builder,
         funcType,
         func,
@@ -361,7 +411,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         veclen(args),
         ""
     );
-    return NULL;
+    return call;
 }
 
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
@@ -375,62 +425,35 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 	bool is_float = (LLVMGetTypeKind(left_type) == LLVMFloatTypeKind ||
 	                 LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
 
+
+    if (is_float) {
+        switch (op) {
+        case TOK_PLUS:  return LLVMBuildFAdd(ctx->builder, left, right, "addtmp");
+        case TOK_MINUS: return LLVMBuildFSub(ctx->builder, left, right, "subtmp");
+        case TOK_STAR:  return LLVMBuildFMul(ctx->builder, left, right, "multmp");
+        case TOK_DIV:   return LLVMBuildFDiv(ctx->builder, left, right, "divtmp");
+        case TOK_LT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOLT, left, right, "cmptmp");
+        case TOK_GT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
+        case TOK_LTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
+        case TOK_GTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
+        case TOK_EQEQ:  return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
+        case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
+        default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
+        }
+    }
+
 	switch (op) {
-	// Arithmetic operations
-	case TOK_PLUS:
-		return is_float
-			? LLVMBuildFAdd(ctx->builder, left, right, "addtmp")
-			: LLVMBuildAdd(ctx->builder, left, right, "addtmp");
-
-	case TOK_MINUS:
-		return is_float
-			? LLVMBuildFSub(ctx->builder, left, right, "subtmp")
-			: LLVMBuildSub(ctx->builder, left, right, "subtmp");
-
-	case TOK_STAR:
-		return is_float
-			? LLVMBuildFMul(ctx->builder, left, right, "multmp")
-			: LLVMBuildMul(ctx->builder, left, right, "multmp");
-
-	case TOK_DIV:
-		return is_float
-			? LLVMBuildFDiv(ctx->builder, left, right, "divtmp")
-			: LLVMBuildSDiv(ctx->builder, left, right, "divtmp");
-
-	// Comparison operations
-	case TOK_LT:
-		return is_float
-			? LLVMBuildFCmp(ctx->builder, LLVMRealOLT, left, right, "cmptmp")
-			: LLVMBuildICmp(ctx->builder, LLVMIntSLT, left, right, "cmptmp");
-
-	case TOK_GT:
-		return is_float
-			? LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp")
-			: LLVMBuildICmp(ctx->builder, LLVMIntSGT, left, right, "cmptmp");
-
-	case TOK_LTE:
-		return is_float
-			? LLVMBuildFCmp(ctx->builder, LLVMRealOLE, left, right, "cmptmp")
-			: LLVMBuildICmp(ctx->builder, LLVMIntSLE, left, right, "cmptmp");
-
-	case TOK_GTE:
-		return is_float
-			? LLVMBuildFCmp(ctx->builder, LLVMRealOGE, left, right, "cmptmp")
-			: LLVMBuildICmp(ctx->builder, LLVMIntSGE, left, right, "cmptmp");
-
-	case TOK_EQEQ:
-		return is_float
-			? LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, left, right, "cmptmp")
-			: LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, "cmptmp");
-
-	case TOK_NOTEQ:
-		return is_float
-			? LLVMBuildFCmp(ctx->builder, LLVMRealONE, left, right, "cmptmp")
-			: LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, "cmptmp");
-
-	default:
-		fprintf(stderr, "Unknown binary operator\n");
-		return NULL;
+	case TOK_PLUS:  return LLVMBuildAdd(ctx->builder, left, right, "addtmp");
+	case TOK_MINUS: return LLVMBuildSub(ctx->builder, left, right, "subtmp");
+	case TOK_STAR:  return LLVMBuildMul(ctx->builder, left, right, "multmp");
+	case TOK_DIV:   return LLVMBuildSDiv(ctx->builder, left, right, "divtmp");
+	case TOK_LT:    return LLVMBuildICmp(ctx->builder, LLVMIntSLT, left, right, "cmptmp");
+	case TOK_GT:    return LLVMBuildICmp(ctx->builder, LLVMIntSGT, left, right, "cmptmp");
+	case TOK_LTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSLE, left, right, "cmptmp");
+	case TOK_GTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSGE, left, right, "cmptmp");
+	case TOK_EQEQ:  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, "cmptmp");
+	case TOK_NOTEQ: return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, "cmptmp");
+	default:        error(ctx->state, root->tok, "Unknown binary operator\n"); return NULL;
 	}
 }
 
@@ -504,12 +527,12 @@ static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
 
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *var = fields[i];
-        ZToken *name = var->varDecl.ident->identTok;
+        ZToken *name = var->varDecl.ident->identNode.tok;
         if (!var->varDecl.rvalue) {
             error(ctx->state,
                     var->tok,
                     "Missing rvalue in struct literal for field '%s'",
-                    var->varDecl.ident->identTok);
+                    var->varDecl.ident->identNode.tok);
         }
         LLVMValueRef val = genExpr(ctx, var->varDecl.rvalue);
 
@@ -534,21 +557,13 @@ static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
     return ptr;
 }
 
-static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef object = genExpr(ctx, node->memberAccess.object);
-
-    LLVMTypeRef objType = genType(ctx, node->memberAccess.object->resolved);
-
-
-    return NULL;
-}
-
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	switch (node->type) {
 		case NODE_BINARY:       return genBinary(ctx, node);
         case NODE_LITERAL:      return genLit(ctx, node->tok);
         case NODE_IDENTIFIER:   return genIdent(ctx, node);
         case NODE_STRUCT_LIT:   return genStructLit(ctx, node);
+        case NODE_CALL:         return genCall(ctx, node);
 
 		case NODE_CAST: {
 			LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
@@ -563,8 +578,21 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 			return LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
 		}
 
+        case NODE_STATIC_ACCESS: {
+            char *mangled = node->staticAccess.mangled;
+            if (!mangled) {
+                error(ctx->state, node->tok, "Mangled name not saved");
+            }
+            LLVMValueRef val = getLLVMValueRef(ctx, mangled);
+            if (!val) {
+                error(ctx->state, node->tok, "Unknown name %s", mangled);
+                return NULL;
+            }
+            return val;
+        }
+
 		default: 
-            printf("Node not handled\n");
+            printf("Node '%d' not handled\n", node->type);
             error(ctx->state,
                     node->tok,
                     "Node '%d' not yet implemented in the code generator",
@@ -653,18 +681,27 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
     LLVMTypeRef *args = NULL;
 
+    if (!f->funcDef.mangled) {
+        error(ctx->state, f->tok, "Missing mangling name");
+    }
+
     if (f->funcDef.receiver) {
         LLVMTypeRef receiverType = genType(ctx, f->funcDef.receiver->resolved);
         vecpush(args, receiverType);
     }
 
     for (usize i = 0; i < veclen(f->funcDef.args); i++) {
-        LLVMTypeRef arg = genType(ctx, f->funcDef.args[i]->resolved);
+        LLVMTypeRef arg = genType(ctx, f->funcDef.args[i]->field.type);
         vecpush(args, arg);
     }
 
     LLVMTypeRef funcType = LLVMFunctionType(ret, args, veclen(args), false);
-    LLVMValueRef func =  LLVMAddFunction(ctx->mod, f->tok->str, funcType);
+    LLVMValueRef func =  LLVMAddFunction(ctx->mod, f->funcDef.mangled, funcType);
+
+    for (usize i = 0; i < veclen(f->funcDef.args); i++) {
+        char *name = f->funcDef.args[i]->field.identifier->str;
+        putLLVMValueRef(ctx, name, LLVMGetParam(func, i));
+    }
 
     LLVMBasicBlockRef entry = LLVMAppendBasicBlock(func, "entry");
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
@@ -674,8 +711,11 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     genBlock(ctx, f->funcDef.body);
 
+    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+    LLVMBuildRetVoid(ctx->builder);
 
-    putLLVMValueRef(ctx, f->tok->str, func);
+
+    putLLVMValueRef(ctx, f->funcDef.mangled, func);
     return func;
 }
 
@@ -720,7 +760,7 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename) {
 	LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
 		target, triple, "generic", "",
 		LLVMCodeGenLevelDefault,
-		LLVMRelocDefault,
+		LLVMRelocPIC,
 		LLVMCodeModelDefault
 	);
 

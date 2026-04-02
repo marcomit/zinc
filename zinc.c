@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <signal.h>
+#include <execinfo.h>
 
 // #ifdef VEC_ALLOC
 // #undef VEC_ALLOC
@@ -18,6 +20,8 @@
 // #undef VEC_FREE
 // #define VEC_FREE allocator.free
 // #endif
+
+static ZState *state = NULL;
 
 static void usage(char *program) {
     printf("Usage: %s <filename> [options]\n", program);
@@ -96,9 +100,24 @@ ZState *loadState(int argc, char **argv) {
 
 }
 
+void handler(int sig) {
+    (void)sig;
+    void *array[20];
+    size_t size;
+
+    size = backtrace(array, 20);
+    write(STDERR_FILENO, "Error: signal received\n", 23);
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+
+    if (state->debug) printLogs(state);
+    _exit(1);
+}
+
 int main(int argc, char **argv) {
+    signal(SIGSEGV, handler);
+    signal(SIGTRAP, handler);
     allocator.open();
-    ZState *state = loadState(argc, argv);
+    state = loadState(argc, argv);
 
     if (!state) return 1;
 

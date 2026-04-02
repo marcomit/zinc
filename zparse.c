@@ -100,7 +100,7 @@ ZType *maketype(ZTypeKind kind) {
 
 static ZNode *makenodevar(ZNode *ident, ZType *type, ZNode *expr) {
     ZNode *node = makenode(NODE_VAR_DECL);
-    node->tok = ident->identTok;
+    node->tok = ident->identNode.tok;
     node->varDecl.ident = ident;
     node->varDecl.type = type;
     node->varDecl.rvalue = expr;
@@ -274,22 +274,14 @@ static ZNode *parseGenericBinary(ZParser *parser,
     return node ? node : left;
 }
 
-static ZNode *parseStaticFuncCall(ZParser *parser) {
-    ZToken *start = peek(parser);
-    if (!check(parser, TOK_IDENT)) {
-        error(parser->state, start, "Expected an identifier");
-        return NULL;
-    }
-    return NULL;
-}
-
 static ZNode *parsePrimary(ZParser *parser) {
-    guard(canPeek(parser));
+    ZToken *start = peek(parser);
+    guard(start);
 
     if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_IDENT)) {
         if (!check(parser, TOK_IDENT)) {
             invalid(parser, "Expected an identifier after @");
-            error(parser->state, peek(parser), "Expected an identifier after @");
+            error(parser->state, start, "Expected an identifier after @");
             return NULL;
         }
         ZToken *tok = consume(parser);
@@ -299,9 +291,31 @@ static ZNode *parsePrimary(ZParser *parser) {
         expect(parser, TOK_RPAREN);
         return node;
     } else if (check(parser, TOK_IDENT)) {
+        if (checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
+            if (!checkAhead(parser, TOK_IDENT, 2)) {
+                error(parser->state, start, "Expected static call or enum literal");
+                return NULL;
+            }
+            ZNode *node             = makenode(NODE_STATIC_ACCESS);
+            node->tok               = start;
+            node->staticAccess.base = consume(parser);
+            consume(parser);
+            node->staticAccess.prop = consume(parser);
+
+            ZToken *segments[] = {
+                node->staticAccess.base,
+                node->staticAccess.prop,
+                NULL
+            };
+            char *mangled = NULL;
+            mangler(segments, &mangled);
+
+            node->staticAccess.mangled = mangled;
+            return node;
+        }
         ZNode *node         = makenode(NODE_IDENTIFIER);
-        node->identTok      = consume(parser);
-        node->tok           = node->identTok;
+        node->identNode.tok = consume(parser);
+        node->tok           = node->identNode.tok;
         return node;
     } else if (checkMask(parser, TOK_LITERAL)) {
         ZNode *node         = makenode(NODE_LITERAL);
@@ -434,7 +448,8 @@ static ZNode *parsePostfixExpr(ZParser *parser) {
 }
 
 static ZNode *parseUnary(ZParser *parser) {
-    guard(canPeek(parser));
+    ZToken *start = peek(parser);
+    guard(start);
 
     ZNode *node = wrapNode(parser, parsePostfixExpr);
 
@@ -448,8 +463,8 @@ static ZNode *parseUnary(ZParser *parser) {
     usize len = sizeof(valids) / sizeof(valids[0]);
 
     if (!isValidToken(parser, valids, len)) {
-        error(parser->state, peek(parser),
-                "Expected expression, got '%s'", stoken(peek(parser)));
+        error(parser->state, start,
+                "Expected expression, got '%s'", stoken(start));
         return NULL;
     }
 
@@ -1092,6 +1107,8 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     ZToken *start = peek(parser);
     ZType *ret = wrapType(parser, parseType);
 
+    ZToken *segments[3] = { 0 };
+
     if (!ret) {
         error(parser->state, start, "Expected return type");
         return NULL;
@@ -1103,7 +1120,7 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     ZToken *name    = consume(parser);
     ZType *base     = NULL;
 
-
+    segments[0] = name;
     if (match(parser, TOK_DOUBLE_COLON)) {
         if (!check(parser, TOK_IDENT)) {
             error(parser->state, peek(parser), "Expected an identifier");
@@ -1112,6 +1129,9 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
         base                    = maketype(Z_TYPE_PRIMITIVE);
         base->primitive.token   = name;
         name                    = consume(parser);
+
+        segments[0] = base->primitive.token;
+        segments[1] = name;
     }
 
     ZToken **generics = NULL;
@@ -1147,6 +1167,9 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
 
     guard(body);
 
+    char *mangled = NULL;
+    mangler(segments, &mangled);
+
     ZNode *node = makenode(NODE_FUNC);
     node->funcDef.ret       = ret;
     node->funcDef.name      = name;
@@ -1156,6 +1179,7 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     node->funcDef.pub       = public;
     node->funcDef.receiver  = receiver;
     node->funcDef.generics  = generics;
+    node->funcDef.mangled   = mangled;
     node->tok               = name;
 
     ZType *func             = maketype(Z_TYPE_FUNCTION);
@@ -1182,7 +1206,7 @@ static ZNode *parseVarInferred(ZParser *parser) {
     } else {
         ZToken *ident = consume(parser);
         identNode = makenode(NODE_IDENTIFIER);
-        identNode->identTok = ident;
+        identNode->identNode.tok = ident;
     }
 
     expect(parser, TOK_ASSIGN);
@@ -1212,7 +1236,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
 
     ZToken *ident = consume(parser);
     ZNode *node = makenode(NODE_IDENTIFIER);
-    node->identTok = ident;
+    node->identNode.tok = ident;
     ZNode *expr = NULL;
 
     if (match(parser, TOK_EQ)) {
@@ -1316,7 +1340,7 @@ static ZNode *parseStructLit(ZParser *parser) {
     while (true) {
         if (!check(parser, TOK_IDENT)) break;
         ZNode *node = makenode(NODE_IDENTIFIER);
-        node->identTok = consume(parser);
+        node->identNode.tok = consume(parser);
 
         if (!match(parser, TOK_COLON)) {
             error(parser->state,
