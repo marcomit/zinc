@@ -6,12 +6,17 @@ struct Vec {
     i32 len
 }
 
-u0 Vec:new() {
+u0 Vec::new() {
     printf("Vec:new\n")
     return
 }
 
+u0 empty_method() {
+
+}
+
+
 u32 main() {
-    Vec:new()
+    Vec::new()
     return 0
 }

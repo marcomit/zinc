@@ -129,7 +129,8 @@ typedef enum {
     NODE_CONTINUE,
     NODE_ENUM_FIELD,
     NODE_CAST,
-    NODE_SIZEOF
+    NODE_SIZEOF,
+    NODE_STATIC_ACCESS
 } ZNodeType;
 
 typedef struct ZNode ZNode;
@@ -251,20 +252,20 @@ struct ZNode {
         } forStmt;
 
         struct {
-            ZToken *op;
-            ZNode *left;
-            ZNode *right;
+            ZToken  *op;
+            ZNode   *left;
+            ZNode   *right;
         } binary;
 
         struct {
-            ZToken *operat;
-            ZNode *operand;
+            ZToken  *operat;
+            ZNode   *operand;
         } unary;
 
         struct {
-            ZType *type;
-            ZNode *ident; // It is a NODE_IDENTIFIER
-            ZNode *rvalue; // Null if not initialized
+            ZType   *type;
+            ZNode   *ident; // It is a NODE_IDENTIFIER
+            ZNode   *rvalue; // Null if not initialized
         } varDecl;
 
         struct {
@@ -272,31 +273,32 @@ struct ZNode {
              * Used for every type of block statement (e.g. if/for/functions...)
              * The scope is used to lookup symbols during the code generation.
              * */
-            ZScope *scope;
+            ZScope  *scope;
             /* The list of statements. */
-            ZNode **block;
+            ZNode   **block;
         };
         struct {
-            ZType *type;
-            ZToken *identifier;
+            ZType   *type;
+            ZToken  *identifier;
         } field;
 
         struct {
-            ZType *ret;
-            ZToken *name;
+            ZType   *ret;
+            ZToken  *name;
+            char    *mangled;
 
             /* Always parsed as Z_TYPE_PRIMITIVE. */
-            ZType *base;
+            ZType   *base;
 
-            ZNode **args;
+            ZNode   **args;
 
-            ZNode *body;
+            ZNode   *body;
 
             /* NODE_FIELD */
-            ZNode *receiver;
+            ZNode   *receiver;
 
-            ZToken **generics;
-            bool pub;
+            ZToken  **generics;
+            bool    pub;
         } funcDef;
 
         struct {
@@ -356,6 +358,12 @@ struct ZNode {
         } memberAccess;
 
         struct {
+            ZToken      *base;
+            ZToken      *prop;
+            char        *mangled;
+        } staticAccess;
+
+        struct {
             ZNode       *expr; // Can be NULL for void returns
         } returnStmt;
 
@@ -410,7 +418,10 @@ struct ZNode {
         ZToken              *gotoLabel;  // For NODE_GOTO and NODE_LABEL
 
         ZToken              *literalTok;
-        ZToken              *identTok;
+        struct {
+            ZToken          *tok;
+            char            *mangled;
+        } identNode;
 
         struct {
             ZType           *toType;
@@ -577,6 +588,8 @@ ZType *typesCompatible(ZState *, ZType *, ZType *);
 ZState *makestate(char *);
 
 char *readfile(char *);
+
+void mangler(ZToken **, char **);
 
 void _error  (ZState *, ZToken *, const char *, int, const char *, ...);
 void _warning(ZState *, ZToken *, const char *, int, const char *, ...);

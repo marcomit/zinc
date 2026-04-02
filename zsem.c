@@ -165,7 +165,7 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
     putRawSymbol(semantic,
             Z_SYM_VAR,
-            node->varDecl.ident->identTok,
+            node->varDecl.ident->identNode.tok,
             node->varDecl.type,
             node,
             isGlobal);
@@ -555,17 +555,19 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
     ZType *result = NULL;
     ZType **expectedArgs = NULL;
     if (callee->type == NODE_IDENTIFIER) {
-        ZSymbol *sym = resolve(semantic, callee->identTok);
+        ZSymbol *sym = resolve(semantic, callee->identNode.tok);
         if (!sym) {
-            error(semantic->state, callee->identTok,
-                  "Undefined function '%s'", callee->identTok->str);
+            error(semantic->state, callee->identNode.tok,
+                  "Undefined function '%s'", callee->identNode.tok->str);
             return NULL;
         }
         if (sym->kind != Z_SYM_FUNC) {
-            error(semantic->state, callee->identTok,
-                  "'%s' is not callable", callee->identTok->str);
+            error(semantic->state, callee->identNode.tok,
+                  "'%s' is not callable", callee->identNode.tok->str);
             return NULL;
         }
+        if (sym->node->type == NODE_FUNC)
+            callee->identNode.mangled = sym->node->funcDef.mangled;
         /* sym->type is the raw parsed return type — resolve it so that named
      * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
      * result is used downstream (e.g. for member access on return value). */
@@ -632,12 +634,14 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         break;
 
     case NODE_IDENTIFIER: {
-        ZSymbol *sym = resolve(semantic, curr->identTok);
+        ZSymbol *sym = resolve(semantic, curr->identNode.tok);
         if (!sym) {
-            error(semantic->state, curr->identTok,
-                  "Undefined identifier '%s'", curr->identTok->str);
+            error(semantic->state, curr->identNode.tok,
+                  "Undefined identifier '%s'", curr->identNode.tok->str);
             return NULL;
         }
+        if (sym->node->type == NODE_FUNC)
+            curr->identNode.mangled = sym->node->funcDef.mangled;
         result = sym->type;
         break;
     }
@@ -751,7 +755,7 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
                     char *got = NULL;
                     stype(expectedType, &expected);
                     stype(type, &got);
-                    error(semantic->state, field->varDecl.ident->identTok,
+                    error(semantic->state, field->varDecl.ident->identNode.tok,
                                 "Expected %s, got %s", expected, got);
                 }
                 break;
@@ -836,6 +840,11 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         result->primitive.token = maketoken(TOK_U64, "u64");
         break;
     }
+
+    // case NODE_STATIC_ACCESS: {
+    //
+    //     break;
+    // }
 
     default:
         warning(semantic->state, curr->tok,
@@ -929,7 +938,7 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 /* ================== Statement analysis ================== */
 
 static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
-    ZToken *var = curr->varDecl.ident->identTok;
+    ZToken *var = curr->varDecl.ident->identNode.tok;
     if (resolve(semantic, var)) {
         error(semantic->state, var,
                     "Redefinition of variable %s",

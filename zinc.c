@@ -21,6 +21,8 @@
 // #define VEC_FREE allocator.free
 // #endif
 
+static ZState *state = NULL;
+
 static void usage(char *program) {
     printf("Usage: %s <filename> [options]\n", program);
     printf("Options:\n");
@@ -107,6 +109,7 @@ void handler(int sig) {
     write(STDERR_FILENO, "Error: signal received\n", 23);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
+    if (state->debug) printLogs(state);
     _exit(1);
 }
 
@@ -114,7 +117,7 @@ int main(int argc, char **argv) {
     signal(SIGSEGV, handler);
     signal(SIGTRAP, handler);
     allocator.open();
-    ZState *state = loadState(argc, argv);
+    state = loadState(argc, argv);
 
     if (!state) return 1;
 
