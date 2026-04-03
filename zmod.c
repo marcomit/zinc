@@ -14,7 +14,7 @@ static char *nodeLabels[] = {
     "MODULE",   "UNION",        "FIELD",        "TYPEDEF",      "FOREIGN",
     "DEFER",    "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "MACRO",
     "GOTO",     "LABEL",        "TYPE",         "ENUM",         "BREAK",
-    "CONTINUE", "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATIC_CALL"
+    "CONTINUE", "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATIC_ACCESS"
 
 };
 
@@ -317,6 +317,8 @@ void printNode(ZNode *node, u8 depth) {
             printf(" ");
             printToken(node->funcDef.receiver->field.identifier);
             printf(" ");
+        } else if (node->funcDef.base) {
+            printf("%s::", node->funcDef.base->primitive.token->str);
         }
         printf("%s, Type: ", node->funcDef.name->str);
         printType(node->funcDef.ret);
@@ -526,10 +528,11 @@ ZState *makestate(char *filename) {
     self->output            = NULL;
     self->currentPhase      = Z_PHASE_LEXICAL;
     self->filename          = filename;
-    self->errors            = NULL;
+    self->logs            = NULL;
     self->verbose           = false;
     self->pathFiles         = NULL;
     self->debug             = false;
+    self->canAdvance        = true;
 
     self->unusedFunc        = false;
     self->unusedStruct      = false;
@@ -604,9 +607,10 @@ void _error(ZState *state, ZToken *tok, const char *src_file,
             fmt,
             args);
     log->phase = state->currentPhase;
-    vecpush(state->errors, log);
+    vecpush(state->logs, log);
     
     va_end(args);
+    // state->canAdvance = false;
 }
 
 void _warning(ZState *state, ZToken *tok, const char *src_file,
@@ -621,7 +625,7 @@ void _warning(ZState *state, ZToken *tok, const char *src_file,
             fmt,
             args);
     log->phase = state->currentPhase;
-    vecpush(state->errors, log);
+    vecpush(state->logs, log);
 
     va_end(args);
 }
@@ -639,7 +643,7 @@ void _info(ZState *state, ZToken *tok, const char *src_file,
             fmt,
             args);
     log->phase = state->currentPhase;
-    vecpush(state->errors, log);
+    vecpush(state->logs, log);
 
     va_end(args);
 }
@@ -658,7 +662,7 @@ void _debug(ZState *state, ZToken *tok, const char *src_file,
             fmt,
             args);
     log->phase = state->currentPhase;
-    vecpush(state->errors, log);
+    vecpush(state->logs, log);
 
     va_end(args);
 }
@@ -724,10 +728,18 @@ static void printLog(ZState *state, ZLog *log) {
     if (log->token) printLineHighlight(log->token, colors[log->level]);
 }
 
+bool canAdvance(ZState *state) {
+    bool advance = true;
+    for (usize i = 0; i < veclen(state->logs) && advance; i++) {
+        advance = state->logs[i]->level != Z_ERROR;
+    }
+    return advance;
+}
+
 void printLogs(ZState *state) {
-    printf("\n\n========= Start Logs (%zu) =========\n", veclen(state->errors));
-    for (usize i = 0; i < veclen(state->errors); i++) {
-        printLog(state, state->errors[i]);
+    printf("\n\n========= Start Logs (%zu) =========\n", veclen(state->logs));
+    for (usize i = 0; i < veclen(state->logs); i++) {
+        printLog(state, state->logs[i]);
     }
     printf("\n\n========= End Logs =========\n");
 }

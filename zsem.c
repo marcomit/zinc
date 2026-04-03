@@ -100,6 +100,45 @@ static void putRawSymbol(ZSemantic *semantic,
     putSymbol(semantic, symbol);
 }
 
+static ZFuncTable *makefunctable(ZType *base) {
+    ZFuncTable *func        = zalloc(ZFuncTable);
+    func->base              = base;
+    func->funcDef           = NULL;
+    func->seenReceiverFuncs = NULL;
+    func->staticFuncDef     = NULL;
+    func->seenStaticFuncs   = NULL;
+    return func;
+}
+
+static ZFuncTable *addfunctable(ZSemantic *semantic, ZType *base) {
+    ZFuncTable *table = makefunctable(base);
+    vecpush(semantic->table->funcs, table);
+    return table;
+}
+
+static void addStaticFunc(ZSemantic *semantic, ZNode *func) {
+    ZType *base = func->funcDef.base;
+    ZFuncTable *cur = NULL;
+    for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
+        ZFuncTable *table = semantic->table->funcs[i];
+        if (typesEqual(table->base, base)) {
+            cur = table;
+            break;
+        }
+    }
+
+    if (!cur) cur = addfunctable(semantic, base);
+    char *name = func->funcDef.name->str;
+    printf("Insert static function %s\n", name);
+    if (!hashset_insert(&cur->seenStaticFuncs, name)) {
+        error(semantic->state, func->tok,
+                "Duplicate static function '%s'", name);
+        return;
+    }
+
+    vecpush(cur->staticFuncDef, func);
+}
+
 static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
     if (!node->funcDef.receiver) {
         error(semantic->state, node->tok, "receiver must be setted");
@@ -110,22 +149,15 @@ static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
         return;
     }
 
-    ZNode *receiver     = node->funcDef.receiver;
-    ZFuncTable **funcs  = semantic->table->funcs;
+    ZNode *receiver         = node->funcDef.receiver;
+    ZFuncTable **funcs      = semantic->table->funcs;
     for (usize i = 0; i < veclen(funcs); i++) {
-        if (typesEqual(funcs[i]->receiver, receiver->field.type)) {
+        if (typesEqual(funcs[i]->base, receiver->field.type)) {
             vecpush(funcs[i]->funcDef, node);
             return;
         }
     }
 
-    ZFuncTable *func    = zalloc(ZFuncTable);
-    func->receiver      = receiver->field.type;
-    func->funcDef       = NULL;
-    func->staticFuncDef = NULL;
-
-    vecpush(func->funcDef, node);
-    vecpush(semantic->table->funcs, func);
 }
 
 static void putStaticFunc(ZSemantic *semantic, ZNode *node) {
@@ -141,14 +173,16 @@ static void putStaticFunc(ZSemantic *semantic, ZNode *node) {
                 "Invalid 'putStaticFunc' call, receiver cannot be setted");
     }
 
-    
-    for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
-        
-    }
+    addStaticFunc(semantic, node);
 }
 
 static void putFunc(ZSemantic *semantic, ZNode *node) {
     if (node->funcDef.receiver) {
+        if (node->funcDef.base) {
+            error(semantic->state, node->tok,
+                    "A static function cannot accept any receiver");
+        }
+
         putReceiverFunc(semantic, node);
     } else if (node->funcDef.base) {
         putStaticFunc(semantic, node);
@@ -566,23 +600,45 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
                   "'%s' is not callable", callee->identNode.tok->str);
             return NULL;
         }
-        if (sym->node->type == NODE_FUNC)
+        if (sym->node->type == NODE_FUNC) {
             callee->identNode.mangled = sym->node->funcDef.mangled;
+        }
         /* sym->type is the raw parsed return type — resolve it so that named
      * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
      * result is used downstream (e.g. for member access on return value). */
-
-
-        for (usize i = 0; i < veclen(sym->node->funcDef.args); i++) {
-            ZNode *arg = sym->node->funcDef.args[i];
-            arg->resolved = resolveTypeRef(semantic, arg->field.type);
-            vecpush(expectedArgs, arg->resolved);
-        }
-        
+        expectedArgs = sym->type->func.args;
 
         result = resolveTypeRef(semantic, sym->node->funcDef.ret);
 
         callee->resolved = result;
+    } else if (callee->type == NODE_STATIC_ACCESS) {
+        printf("Analyze statiuc call\n");
+        ZToken *base = callee->staticAccess.base;
+        ZToken *prop = callee->staticAccess.prop;
+        ZSymbol *baseSym = resolve(semantic, callee->staticAccess.base);
+        if (!baseSym) {
+            error(semantic->state, base, "Base not found");
+        } else if (baseSym->kind != Z_SYM_STRUCT &&
+                    baseSym->kind != Z_SYM_TYPEDEF) {
+            error(semantic->state, base, "Base should refer to a type");
+        }
+
+        bool found = false;
+        for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
+            ZFuncTable *table = semantic->table->funcs[i];
+            if (table->base->kind != Z_TYPE_PRIMITIVE) continue;
+            if (!tokeneq(table->base->primitive.token, base)) continue;
+
+            found = true;
+            if (!hashset_has(table->seenStaticFuncs, prop->str)) {
+                error(semantic->state, prop,
+                        "'%s' method does not exist", prop->str);
+            }
+        }
+        if (!found) {
+            error(semantic->state, prop,
+                    "Static method '%s' not found", prop->str);
+        }
     } else {
         /* Expression call: resolve callee type and extract return type. */
         ZType *calleeType = resolveType(semantic, callee);
@@ -627,12 +683,10 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
     ZType *result = NULL;
 
     switch (curr->type) {
-    case NODE_CALL: result = resolveFuncCall(semantic, curr);   break;
-
-    case NODE_LITERAL:
-        result = resolveLiteralType(curr);
-        break;
-
+    case NODE_CALL:         result = resolveFuncCall(semantic, curr);       break;
+    case NODE_LITERAL:      result = resolveLiteralType(curr);              break;
+    case NODE_MEMBER:       result = resolveMemberAccess(semantic, curr);   break;
+    case NODE_SUBSCRIPT:    result = resolveArrSubscript(semantic, curr);   break;
     case NODE_IDENTIFIER: {
         ZSymbol *sym = resolve(semantic, curr->identNode.tok);
         if (!sym) {
@@ -703,15 +757,6 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         }
         break;
     }
-
-
-    case NODE_MEMBER:
-        result = resolveMemberAccess(semantic, curr);
-        break;
-
-    case NODE_SUBSCRIPT:
-        result = resolveArrSubscript(semantic, curr);
-        break;
 
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
@@ -841,11 +886,6 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         break;
     }
 
-    // case NODE_STATIC_ACCESS: {
-    //
-    //     break;
-    // }
-
     default:
         warning(semantic->state, curr->tok,
                 "Trying to resolve the type of node's type %d", curr->type);
@@ -863,8 +903,8 @@ static ZType *resolveReceiverCall(ZSemantic *semantic,
     ZNode **funcs = NULL;
 
     for (usize i = 0; i < veclen(table) && !funcs; i++) {
-        ZType *receiverType = resolveTypeRef(semantic, table[i]->receiver);
-        table[i]->receiver = receiverType;
+        ZType *receiverType = resolveTypeRef(semantic, table[i]->base);
+        table[i]->base = receiverType;
         if (typesEqual(receiverType, caller)) {
             funcs = table[i]->funcDef;
         }
@@ -1103,34 +1143,6 @@ static bool isType(ZType *type, ZTokenType tok) {
     return type->primitive.token->type == tok;
 }
 
-static void analyzeCall(ZSemantic *semantic, ZNode *curr) {
-    ZType *resolved = resolveType(semantic, curr->call.callee);
-    if (!resolved) return;
-
-    if (resolved->kind != Z_TYPE_FUNCTION) {
-        error(semantic->state, curr->tok, "Must be a function type");
-        return;
-    }
-
-    curr->call.callee->resolved = resolved;
-
-    usize expected = veclen(resolved->func.args);
-    usize got = veclen(curr->call.args);
-
-    if (expected != got) {
-        error(semantic->state, curr->tok, "Expected %zu arguments, got %zu", expected, got);
-        return;
-    }
-
-    for (usize i = 0; i < got; i++) {
-        ZType *argType = resolveType(semantic, curr->call.args[i]);
-        if (!typesCompatible(semantic->state,
-            argType, resolved->func.args[i])) {
-            error(semantic->state, curr->tok, "Unexpected type");
-        }
-    }
-}
-
 static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
     ZType *retType = NULL;
     if (curr->returnStmt.expr) {
@@ -1171,7 +1183,6 @@ static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
     case NODE_FOR:      analyzeFor(semantic, curr);                     break;
     case NODE_BLOCK:    analyzeBlock(semantic, curr, false);            break;
     case NODE_DEFER:    resolveType(semantic, curr->deferStmt.expr);    break;
-    case NODE_CALL:     analyzeCall(semantic, curr);                    break;
     case NODE_RETURN:   analyzeReturn(semantic, curr);                  break;
     default:            resolveType(semantic, curr);                    break;
     }

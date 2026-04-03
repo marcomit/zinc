@@ -93,7 +93,6 @@ ZState *loadState(int argc, char **argv) {
         }
     }
 
-    printf("Visit %s", filename);
     visit(state, filename);
 
     return state;
@@ -113,6 +112,25 @@ void handler(int sig) {
     _exit(1);
 }
 
+int pipeline(ZState *state) {
+    ZToken **tokens = ztokenize(state);
+    printTokens(tokens);
+
+    if (!canAdvance(state)) return 1;
+
+    ZNode *root = zparse(state, tokens);
+
+    printNode(root, 0);
+
+    if (!canAdvance(state)) return 2;
+    zanalyze(state, root);
+
+    if (!canAdvance(state)) return 3;
+    zcompile(state, root, state->output);
+
+    return 0;
+}
+
 int main(int argc, char **argv) {
     signal(SIGSEGV, handler);
     signal(SIGTRAP, handler);
@@ -121,20 +139,11 @@ int main(int argc, char **argv) {
 
     if (!state) return 1;
 
-
-    ZToken **tokens = ztokenize(state);
-    printTokens(tokens);
-
-    ZNode *root = zparse(state, tokens);
-
-    printNode(root, 0);
-    zanalyze(state, root);
-    zcompile(state, root, state->output);
-
-
+    int res = pipeline(state);
+    
     printLogs(state);
 
     allocator.close();
 
-    return 0;
+    return res;
 }

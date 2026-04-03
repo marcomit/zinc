@@ -1,0 +1,6 @@
+foreign u0 printf(*char)
+
+u32 main() {
+    Ghost::method()
+    return 0
+}

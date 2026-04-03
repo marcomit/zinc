@@ -1,0 +1,14 @@
+foreign u0 printf(*char)
+
+struct Counter {
+    i32 count
+}
+
+i32 Counter::value() {
+    return 42
+}
+
+i32 main() {
+    i32 v = Counter::value()
+    return 0
+}

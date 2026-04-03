@@ -1,0 +1,11 @@
+foreign u0 printf(*char)
+
+struct Greeter {
+    f32 p
+}
+
+i32 main() {
+    Greeter::unkown()
+    
+    return 0
+}
