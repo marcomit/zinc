@@ -9,6 +9,7 @@ declaration = function_declaration
             | struct_declaration
             | union_declaration
             | typedef_declaration
+            | interface_declaration
             | import_declaration
             | macro_declaration ;
 
@@ -70,16 +71,29 @@ macro_repetition = "$", "(", { macro_pattern_element }, ")", ( "*" | "+" ) ;
 variable_declaration = identifier, ":=", expression
                      | type, identifier, [ "=", expression ] ;
 
+(* ============ Interfaces ============ *)
+
+(* Interface declaration: interface Shape { f32 area() } *)
+interface_declaration = [ "pub" ], "interface", identifier, "{", { interface_method }, "}" ;
+
+(* Method signature only — no body, no receiver *)
+interface_method = type, identifier, "(", [ parameter_list ], ")" ;
+
+(* List of interfaces a type implements: (Shape, Debug) *)
+interface_list = "(", identifier, { ",", identifier }, ")" ;
+
 (* ============ Structs ============ *)
 
-(* Optional 'pub' and optional generics: [pub] struct Vec[T] { *T data } *)
-struct_declaration = [ "pub" ], "struct", identifier, [ generic_params ], "{", { struct_field }, "}" ;
+(* Optional 'pub', optional generics, optional interface list:
+   [pub] struct Vec[T] { *T data }
+   [pub] struct Rect(Shape, Debug) { f32 width  f32 height } *)
+struct_declaration = [ "pub" ], "struct", identifier, [ generic_params ], [ interface_list ], "{", { struct_field }, "}" ;
 
 struct_field = type, identifier ;
 
 (* ============ Unions ============ *)
 
-union_declaration = "union", identifier, "{", { struct_field }, "}" ;
+union_declaration = "union", identifier, [ interface_list ], "{", { struct_field }, "}" ;
 
 (* ============ Type Aliases ============ *)
 
