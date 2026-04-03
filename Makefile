@@ -8,7 +8,7 @@ ifeq ($(UNAME), Darwin)
   LLD_LIBS := -L$(LLD_PREFIX)/lib -Wl,-rpath,$(LLD_PREFIX)/lib -llldMachO -llldCommon
 else
   LLD_INCLUDES :=
-  LLD_LIBS := -llldELF -llldCommon -lz
+  LLD_LIBS := -llldELF -llldCommon -lz -lzstd
 endif
 
 CFLAGS = -g -Wall -Wextra -O2 $(shell llvm-config --cflags)
