@@ -67,13 +67,14 @@ typedef struct {
 
 typedef struct {
     char        *output;
-    ZLog        **errors;
+    ZLog        **logs;
     ZPhase      currentPhase;
     char        *currentPath;
     char        *filename;
 
     char        **pathFiles;
     char        **visitedFiles;
+    bool        canAdvance;
 
     bool        debug;
 
@@ -500,30 +501,32 @@ typedef struct ZScope {
  * that type as a receiver. */
 typedef struct ZFuncTable {
     /* The receiver type, could be every possible type (e.g. u8 or *MyStruct) */
-    ZType           *receiver;
+    ZType           *base;
 
     /* A list of functions that have [receiver] as a receiver type */
     ZNode           **funcDef;
+    hashset_t       seenReceiverFuncs;
 
     /* A list of static functions for that type.
      * A static function is available only when the type is an identifier.
      */
     ZNode           **staticFuncDef;
+    hashset_t       seenStaticFuncs;
 } ZFuncTable;
 
 typedef struct ZSymTable {
     /* Global scope used to store globam symbols. */
-    ZScope         *global;
+    ZScope          *global;
 
-    ZScope         *current;
+    ZScope          *current;
 
     /* Used to track the current module. */
-    ZScope         *module;
+    ZScope          *module;
 
     /* Imagine this like an hashmap where:
      * the key is the type 
      * the value is a list of receiver functions for that type. */
-    ZFuncTable     **funcs;
+    ZFuncTable      **funcs;
 } ZSymTable;
 
 typedef struct ZScopeTable {
@@ -601,7 +604,8 @@ void _debug  (ZState *, ZToken *, const char *, int, const char *, ...);
 #define info(state, tok, ...)    _info   (state, tok, __FILE__, __LINE__, __VA_ARGS__)
 #define debug(state, tok, ...)   _debug  (state, tok, __FILE__, __LINE__, __VA_ARGS__)
 
-void printLogs(ZState *state);
+void printLogs(ZState *);
+bool canAdvance(ZState *);
 
 bool visit(ZState *, char *);
 void undoVisit(ZState *);

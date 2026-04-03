@@ -10,23 +10,23 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
-#define ensure(c, msg) do {                                                    \
-    if (!(c)) {                                                                \
-        return NULL;                                                        \
-    }                                                                        \
+#define ensure(c, msg) do {                                                     \
+    if (!(c)) {                                                                 \
+        return NULL;                                                            \
+    }                                                                           \
 } while (0)
 
 #define guard(c) if (!(c)) return NULL
 
-#define expect(l, t) if (!match(l, t)) {                                    \
-        error((l)->state, peek(l),                                          \
-                "Expected %s, got %s", tokname(t), stoken(peek(parser)));    \
-        return NULL;                                                        \
+#define expect(l, t) if (!match(l, t)) {                                        \
+        error((l)->state, peek(l),                                              \
+                "Expected %s, got %s", tokname(t), stoken(peek(parser)));       \
+        return NULL;                                                            \
     }
 
-#define invalid(parser, ...) {                                                \
-        error(parser->state, peek(parser), __VA_ARGS__);                    \
-        return NULL;                                                        \
+#define invalid(parser, ...) {                                                  \
+        error(parser->state, peek(parser), __VA_ARGS__);                        \
+        return NULL;                                                            \
 }
 
 typedef ZNode *(*ZParseFunc)(ZParser *);
@@ -166,7 +166,7 @@ bool match(ZParser *parser, ZTokenType type) {
 }
 
 static void pushErrorCheckpoint(ZParser *parser) {
-    usize errlen = veclen(parser->state->errors);
+    usize errlen = veclen(parser->state->logs);
     vecpush(parser->errstack, errlen);
     parser->depth++;
 }
@@ -181,7 +181,7 @@ static void commitErrors(ZParser *parser) {
 static void rollbackErrors(ZParser *parser) {
     if (parser->depth > 0) {
         usize checkpoint = vecpop(parser->errstack);
-        while (veclen(parser->state->errors) > checkpoint) vecpop(parser->state->errors);
+        while (veclen(parser->state->logs) > checkpoint) vecpop(parser->state->logs);
         parser->depth--;
     }
 }
@@ -926,6 +926,7 @@ static ZNode *parseUnionDecl(ZParser *parser, bool public) {
 }
 
 static ZNode *parseStructDecl(ZParser *parser, bool public) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_STRUCT);
     ensure(check(parser, TOK_IDENT), "Expected an identifier");
 
@@ -943,6 +944,11 @@ static ZNode *parseStructDecl(ZParser *parser, bool public) {
     ZNode **fields = parseGenericList(parser,
             TOK_LBRACKET, TOK_RBRACKET,
             parseField, false);
+
+    if (veclen(fields) < 1) {
+        error(parser->state, start, "Expected at least one field");
+        return NULL;
+    }
 
     hashset_t seen = NULL;
     for (usize i = 0; i < veclen(fields); i++) {
