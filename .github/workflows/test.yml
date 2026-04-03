@@ -17,7 +17,7 @@ jobs:
       - name: Install LLVM and Clang
         run: |
           sudo apt-get update
-          sudo apt-get install -y llvm-dev clang
+          sudo apt-get install -y llvm-dev clang liblld-dev
           # Ensure llvm-config is reachable as a plain command.
           # On Ubuntu the package installs it as llvm-config-<version>.
           if ! command -v llvm-config &>/dev/null; then
@@ -33,7 +33,7 @@ jobs:
           echo "clang:       $(clang --version | head -1)"
 
       - name: Build zinc
-        run: make
+        run: make clean && make
 
       - name: Run tests
         run: bash run_tests.sh

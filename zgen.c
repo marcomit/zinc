@@ -1,5 +1,6 @@
 #include "base.h"
 #include "zinc.h"
+#include "zlink.h"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
@@ -818,10 +819,8 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 		return;
 	}
 
-	char cmd[512];
-    const char *outname = output ? output : "a.out";
-	snprintf(cmd, sizeof(cmd), "cc %s -o %s", objfile, outname);
-	int ret = system(cmd);
+	const char *outname = output ? output : "a.out";
+	int ret = zinc_lld_link(objfile, outname);
 	if (ret != 0) {
 		error(state, NULL, "Linker failed with code %d", ret);
 	}
