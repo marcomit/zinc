@@ -557,6 +557,11 @@ static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
     return ptr;
 }
 
+static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
+    printType(node->resolved);
+    return NULL;
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	switch (node->type) {
 		case NODE_BINARY:       return genBinary(ctx, node);
@@ -564,6 +569,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_IDENTIFIER:   return genIdent(ctx, node);
         case NODE_STRUCT_LIT:   return genStructLit(ctx, node);
         case NODE_CALL:         return genCall(ctx, node);
+        case NODE_ARRAY_LIT:    return genArrayLit(ctx, node);
 
 		case NODE_CAST: {
 			LLVMValueRef val = genExpr(ctx, node->castExpr.expr);

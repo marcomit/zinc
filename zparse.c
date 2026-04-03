@@ -776,11 +776,12 @@ ZNode *expandListMacro(ZParser *parser) {
 }
 
 ZNode *parseStmt(ZParser *parser) {
-    if (!canPeek(parser)) return NULL;
+    guard(canPeek(parser));
 
     ZTokenType t = peek(parser)->type;
 
-    if (t == TOK_IDENT && checkAhead(parser, 1, TOK_ASSIGN)) {
+    if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
+        printf("Parse inferred type\n");
         return parseVarInferred(parser);
     } else if (t == TOK_IDENT && checkAhead(parser, 1, TOK_COLON)) {
         return parseLabel(parser);
