@@ -449,12 +449,29 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     return call;
 }
 
-static LLVMValueRef genVarAssign(ZCodegen *ctx,
-        ZNode *root, LLVMValueRef location) {
-    return location;
+static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
+    if (node->type == NODE_IDENTIFIER) {
+        char *key = node->identNode.mangled ? node->identNode.mangled : node->tok->str;
+        LLVMValueRef val = getLLVMValueRef(ctx, key);
+        if (!val) {
+            error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
+            return NULL;
+        }
+        return val;
+    }
+    /* TODO: support pointer deref (*p) and field access as lvalues */
+    error(ctx->state, node->tok, "Invalid lvalue in assignment");
+    return NULL;
 }
 
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
+    if (root->binary.op->type == TOK_EQ) {
+        LLVMValueRef ptr = genLvalue(ctx, root->binary.left);
+        LLVMValueRef val = genExpr(ctx, root->binary.right);
+        if (!ptr || !val) return NULL;
+        return LLVMBuildStore(ctx->builder, val, ptr);
+    }
+
 	LLVMValueRef left = genExpr(ctx, root->binary.left);
 	LLVMValueRef right = genExpr(ctx, root->binary.right);
 
@@ -478,7 +495,6 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         case TOK_GTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
         case TOK_EQEQ:  return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
         case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
-        case TOK_EQ:    return genVarAssign(ctx, root, left);
         default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
         }
     }
@@ -811,11 +827,10 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     }
 }
 
-static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
+static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name) {
     if (!node || !node->resolved) return;
 
     LLVMTypeRef type = genType(ctx, node->resolved);
-    const char *name = (node->resolved->kind == Z_TYPE_ARRAY) ? "arr" : "val";
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, name);
 
     ZLLVMStack *item = zalloc(ZLLVMStack);
@@ -835,7 +850,7 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
 static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
     case NODE_FOR:
-        buildFuncVar(ctx, node->forStmt.var);
+        buildFuncVar(ctx, node->forStmt.var, "val");
         genFuncVars(ctx, node->forStmt.block);
         break;
     case NODE_WHILE:
@@ -847,11 +862,11 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->ifStmt.body);
         break;
     case NODE_VAR_DECL:
-        buildFuncVar(ctx, node->varDecl.rvalue);
+        buildFuncVar(ctx, node->varDecl.rvalue, node->varDecl.ident->identNode.tok->str);
         break;
     case NODE_CALL:
         if (false /* FIXME: check if the return type is a non-primitive type*/) {
-            buildFuncVar(ctx, node);
+            buildFuncVar(ctx, node, "val");
         }
         break;
 
