@@ -449,6 +449,11 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     return call;
 }
 
+static LLVMValueRef genVarAssign(ZCodegen *ctx,
+        ZNode *root, LLVMValueRef location) {
+    return location;
+}
+
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 	LLVMValueRef left = genExpr(ctx, root->binary.left);
 	LLVMValueRef right = genExpr(ctx, root->binary.right);
@@ -473,6 +478,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         case TOK_GTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
         case TOK_EQEQ:  return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
         case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "cmptmp");
+        case TOK_EQ:    return genVarAssign(ctx, root, left);
         default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
         }
     }
@@ -755,6 +761,31 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
     LLVMPositionBuilderAtEnd(ctx->builder, endif);
 }
 
+static void genWhile(ZCodegen *ctx, ZNode *node) {
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "while"
+    );
+    LLVMBasicBlockRef block = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "block"
+    );
+    LLVMBasicBlockRef endwhile = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "endwhile"
+    );
+
+    LLVMBuildBr(ctx->builder, entry);
+    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+
+    LLVMValueRef cond = genExpr(ctx, node->whileStmt.cond);
+    LLVMBuildCondBr(ctx->builder, cond, block, endwhile);
+
+
+    LLVMPositionBuilderAtEnd(ctx->builder, block);
+    genStmt(ctx, node->whileStmt.branch);
+    LLVMBuildBr(ctx->builder, entry);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, endwhile);
+}
+
 static void genBlock(ZCodegen *ctx, ZNode *block) {
     for (usize i = 0; i < veclen(block->block); i++) {
         genStmt(ctx, block->block[i]);
@@ -771,6 +802,7 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     case NODE_CALL:     genCall(ctx, stmt);     break;
     case NODE_IF:       genIf(ctx, stmt);       break;
     case NODE_BLOCK:    genBlock(ctx, stmt);    break;
+    case NODE_WHILE:    genWhile(ctx, stmt);    break;
     default: 
         printf("Node '%d' does not compile yet\n", stmt->type);
         error(ctx->state, stmt->tok,
