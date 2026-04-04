@@ -71,7 +71,6 @@ DEF(TOK_PUB,   		"pub", 	 	        TOK_TYPES_SIGNATURE_MASK 									| 0x32)
 #ifdef TOK_DYN
 DEF(TOK_STR_LIT,   "string literal",    TOK_DYN_MASK | TOK_LITERAL | 0x40)
 DEF(TOK_INT_LIT,   "int literal",       TOK_DYN_MASK | TOK_LITERAL | 0x41)
-DEF(TOK_BOOL_LIT,  "boolean literal",   TOK_DYN_MASK | TOK_LITERAL | 0x42)
 DEF(TOK_FLOAT_LIT, "float literal",     TOK_DYN_MASK | TOK_LITERAL | 0x43)
 DEF(TOK_IDENT,     "identifier",        TOK_DYN_MASK | TOK_LITERAL | TOK_OVERRIDABLE | 0x44)
 #endif

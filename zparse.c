@@ -617,7 +617,8 @@ static ZType *parseTypeArray(ZParser *parser) {
     usize size = 0;
     
     if (match(parser, TOK_SEMICOLON)) {
-        if (!check(parser, TOK_INT_LIT)) invalid(parser, "Expected the array size");
+        if (!check(parser, TOK_INT_LIT)) invalid(parser,
+                "Expected the array size");
         size = consume(parser)->integer;
     }
 
@@ -637,7 +638,9 @@ static ZType *parseTypeTuple(ZParser *parser) {
         error(parser->state, peek(parser), "Expected types in tuple type");
         return NULL;
     } else if (veclen(types) < 2) {
-        error(parser->state, peek(parser), "Tuple type requires at least 2 elements, got %zu", veclen(types));
+        error(parser->state, peek(parser),
+                "Tuple type requires at least 2 elements, got %zu",
+                veclen(types));
         return NULL;
     }
 
@@ -653,7 +656,8 @@ static ZType *parseTypeFunc(ZParser *parser, ZType *previous) {
     if (check(parser, TOK_LSBRACKET)) {
         generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
         if (!generics) {
-            error(parser->state, peek(parser), "Expected generic type parameters in '[...]'");
+            error(parser->state, peek(parser),
+                    "Expected generic type parameters in '[...]'");
             return NULL;
         }
     }
@@ -722,7 +726,8 @@ static ZNode *parseDefer(ZParser *parser) {
 static ZNode *parseMatch(ZParser *parser) {
     expect(parser, TOK_MATCH);
 
-    error(parser->state, peek(parser), "'match' statement are not implemented yet!");
+    error(parser->state, peek(parser),
+            "'match' statement are not implemented yet!");
 
     ZNode *expr = wrapNode(parser, parseExpr);
 
@@ -781,7 +786,6 @@ ZNode *parseStmt(ZParser *parser) {
     ZTokenType t = peek(parser)->type;
 
     if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
-        printf("Parse inferred type\n");
         return parseVarInferred(parser);
     } else if (t == TOK_IDENT && checkAhead(parser, 1, TOK_COLON)) {
         return parseLabel(parser);
@@ -1301,6 +1305,7 @@ static ZNode *parseTupleLit(ZParser *parser) {
 }
 
 static ZNode *parseArrayLit(ZParser *parser) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_LSBRACKET);
 
     ZNode **values = NULL;
@@ -1316,7 +1321,8 @@ static ZNode *parseArrayLit(ZParser *parser) {
 
     ZNode *node = makenode(NODE_ARRAY_LIT);
 
-    node->arraylit = values;
+    node->arraylit  = values;
+    node->tok       = start;
 
     return node;
 }

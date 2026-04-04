@@ -506,7 +506,8 @@ static ZType *resolveLiteralType(ZNode *curr) {
         t->primitive.token = maketoken(TOK_F64, NULL);
         return t;
     }
-    case TOK_BOOL_LIT: {
+    case TOK_FALSE:
+    case TOK_TRUE: {
         t->primitive.token = maketoken(TOK_BOOL, NULL);
         return t;
     }

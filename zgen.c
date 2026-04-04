@@ -22,6 +22,12 @@ typedef struct ZLLVMScope {
 } ZLLVMScope;
 
 typedef struct {
+    LLVMValueRef    stack;
+    LLVMTypeRef     type;
+    ZNode           *node;
+} ZLLVMStack;
+
+typedef struct {
 	LLVMContextRef  ctx;
 
 	LLVMModuleRef   *modules;
@@ -37,6 +43,8 @@ typedef struct {
 	/* Struct type cache — parallel arrays keyed by name */
 	char            **structNames;
 	LLVMTypeRef     *structTypes;
+
+    ZLLVMStack      **funcstack;
 
     usize           count;
 } ZCodegen;
@@ -106,8 +114,8 @@ static void initNativeTypes(ZCodegen *ctx) {
 	i32Type = LLVMInt32TypeInContext(ctx->ctx);
 	i64Type = LLVMInt64TypeInContext(ctx->ctx);
 
-	f32Type = LLVMFloatType();
-	f64Type = LLVMDoubleType();
+	f32Type = LLVMFloatTypeInContext(ctx->ctx);
+	f64Type = LLVMDoubleTypeInContext(ctx->ctx);
 }
 
 static void beginModule(ZCodegen *ctx, ZNode *node) {
@@ -138,6 +146,7 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 	self->state         = state;
 	self->semantic      = semantic;
     self->count         = 0;
+    self->funcstack     = NULL;
 	return self;
 }
 
@@ -277,10 +286,13 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 	}
 
 	case Z_TYPE_POINTER: {
-		/* void* → i8* (LLVM doesn't allow pointer-to-void) */
 		ZType *base = type->base;
+        if (!base) {
+            error(ctx->state, type->tok, "Pointer must have a base type");
+            return NULL;
+        }
 		if (base && base->kind == Z_TYPE_PRIMITIVE &&
-		    strcmp(base->primitive.token->str, "void") == 0) {
+		    base->primitive.token->type == TOK_VOID) {
 			return LLVMPointerType(i8Type, 0);
 		}
 		return LLVMPointerType(genType(ctx, base), 0);
@@ -341,8 +353,10 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
         return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, ".str");
     case TOK_INT_LIT:
         return LLVMConstInt(i32Type, tok->integer, true);
-    case TOK_BOOL_LIT:
-        return LLVMConstInt(i1Type, tok->boolean, false);
+    case TOK_TRUE:
+        return LLVMConstInt(i1Type, true, false);
+    case TOK_FALSE:
+        return LLVMConstInt(i1Type, false, false);
     case TOK_FLOAT_LIT:
         return LLVMConstReal(f64Type, tok->floating);
     case TOK_NONE:
@@ -375,16 +389,34 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
     return val;
 }
 
-static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
-    LLVMTypeRef type = genType(ctx, node->resolved);
-
-    LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, node->tok->str);
-    if (node->varDecl.rvalue) {
-        LLVMValueRef init = genExpr(ctx, node->varDecl.rvalue);
-        LLVMBuildStore(ctx->builder, init, val);
+static ZLLVMStack *getStackValue(ZCodegen *ctx, ZNode *key) {
+    for (usize i = 0; i < veclen(ctx->funcstack); i++) {
+        if (ctx->funcstack[i]->node == key) {
+            return ctx->funcstack[i];
+        }
     }
-    putLLVMValueRef(ctx, node->tok->str, val);
-    return val;
+    return NULL;
+}
+
+static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
+    if (!node->varDecl.rvalue) return NULL;
+
+    ZLLVMStack *stack = getStackValue(ctx, node->varDecl.rvalue);
+    if (!stack) {
+        error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
+        return NULL;
+    }
+
+    if (node->resolved && node->resolved->kind == Z_TYPE_ARRAY) {
+        /* genArrayLit stores each element via GEP into the alloca */
+        genExpr(ctx, node->varDecl.rvalue);
+    } else {
+        LLVMValueRef val = genExpr(ctx, node->varDecl.rvalue);
+        if (val) LLVMBuildStore(ctx->builder, val, stack->stack);
+    }
+
+    putLLVMValueRef(ctx, node->tok->str, stack->stack);
+    return stack->stack;
 }
 
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
@@ -519,10 +551,12 @@ static LLVMValueRef genCast(ZCodegen *ctx, LLVMValueRef val,
 	return LLVMBuildBitCast(ctx->builder, val, toType, "casttmp");
 }
 
-static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
+/* dest: optional pre-allocated slot to write into (e.g. an array element GEP).
+   If NULL, a fresh alloca is emitted. Returns the destination pointer. */
+static LLVMValueRef genStructLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef dest) {
     LLVMTypeRef structType = genType(ctx, node->resolved);
 
-    LLVMValueRef ptr = LLVMBuildAlloca(ctx->builder, structType, "struct");
+    LLVMValueRef ptr = dest ? dest : LLVMBuildAlloca(ctx->builder, structType, "struct");
 
     ZNode **fields = node->structlit.fields;
 
@@ -537,8 +571,7 @@ static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
         }
         LLVMValueRef val = genExpr(ctx, var->varDecl.rvalue);
 
-        i32 index = typeIndex(node->resolved,
-                name->str);
+        i32 index = typeIndex(node->resolved, name->str);
 
         if (index == -1) {
             error(ctx->state, name, "Unknown field '%s'", name->str);
@@ -553,17 +586,61 @@ static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
         );
 
         LLVMBuildStore(ctx->builder, val, fieldPtr);
-
     }
     return ptr;
 }
 
+static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
+    return genStructLitInto(ctx, node, NULL);
+}
+
 static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
-    printType(node->resolved);
+    ZLLVMStack *stack = getStackValue(ctx, node);
+
+    if (!stack) {
+        error(ctx->state, node->tok, "Missing stack value");
+        return NULL;
+    }
+
+    LLVMTypeRef elemType = genType(ctx, node->resolved->array.base);
+
+    for (usize i = 0; i < veclen(node->arraylit); i++) {
+        LLVMValueRef indices[] = {
+            LLVMConstInt(i32Type, 0, false),
+            LLVMConstInt(i32Type, i, false)
+        };
+        LLVMValueRef gep = LLVMBuildGEP2(
+            ctx->builder,
+            stack->type,
+            stack->stack,
+            indices,
+            2, "ptr"
+        );
+
+        ZNode *elem = node->arraylit[i];
+        if (elem->type == NODE_STRUCT_LIT) {
+            /* Write struct fields directly into the array slot — no extra alloca. */
+            genStructLitInto(ctx, elem, gep);
+        } else {
+            LLVMValueRef val = genExpr(ctx, elem);
+            if (!val) {
+                error(ctx->state, elem->tok, "Array element could not be compiled");
+                return NULL;
+            }
+            /* A call returning a struct comes back as an aggregate value,
+               not a pointer — store it directly. */
+            if (LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind &&
+                node->resolved->array.base->kind == Z_TYPE_STRUCT) {
+                val = LLVMBuildLoad2(ctx->builder, elemType, val, "sval");
+            }
+            LLVMBuildStore(ctx->builder, val, gep);
+        }
+    }
     return NULL;
 }
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
+    
 	switch (node->type) {
 		case NODE_BINARY:       return genBinary(ctx, node);
         case NODE_LITERAL:      return genLit(ctx, node->tok);
@@ -643,7 +720,7 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
-    case NODE_VAR_DECL:                         break;
+    case NODE_VAR_DECL: genVarDecl(ctx, stmt);  break;
     case NODE_RETURN:   genRet(ctx, stmt);      break;
     case NODE_BINARY:   genExpr(ctx, stmt);     break;
     case NODE_CALL:     genCall(ctx, stmt);     break;
@@ -654,19 +731,53 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     }
 }
 
+static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
+    if (!node || !node->resolved) return;
+
+    LLVMTypeRef type = genType(ctx, node->resolved);
+    const char *name = (node->resolved->kind == Z_TYPE_ARRAY) ? "arr" : "val";
+    LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, name);
+
+    ZLLVMStack *item = zalloc(ZLLVMStack);
+    *item = (ZLLVMStack){ .stack = val, .type = type, .node = node };
+
+    vecpush(ctx->funcstack, item);
+}
+
+/* All variables of the function body are allocated at the start of the block.
+ * This is the first pass where it navigates the AST
+ * and allocate to the stack (LLVMBuildAlloca) the variables and store the node
+ * as allocated such that the function genExpr knows if the generated values
+ * must be stored in the stack. 
+ * Now The stack allocations are just variable declarations and function calls
+ * that return a non-primitive type (so a type that does not fit in a register).
+ * */
 static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
-    case NODE_VAR_DECL:
-        genVarDecl(ctx, node);
-        break;
     case NODE_FOR:
+        buildFuncVar(ctx, node->forStmt.var);
         genFuncVars(ctx, node->forStmt.block);
-        break; 
+        break;
     case NODE_WHILE:
+        genFuncVars(ctx, node->whileStmt.cond);
         genFuncVars(ctx, node->whileStmt.branch);
         break;
     case NODE_IF:
+        genFuncVars(ctx, node->ifStmt.cond);
         genFuncVars(ctx, node->ifStmt.body);
+        break;
+    case NODE_VAR_DECL:
+        buildFuncVar(ctx, node->varDecl.rvalue);
+        break;
+    case NODE_CALL:
+        if (false /* FIXME: check if the return type is a non-primitive type*/) {
+            buildFuncVar(ctx, node);
+        }
+        break;
+
+    case NODE_BINARY:
+        genFuncVars(ctx, node->binary.left);
+        genFuncVars(ctx, node->binary.right);
         break;
     case NODE_BLOCK:
         for (usize i = 0; i < veclen(node->block); i++) {
@@ -710,7 +821,7 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
         putLLVMValueRef(ctx, name, LLVMGetParam(func, i));
     }
 
-    LLVMBasicBlockRef entry = LLVMAppendBasicBlock(func, "entry");
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(ctx->ctx, func, "entry");
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
     /* All variable declarations are declared ad the start of the function. */

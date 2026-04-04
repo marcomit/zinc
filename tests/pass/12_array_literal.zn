@@ -1,8 +1,7 @@
-foreign u0 printf(*char)
 
 i32 main() {
     intArr := [1, 2, 3, 4, 5, 6]
-    strArr := ["a", "b", "c", "d"]
+    // strArr := ["a", "b", "c", "d"]
     boolArr:= [false, true, false, true]
 
 

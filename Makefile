@@ -3,7 +3,7 @@ CXX = clang++
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Darwin)
-  LLD_PREFIX := /opt/homebrew/opt/lld
+  LLD_PREFIX := $(or $(wildcard /opt/homebrew/opt/lld),$(wildcard /opt/homebrew/opt/lld@19))
   LLD_INCLUDES := -I$(LLD_PREFIX)/include
   LLD_LIBS := -L$(LLD_PREFIX)/lib -Wl,-rpath,$(LLD_PREFIX)/lib -llldMachO -llldCommon
 else
