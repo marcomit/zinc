@@ -45,12 +45,14 @@ typedef struct {
 	LLVMTypeRef     *structTypes;
 
     ZLLVMStack      **funcstack;
+    LLVMValueRef    currentFunc;
 
     usize           count;
 } ZCodegen;
 
+static void         genStmt(ZCodegen *, ZNode *);
+static LLVMTypeRef  genType(ZCodegen *, ZType *);
 static LLVMValueRef genExpr(ZCodegen *, ZNode *);
-static LLVMTypeRef genType(ZCodegen *, ZType *);
 
 /* ========== Native types ==========*/
 static LLVMTypeRef i0Type 	= NULL;
@@ -717,14 +719,60 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     return LLVMBuildRet(ctx->builder, val);
 }
 
+static void genIf(ZCodegen *ctx, ZNode *node) {
+    bool hasElse = node->ifStmt.elseBranch != NULL;
+    LLVMBasicBlockRef then = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "then"
+    );
+
+    LLVMBasicBlockRef elseBranch = NULL;
+
+    if (hasElse) {
+        elseBranch = LLVMAppendBasicBlockInContext(
+            ctx->ctx, ctx->currentFunc, "else"
+        );
+    }
+
+    LLVMBasicBlockRef endif = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "endif"
+    );
+    LLVMBasicBlockRef nextBlock = hasElse ? elseBranch : endif;
+
+    LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
+
+    LLVMBuildCondBr(ctx->builder, cond, then, nextBlock);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, then);
+    genStmt(ctx, node->ifStmt.body);
+    LLVMBuildBr(ctx->builder, endif);
+
+    if (hasElse) {
+        LLVMPositionBuilderAtEnd(ctx->builder, elseBranch);
+        genStmt(ctx, node->ifStmt.elseBranch);
+        LLVMBuildBr(ctx->builder, endif);
+    }
+
+    LLVMPositionBuilderAtEnd(ctx->builder, endif);
+}
+
+static void genBlock(ZCodegen *ctx, ZNode *block) {
+    for (usize i = 0; i < veclen(block->block); i++) {
+        genStmt(ctx, block->block[i]);
+    }
+}
+
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
+    if (!stmt) return;
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
     case NODE_VAR_DECL: genVarDecl(ctx, stmt);  break;
     case NODE_RETURN:   genRet(ctx, stmt);      break;
     case NODE_BINARY:   genExpr(ctx, stmt);     break;
     case NODE_CALL:     genCall(ctx, stmt);     break;
+    case NODE_IF:       genIf(ctx, stmt);       break;
+    case NODE_BLOCK:    genBlock(ctx, stmt);    break;
     default: 
+        printf("Node '%d' does not compile yet\n", stmt->type);
         error(ctx->state, stmt->tok,
                 "Node '%d' does not compile yet",
                 stmt->type);
@@ -788,12 +836,6 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     }
 }
 
-static LLVMValueRef genBlock(ZCodegen *ctx, ZNode *block) {
-    for (usize i = 0; i < veclen(block->block); i++) {
-        genStmt(ctx, block->block[i]);
-    }
-    return NULL;
-}
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
@@ -820,6 +862,7 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
         char *name = f->funcDef.args[i]->field.identifier->str;
         putLLVMValueRef(ctx, name, LLVMGetParam(func, i));
     }
+    ctx->currentFunc = func;
 
     LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(ctx->ctx, func, "entry");
     LLVMPositionBuilderAtEnd(ctx->builder, entry);

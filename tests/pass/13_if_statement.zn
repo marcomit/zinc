@@ -1,0 +1,12 @@
+foreign u0 printf(*char)
+
+i32 main(i32 argc) {
+
+    if argc == 1 {
+        printf("No command provided\n")
+    } else {
+        printf("Command provided\n")
+    }
+
+    return 0
+}
