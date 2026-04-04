@@ -16,6 +16,7 @@
  * then a child scope for the current file and then a child for blocks like functions, loops etc..
  * */
 #include "zinc.h"
+#include <stdbool.h>
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
@@ -673,6 +674,18 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
     return result;
 }
 
+static bool isLvalue(ZNode *node) {
+    if (!node) return false;
+
+    switch (node->type) {
+    case NODE_IDENTIFIER:   return true;
+    case NODE_SUBSCRIPT:    return true;
+    case NODE_MEMBER:       return true;
+    case NODE_UNARY:        return node->unary.operat->type == TOK_STAR;
+    default: return false;
+    }
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -717,6 +730,9 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
             result = boolType;
         } else if (op == TOK_EQ) {
             /* Assignment yields the type of the left-hand side. */
+            if (!isLvalue(curr->binary.left)) {
+                error(semantic->state, left->tok, "is not a valid lvalue");
+            }
             result = left;
         } else {
             result = typesCompatible(semantic->state, left, right);
