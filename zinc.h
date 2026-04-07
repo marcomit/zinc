@@ -141,7 +141,6 @@ typedef struct ZScope ZScope;
 typedef enum ZTypeKind {
     Z_TYPE_PRIMITIVE,
     Z_TYPE_POINTER,
-
     Z_TYPE_STRUCT,
     Z_TYPE_ARRAY,
     Z_TYPE_FUNCTION,

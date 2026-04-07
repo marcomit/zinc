@@ -66,10 +66,10 @@ static ZToken **parseGenericsDecl           (ZParser *);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 
 static ZParseFunc exprFunc[] = {
-    parseStructLit,
-    parseArrayLit,
-    parseTupleLit,
+    // parseStructLit,
+    // parseArrayLit,
     parseBinary,
+    parseTupleLit,
 };
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
@@ -88,7 +88,9 @@ static ZParser *makeparser(ZState *state, ZToken **tokens) {
 
 ZNode *makenode(ZNodeType type) {
     ZNode *self = zalloc(ZNode);
+    *self = (ZNode){ 0 };
     self->type = type;
+
     return self;
 }
 
@@ -975,24 +977,30 @@ static ZNode *parseStructDecl(ZParser *parser, bool public) {
 }
 
 ZNode *parseExpr(ZParser *parser) {
-    if (!parser->macroParser.currentMacro || !match(parser, TOK_MACRO_EXPR)) {
-        return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
+    if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_EXPR)) {
+        if (!check(parser, TOK_IDENT)) {
+            error(parser->state, peek(parser), "Expected an identifier");
+            return NULL;
+        }
+
+        ZToken *var         = consume(parser);
+        ZNode *currentMacro = parser->macroParser.currentMacro;
+        ZNode *placeholder  = getMacroCapturedVar(currentMacro, var);
+        if (!placeholder) {
+            error(parser->state, peek(parser),
+                    "%s is not a valid macro variable", var->str);
+            return NULL;
+        }
+        return placeholder;
     }
 
-    if (!check(parser, TOK_IDENT)) {
-        error(parser->state, peek(parser), "Expected an identifier");
-        return NULL;
+    if (check(parser, TOK_IDENT) && checkAhead(parser, TOK_LBRACKET, 1)) {
+        return parseStructLit(parser);
+    } else if (check(parser, TOK_LSBRACKET)) {
+        return parseArrayLit(parser);
     }
+    return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
 
-    ZToken *var         = consume(parser);
-    ZNode *currentMacro = parser->macroParser.currentMacro;
-    ZNode *placeholder  = getMacroCapturedVar(currentMacro, var);
-    if (!placeholder) {
-        error(parser->state, peek(parser),
-                "%s is not a valid macro variable", var->str);
-        return NULL;
-    }
-    return placeholder;
 }
 
 static ZNode *parseReturn(ZParser *parser) {
@@ -1250,12 +1258,12 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
     node->identNode.tok = ident;
     ZNode *expr = NULL;
 
-    if (match(parser, TOK_EQ)) {
-        expr = wrapNode(parser, parseExpr);
-        if (!expr) {
-            error(parser->state, peek(parser), "Expected expression after '='");
-            return NULL;
-        }
+    expect(parser, TOK_EQ);
+    
+    expr = wrapNode(parser, parseExpr);
+    if (!expr) {
+        error(parser->state, peek(parser), "Expected expression after '='");
+        return NULL;
     }
 
     return makenodevar(node, type, expr);
