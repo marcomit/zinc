@@ -16,7 +16,6 @@
  * then a child scope for the current file and then a child for blocks like functions, loops etc..
  * */
 #include "zinc.h"
-#include <stdbool.h>
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
@@ -686,6 +685,165 @@ static bool isLvalue(ZNode *node) {
     }
 }
 
+static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
+    ZSymbol *structSym = resolve(semantic, curr->structlit.ident);
+
+    if (!structSym) {
+        error(semantic->state, curr->tok,
+                "struct '%s' not found", curr->tok->str);
+        return NULL;
+    }
+    if (structSym->kind != Z_SYM_STRUCT) {
+        error(semantic->state, structSym->name,
+                    "'%s' is not a struct", stoken(structSym->name));
+        return NULL;
+    }
+
+    ZNode **structFields = structSym->type->strct.fields;
+    usize structLen = veclen(structFields);
+
+    if (veclen(curr->structlit.fields) < structLen) {
+        warning(semantic->state, curr->tok, "Some fields not initialized");
+    }
+
+    for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
+        ZNode *field = curr->structlit.fields[i];
+        ZType *type = resolveType(semantic, field->varDecl.rvalue);
+        ZType *expectedType;
+
+        for (usize j = 0; j < structLen; j++) {
+            if (!tokeneq(structFields[j]->field.identifier, field->tok)) continue;
+            expectedType = resolveTypeRef(semantic, structFields[j]->field.type);
+            if (!typesCompatible(semantic->state, expectedType, type)) {
+                char *expected = NULL;
+                char *got = NULL;
+                stype(expectedType, &expected);
+                stype(type, &got);
+                error(semantic->state, field->varDecl.ident->identNode.tok,
+                            "Expected %s, got %s", expected, got);
+            }
+            break;
+        }
+    }
+    ZSymbol *resolved = resolve(semantic, curr->structlit.ident);
+
+    if (!resolved) {
+        error(semantic->state, curr->structlit.ident,
+                "Unknown struct literal");
+    } else {
+        if (resolved->kind != Z_SYM_STRUCT) {
+            error(semantic->state, curr->structlit.ident,
+                    "This is not a struct literal");
+        }
+        return resolved->type;
+    }
+    return NULL;
+}
+
+static ZType* resolveIdentifier(ZSemantic *semantic, ZNode *node) {
+    ZToken *tok = node->identNode.tok;
+    ZSymbol *sym = resolve(semantic, tok);
+    if (!sym) {
+        error(semantic->state, tok,
+              "Undefined identifier '%s'", tok->str);
+        return NULL;
+    }
+    if (sym->node->type == NODE_FUNC) {
+        node->identNode.mangled = sym->node->funcDef.mangled;
+    }
+    return sym->type;
+}
+
+static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
+    ZTokenType op       = curr->binary.op->type;
+    ZType     *left     = resolveType(semantic, curr->binary.left);
+    ZType     *right    = resolveType(semantic, curr->binary.right);
+
+    /* Comparison / logical operators always produce a bool. */
+    if (op == TOK_EQEQ || op == TOK_NOTEQ ||
+        op == TOK_LT   || op == TOK_GT    ||
+        op == TOK_LTE  || op == TOK_GTE   ||
+        op == TOK_AND  || op == TOK_OR    ||
+        op == TOK_SAND || op == TOK_SOR) {
+        ZType *boolType = maketype(Z_TYPE_PRIMITIVE);
+        boolType->primitive.token = maketoken(TOK_BOOL, NULL);
+        return boolType;
+    } else if (op == TOK_EQ) {
+        /* Assignment yields the type of the left-hand side. */
+        if (!isLvalue(curr->binary.left)) {
+            error(semantic->state, left->tok, "is not a valid lvalue");
+        }
+        return left;
+    } else if (typesEqual(left, right)) {
+        /* Types are equal. it doesn't matter whether left or right is returned. */
+        return left;
+    } else {
+        /* Auto promotion rules should be handled by typesCompatible. */
+        ZType *result = typesCompatible(semantic->state, left, right);
+        if (!result) {
+            char *leftType  = NULL;
+            char *rightType = NULL;
+
+            stype(left, &leftType);
+            stype(right, &rightType);
+
+            error(semantic->state, curr->binary.op,
+                  "%s type incompatible with %s type", leftType, rightType);
+        }
+        
+        return result;
+    }
+    return NULL;
+}
+
+static ZType *resolveArrayLiteral(ZSemantic *semantic, ZNode *curr) {
+    ZType *arrType = NULL;
+    usize len = veclen(curr->arraylit);
+
+    for (usize i = 0; i < len; i++) {
+        ZNode *field = curr->arraylit[i];
+        ZType *fieldType = resolveType(semantic, field);
+
+        if (!arrType) {
+            arrType = fieldType;
+        } else {
+            arrType = typesCompatible(semantic->state, arrType, fieldType);
+
+            if (!arrType) {
+                ZToken *tok = NULL;
+                if (fieldType) tok = fieldType->tok;
+                error(semantic->state, tok,
+                             "Array literals should have the same type");
+            }
+        }
+    }
+
+    ZType *result       = maketype(Z_TYPE_ARRAY);
+    result->array.base  = arrType;
+    result->array.size  = len;
+    return result;
+}
+
+static ZType *resolveTupleLiteral(ZSemantic *semantic, ZNode *node) {
+    ZType **types = NULL;
+    ZType *fieldType = NULL;
+
+    ZNode **fields = node->tuplelit;
+    for (usize i = 0; i < veclen(fields); i++) {
+        fieldType = resolveType(semantic, fields[i]);
+        if (!fieldType) {
+            error(semantic->state, fields[i]->tok,
+                    "Unresolved type of tuple");
+        } else {
+            vecpush(types, fieldType);
+        }
+    }
+
+    ZType *result = maketype(Z_TYPE_TUPLE);
+    result->tuple = types;
+    return result;
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -701,54 +859,11 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
     case NODE_LITERAL:      result = resolveLiteralType(curr);              break;
     case NODE_MEMBER:       result = resolveMemberAccess(semantic, curr);   break;
     case NODE_SUBSCRIPT:    result = resolveArrSubscript(semantic, curr);   break;
-    case NODE_IDENTIFIER: {
-        ZSymbol *sym = resolve(semantic, curr->identNode.tok);
-        if (!sym) {
-            error(semantic->state, curr->identNode.tok,
-                  "Undefined identifier '%s'", curr->identNode.tok->str);
-            return NULL;
-        }
-        if (sym->node->type == NODE_FUNC)
-            curr->identNode.mangled = sym->node->funcDef.mangled;
-        result = sym->type;
-        break;
-    }
-
-    case NODE_BINARY: {
-        ZTokenType op       = curr->binary.op->type;
-        ZType     *left     = resolveType(semantic, curr->binary.left);
-        ZType     *right    = resolveType(semantic, curr->binary.right);
-
-        /* Comparison / logical operators always produce a bool. */
-        if (op == TOK_EQEQ || op == TOK_NOTEQ ||
-            op == TOK_LT   || op == TOK_GT    ||
-            op == TOK_LTE  || op == TOK_GTE   ||
-            op == TOK_AND  || op == TOK_OR    ||
-            op == TOK_SAND || op == TOK_SOR) {
-            ZType *boolType = maketype(Z_TYPE_PRIMITIVE);
-            boolType->primitive.token = maketoken(TOK_BOOL, NULL);
-            result = boolType;
-        } else if (op == TOK_EQ) {
-            /* Assignment yields the type of the left-hand side. */
-            if (!isLvalue(curr->binary.left)) {
-                error(semantic->state, left->tok, "is not a valid lvalue");
-            }
-            result = left;
-        } else {
-            result = typesCompatible(semantic->state, left, right);
-            if (!result) {
-                char *leftType  = NULL;
-                char *rightType = NULL;
-
-                stype(left, &leftType);
-                stype(right, &rightType);
-
-                error(semantic->state, curr->binary.op,
-                      "%s type incompatible with %s type", leftType, rightType);
-            }
-        }
-        break;
-    }
+    case NODE_STRUCT_LIT:   result = resolveStructLit(semantic, curr);      break;
+    case NODE_IDENTIFIER:   result = resolveIdentifier(semantic, curr);     break;
+    case NODE_BINARY:       result = resolveBinary(semantic, curr);         break;
+    case NODE_ARRAY_LIT:    result = resolveArrayLiteral(semantic, curr);   break;
+    case NODE_TUPLE_LIT:    result = resolveTupleLiteral(semantic, curr);   break;
 
     case NODE_UNARY: {
         ZType     *operand = resolveType(semantic, curr->unary.operand);
@@ -777,124 +892,18 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
-        if (curr->varDecl.type)
+        if (curr->varDecl.type) {
             result = resolveTypeRef(semantic, curr->varDecl.type);
-        else if (curr->varDecl.rvalue)
+        } else if (curr->varDecl.rvalue) {
             result = resolveType(semantic, curr->varDecl.rvalue);
+        }
         break;
 
-    case NODE_STRUCT_LIT: {
-        ZSymbol *structSym = resolve(semantic, curr->structlit.ident);
-
-        if (!structSym) {
-            error(semantic->state, curr->tok,
-                    "struct '%s' not found", curr->tok->str);
-            return NULL;
-        }
-        if (structSym->kind != Z_SYM_STRUCT) {
-            error(semantic->state, structSym->name,
-                        "'%s' is not a struct", stoken(structSym->name));
-            return NULL;
-        }
-
-        ZNode **structFields = structSym->type->strct.fields;
-        usize structLen = veclen(structFields);
-
-        if (veclen(curr->structlit.fields) < structLen) {
-            warning(semantic->state, curr->tok, "Some fields not initialized");
-        }
-
-        for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
-            ZNode *field = curr->structlit.fields[i];
-            ZType *type = resolveType(semantic, field->varDecl.rvalue);
-            ZType *expectedType;
-
-            for (usize j = 0; j < structLen; j++) {
-                if (!tokeneq(structFields[j]->field.identifier, field->tok)) continue;
-                expectedType = resolveTypeRef(semantic, structFields[j]->field.type);
-                if (!typesCompatible(semantic->state, expectedType, type)) {
-                    char *expected = NULL;
-                    char *got = NULL;
-                    stype(expectedType, &expected);
-                    stype(type, &got);
-                    error(semantic->state, field->varDecl.ident->identNode.tok,
-                                "Expected %s, got %s", expected, got);
-                }
-                break;
-            }
-        }
-        let resolved = resolve(semantic, curr->structlit.ident);
-
-        if (!resolved) {
-            error(semantic->state, curr->structlit.ident,
-                    "Unknown struct literal");
-        } else {
-            if (resolved->kind != Z_SYM_STRUCT) {
-                error(semantic->state, curr->structlit.ident,
-                        "This is not a struct literal");
-            }
-            result = resolved->type;
-        }
-
-        break;
-    }
-
-    case NODE_ARRAY_LIT: {
-        ZType *arrType = NULL;
-        usize len = veclen(curr->arraylit);
-
-        for (usize i = 0; i < len; i++) {
-            ZNode *field = curr->arraylit[i];
-            ZType *fieldType = resolveType(semantic, field);
-
-            if (!arrType) {
-                arrType = fieldType;
-            } else {
-                arrType = typesCompatible(semantic->state, arrType, fieldType);
-
-                if (!arrType) {
-                    ZToken *tok = NULL;
-                    if (fieldType) tok = fieldType->tok;
-                    error(semantic->state, tok,
-                                 "Array literals should have the same type");
-                }
-            }
-        }
-
-        result = maketype(Z_TYPE_ARRAY);
-        result->array.base = arrType;
-        result->array.size = len;
-
-        break;
-    }
-
-    case NODE_TUPLE_LIT: {
-        ZType **types = NULL;
-        ZType *fieldType = NULL;
-
-        ZNode **fields = curr->tuplelit;
-        for (usize i = 0; i < veclen(fields); i++) {
-            fieldType = resolveType(semantic, fields[i]);
-            if (!fieldType) {
-                error(semantic->state, fields[i]->tok,
-                        "Unresolved type of tuple");
-            } else {
-                vecpush(types, fieldType);
-            }
-        }
-
-        result = maketype(Z_TYPE_TUPLE);
-        result->tuple = types;
-
-        break;
-     }
-
-    case NODE_CAST: {
+    case NODE_CAST:
         /* Resolve the inner expression type (for side-effects / validation). */
         resolveType(semantic, curr->castExpr.expr);
         result = resolveTypeRef(semantic, curr->castExpr.toType);
         break;
-    }
 
     case NODE_SIZEOF: {
         /* sizeof yields u64. */

@@ -152,8 +152,7 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 	return self;
 }
 
-// static inline usize useCount(ZCodegen *ctx) { return ctx->count++; }
-
+/* Does not consider alignment. */
 usize typeSize(ZType *type) {
 	usize res = 0;
 	switch (type->kind) {
@@ -180,12 +179,14 @@ usize typeSize(ZType *type) {
 		return typeSize(type->array.base) * type->array.size;
 	case Z_TYPE_FUNCTION:
 		return 8; /* function pointer */
+
 	case Z_TYPE_STRUCT: {
 		for (usize i = 0; i < veclen(type->strct.fields); i++) {
 			res += typeSize(type->strct.fields[i]->field.type);
 		}
 		return res;
 	}
+
 	case Z_TYPE_TUPLE:
 		for (usize i = 0; i < veclen(type->tuple); i++) {
 			res += typeSize(type->tuple[i]);
@@ -449,8 +450,12 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     return call;
 }
 
+/* genLvalue is used to load the address of the expression rather than the value.
+ * meanwhile the function to load the value is genExpr.
+ * */
 static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
-    if (node->type == NODE_IDENTIFIER) {
+    switch (node->type) {
+    case NODE_IDENTIFIER: {
         char *key = node->identNode.mangled ? node->identNode.mangled : node->tok->str;
         LLVMValueRef val = getLLVMValueRef(ctx, key);
         if (!val) {
@@ -459,9 +464,29 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         }
         return val;
     }
-    /* TODO: support pointer deref (*p) and field access as lvalues */
-    error(ctx->state, node->tok, "Invalid lvalue in assignment");
-    return NULL;
+    case NODE_SUBSCRIPT: {
+        LLVMValueRef ptr        = genLvalue(ctx, node->subscript.arr);
+        LLVMValueRef i          = genExpr(ctx, node->subscript.index);
+        LLVMTypeRef type        = genType(ctx, node->subscript.arr->resolved);
+        LLVMValueRef indices[]  = {
+            LLVMConstInt(i64Type, 0, false),
+            i
+        };
+
+        return LLVMBuildGEP2(
+            ctx->builder,
+            type, ptr,
+            indices, 2,
+            "elem"
+        );
+    }
+    default:
+        error(ctx->state,
+                node->tok,
+                "Node '%d' not handled in 'genLvalue'",
+                node->type);
+        return NULL;
+    }
 }
 
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
@@ -514,9 +539,13 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 	}
 }
 
-static LLVMValueRef genCast(ZCodegen *ctx, LLVMValueRef val,
-                            ZType *from, ZType *to) {
+static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
+    ZType *to = node->castExpr.toType;
+    ZType *from = node->castExpr.expr->resolved;
+
 	LLVMTypeRef toType = genType(ctx, to);
+    LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
+
 	if (!toType) return NULL;
 
 	bool fromIsFloat = false, toIsFloat = false;
@@ -638,7 +667,7 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
             stack->type,
             stack->stack,
             indices,
-            2, "ptr"
+            2, "pointer"
         );
 
         ZNode *elem = node->arraylit[i];
@@ -663,41 +692,65 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+static LLVMValueRef genSubscript(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef base = genLvalue(ctx, node->subscript.arr);
+    ZType *arrType = node->subscript.arr->resolved;
+    LLVMTypeRef baseType = genType(ctx, arrType);
+    LLVMTypeRef elemType = genType(ctx, arrType->array.base);
+
+    LLVMValueRef index = genExpr(ctx, node->subscript.index);
+
+    LLVMValueRef indices[] = {
+        LLVMConstInt(i32Type, 0, false),
+        index
+    };
+    LLVMValueRef ptr = LLVMBuildGEP2(ctx->builder,
+            baseType, base,
+            indices, 2, "subscript");
+
+    return LLVMBuildLoad2(
+        ctx->builder,
+        elemType,
+        ptr,
+        "item"
+    );
+}
+
+static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
+    char *mangled = node->staticAccess.mangled;
+
+    if (!mangled) {
+        error(ctx->state, node->tok, "Mangled name not saved");
+    }
+
+    LLVMValueRef val = getLLVMValueRef(ctx, mangled);
+
+    if (!val) {
+        error(ctx->state, node->tok, "Unknown name '%s'", mangled);
+        return NULL;
+    }
+    return val;
+}
+
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     
 	switch (node->type) {
-		case NODE_BINARY:       return genBinary(ctx, node);
-        case NODE_LITERAL:      return genLit(ctx, node->tok);
-        case NODE_IDENTIFIER:   return genIdent(ctx, node);
-        case NODE_STRUCT_LIT:   return genStructLit(ctx, node);
-        case NODE_CALL:         return genCall(ctx, node);
-        case NODE_ARRAY_LIT:    return genArrayLit(ctx, node);
-
-		case NODE_CAST: {
-			LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
-			if (!val) return NULL;
-			ZType *from = node->castExpr.expr->resolved;
-			ZType *to   = node->castExpr.toType;
-			return genCast(ctx, val, from, to);
-		}
+		case NODE_BINARY:           return genBinary(ctx, node);
+        case NODE_LITERAL:          return genLit(ctx, node->tok);
+        case NODE_IDENTIFIER:       return genIdent(ctx, node);
+        case NODE_STRUCT_LIT:       return genStructLit(ctx, node);
+        case NODE_CALL:             return genCall(ctx, node);
+        case NODE_ARRAY_LIT:        return genArrayLit(ctx, node);
+        case NODE_SUBSCRIPT:        return genSubscript(ctx, node);
+		case NODE_CAST:             return genCast(ctx, node);
+        case NODE_STATIC_ACCESS:    return genStaticAccess(ctx, node);
 
 		case NODE_SIZEOF: {
 			usize size = typeSize(node->sizeofExpr.type);
 			return LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
 		}
 
-        case NODE_STATIC_ACCESS: {
-            char *mangled = node->staticAccess.mangled;
-            if (!mangled) {
-                error(ctx->state, node->tok, "Mangled name not saved");
-            }
-            LLVMValueRef val = getLLVMValueRef(ctx, mangled);
-            if (!val) {
-                error(ctx->state, node->tok, "Unknown name %s", mangled);
-                return NULL;
-            }
-            return val;
-        }
 
 		default: 
             printf("Node '%d' not handled\n", node->type);
