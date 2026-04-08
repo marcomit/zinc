@@ -209,6 +209,8 @@ usize typeSize(ZType *type) {
 //     return offset;
 // }
 
+/* Returns the index of the field for a struct.
+ * Returns -1 if it does not exist. */
 static i32 typeIndex(ZType *strct, char *fieldName) {
     for (usize i = 0; i < veclen(strct->strct.fields); i++) {
         ZNode *field = strct->strct.fields[i];
@@ -410,12 +412,14 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
         return NULL;
     }
 
-    if (node->resolved && node->resolved->kind == Z_TYPE_ARRAY) {
-        /* genArrayLit stores each element via GEP into the alloca */
-        genExpr(ctx, node->varDecl.rvalue);
-    } else {
-        LLVMValueRef val = genExpr(ctx, node->varDecl.rvalue);
-        if (val) LLVMBuildStore(ctx->builder, val, stack->stack);
+    LLVMValueRef val = genExpr(ctx, node->varDecl.rvalue);
+
+    /* If the type does not fit in a register (like an array or a struct)
+     * genExpr stores the value directly. This check is necessary
+     * to avoid store the value twice.
+    */
+    if (val && (!node->resolved || typesPrimitive(node->resolved))) {
+        LLVMBuildStore(ctx->builder, val, stack->stack);
     }
 
     putLLVMValueRef(ctx, node->tok->str, stack->stack);
@@ -479,6 +483,29 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
             indices, 2,
             "elem"
         );
+    }
+    case NODE_MEMBER: {
+        
+        ZType *objType = node->memberAccess.object->resolved;
+        ZToken *tok = node->memberAccess.field;
+        i32 index = typeIndex(objType, tok->str);
+
+        if (index == -1) {
+            error(ctx->state, tok, "%s member not found", tok->str);
+            return NULL;
+        }
+
+        LLVMTypeRef strctType   = genType(ctx, objType);
+        LLVMValueRef objPtr     = genLvalue(ctx, node->memberAccess.object);
+
+        return LLVMBuildStructGEP2(
+            ctx->builder,
+            strctType,
+            objPtr,
+            (u32)index,
+            "member"
+        );
+
     }
     default:
         error(ctx->state,
@@ -643,8 +670,14 @@ static LLVMValueRef genStructLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef de
     return ptr;
 }
 
-static LLVMValueRef genStructLit(ZCodegen *ctx, ZNode *node) {
-    return genStructLitInto(ctx, node, NULL);
+static LLVMValueRef genStructLit(
+        ZCodegen *ctx, ZNode *node) {
+    ZLLVMStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        error(ctx->state, node->tok, "Stack value not found");
+        return NULL;
+    }
+    return genStructLitInto(ctx, node, stack->stack);
 }
 
 static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
@@ -671,23 +704,18 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
         );
 
         ZNode *elem = node->arraylit[i];
-        if (elem->type == NODE_STRUCT_LIT) {
-            /* Write struct fields directly into the array slot — no extra alloca. */
-            genStructLitInto(ctx, elem, gep);
-        } else {
-            LLVMValueRef val = genExpr(ctx, elem);
-            if (!val) {
-                error(ctx->state, elem->tok, "Array element could not be compiled");
-                return NULL;
-            }
-            /* A call returning a struct comes back as an aggregate value,
-               not a pointer — store it directly. */
-            if (LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind &&
-                node->resolved->array.base->kind == Z_TYPE_STRUCT) {
-                val = LLVMBuildLoad2(ctx->builder, elemType, val, "sval");
-            }
-            LLVMBuildStore(ctx->builder, val, gep);
+        LLVMValueRef val = genExpr(ctx, elem);
+        if (!val) {
+            error(ctx->state, elem->tok, "Array element could not be compiled");
+            return NULL;
         }
+        /* A call returning a struct comes back as an aggregate value,
+           not a pointer — store it directly. */
+        if (LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind &&
+            node->resolved->array.base->kind == Z_TYPE_STRUCT) {
+            val = LLVMBuildLoad2(ctx->builder, elemType, val, "sval");
+        }
+        LLVMBuildStore(ctx->builder, val, gep);
     }
     return NULL;
 }
@@ -732,19 +760,55 @@ static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
     return val;
 }
 
+static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef ptr = genLvalue(ctx, node->memberAccess.object);
+    LLVMTypeRef structType = genType(ctx, node->memberAccess.object->resolved);
+
+    ZToken *field = node->memberAccess.field;
+    ZNode **fields = node->memberAccess.object->resolved->strct.fields;
+    int index = -1;
+    for (usize i = 0; i < veclen(fields) && index == -1; i++) {
+        if (tokeneq(fields[i]->field.identifier, field)) {
+            index = i;
+        }
+    }
+
+    if (index == -1) {
+        error(ctx->state, field, "'%s' member not found", field->str);
+        return NULL;
+    }
+    
+    ptr = LLVMBuildStructGEP2(
+        ctx->builder,
+        structType,
+        ptr,
+        (u32)index,
+        "member"
+    );
+    if (!node->resolved) {
+        error(ctx->state, field, "Type not resolved");
+    }
+    LLVMTypeRef fieldType = genType(ctx, node->resolved);
+    return LLVMBuildLoad2(
+        ctx->builder,
+        fieldType,
+        ptr,
+        "struct"
+    );
+}
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
-    
 	switch (node->type) {
+        case NODE_STRUCT_LIT:       return genStructLit(ctx, node);
+        case NODE_ARRAY_LIT:        return genArrayLit(ctx, node);
 		case NODE_BINARY:           return genBinary(ctx, node);
         case NODE_LITERAL:          return genLit(ctx, node->tok);
         case NODE_IDENTIFIER:       return genIdent(ctx, node);
-        case NODE_STRUCT_LIT:       return genStructLit(ctx, node);
         case NODE_CALL:             return genCall(ctx, node);
-        case NODE_ARRAY_LIT:        return genArrayLit(ctx, node);
         case NODE_SUBSCRIPT:        return genSubscript(ctx, node);
 		case NODE_CAST:             return genCast(ctx, node);
         case NODE_STATIC_ACCESS:    return genStaticAccess(ctx, node);
+        case NODE_MEMBER:           return genMemberAccess(ctx, node);
 
 		case NODE_SIZEOF: {
 			usize size = typeSize(node->sizeofExpr.type);
@@ -865,8 +929,8 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     if (!stmt) return;
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
-    case NODE_VAR_DECL: genVarDecl(ctx, stmt);  break;
-    case NODE_RETURN:   genRet(ctx, stmt);      break;
+    case NODE_VAR_DECL: genVarDecl(ctx, stmt);      break;
+    case NODE_RETURN:   genRet(ctx, stmt);          break;
     case NODE_BINARY:   genExpr(ctx, stmt);     break;
     case NODE_CALL:     genCall(ctx, stmt);     break;
     case NODE_IF:       genIf(ctx, stmt);       break;

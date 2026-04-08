@@ -584,6 +584,7 @@ void zcompile(ZState *, ZNode *, const char *output);
 
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
+bool typesPrimitive(ZType *);
 ZType *typesCompatible(ZState *, ZType *, ZType *);
 
 /* ================== Zinc state ================== */

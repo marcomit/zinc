@@ -359,6 +359,8 @@ static bool isComparable(ZSemantic *semantic, ZType *type) {
  * if a and b are both signed or unsigned return the type with the highest rank.
  * if they are unsigned vs signed and the unsigned is u64 can't promote to i128
  * so in this case the compiler shows a warning (explicit casting requested).
+ *
+ * Note: this function does not work if a primitive type is aliased.
  * */
 ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
     if (!a || !b) return NULL;
@@ -422,6 +424,22 @@ bool typesPrimitive(ZType *t) {
     if (!t) return true;
 
     if (t->kind != Z_TYPE_PRIMITIVE) return false;
+
+    switch (t->primitive.token->type) {
+    case TOK_VOID:
+    case TOK_CHAR:
+    case TOK_I8:
+    case TOK_U8:
+    case TOK_I16:
+    case TOK_U16:
+    case TOK_I32:
+    case TOK_U32:
+    case TOK_I64:
+    case TOK_U64:
+    case TOK_F32:
+    case TOK_F64: return true;
+    default: return false;
+    }
 
     return false;
 }
