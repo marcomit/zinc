@@ -296,8 +296,8 @@ static void endModule(ZSemantic *semantic) {
 }
 
 static void beginScope(ZSemantic *semantic, ZNode *curr) {
-    ZScope *scope         = makescope(semantic->table->current, curr);
-    semantic->table->current = scope;
+    ZScope *scope               = makescope(semantic->table->current, curr);
+    semantic->table->current    = scope;
 }
 
 static void endScope(ZSemantic *semantic) {
@@ -929,6 +929,17 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         result->primitive.token = maketoken(TOK_U64, "u64");
         break;
     }
+
+    case NODE_BREAK:
+        if (semantic->loopDepth == 0) {
+            error(semantic->state, curr->tok, "break must be inside a loop");
+        }
+        break;
+    case NODE_CONTINUE:
+        if (semantic->loopDepth == 0) {
+            error(semantic->state, curr->tok, "continue must be inside a loop");
+        }
+        break;
 
     default:
         warning(semantic->state, curr->tok,
