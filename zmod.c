@@ -464,6 +464,11 @@ void printNode(ZNode *node, u8 depth) {
         printf("%s::%s",
                 node->staticAccess.base->str, node->staticAccess.prop->str);
         break;
+
+    case NODE_BREAK:
+    case NODE_CONTINUE:
+        break;
+
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);

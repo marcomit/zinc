@@ -17,8 +17,13 @@ typedef struct ZLLVMSymbol {
 
 typedef struct ZLLVMScope {
     struct ZLLVMScope *parent;
-    
     ZLLVMSymbol **symbols;
+
+    /* Capture the start label of the loop (used by the continue statement). */
+    LLVMBasicBlockRef startLoop;
+
+    /* Capture the end label of the loop (used by the break statement). */
+    LLVMBasicBlockRef endLoop;
 } ZLLVMScope;
 
 typedef struct {
@@ -74,18 +79,20 @@ static ZLLVMScope *makescope(ZLLVMScope *parent) {
     ZLLVMScope *self    = zalloc(ZLLVMScope);
     self->parent        = parent;
     self->symbols       = NULL;
+    self->endLoop       = NULL;
+    self->startLoop     = NULL;
     return self;
 }
 
-// static void beginScope(ZCodegen *ctx) {
-//     ctx->scope = makescope(ctx->scope);
-// }
+static void beginScope(ZCodegen *ctx) {
+    ctx->scope = makescope(ctx->scope);
+}
 
-// static void endScope(ZCodegen *ctx) {
-//     if (!ctx->scope) return;
-//     if (!ctx->scope->parent) return;
-//     ctx->scope = ctx->scope->parent;
-// }
+static void endScope(ZCodegen *ctx) {
+    if (!ctx->scope) return;
+    if (!ctx->scope->parent) return;
+    ctx->scope = ctx->scope->parent;
+}
 
 static void putLLVMValueRef(ZCodegen *ctx, char *key, LLVMValueRef value) {
     ZLLVMSymbol *symbol = makesymbol();
@@ -882,28 +889,34 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
     LLVMBuildCondBr(ctx->builder, cond, then, nextBlock);
 
     LLVMPositionBuilderAtEnd(ctx->builder, then);
+
     genStmt(ctx, node->ifStmt.body);
-    LLVMBuildBr(ctx->builder, endif);
+
+    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+        LLVMBuildBr(ctx->builder, endif);
+    }
 
     if (hasElse) {
         LLVMPositionBuilderAtEnd(ctx->builder, elseBranch);
         genStmt(ctx, node->ifStmt.elseBranch);
-        LLVMBuildBr(ctx->builder, endif);
+        
+        if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+            LLVMBuildBr(ctx->builder, endif);
+        }
     }
 
     LLVMPositionBuilderAtEnd(ctx->builder, endif);
 }
 
 static void genWhile(ZCodegen *ctx, ZNode *node) {
-    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, "while"
-    );
-    LLVMBasicBlockRef block = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, "block"
-    );
-    LLVMBasicBlockRef endwhile = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, "endwhile"
-    );
+    LLVMBasicBlockRef entry     = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "while");
+    LLVMBasicBlockRef block     = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "block");
+    LLVMBasicBlockRef endwhile  = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "endwhile");
+    ctx->scope->endLoop         = endwhile;
+    ctx->scope->startLoop       = entry;
 
     LLVMBuildBr(ctx->builder, entry);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
@@ -914,7 +927,11 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
 
     LLVMPositionBuilderAtEnd(ctx->builder, block);
     genStmt(ctx, node->whileStmt.branch);
-    LLVMBuildBr(ctx->builder, entry);
+
+    /* If the block contains a break or a continue this block is already terminated.*/
+    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+        LLVMBuildBr(ctx->builder, entry);
+    }
 
     LLVMPositionBuilderAtEnd(ctx->builder, endwhile);
 }
@@ -925,17 +942,37 @@ static void genBlock(ZCodegen *ctx, ZNode *block) {
     }
 }
 
+static void genBreak(ZCodegen *ctx, ZNode *node) {
+    if (!ctx->scope->endLoop) {
+        error(ctx->state, node->tok, "'break' statement is not in a loop");
+        return;
+    }
+
+    LLVMBuildBr(ctx->builder, ctx->scope->endLoop);
+}
+
+static void genContinue(ZCodegen *ctx, ZNode *node) {
+    if (!ctx->scope->startLoop) {
+        error(ctx->state, node->tok, "'continue' statement is not in a loop");
+        return;
+    }
+
+    LLVMBuildBr(ctx->builder, ctx->scope->startLoop);
+}
+
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     if (!stmt) return;
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
     case NODE_VAR_DECL: genVarDecl(ctx, stmt);      break;
     case NODE_RETURN:   genRet(ctx, stmt);          break;
-    case NODE_BINARY:   genExpr(ctx, stmt);     break;
-    case NODE_CALL:     genCall(ctx, stmt);     break;
-    case NODE_IF:       genIf(ctx, stmt);       break;
-    case NODE_BLOCK:    genBlock(ctx, stmt);    break;
-    case NODE_WHILE:    genWhile(ctx, stmt);    break;
+    case NODE_BINARY:   genExpr(ctx, stmt);         break;
+    case NODE_CALL:     genCall(ctx, stmt);         break;
+    case NODE_IF:       genIf(ctx, stmt);           break;
+    case NODE_BLOCK:    genBlock(ctx, stmt);        break;
+    case NODE_WHILE:    genWhile(ctx, stmt);        break;
+    case NODE_BREAK:    genBreak(ctx, stmt);        break;
+    case NODE_CONTINUE: genContinue(ctx, stmt);     break;
     default: 
         printf("Node '%d' does not compile yet\n", stmt->type);
         error(ctx->state, stmt->tok,
@@ -1002,6 +1039,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
 
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
+    beginScope(ctx);
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
     LLVMTypeRef *args = NULL;
 
@@ -1040,9 +1078,10 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
         LLVMBuildRetVoid(ctx->builder);
     }
-
+    endScope(ctx);
 
     putLLVMValueRef(ctx, f->funcDef.mangled, func);
+
     return func;
 }
 
@@ -1118,7 +1157,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 
 	char *errmsg = NULL;
 	if (LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
-		error(state, NULL, "Module verification failed: %s", errmsg);
+		error(state, NULL, "LLVM: %s", errmsg);
 		LLVMDisposeMessage(errmsg);
 		freeCodegen(ctx);
 		return;
