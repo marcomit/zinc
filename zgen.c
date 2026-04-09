@@ -15,22 +15,23 @@ typedef struct ZLLVMSymbol {
     LLVMTypeRef type;
 } ZLLVMSymbol;
 
-typedef struct ZLLVMScope {
-    struct ZLLVMScope *parent;
-    ZLLVMSymbol **symbols;
-
-    /* Capture the start label of the loop (used by the continue statement). */
-    LLVMBasicBlockRef startLoop;
-
-    /* Capture the end label of the loop (used by the break statement). */
-    LLVMBasicBlockRef endLoop;
-} ZLLVMScope;
-
 typedef struct {
     LLVMValueRef    stack;
     LLVMTypeRef     type;
     ZNode           *node;
 } ZLLVMStack;
+
+typedef struct ZLLVMScope {
+    struct ZLLVMScope   *parent;
+    ZLLVMSymbol         **symbols;
+
+    /* Capture the start label of the loop (used by the continue statement). */
+    LLVMBasicBlockRef   startLoop;
+
+    /* Capture the end label of the loop (used by the break statement). */
+    LLVMBasicBlockRef   endLoop;
+    ZLLVMStack          **stackAlloca;
+} ZLLVMScope;
 
 typedef struct {
 	LLVMContextRef  ctx;
@@ -49,7 +50,6 @@ typedef struct {
 	char            **structNames;
 	LLVMTypeRef     *structTypes;
 
-    ZLLVMStack      **funcstack;
     LLVMValueRef    currentFunc;
 
     usize           count;
@@ -81,6 +81,7 @@ static ZLLVMScope *makescope(ZLLVMScope *parent) {
     self->symbols       = NULL;
     self->endLoop       = NULL;
     self->startLoop     = NULL;
+    self->stackAlloca = NULL;
     return self;
 }
 
@@ -128,8 +129,10 @@ static void initNativeTypes(ZCodegen *ctx) {
 }
 
 static void beginModule(ZCodegen *ctx, ZNode *node) {
-	LLVMModuleRef mod = LLVMModuleCreateWithNameInContext(node->module.name,
-                                                            ctx->ctx);
+	LLVMModuleRef mod = LLVMModuleCreateWithNameInContext(
+        node->module.name, ctx->ctx
+    );
+
 	vecpush(ctx->modules, mod);
 	ctx->mod = mod;
     ctx->current = node->module.scope;
@@ -155,7 +158,6 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 	self->state         = state;
 	self->semantic      = semantic;
     self->count         = 0;
-    self->funcstack     = NULL;
 	return self;
 }
 
@@ -402,9 +404,10 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
 }
 
 static ZLLVMStack *getStackValue(ZCodegen *ctx, ZNode *key) {
-    for (usize i = 0; i < veclen(ctx->funcstack); i++) {
-        if (ctx->funcstack[i]->node == key) {
-            return ctx->funcstack[i];
+    ZLLVMStack **stack = ctx->scope->stackAlloca;
+    for (usize i = 0; i < veclen(stack); i++) {
+        if (stack[i]->node == key) {
+            return stack[i];
         }
     }
     return NULL;
@@ -444,11 +447,11 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         vecpush(args, arg);
     }
 
-    // char *name = "";
-    //
-    // if (!isVoid(node->resolved)) {
-    //     name = "res";
-    // }
+    char *name = "";
+
+    if (!isVoid(node->resolved)) {
+        name = "res";
+    }
 
     LLVMValueRef call = LLVMBuildCall2(
         ctx->builder,
@@ -456,7 +459,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         func,
         args,
         veclen(args),
-        ""
+        name
     );
     return call;
 }
@@ -982,7 +985,14 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
 }
 
 static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name) {
-    if (!node || !node->resolved) return;
+    if (!node) {
+        error(ctx->state, NULL, "'buildFuncVar' called with a null node");
+        return;
+    } else if (!node->resolved) {
+        error(ctx->state, node->tok,
+                "Missing resolved type for node %d", node->type);
+        return;
+    }
 
     LLVMTypeRef type = genType(ctx, node->resolved);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, name);
@@ -990,7 +1000,7 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name) {
     ZLLVMStack *item = zalloc(ZLLVMStack);
     *item = (ZLLVMStack){ .stack = val, .type = type, .node = node };
 
-    vecpush(ctx->funcstack, item);
+    vecpush(ctx->scope->stackAlloca, item);
 }
 
 /* All variables of the function body are allocated at the start of the block.

@@ -129,7 +129,6 @@ static void addStaticFunc(ZSemantic *semantic, ZNode *func) {
 
     if (!cur) cur = addfunctable(semantic, base);
     char *name = func->funcDef.name->str;
-    printf("Insert static function %s\n", name);
     if (!hashset_insert(&cur->seenStaticFuncs, name)) {
         error(semantic->state, func->tok,
                 "Duplicate static function '%s'", name);
@@ -631,33 +630,46 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
 
         callee->resolved = result;
     } else if (callee->type == NODE_STATIC_ACCESS) {
-        printf("Analyze statiuc call\n");
         ZToken *base = callee->staticAccess.base;
         ZToken *prop = callee->staticAccess.prop;
         ZSymbol *baseSym = resolve(semantic, callee->staticAccess.base);
         if (!baseSym) {
             error(semantic->state, base, "Base not found");
-        } else if (baseSym->kind != Z_SYM_STRUCT &&
+        } else if ( baseSym->kind != Z_SYM_STRUCT &&
                     baseSym->kind != Z_SYM_TYPEDEF) {
             error(semantic->state, base, "Base should refer to a type");
         }
 
-        bool found = false;
+        ZNode **staticFuncs = NULL;
         for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
             ZFuncTable *table = semantic->table->funcs[i];
             if (table->base->kind != Z_TYPE_PRIMITIVE) continue;
             if (!tokeneq(table->base->primitive.token, base)) continue;
 
-            found = true;
             if (!hashset_has(table->seenStaticFuncs, prop->str)) {
                 error(semantic->state, prop,
                         "'%s' method does not exist", prop->str);
             }
+            staticFuncs = table->staticFuncDef;
         }
-        if (!found) {
+        if (!staticFuncs) {
             error(semantic->state, prop,
                     "Static method '%s' not found", prop->str);
         }
+
+        for (usize i = 0; i < veclen(staticFuncs) && !result; i++) {
+            ZNode *func = staticFuncs[i];
+            if (tokeneq(func->funcDef.base->primitive.token, base) &&
+                tokeneq(func->funcDef.name, prop)) {
+                result = func->funcDef.ret;
+                expectedArgs = func->resolved->func.args;
+                printf("base: %s\n", func->funcDef.base->primitive.token->str);
+                printf("prop: %s\n", func->funcDef.name->str);
+
+                printf("%zu\n", veclen(func->funcDef.args));
+            }
+        }
+
     } else {
         /* Expression call: resolve callee type and extract return type. */
         ZType *calleeType = resolveType(semantic, callee);

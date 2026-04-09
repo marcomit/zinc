@@ -114,19 +114,22 @@ void handler(int sig) {
 
 int pipeline(ZState *state) {
     ZToken **tokens = ztokenize(state);
-    printTokens(tokens);
+
+    if (state->debug) printTokens(tokens);
 
     if (!canAdvance(state)) return 1;
 
     ZNode *root = zparse(state, tokens);
 
-    printNode(root, 0);
-
     if (!canAdvance(state)) return 2;
     zanalyze(state, root);
 
+    if (state->debug) printNode(root, 0);
+
     if (!canAdvance(state)) return 3;
     zcompile(state, root, state->output);
+
+    if (!canAdvance(state)) return 4;
 
     return 0;
 }
