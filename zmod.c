@@ -741,9 +741,7 @@ bool canAdvance(ZState *state) {
 }
 
 void printLogs(ZState *state) {
-    printf("\n\n========= Start Logs (%zu) =========\n", veclen(state->logs));
     for (usize i = 0; i < veclen(state->logs); i++) {
         printLog(state, state->logs[i]);
     }
-    printf("\n\n========= End Logs =========\n");
 }
