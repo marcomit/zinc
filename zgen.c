@@ -918,15 +918,14 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
         ctx->ctx, ctx->currentFunc, "block");
     LLVMBasicBlockRef endwhile  = LLVMAppendBasicBlockInContext(
         ctx->ctx, ctx->currentFunc, "endwhile");
-    ctx->scope->endLoop         = endwhile;
     ctx->scope->startLoop       = entry;
+    ctx->scope->endLoop         = endwhile;
 
-    LLVMBuildBr(ctx->builder, entry);
+    LLVMBuildBr             (ctx->builder, entry);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
     LLVMValueRef cond = genExpr(ctx, node->whileStmt.cond);
     LLVMBuildCondBr(ctx->builder, cond, block, endwhile);
-
 
     LLVMPositionBuilderAtEnd(ctx->builder, block);
     genStmt(ctx, node->whileStmt.branch);
@@ -937,6 +936,41 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     }
 
     LLVMPositionBuilderAtEnd(ctx->builder, endwhile);
+}
+
+static void genFor(ZCodegen *ctx, ZNode *node) {
+    LLVMBasicBlockRef entry     = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "for");
+    LLVMBasicBlockRef body      = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "body");
+    LLVMBasicBlockRef endfor    = LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, "endfor");
+
+    /* Save the labels for the continue and break statement. */
+    ctx->scope->startLoop       = entry;
+    ctx->scope->endLoop         = endfor;
+
+    genVarDecl(ctx, node->forStmt.var);
+
+    LLVMBuildBr             (ctx->builder, entry);
+    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+
+    LLVMValueRef cond = genExpr(ctx, node->forStmt.cond);
+    LLVMBuildCondBr(ctx->builder, cond, body, endfor);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, body);
+    genStmt(ctx, node->forStmt.block);
+    genStmt(ctx, node->forStmt.incr);
+
+
+    /* If the block contains a break or a continue this block is already terminated. */
+    // if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+        LLVMBuildBr(ctx->builder, entry);
+    // }
+
+
+    LLVMPositionBuilderAtEnd(ctx->builder, endfor);
+
 }
 
 static void genBlock(ZCodegen *ctx, ZNode *block) {
@@ -974,6 +1008,7 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     case NODE_IF:       genIf(ctx, stmt);           break;
     case NODE_BLOCK:    genBlock(ctx, stmt);        break;
     case NODE_WHILE:    genWhile(ctx, stmt);        break;
+    case NODE_FOR:      genFor(ctx, stmt);          break;
     case NODE_BREAK:    genBreak(ctx, stmt);        break;
     case NODE_CONTINUE: genContinue(ctx, stmt);     break;
     default: 
@@ -984,6 +1019,11 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     }
 }
 
+/* Stores the node in a list of stack allocation such that in the second pass
+ * the expression knows where it should be stored.
+ * NOTE: this method stores always the expression that requires the stack allocation.
+ * So for variable declaration always store the rvalue node and not the variable node.
+ * */
 static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name) {
     if (!node) {
         error(ctx->state, NULL, "'buildFuncVar' called with a null node");
@@ -1013,10 +1053,12 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name) {
  * */
 static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
-    case NODE_FOR:
-        buildFuncVar(ctx, node->forStmt.var, "val");
+    case NODE_FOR: {
+        char *name = node->forStmt.var->varDecl.ident->identNode.tok->str;
+        buildFuncVar(ctx, node->forStmt.var->varDecl.rvalue, name);
         genFuncVars(ctx, node->forStmt.block);
         break;
+   }
     case NODE_WHILE:
         genFuncVars(ctx, node->whileStmt.cond);
         genFuncVars(ctx, node->whileStmt.branch);
@@ -1029,7 +1071,10 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         buildFuncVar(ctx, node->varDecl.rvalue, node->varDecl.ident->identNode.tok->str);
         break;
     case NODE_CALL:
-        if (false /* FIXME: check if the return type is a non-primitive type*/) {
+        if (!node->resolved) {
+            error(ctx->state, node->tok, "Unresolved type");
+        }
+        if (!typesPrimitive(node->resolved)) {
             buildFuncVar(ctx, node, "val");
         }
         break;
