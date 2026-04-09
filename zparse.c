@@ -481,7 +481,7 @@ static ZNode *parseUnary(ZParser *parser) {
 
 #define arrlen(arr) (sizeof(arr) / sizeof((arr)[0]))
 static ZNode *parseFactor(ZParser *parser) {
-    ZTokenType valids[] = {TOK_STAR, TOK_DIV};
+    ZTokenType valids[] = {TOK_STAR, TOK_DIV, TOK_MOD};
     return parseGenericBinary(parser,
             parseUnary,
             parseUnary,

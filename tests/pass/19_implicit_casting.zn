@@ -1,0 +1,33 @@
+foreign u0 putchar(char)
+foreign u0 printf(*char)
+
+
+f32 sum(f64 x, f64 y) {
+    return x + y
+}
+
+struct Vec {
+    f32 x
+    f32 y
+}
+
+u0 printNum(i32 num) {
+    i32 val = num
+
+    for val > 0 {
+        putchar(48 + val % 10)
+        val = val / 10
+    }
+}
+
+i32 main() {
+    i32 val = 10
+    v := Vec{ x: val, y: 10 }
+    i32 res = sum(v.x, v.y)
+
+    putchar(48)
+
+    printNum(123)
+
+    return 0
+}

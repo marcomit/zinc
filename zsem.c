@@ -354,6 +354,7 @@ static bool isComparable(ZSemantic *semantic, ZType *type) {
 }
 
 /* An implementation note:
+ * if a and b are pointers the returned type is a (used for implicit casting).
  * if a or b is a float the return type is always a float.
  * if a and b are both signed or unsigned return the type with the highest rank.
  * if they are unsigned vs signed and the unsigned is u64 can't promote to i128
@@ -368,6 +369,8 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
         return a;
     } else if (b->kind == Z_TYPE_POINTER && a->kind == Z_TYPE_NONE) {
         return b;
+    } else if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_POINTER) {
+        return a;
     }
 
     if (typesEqual(a, b)) return a;
@@ -443,7 +446,6 @@ bool typesPrimitive(ZType *t) {
     return false;
 }
 
-
 // bool typesStrongEqual(ZSemantic *semantic, ZType *a, ZType *b) {
 //     return false;
 // }
@@ -483,6 +485,13 @@ bool typesEqual(ZType *a, ZType *b) {
     default:
         return false;
     }
+}
+
+ZNode *implicitCast(ZNode *node, ZType *type) {
+    ZNode *cast = makenode(NODE_CAST);
+    cast->castExpr.expr = node;
+    cast->castExpr.toType = type;
+    return cast;
 }
 
 /* ================== Symbol lookup ================== */
@@ -663,8 +672,6 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
                 tokeneq(func->funcDef.name, prop)) {
                 result = func->funcDef.ret;
                 expectedArgs = func->resolved->func.args;
-                printf("base: %s\n", func->funcDef.base->primitive.token->str);
-                printf("prop: %s\n", func->funcDef.name->str);
 
                 printf("%zu\n", veclen(func->funcDef.args));
             }
@@ -689,8 +696,13 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
     }
 
     for (usize i = 0; i < veclen(args); i++) {
-        if (!typesCompatible(semantic->state,
-                    args[i]->resolved, expectedArgs[i])) {
+        /* if they are equal they don't need implicit casting. */
+        if (typesEqual(args[i]->resolved, expectedArgs[i])) continue;
+
+        ZType *promoted = typesCompatible(
+            semantic->state, args[i]->resolved, expectedArgs[i]);
+
+        if (!promoted) {
             char *expected = NULL;
             char *got = NULL;
             stype(args[i]->resolved, &got);
@@ -698,6 +710,7 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             error(semantic->state, args[i]->tok, "Expected %s, got %s",
                     expected, got);
         }
+        curr->call.args[i] = implicitCast(args[i], expectedArgs[i]);
     }
 
     return result;
@@ -740,18 +753,23 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
         ZNode *field = curr->structlit.fields[i];
         ZType *type = resolveType(semantic, field->varDecl.rvalue);
         ZType *expectedType;
+        ZType *promoted;
 
         for (usize j = 0; j < structLen; j++) {
             if (!tokeneq(structFields[j]->field.identifier, field->tok)) continue;
             expectedType = resolveTypeRef(semantic, structFields[j]->field.type);
-            if (!typesCompatible(semantic->state, expectedType, type)) {
+            promoted = typesCompatible(semantic->state, expectedType, type);
+            if (!promoted) {
                 char *expected = NULL;
                 char *got = NULL;
                 stype(expectedType, &expected);
                 stype(type, &got);
                 error(semantic->state, field->varDecl.ident->identNode.tok,
                             "Expected %s, got %s", expected, got);
+            } else {
+                
             }
+
             break;
         }
     }
@@ -820,6 +838,9 @@ static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
             error(semantic->state, curr->binary.op,
                   "%s type incompatible with %s type", leftType, rightType);
         }
+
+        curr->binary.left = implicitCast(curr->binary.left, result);
+        curr->binary.right = implicitCast(curr->binary.right, result);
         
         return result;
     }
@@ -891,9 +912,9 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
     case NODE_SUBSCRIPT:    result = resolveArrSubscript(semantic, curr);   break;
     case NODE_STRUCT_LIT:   result = resolveStructLit(semantic, curr);      break;
     case NODE_IDENTIFIER:   result = resolveIdentifier(semantic, curr);     break;
-    case NODE_BINARY:       result = resolveBinary(semantic, curr);         break;
     case NODE_ARRAY_LIT:    result = resolveArrayLiteral(semantic, curr);   break;
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral(semantic, curr);   break;
+    case NODE_BINARY:       result = resolveBinary(semantic, curr);         break;
 
     case NODE_UNARY: {
         ZType     *operand = resolveType(semantic, curr->unary.operand);
@@ -1211,25 +1232,33 @@ static bool isType(ZType *type, ZTokenType tok) {
 }
 
 static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
-    ZType *retType = NULL;
+    ZType *retType  = NULL;
+    ZType *promoted = NULL;
     if (curr->returnStmt.expr) {
-        retType = resolveType(semantic, curr->returnStmt.expr);
+        retType     = resolveType(semantic, curr->returnStmt.expr);
     }
 
-    curr->resolved = retType;
+    curr->resolved  = retType;
 
-    if (semantic->currentFuncRet) {
-        bool isVoidRet  = retType == NULL;
-        bool isVoidFunc = isType(semantic->currentFuncRet, TOK_VOID);
+    if (!semantic->currentFuncRet) return;
 
-        if (isVoidFunc && !isVoidRet) {
-            error(semantic->state, semantic->currentFunc->tok,
-                  "Unexpected return value in void function");
-        } else if (!isVoidFunc && isVoidRet) {
-            error(semantic->state, semantic->currentFunc->tok,
-                  "Expected a return value");
-        } else if (!isVoidFunc && !isVoidRet &&
-                   !typesCompatible(semantic->state, retType, semantic->currentFuncRet)) {
+    bool isVoidRet  = retType == NULL;
+    bool isVoidFunc = isType(semantic->currentFuncRet, TOK_VOID);
+
+    if (isVoidFunc && !isVoidRet) {
+        error(semantic->state, semantic->currentFunc->tok,
+              "Unexpected return value in void function");
+        return;
+    } else if (!isVoidFunc && isVoidRet) {
+        error(semantic->state, semantic->currentFunc->tok,
+              "Expected a return value");
+        return;
+    } else if (!isVoidFunc && !isVoidRet) {
+        promoted = typesCompatible(
+            semantic->state, retType, semantic->currentFuncRet
+        );
+
+        if (!promoted) {
             char *expected  = NULL;
             char *got       = NULL;
 
@@ -1238,8 +1267,15 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
 
             error(semantic->state, curr->tok,
                   "Expected type %s, got %s", expected, got);
+        } else {
+            /* Implici casting. */
+            curr->returnStmt.expr = implicitCast(
+                curr->returnStmt.expr, semantic->currentFuncRet
+            );
         }
     }
+
+    
 }
 
 static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {

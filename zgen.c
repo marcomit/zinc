@@ -567,6 +567,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         case TOK_MINUS: return LLVMBuildFSub(ctx->builder, left, right, l);
         case TOK_STAR:  return LLVMBuildFMul(ctx->builder, left, right, l);
         case TOK_DIV:   return LLVMBuildFDiv(ctx->builder, left, right, l);
+        case TOK_MOD:   return LLVMBuildFRem(ctx->builder, left, right, l);
         case TOK_LT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOLT, left, right, l);
         case TOK_GT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
         case TOK_LTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
@@ -582,6 +583,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 	case TOK_MINUS: return LLVMBuildSub(ctx->builder, left, right, l);
 	case TOK_STAR:  return LLVMBuildMul(ctx->builder, left, right, l);
 	case TOK_DIV:   return LLVMBuildSDiv(ctx->builder, left, right, l);
+    case TOK_MOD:   return LLVMBuildSRem(ctx->builder, left, right, l);
 	case TOK_LT:    return LLVMBuildICmp(ctx->builder, LLVMIntSLT, left, right, l);
 	case TOK_GT:    return LLVMBuildICmp(ctx->builder, LLVMIntSGT, left, right, l);
 	case TOK_LTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSLE, left, right, l);
@@ -1131,7 +1133,7 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     }
     ctx->currentFunc = func;
 
-    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(ctx->ctx, func, "entry");
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(ctx->ctx, func, label(ctx));
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
     /* All variable declarations are declared ad the start of the function. */
