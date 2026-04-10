@@ -30,7 +30,12 @@ typedef struct ZLLVMScope {
 
     /* Capture the end label of the loop (used by the break statement). */
     LLVMBasicBlockRef   endLoop;
+
+    /* Capture all stack allocated variables (it is allocated only at function-level). */
     ZLLVMStack          **stackAlloca;
+
+    /* Captures all defer statements of the current block. */
+    ZNode               **defers;
 } ZLLVMScope;
 
 typedef struct {
@@ -86,7 +91,8 @@ static ZLLVMScope *makescope(ZLLVMScope *parent) {
     self->symbols       = NULL;
     self->endLoop       = NULL;
     self->startLoop     = NULL;
-    self->stackAlloca = NULL;
+    self->stackAlloca   = NULL;
+    self->defers        = NULL;
     return self;
 }
 
@@ -428,11 +434,17 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
 }
 
 static ZLLVMStack *getStackValue(ZCodegen *ctx, ZNode *key) {
-    ZLLVMStack **stack = ctx->scope->stackAlloca;
-    for (usize i = 0; i < veclen(stack); i++) {
-        if (stack[i]->node == key) {
-            return stack[i];
+    ZLLVMScope *scope = ctx->scope;
+    ZLLVMStack **stack = NULL;
+
+    while (scope) {
+        stack = scope->stackAlloca;
+        for (usize i = 0; i < veclen(stack); i++) {
+            if (stack[i]->node == key) {
+                return stack[i];
+            }
         }
+        scope = scope->parent;
     }
     return NULL;
 }
@@ -1058,6 +1070,24 @@ static void genContinue(ZCodegen *ctx, ZNode *node) {
     }
 
     LLVMBuildBr(ctx->builder, ctx->scope->startLoop);
+}
+
+/* Defer statement is compiled using a per-scope stack.
+ *
+ * At compile-time, every scope (function body, if, loops ...)
+ * owns its own defer stack. Each defer statement is pushed into the stack
+ * if its enclosing scope.
+ * At the end of the scope each defer statement is fired in reverse order.
+ *
+ * A special case is an early exit (break, continue or return). inside a nested
+ * scope: The compiler walks up the chain from the current scope to the target scope,
+ * emitting each defer stack in reverse order.
+ *
+ * Note: Since the stack is known at compile-time the defer statement
+ * has zero overhead at runtime.
+ * */
+static void genDefer(ZCodegen *ctx, ZNode *node) {
+
 }
 
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
