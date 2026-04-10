@@ -26,6 +26,7 @@ static ZType *resolveTypeRef(ZSemantic *, ZType *);
 
 static ZType *none      = NULL;
 static ZType *zvoid     = NULL;
+static ZType *u1Type    = NULL;
 static ZType *ztrue     = NULL;
 static ZType *zfalse    = NULL;
 
@@ -119,22 +120,29 @@ static ZFuncTable *addfunctable(ZSemantic *semantic, ZType *base) {
 
 static void addStaticFunc(ZSemantic *semantic, ZNode *func) {
     ZType *base = func->funcDef.base;
+
     ZFuncTable *cur = NULL;
     for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
         ZFuncTable *table = semantic->table->funcs[i];
+
         if (typesEqual(table->base, base)) {
             cur = table;
             break;
         }
     }
 
-    if (!cur) cur = addfunctable(semantic, base);
+    if (!cur) {
+        printf("New base %s\n", stype(base));
+        cur = addfunctable(semantic, base);
+    }
     char *name = func->funcDef.name->str;
     if (!hashset_insert(&cur->seenStaticFuncs, name)) {
         error(semantic->state, func->tok,
                 "Duplicate static function '%s'", name);
         return;
     }
+
+    printf("Static func '%s::%s' added\n", base->primitive.token->str, name);
 
     vecpush(cur->staticFuncDef, func);
 }
@@ -447,10 +455,6 @@ bool typesPrimitive(ZType *t) {
     return false;
 }
 
-// bool typesStrongEqual(ZSemantic *semantic, ZType *a, ZType *b) {
-//     return false;
-// }
-
 /* Note: this function works only for non-aliased types.
  * Aliases are resolved through the semantic table.
  *
@@ -462,7 +466,7 @@ bool typesEqual(ZType *a, ZType *b) {
 
     switch (a->kind) {
     case Z_TYPE_PRIMITIVE:
-        return a->primitive.token->type == b->primitive.token->type;
+        return tokeneq(a->primitive.token, b->primitive.token);
     case Z_TYPE_POINTER:
         return typesEqual(a->base, b->base);
     case Z_TYPE_ARRAY:
@@ -649,7 +653,7 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
     } else if (callee->type == NODE_STATIC_ACCESS) {
         ZToken *base = callee->staticAccess.base;
         ZToken *prop = callee->staticAccess.prop;
-        ZSymbol *baseSym = resolve(semantic, callee->staticAccess.base);
+        ZSymbol *baseSym = resolve(semantic, base);
         if (!baseSym) {
             error(semantic->state, base, "Base not found");
         } else if ( baseSym->kind != Z_SYM_STRUCT &&
@@ -660,7 +664,11 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
         ZNode **staticFuncs = NULL;
         for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
             ZFuncTable *table = semantic->table->funcs[i];
-            if (table->base->kind != Z_TYPE_PRIMITIVE) continue;
+            printf("Table for %s\n", stype(table->base));
+            if (table->base->kind != Z_TYPE_PRIMITIVE) {
+                printf("Skipped %s\n", stype(table->base));
+                continue;
+            }
             if (!tokeneq(table->base->primitive.token, base)) continue;
 
             if (!hashset_has(table->seenStaticFuncs, prop->str)) {
@@ -929,23 +937,33 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         ZType     *operand = resolveType(semantic, curr->unary.operand);
         ZTokenType op      = curr->unary.operat->type;
 
-        if (op == TOK_REF) {
-            /* &expr => *T */
-            ZType *ptr = maketype(Z_TYPE_POINTER);
-            ptr->base  = operand;
-            result     = ptr;
-        } else if (op == TOK_STAR) {
-            /* *ptr => T */
-            if (operand && operand->kind == Z_TYPE_POINTER) {
-                result = operand->base;
-            } else {
+        if (!operand) {
+            error(semantic->state, curr->tok, "Unresolved type");
+            return NULL;
+        }
+
+        switch (op) {
+        case TOK_REF: {/* &expr => *T */
+            ZType *ptr  = maketype(Z_TYPE_POINTER);
+            ptr->base   = operand;
+            result      = ptr;
+            break;
+        }
+
+        case TOK_STAR:
+            if (operand->kind != Z_TYPE_POINTER) {
                 error(semantic->state, curr->unary.operat,
-                      "Cannot dereference a non-pointer type");
-                result = operand;
+                    "Cannot dereference a non-pointer type"
+                );
             }
-        } else {
-            /* -, !, not — type is unchanged */
-            result = operand;
+            result = operand->base;
+            break;
+
+        case TOK_NOT:
+        case TOK_SNOT:
+            curr->unary.operand = implicitCast(curr->unary.operand, u1Type);
+            result = u1Type;
+        default: result = operand; break;
         }
         break;
     }
@@ -1189,8 +1207,8 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
     curr->funcDef.body->scope = semantic->table->current;
 
     if (curr->funcDef.base) {
-        curr->funcDef.base = resolveTypeRef(semantic, curr->funcDef.base);
-        if (!curr->funcDef.base) {
+        ZType *res = resolveTypeRef(semantic, curr->funcDef.base);
+        if (!res) {
             error(semantic->state,
                     curr->funcDef.base->primitive.token,
                     "'%s' is not a valid identifier",
@@ -1404,6 +1422,7 @@ void zanalyze(ZState *state, ZNode *root) {
     if (!ztrue)     ztrue   = makePrimitiveType(TOK_TRUE);
     if (!zfalse)    zfalse  = makePrimitiveType(TOK_FALSE);
     if (!zvoid)     zvoid   = makePrimitiveType(TOK_VOID);
+    if (!u1Type)    u1Type  = makePrimitiveType(TOK_BOOL);
 
     registerModule(semantic, root);
     discoverGlobalScope(semantic, root);
