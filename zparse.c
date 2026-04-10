@@ -104,8 +104,8 @@ static ZNode *makenodevar(ZNode *ident, ZType *type, ZNode *expr) {
     ZNode *node = makenode(NODE_VAR_DECL);
     node->tok = ident->identNode.tok;
     node->varDecl.ident = ident;
-    node->varDecl.type = type;
     node->varDecl.rvalue = expr;
+    node->resolved = type;
     return node;
 }
 

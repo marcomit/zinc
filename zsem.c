@@ -16,6 +16,7 @@
  * then a child scope for the current file and then a child for blocks like functions, loops etc..
  * */
 #include "zinc.h"
+#include "zvec.h"
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
@@ -199,7 +200,7 @@ static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
     putRawSymbol(semantic,
             Z_SYM_VAR,
             node->varDecl.ident->identNode.tok,
-            node->varDecl.type,
+            node->resolved,
             node,
             isGlobal);
 }
@@ -633,9 +634,16 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
         /* sym->type is the raw parsed return type — resolve it so that named
      * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
      * result is used downstream (e.g. for member access on return value). */
+
+        for (usize i = 0; i < veclen(sym->type->func.args); i++) {
+            sym->type->func.args[i] = resolveTypeRef(
+                semantic, sym->type->func.args[i]
+            );
+        }
         expectedArgs = sym->type->func.args;
 
         result = resolveTypeRef(semantic, sym->node->funcDef.ret);
+        sym->node->funcDef.ret = result;
 
         callee->resolved = result;
     } else if (callee->type == NODE_STATIC_ACCESS) {
@@ -672,16 +680,20 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
                 tokeneq(func->funcDef.name, prop)) {
                 result = func->funcDef.ret;
                 expectedArgs = func->resolved->func.args;
-
-                printf("%zu\n", veclen(func->funcDef.args));
             }
         }
-
     } else {
         /* Expression call: resolve callee type and extract return type. */
         ZType *calleeType = resolveType(semantic, callee);
         if (calleeType && calleeType->kind == Z_TYPE_FUNCTION) {
             result = resolveTypeRef(semantic, calleeType->func.ret);
+            calleeType->func.ret = result;
+        }
+
+        for (usize i = 0; i < veclen(calleeType->func.args); i++) {
+            calleeType->func.args[i] = resolveTypeRef(
+                semantic, calleeType->func.args[i]
+            );
         }
         expectedArgs = calleeType->func.args;
     }
@@ -703,12 +715,11 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             semantic->state, args[i]->resolved, expectedArgs[i]);
 
         if (!promoted) {
-            char *expected = NULL;
-            char *got = NULL;
-            stype(args[i]->resolved, &got);
-            stype(expectedArgs[i], &expected);
-            error(semantic->state, args[i]->tok, "Expected %s, got %s",
-                    expected, got);
+            error(semantic->state, args[i]->tok,
+                "Expected %s, got %s",
+                stype(args[i]->resolved),
+                stype(expectedArgs[i])
+            );
         }
         curr->call.args[i] = implicitCast(args[i], expectedArgs[i]);
     }
@@ -755,17 +766,19 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
         ZType *expectedType;
         ZType *promoted;
 
+        field->resolved = type;
         for (usize j = 0; j < structLen; j++) {
             if (!tokeneq(structFields[j]->field.identifier, field->tok)) continue;
             expectedType = resolveTypeRef(semantic, structFields[j]->field.type);
+            structFields[i]->field.type = expectedType;
             promoted = typesCompatible(semantic->state, expectedType, type);
             if (!promoted) {
-                char *expected = NULL;
-                char *got = NULL;
-                stype(expectedType, &expected);
-                stype(type, &got);
-                error(semantic->state, field->varDecl.ident->identNode.tok,
-                            "Expected %s, got %s", expected, got);
+                error(semantic->state,
+                    field->varDecl.ident->identNode.tok,
+                    "Expected %s, got %s",
+                    stype(expectedType),
+                    stype(type)
+                );
             } else {
                 
             }
@@ -829,14 +842,10 @@ static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
         /* Auto promotion rules should be handled by typesCompatible. */
         ZType *result = typesCompatible(semantic->state, left, right);
         if (!result) {
-            char *leftType  = NULL;
-            char *rightType = NULL;
-
-            stype(left, &leftType);
-            stype(right, &rightType);
-
             error(semantic->state, curr->binary.op,
-                  "%s type incompatible with %s type", leftType, rightType);
+                "%s type incompatible with %s type",
+                stype(left), stype(right)
+            );
         }
 
         curr->binary.left = implicitCast(curr->binary.left, result);
@@ -943,8 +952,8 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
-        if (curr->varDecl.type) {
-            result = resolveTypeRef(semantic, curr->varDecl.type);
+        if (curr->resolved) {
+            result = resolveTypeRef(semantic, curr->resolved);
         } else if (curr->varDecl.rvalue) {
             result = resolveType(semantic, curr->varDecl.rvalue);
         }
@@ -954,6 +963,7 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         /* Resolve the inner expression type (for side-effects / validation). */
         resolveType(semantic, curr->castExpr.expr);
         result = resolveTypeRef(semantic, curr->castExpr.toType);
+        curr->castExpr.toType = result;
         break;
 
     case NODE_SIZEOF: {
@@ -992,6 +1002,7 @@ static ZType *resolveReceiverCall(ZSemantic *semantic,
 
     for (usize i = 0; i < veclen(table) && !funcs; i++) {
         ZType *receiverType = resolveTypeRef(semantic, table[i]->base);
+        table[i]->base = receiverType;
         table[i]->base = receiverType;
         if (typesEqual(receiverType, caller)) {
             funcs = table[i]->funcDef;
@@ -1080,19 +1091,20 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
         rvalueType = resolveType(semantic, curr->varDecl.rvalue);
     }
 
-    if (curr->varDecl.type) {
-        declaredType = resolveTypeRef(semantic, curr->varDecl.type);
+    if (curr->resolved) {
+        declaredType = resolveTypeRef(semantic, curr->resolved);
+        curr->resolved = declaredType;
         if (rvalueType &&
             !typesCompatible(semantic->state, declaredType, rvalueType)) {
-            char *s = NULL;
-            stype(rvalueType, &s);
             error(semantic->state, curr->tok,
-                  "Type mismatch: cannot assign value to variable of '%s'", s);
+                "Type mismatch: cannot assign value to variable of '%s'",
+                stype(rvalueType)
+            );
         }
     } else {
         /* Inferred type (:= syntax) */
         declaredType        = rvalueType;
-        curr->varDecl.type  = rvalueType;
+        curr->resolved      = rvalueType;
     }
 
     curr->resolved = declaredType;
@@ -1111,11 +1123,11 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
     if (!cond) {
         error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
     } else if (!isComparable(semantic, cond)) {
-        char *got = NULL;
-        stype(cond, &got);
         error(semantic->state,
-                    curr->ifStmt.cond->tok,
-                    "%s cannot be used as a condition", got);
+            curr->ifStmt.cond->tok,
+            "%s cannot be used as a condition",
+            stype(cond)
+        );
     }
 
     analyzeBlock(semantic, curr->ifStmt.body, true);
@@ -1164,6 +1176,7 @@ static void analyzeForeign(ZSemantic *semantic, ZNode *curr) {
     for (usize i = 0; i < veclen(curr->foreignFunc.args); i++) {
         ZType *arg = curr->foreignFunc.args[i];
         ZType *t = resolveTypeRef(semantic, arg);
+        curr->foreignFunc.args[i] = t;
         if (!t) {
             error(semantic->state, arg->tok, "Unknown type");
         }
@@ -1188,6 +1201,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
     if (curr->funcDef.receiver) {
         ZNode *receiver = curr->funcDef.receiver;
         ZType *recType  = resolveTypeRef(semantic, receiver->field.type);
+        receiver->field.type = recType;
 
         ZSymbol *sym = makesymbol(Z_SYM_VAR);
         sym->name       = receiver->field.identifier;
@@ -1200,6 +1214,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
     for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
         ZNode  *arg     = curr->funcDef.args[i];
         ZType  *argType = resolveTypeRef(semantic, arg->field.type);
+        arg->field.type = argType;
 
         if (!argType) {
             error(semantic->state, curr->funcDef.name, "Unknown type");
@@ -1259,14 +1274,11 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
         );
 
         if (!promoted) {
-            char *expected  = NULL;
-            char *got       = NULL;
-
-            stype(semantic->currentFuncRet, &expected);
-            stype(retType, &got);
-
             error(semantic->state, curr->tok,
-                  "Expected type %s, got %s", expected, got);
+                "Expected type %s, got %s",
+                stype(semantic->currentFuncRet),
+                stype(retType)
+            );
         } else {
             /* Implici casting. */
             curr->returnStmt.expr = implicitCast(

@@ -305,12 +305,15 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 		case TOK_U64: 	return i64Type;
 		case TOK_F32:	return f32Type;
 		case TOK_F64:	return f64Type;
-		default:
+		default: {
+            LLVMTypeRef ref = getCachedStruct(ctx, name->str);
+            if (ref) return ref;
 			error(ctx->state,
 						type->primitive.token,
 						"unknown primitive type '%s'",
 						name->str);
 			return NULL;
+         }
 		}
 	}
 
@@ -1088,6 +1091,11 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         }
         if (!typesPrimitive(node->resolved)) {
             buildFuncVar(ctx, node, label(ctx));
+        }
+        for (usize i = 0; i < veclen(node->call.args); i++) {
+            if (!typesPrimitive(node->call.args[i]->resolved)) {
+                buildFuncVar(ctx, node->call.args[i], label(ctx));
+            }
         }
         break;
 

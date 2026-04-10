@@ -130,6 +130,7 @@ static void _stype(ZType *type, char **buff) {
         vecpush(*buff, ')');
         break;
     case Z_TYPE_STRUCT:
+        vecunion(*buff, "struct ", 7);
         vecunion(*buff, type->strct.name->str, strlen(type->strct.name->str));
         break;
     case Z_TYPE_ARRAY:
@@ -160,9 +161,11 @@ static void _stype(ZType *type, char **buff) {
     }
 }
 
-void stype(ZType *type, char **buff) {
-    _stype(type, buff);
-    vecpush(*buff, '\0');
+char *stype(ZType *type) {
+    char *buff = NULL;
+    _stype(type, &buff);
+    vecpush(buff, '\0');
+    return buff;
 }
 
 void printType(ZType *type) {
@@ -293,7 +296,7 @@ void printNode(ZNode *node, u8 depth) {
 
     case NODE_VAR_DECL:
         printf("Var: %s Type: ", node->varDecl.ident->identNode.tok->str);
-        printType(node->varDecl.type);
+        printType(node->resolved);
         if (node->varDecl.rvalue) {
             printf("\n");
             printNode(node->varDecl.rvalue, depth);
