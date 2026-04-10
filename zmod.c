@@ -456,6 +456,7 @@ void printNode(ZNode *node, u8 depth) {
     case NODE_CAST:
         printf("\n");
         printNode(node->castExpr.expr, depth);
+        indent(depth + 1);
         printf("as ");
         printType(node->castExpr.toType);
         break;

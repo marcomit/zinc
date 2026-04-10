@@ -968,6 +968,7 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 
     case NODE_SIZEOF: {
         /* sizeof yields u64. */
+        curr->sizeofExpr.type = resolveTypeRef(semantic, curr->sizeofExpr.type);
         result = maketype(Z_TYPE_PRIMITIVE);
         result->primitive.token = maketoken(TOK_U64, "u64");
         break;

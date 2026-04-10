@@ -177,7 +177,7 @@ char *label(ZCodegen *ctx) {
 }
 
 /* Does not consider alignment. */
-usize typeSize(ZType *type) {
+usize typeSize(ZCodegen *ctx, ZType *type) {
 	usize res = 0;
 	switch (type->kind) {
 	case Z_TYPE_PRIMITIVE:
@@ -195,25 +195,30 @@ usize typeSize(ZType *type) {
 		case TOK_I64:
 		case TOK_U64:
 		case TOK_F64:   return 8;
-		default:        return 0;
+        default:
+            error(ctx->state, type->tok, "Unknown type");
+            return 0;
 		}
 	case Z_TYPE_POINTER:
 		return 8; /* 64-bit pointer */
 	case Z_TYPE_ARRAY:
-		return typeSize(type->array.base) * type->array.size;
+		return typeSize(ctx, type->array.base) * type->array.size;
 	case Z_TYPE_FUNCTION:
 		return 8; /* function pointer */
 
 	case Z_TYPE_STRUCT: {
+        usize cur = 0;
 		for (usize i = 0; i < veclen(type->strct.fields); i++) {
-			res += typeSize(type->strct.fields[i]->field.type);
+			cur = typeSize(ctx, type->strct.fields[i]->field.type);
+            if (cur) res = (res + cur - 1) / cur * cur;
+            res += cur;
 		}
 		return res;
 	}
 
 	case Z_TYPE_TUPLE:
 		for (usize i = 0; i < veclen(type->tuple); i++) {
-			res += typeSize(type->tuple[i]);
+			res += typeSize(ctx, type->tuple[i]);
 		}
 		return res;
 	default: return 0;
@@ -379,7 +384,8 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 	}
 }
 
-static LLVMValueRef genLit(ZCodegen *ctx, ZToken *tok) {
+static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
+    ZToken *tok = node->tok;
     switch (tok->type) {
     case TOK_STR_LIT:
         return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx));
@@ -593,8 +599,50 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 	case TOK_GTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSGE, left, right, l);
 	case TOK_EQEQ:  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, l);
 	case TOK_NOTEQ: return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, l);
-	default:        error(ctx->state, root->tok, "Unknown binary operator\n"); return NULL;
+	default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
 	}
+}
+
+static LLVMValueRef genRef(ZCodegen *ctx, ZNode *node, LLVMValueRef val) {
+    (void)val;
+    error(ctx->state, node->tok, "Reference not yet implemented");
+    return NULL;
+}
+
+static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef arg = genExpr(ctx, node->unary.operand);
+    ZTokenType op = node->unary.operat->type;
+
+    LLVMTypeRef argType = LLVMTypeOf(arg);
+	bool isFloat = (LLVMGetTypeKind(argType) == LLVMFloatTypeKind ||
+	                 LLVMGetTypeKind(argType) == LLVMDoubleTypeKind);
+
+    char *l = label(ctx);
+    switch (op) {
+    case TOK_PLUS:
+    case TOK_MINUS: {
+        typedef LLVMValueRef (*LLVMBinary)(LLVMBuilderRef, LLVMValueRef, LLVMValueRef, const char *);
+
+        LLVMBinary arr[][2] = {
+            {LLVMBuildAdd, LLVMBuildFAdd},
+            {LLVMBuildSub, LLVMBuildFSub}
+        };
+        LLVMValueRef zero =  isFloat ?
+            LLVMConstReal   (argType, 0) :
+            LLVMConstInt    (argType, 0, 0);
+
+        return arr[op == TOK_MINUS][isFloat](ctx->builder, zero, arg, l);
+    }
+    case TOK_STAR:  return LLVMBuildLoad2(ctx->builder, argType, arg, l);
+    case TOK_SNOT:
+    case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
+    case TOK_REF:   return genRef(ctx, node, arg);
+    default:
+        error(ctx->state, node->unary.operat, "Unknown binary operator");
+        return NULL;
+    }
+
+    return NULL;
 }
 
 static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
@@ -824,19 +872,20 @@ static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	switch (node->type) {
-        case NODE_STRUCT_LIT:       return genStructLit(ctx, node);
-        case NODE_ARRAY_LIT:        return genArrayLit(ctx, node);
-		case NODE_BINARY:           return genBinary(ctx, node);
-        case NODE_LITERAL:          return genLit(ctx, node->tok);
-        case NODE_IDENTIFIER:       return genIdent(ctx, node);
-        case NODE_CALL:             return genCall(ctx, node);
-        case NODE_SUBSCRIPT:        return genSubscript(ctx, node);
-		case NODE_CAST:             return genCast(ctx, node);
-        case NODE_STATIC_ACCESS:    return genStaticAccess(ctx, node);
-        case NODE_MEMBER:           return genMemberAccess(ctx, node);
+        case NODE_STRUCT_LIT:       return genStructLit     (ctx, node);
+        case NODE_ARRAY_LIT:        return genArrayLit      (ctx, node);
+        case NODE_LITERAL:          return genLit           (ctx, node);
+        case NODE_IDENTIFIER:       return genIdent         (ctx, node);
+        case NODE_CALL:             return genCall          (ctx, node);
+        case NODE_SUBSCRIPT:        return genSubscript     (ctx, node);
+		case NODE_CAST:             return genCast          (ctx, node);
+        case NODE_STATIC_ACCESS:    return genStaticAccess  (ctx, node);
+        case NODE_MEMBER:           return genMemberAccess  (ctx, node);
+        case NODE_BINARY:           return genBinary        (ctx, node);
+        case NODE_UNARY:            return genUnary         (ctx, node);
 
 		case NODE_SIZEOF: {
-			usize size = typeSize(node->sizeofExpr.type);
+			usize size = typeSize(ctx, node->sizeofExpr.type);
 			return LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
 		}
 
