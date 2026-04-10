@@ -1,0 +1,24 @@
+foreign *u8 malloc(u64)
+foreign i32 open(*char, i32)
+foreign u0 perror(*char)
+foreign u0 printf(*char)
+foreign i32 read(i32, *u8, u64)
+foreign u0 free(*u8)
+
+i32 main() {
+    fd := open("pr", 0)
+
+    if fd == -1 {
+        perror("Not found")
+        return 1
+    }
+
+    *char buffer = malloc(1024)
+
+    defer free(buffer)
+    read(fd, buffer, 1024)
+
+    printf(buffer)
+
+    return 0
+}

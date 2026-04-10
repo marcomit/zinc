@@ -273,7 +273,7 @@ void printNode(ZNode *node, u8 depth) {
     // Helper to print indentation
     indent(depth);
 
-    printf("[%s] ", nodeLabels[node->type]);
+    printf("[%s %s] ", nodeLabels[node->type], stype(node->resolved));
 
     depth++;
     switch (node->type) {

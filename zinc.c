@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <signal.h>
 #include <execinfo.h>
+#include <time.h>
 
 // #ifdef VEC_ALLOC
 // #undef VEC_ALLOC
@@ -142,11 +143,23 @@ int main(int argc, char **argv) {
 
     if (!state) return 1;
 
+    struct timespec start, end;
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
     int res = pipeline(state);
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+
+    double elapsed =
+        (end.tv_sec - start.tv_sec) +
+        (end.tv_nsec - start.tv_nsec) / 1e9;
     
     printLogs(state);
 
     allocator.close();
+
+    printf("Elapsed time: %.02f seconds\n", elapsed);
 
     return res;
 }

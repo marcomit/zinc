@@ -1240,7 +1240,7 @@ static ZNode *parseVarInferred(ZParser *parser) {
 
 static ZNode *parseVarDefTyped(ZParser *parser) {
     ZToken *start = peek(parser);
-    ZType *type = wrapType(parser, parseType);
+    ZType *type = parseType(parser);
 
     if (!type) {
         error(parser->state, start, "Failed to parse type");
@@ -1248,10 +1248,11 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
     } else if (!check(parser, TOK_IDENT)) {
         error(parser->state, start, "Expected an identifier");
         return NULL;
-    } else if (!start->newlineBefore) {
-        error(parser->state, start,
-                "Variable declaration must be defined in the same line");
     }
+    // else if (!start->newlineBefore) {
+    //     error(parser->state, start,
+    //             "Variable declaration must be defined in the same line");
+    // }
 
     ZToken *ident = consume(parser);
     ZNode *node = makenode(NODE_IDENTIFIER);
