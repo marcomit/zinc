@@ -1,6 +1,5 @@
 #include "zinc.h"
 
-#include <_time.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
