@@ -263,7 +263,6 @@ struct ZNode {
         } unary;
 
         struct {
-            ZType   *type;
             ZNode   *ident; // It is a NODE_IDENTIFIER
             ZNode   *rvalue; // Null if not initialized
         } varDecl;
@@ -611,7 +610,7 @@ bool visit(ZState *, char *);
 void undoVisit(ZState *);
 
 char *stoken(ZToken *);
-void stype(ZType *, char **);
+char *stype(ZType *);
 char *tokname(ZTokenType);
 void printToken(ZToken *);
 void printTokens(ZToken **);

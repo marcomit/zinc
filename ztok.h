@@ -108,4 +108,5 @@ DEF(TOK_MACRO_EXPR,		"$",  	        TOK_SYMBOLS_MASK | 0x6D)
 DEF(TOK_MACRO_IDENT,	"@",  	        TOK_SYMBOLS_MASK | 0x6E)
 DEF(TOK_MACRO_TYPE, 	"#",  	        TOK_SYMBOLS_MASK | 0x6F)
 DEF(TOK_QUOTE, 			"'",  	        TOK_SYMBOLS_MASK | 0x70)
+DEF(TOK_MOD, 			"%%",  	        TOK_OPERATOR | TOK_SYMBOLS_MASK | 0x72)
 #endif

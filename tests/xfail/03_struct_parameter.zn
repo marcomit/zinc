@@ -1,0 +1,8 @@
+struct Vec { f32 x }
+
+int32 double(Vec v) { return v.x * 2 }
+
+i32 main() {
+    v := Vec { x: 10 }
+    return 0
+}
