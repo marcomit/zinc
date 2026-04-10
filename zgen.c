@@ -21,6 +21,14 @@ typedef struct {
     ZNode           *node;
 } ZLLVMStack;
 
+enum {
+    Z_SCOPE_BLOCK,
+    Z_SCOPE_LOOP,
+    Z_SCOPE_FUNC,
+    Z_SCOPE_FILE,
+    Z_SCOPE_GLOB
+};
+
 typedef struct ZLLVMScope {
     struct ZLLVMScope   *parent;
     ZLLVMSymbol         **symbols;
@@ -36,6 +44,8 @@ typedef struct ZLLVMScope {
 
     /* Captures all defer statements of the current block. */
     ZNode               **defers;
+
+    int                 type;
 } ZLLVMScope;
 
 typedef struct {
@@ -85,19 +95,20 @@ static ZLLVMSymbol *makesymbol() {
     return self;
 }
 
-static ZLLVMScope *makescope(ZLLVMScope *parent) {
+static ZLLVMScope *makescope(int type, ZLLVMScope *parent) {
     ZLLVMScope *self    = zalloc(ZLLVMScope);
     self->parent        = parent;
     self->symbols       = NULL;
-    self->endLoop       = NULL;
-    self->startLoop     = NULL;
+    self->startLoop     = parent ? parent->startLoop : NULL;
+    self->endLoop       = parent ? parent->endLoop : NULL;
     self->stackAlloca   = NULL;
     self->defers        = NULL;
+    self->type          = type;
     return self;
 }
 
-static void beginScope(ZCodegen *ctx) {
-    ctx->scope = makescope(ctx->scope);
+static void beginScope(int type, ZCodegen *ctx) {
+    ctx->scope = makescope(type, ctx->scope);
 }
 
 static void endScope(ZCodegen *ctx) {
@@ -165,7 +176,7 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 	self->modules       = NULL;
 	self->structNames   = NULL;
 	self->structTypes   = NULL;
-    self->scope         = makescope(NULL);
+    self->scope         = makescope(Z_SCOPE_GLOB, NULL);
 	self->state         = state;
 	self->semantic      = semantic;
     self->count         = 0;
@@ -230,19 +241,6 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
 	default: return 0;
 	}
 }
-
-/* LLVM automatically calculate the offset for the struct fields */
-// usize typeOffset(ZType *strct, char *fieldName) {
-//     usize offset = 0;
-//     for (usize i = 0; i < veclen(strct->strct.fields); i++) {
-//         ZNode *field = strct->strct.fields[i];
-//         if (strcmp(field->field.identifier->str, fieldName) == 0) {
-//             return offset;
-//         }
-//         offset += typeSize(field->field.type);
-//     }
-//     return offset;
-// }
 
 /* Returns the index of the field for a struct.
  * Returns -1 if it does not exist. */
@@ -388,6 +386,26 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 		error(ctx->state, NULL, "genType: unhandled type kind %d", type->kind);
 		return NULL;
 	}
+}
+
+static LLVMBasicBlockRef makeblock(ZCodegen *ctx) {
+    return LLVMAppendBasicBlockInContext(
+        ctx->ctx, ctx->currentFunc, label(ctx)
+    );
+}
+
+static void genChainDefer(ZCodegen *ctx, LLVMBasicBlockRef end, ZLLVMScope *scope) {
+    if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) return;
+
+    ZLLVMScope *cur = ctx->scope;
+
+    while (cur != scope) {
+        for (int i = (int)veclen(cur->defers) - 1; i >= 0; i--) {
+            genStmt(ctx, cur->defers[i]);
+        }
+        cur = cur->parent;
+    }
+    if (end) LLVMBuildBr(ctx->builder, end);
 }
 
 static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
@@ -933,33 +951,46 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
 	return func;
 }
 
+static void genRetChainDefer(ZCodegen *ctx) {
+    ZLLVMScope *scope = ctx->scope;
+
+    while (scope && scope->type != Z_SCOPE_FUNC) {
+        scope = scope->parent;
+    }
+
+    if (scope) scope = scope->parent;
+
+    LLVMBasicBlockRef ret = makeblock(ctx);
+    genChainDefer(ctx, ret, scope);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, ret);
+}
+
 static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     if (!ret->returnStmt.expr) {
+        genRetChainDefer(ctx);
         return LLVMBuildRetVoid(ctx->builder);
     }
 
     LLVMValueRef val = genExpr(ctx, ret->returnStmt.expr);
 
+    genRetChainDefer(ctx);
+
     return LLVMBuildRet(ctx->builder, val);
 }
 
 static void genIf(ZCodegen *ctx, ZNode *node) {
+    beginScope(Z_SCOPE_BLOCK, ctx);
     bool hasElse = node->ifStmt.elseBranch != NULL;
-    LLVMBasicBlockRef then = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx)
-    );
+    LLVMBasicBlockRef then = makeblock(ctx);
 
     LLVMBasicBlockRef elseBranch = NULL;
 
     if (hasElse) {
-        elseBranch = LLVMAppendBasicBlockInContext(
-            ctx->ctx, ctx->currentFunc, label(ctx)
-        );
+        elseBranch = makeblock(ctx);
     }
 
-    LLVMBasicBlockRef endif = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx)
-    );
+    LLVMBasicBlockRef endif = makeblock(ctx);
     LLVMBasicBlockRef nextBlock = hasElse ? elseBranch : endif;
 
     LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
@@ -967,8 +998,9 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
     LLVMBuildCondBr(ctx->builder, cond, then, nextBlock);
 
     LLVMPositionBuilderAtEnd(ctx->builder, then);
-
     genStmt(ctx, node->ifStmt.body);
+
+    genChainDefer(ctx, endif, ctx->scope->parent);
 
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
         LLVMBuildBr(ctx->builder, endif);
@@ -977,6 +1009,8 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
     if (hasElse) {
         LLVMPositionBuilderAtEnd(ctx->builder, elseBranch);
         genStmt(ctx, node->ifStmt.elseBranch);
+
+        genChainDefer(ctx, endif, ctx->scope->parent);
         
         if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
             LLVMBuildBr(ctx->builder, endif);
@@ -984,15 +1018,14 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
     }
 
     LLVMPositionBuilderAtEnd(ctx->builder, endif);
+    endScope(ctx);
 }
 
 static void genWhile(ZCodegen *ctx, ZNode *node) {
-    LLVMBasicBlockRef entry     = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx));
-    LLVMBasicBlockRef block     = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx));
-    LLVMBasicBlockRef endwhile  = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx));
+    beginScope(Z_SCOPE_LOOP, ctx);
+    LLVMBasicBlockRef entry     = makeblock(ctx);
+    LLVMBasicBlockRef block     = makeblock(ctx);
+    LLVMBasicBlockRef endwhile  = makeblock(ctx);
     ctx->scope->startLoop       = entry;
     ctx->scope->endLoop         = endwhile;
 
@@ -1003,7 +1036,12 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     LLVMBuildCondBr(ctx->builder, cond, block, endwhile);
 
     LLVMPositionBuilderAtEnd(ctx->builder, block);
+
+    // Build block
     genStmt(ctx, node->whileStmt.branch);
+
+    // Fire all defer statements
+    genChainDefer(ctx, entry, ctx->scope->parent);
 
     /* If the block contains a break or a continue this block is already terminated.*/
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
@@ -1011,15 +1049,15 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     }
 
     LLVMPositionBuilderAtEnd(ctx->builder, endwhile);
+
+    endScope(ctx);
 }
 
 static void genFor(ZCodegen *ctx, ZNode *node) {
-    LLVMBasicBlockRef entry     = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx));
-    LLVMBasicBlockRef body      = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx));
-    LLVMBasicBlockRef endfor    = LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx));
+    beginScope(Z_SCOPE_LOOP, ctx);
+    LLVMBasicBlockRef entry     = makeblock(ctx);
+    LLVMBasicBlockRef body      = makeblock(ctx);
+    LLVMBasicBlockRef endfor    = makeblock(ctx);
 
     /* Save the labels for the continue and break statement. */
     ctx->scope->startLoop       = entry;
@@ -1037,15 +1075,11 @@ static void genFor(ZCodegen *ctx, ZNode *node) {
     genStmt(ctx, node->forStmt.block);
     genStmt(ctx, node->forStmt.incr);
 
-
-    /* If the block contains a break or a continue this block is already terminated. */
-    // if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMBuildBr(ctx->builder, entry);
-    // }
-
+    // Fire all defer statements
+    genChainDefer(ctx, entry, ctx->scope->parent);
 
     LLVMPositionBuilderAtEnd(ctx->builder, endfor);
-
+    endScope(ctx);
 }
 
 static void genBlock(ZCodegen *ctx, ZNode *block) {
@@ -1060,7 +1094,12 @@ static void genBreak(ZCodegen *ctx, ZNode *node) {
         return;
     }
 
-    LLVMBuildBr(ctx->builder, ctx->scope->endLoop);
+    ZLLVMScope *scope = ctx->scope;
+    while (scope && scope->type != Z_SCOPE_LOOP) {
+        scope = scope->parent;
+    }
+
+    genChainDefer(ctx, ctx->scope->endLoop, scope);
 }
 
 static void genContinue(ZCodegen *ctx, ZNode *node) {
@@ -1069,7 +1108,12 @@ static void genContinue(ZCodegen *ctx, ZNode *node) {
         return;
     }
 
-    LLVMBuildBr(ctx->builder, ctx->scope->startLoop);
+    ZLLVMScope *scope = ctx->scope;
+    while (scope && scope->type != Z_SCOPE_LOOP) {
+        scope = scope->parent;
+    }
+
+    genChainDefer(ctx, ctx->scope->startLoop, scope);
 }
 
 /* Defer statement is compiled using a per-scope stack.
@@ -1085,25 +1129,32 @@ static void genContinue(ZCodegen *ctx, ZNode *node) {
  *
  * Note: Since the stack is known at compile-time the defer statement
  * has zero overhead at runtime.
+ *
+ * Note: One defer statement can be duplicated depending on its 'destination'.
+ * for example a defer inside a loop is compiled:
+ * - one for the exit block.
+ * - one for every break statement
+ * - one for every continue statement
  * */
 static void genDefer(ZCodegen *ctx, ZNode *node) {
-
+    vecpush(ctx->scope->defers, node->deferStmt.expr);
 }
 
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     if (!stmt) return;
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
-    case NODE_VAR_DECL: genVarDecl(ctx, stmt);      break;
-    case NODE_RETURN:   genRet(ctx, stmt);          break;
-    case NODE_BINARY:   genExpr(ctx, stmt);         break;
-    case NODE_CALL:     genCall(ctx, stmt);         break;
-    case NODE_IF:       genIf(ctx, stmt);           break;
-    case NODE_BLOCK:    genBlock(ctx, stmt);        break;
-    case NODE_WHILE:    genWhile(ctx, stmt);        break;
-    case NODE_FOR:      genFor(ctx, stmt);          break;
-    case NODE_BREAK:    genBreak(ctx, stmt);        break;
-    case NODE_CONTINUE: genContinue(ctx, stmt);     break;
+    case NODE_VAR_DECL: genVarDecl  (ctx, stmt);    break;
+    case NODE_RETURN:   genRet      (ctx, stmt);    break;
+    case NODE_BINARY:   genExpr     (ctx, stmt);    break;
+    case NODE_CALL:     genCall     (ctx, stmt);    break;
+    case NODE_IF:       genIf       (ctx, stmt);    break;
+    case NODE_BLOCK:    genBlock    (ctx, stmt);    break;
+    case NODE_WHILE:    genWhile    (ctx, stmt);    break;
+    case NODE_FOR:      genFor      (ctx, stmt);    break;
+    case NODE_BREAK:    genBreak    (ctx, stmt);    break;
+    case NODE_CONTINUE: genContinue (ctx, stmt);    break;
+    case NODE_DEFER:    genDefer    (ctx, stmt);    break;
     default: 
         printf("Node '%d' does not compile yet\n", stmt->type);
         error(ctx->state, stmt->tok,
@@ -1192,7 +1243,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
 
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
-    beginScope(ctx);
+    beginScope(Z_SCOPE_FUNC, ctx);
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
     LLVMTypeRef *args = NULL;
 
@@ -1219,13 +1270,15 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     }
     ctx->currentFunc = func;
 
-    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(ctx->ctx, func, label(ctx));
+    LLVMBasicBlockRef entry = makeblock(ctx);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
     /* All variable declarations are declared ad the start of the function. */
     genFuncVars(ctx, f->funcDef.body);
 
     genBlock(ctx, f->funcDef.body);
+
+    genChainDefer(ctx, NULL, ctx->scope->parent);
 
     /* Add implicit ret void only if the block has no terminator yet. */
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
