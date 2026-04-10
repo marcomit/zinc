@@ -525,7 +525,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         i32 index = typeIndex(objType, tok->str);
 
         if (index == -1) {
-            error(ctx->state, tok, "%s member not found", tok->str);
+            error(ctx->state, tok, "'%s' member not found", tok->str);
             return NULL;
         }
 
@@ -567,7 +567,6 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 	LLVMTypeRef left_type = LLVMTypeOf(left);
 	bool is_float = (LLVMGetTypeKind(left_type) == LLVMFloatTypeKind ||
 	                 LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
-
 
     char *l = label(ctx);
     if (is_float) {
