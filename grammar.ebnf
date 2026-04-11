@@ -118,7 +118,7 @@ basic_type = "char"
 (* Pointer type: *T, **T — handled by { "*" } prefix in type rule *)
 
 (* Array type: [i32] or [u8; 16] (sized) *)
-array_type = "[", type, [ ";", integer_constant ], "]" ;
+array_type = "[", [ integer_constant ], "]", type;
 
 (* Tuple type: (i32, bool) — requires at least 2 types *)
 tuple_type = "(", type, ",", type, { ",", type }, ")" ;
