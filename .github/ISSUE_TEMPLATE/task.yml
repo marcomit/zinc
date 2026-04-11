@@ -1,0 +1,45 @@
+name: Task / Improvement
+description: Track a refactor, cleanup, docs update, or general task
+title: "[TASK] "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for anything that isn't a bug or a new feature.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs to be done?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why
+      description: Why is this worth doing?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: type
+    attributes:
+      label: Type
+      options:
+        - label: Refactor
+        - label: Documentation
+        - label: Performance
+        - label: Code cleanup
+        - label: CI/CD
+        - label: Other
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes
+      placeholder: Optional
+    validations:
+      required: false
