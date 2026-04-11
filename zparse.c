@@ -416,6 +416,10 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     ZNode *res = NULL;
 
     ZToken *tok = peek(parser);
+
+    /* Postfix operatore MUST BE on the same line. */
+    if (!tok || tok->newlineBefore) goto cleanup;
+
     switch (tok->type) {
     case TOK_LSBRACKET: res = parseArrSubscript(parser, previous);  break;
     case TOK_LPAREN:    res = parseFuncCall(parser, previous);      break;
@@ -426,10 +430,12 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
 
     if (res) {
         commitErrors(parser);
-    } else {
+        return res;
+    }
+    cleanup:
         rollbackErrors(parser);
         parser->source->current = saved;
-    }
+
     return res;
 }
 
@@ -618,7 +624,7 @@ static ZType *parseTypeArray(ZParser *parser) {
 
     expect(parser, TOK_RSBRACKET);
 
-    ZType *type = wrapType(parser, parseType);
+    ZType *type = parseType(parser);
     ensure(type, "Expected a type after [] brackets");
 
     ZType *arr = maketype(Z_TYPE_ARRAY);
@@ -688,7 +694,7 @@ ZType *parseType(ZParser *parser) {
     u8 stars = 0;
     while (match(parser, TOK_STAR)) stars++;
 
-    ZType *base = parseAtom(parser);
+    ZType *base = wrapType(parser, parseAtom);
     ensure(base, "Failed to parse atom type");
 
     base = applyStarsToType(base, stars);

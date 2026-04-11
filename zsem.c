@@ -1112,7 +1112,8 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
         if (rvalueType &&
             !typesCompatible(semantic->state, declaredType, rvalueType)) {
             error(semantic->state, curr->tok,
-                "Type mismatch: cannot assign value to variable of '%s'",
+                "Type mismatch: lvalue has type '%s' and rvalue has type '%s'",
+                stype(declaredType),
                 stype(rvalueType)
             );
         }

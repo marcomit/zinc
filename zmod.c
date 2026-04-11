@@ -135,8 +135,8 @@ static void _stype(ZType *type, char **buff) {
         break;
     case Z_TYPE_ARRAY:
         vecpush(*buff, '[');
-        _stype(type->array.base, buff);
         vecpush(*buff, ']');
+        _stype(type->array.base, buff);
         break;
     case Z_TYPE_TUPLE:
         vecpush(*buff, '(');
@@ -197,9 +197,8 @@ void printType(ZType *type) {
         printf("struct %s", type->strct.name->str);
         break;
     case Z_TYPE_ARRAY:
-        printf("[");
+        printf("[%zu]", type->array.size);
         printType(type->array.base);
-        printf("; %zu]", type->array.size);
         break;
     case Z_TYPE_TUPLE:
         printf("(");
