@@ -309,8 +309,7 @@ static ZNode *parsePrimary(ZParser *parser) {
                 node->staticAccess.prop,
                 NULL
             };
-            char *mangled = NULL;
-            mangler(segments, &mangled);
+            char *mangled = mangler(segments);
 
             node->staticAccess.mangled = mangled;
             return node;
@@ -1186,8 +1185,7 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
 
     guard(body);
 
-    char *mangled = NULL;
-    mangler(segments, &mangled);
+    char *mangled = mangler(segments);
 
     ZNode *node = makenode(NODE_FUNC);
     node->funcDef.ret       = ret;
