@@ -591,7 +591,7 @@ ZState *makestate(char *);
 
 char *readfile(char *);
 
-void mangler(ZToken **, char **);
+char *mangler(ZToken **);
 
 void _error  (ZState *, ZToken *, const char *, int, const char *, ...);
 void _warning(ZState *, ZToken *, const char *, int, const char *, ...);

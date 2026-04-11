@@ -481,22 +481,24 @@ void printNode(ZNode *node, u8 depth) {
     printf("\n");
 }
 
-void mangler(ZToken *segments[], char **mangled) {
+char *mangler(ZToken *segments[]) {
+    char *mangled = NULL;
     if (strcmp((*segments)->str, "main") == 0) {
-        vecunion(*mangled, "main\0", 5);
+        vecunion(mangled, "main\0", 5);
     }
-    vecunion(*mangled, "_ZN", 3);
+    vecunion(mangled, "_ZN", 3);
     while (*segments) {
         int len = strlen((*segments)->str);
         int tmp = len;
         while (tmp) {
-            vecpush(*mangled, ('0' + tmp % 10));
+            vecpush(mangled, ('0' + tmp % 10));
             tmp /= 10;
         }
-        vecunion(*mangled, (*segments)->str, (usize)len);
+        vecunion(mangled, (*segments)->str, (usize)len);
         segments++;
     }
-    vecpush(*mangled, '\0');
+    vecpush(mangled, '\0');
+    return mangled;
 }
 
 void printSymbol(ZSymbol *symbol) {
@@ -618,7 +620,6 @@ void _error(ZState *state, ZToken *tok, const char *src_file,
     vecpush(state->logs, log);
     
     va_end(args);
-    // state->canAdvance = false;
 }
 
 void _warning(ZState *state, ZToken *tok, const char *src_file,

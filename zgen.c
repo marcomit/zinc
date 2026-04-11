@@ -467,11 +467,22 @@ static ZLLVMStack *getStackValue(ZCodegen *ctx, ZNode *key) {
     return NULL;
 }
 
+static bool fitsInRegister(LLVMValueRef val) {
+    LLVMTypeKind kind = LLVMGetTypeKind(LLVMTypeOf(val));
+
+    return (
+        kind == LLVMPointerTypeKind || 
+        kind == LLVMIntegerTypeKind ||
+        kind == LLVMFloatTypeKind   ||
+        kind == LLVMDoubleTypeKind  );
+}
+
 static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
     if (!node->varDecl.rvalue) return NULL;
 
     ZLLVMStack *stack = getStackValue(ctx, node->varDecl.rvalue);
     if (!stack) {
+        printf("Stack allocation not found\n");
         error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
         return NULL;
     }
@@ -482,7 +493,7 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
      * genExpr stores the value directly. This check is necessary
      * to avoid store the value twice.
     */
-    if (val && (!node->resolved || typesPrimitive(node->resolved))) {
+    if (val && (!node->resolved || fitsInRegister(val))) {
         LLVMBuildStore(ctx->builder, val, stack->stack);
     }
 
@@ -709,6 +720,23 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
 	}
 
     char *l = label(ctx);
+    unsigned toBits   = LLVMGetIntTypeWidth(toType);
+
+    if (LLVMGetTypeKind(toType) == LLVMIntegerTypeKind &&
+        toBits == 1) {
+        LLVMValueRef zero;
+        if (fromIsPtr) {
+            zero = LLVMConstNull(LLVMTypeOf(val));
+            return LLVMBuildICmp(ctx->builder, LLVMIntNE, val, zero, l);
+        }
+        if (fromIsFloat) {
+            zero = LLVMConstReal(LLVMTypeOf(val), 0.0);
+            return LLVMBuildFCmp(ctx->builder, LLVMRealONE, val, zero, l);
+        }
+        zero = LLVMConstInt(LLVMTypeOf(val), 0, false);
+        return LLVMBuildICmp(ctx->builder, LLVMIntNE, val, zero, l);
+    }
+
 	if (fromIsPtr && toIsPtr)
 		return LLVMBuildBitCast(ctx->builder, val, toType, l);
 
@@ -737,10 +765,12 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
 			: LLVMBuildUIToFP(ctx->builder, val, toType, l);
 
 	/* Both integers: trunc or extend */
-	LLVMTypeRef fromType = LLVMTypeOf(val);
-	unsigned fromBits = LLVMGetIntTypeWidth(fromType);
-	unsigned toBits   = LLVMGetIntTypeWidth(toType);
-	if (fromBits > toBits)
+
+    
+    LLVMTypeRef fromType = LLVMTypeOf(val);
+    u32 fromBits = 8;
+    if (fromIsPtr) fromBits = LLVMGetIntTypeWidth(fromType);
+    if (fromBits > toBits)
 		return LLVMBuildTrunc(ctx->builder, val, toType, l);
 	if (fromBits < toBits)
 		return fromIsSigned
