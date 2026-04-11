@@ -292,6 +292,8 @@ static ZNode *parsePrimary(ZParser *parser) {
         ZNode *node         = wrapNode(parser, parseExpr);
         expect(parser, TOK_RPAREN);
         return node;
+    } else if (check(parser, TOK_LSBRACKET)) {
+        return parseArrayLit(parser);
     } else if (check(parser, TOK_IDENT)) {
         if (checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
             if (!checkAhead(parser, TOK_IDENT, 2)) {
@@ -309,10 +311,8 @@ static ZNode *parsePrimary(ZParser *parser) {
                 node->staticAccess.prop,
                 NULL
             };
-            char *mangled = NULL;
-            mangler(segments, &mangled);
 
-            node->staticAccess.mangled = mangled;
+            node->staticAccess.mangled = mangler(segments);
             return node;
         }
         ZNode *node         = makenode(NODE_IDENTIFIER);
@@ -534,17 +534,13 @@ static ZNode *parseLogicalOr(ZParser *parser) {
             arrlen(valids));
 }
 
-static ZNode *parseAssignment(ZParser *parser) {
+static ZNode *parseBinary(ZParser *parser) {
     ZTokenType valids[] = {TOK_EQ};
     return parseGenericBinary(parser,
             parseLogicalOr,
-            parseAssignment,
+            parseBinary,
             valids,
             arrlen(valids));
-}
-
-static ZNode *parseBinary(ZParser *parser) {
-    return parseAssignment(parser);
 }
 
 static ZNode **parseGenericList(ZParser *parser,
@@ -614,17 +610,16 @@ static ZType *applyStarsToType(ZType *base, u8 stars) {
 
 static ZType *parseTypeArray(ZParser *parser) {
     expect(parser, TOK_LSBRACKET);
-    ZType *type = wrapType(parser, parseType);
-    ensure(type, "Expected a type inside [] brackets");
+
     usize size = 0;
-    
-    if (match(parser, TOK_SEMICOLON)) {
-        if (!check(parser, TOK_INT_LIT)) invalid(parser,
-                "Expected the array size");
+    if (check(parser, TOK_INT_LIT)) {
         size = consume(parser)->integer;
     }
 
     expect(parser, TOK_RSBRACKET);
+
+    ZType *type = wrapType(parser, parseType);
+    ensure(type, "Expected a type after [] brackets");
 
     ZType *arr = maketype(Z_TYPE_ARRAY);
     arr->array.base = type;
@@ -996,9 +991,10 @@ ZNode *parseExpr(ZParser *parser) {
 
     if (check(parser, TOK_IDENT) && checkAhead(parser, TOK_LBRACKET, 1)) {
         return parseStructLit(parser);
-    } else if (check(parser, TOK_LSBRACKET)) {
-        return parseArrayLit(parser);
     }
+    // else if (check(parser, TOK_LSBRACKET)) {
+    //     return parseArrayLit(parser);
+    // }
     return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
 
 }
@@ -1184,11 +1180,6 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
                 "Expected function body '{...}' after declaration");
     }
 
-    guard(body);
-
-    char *mangled = NULL;
-    mangler(segments, &mangled);
-
     ZNode *node = makenode(NODE_FUNC);
     node->funcDef.ret       = ret;
     node->funcDef.name      = name;
@@ -1198,7 +1189,7 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     node->funcDef.pub       = public;
     node->funcDef.receiver  = receiver;
     node->funcDef.generics  = generics;
-    node->funcDef.mangled   = mangled;
+    node->funcDef.mangled   = mangler(segments);
     node->tok               = name;
 
     ZType *func             = maketype(Z_TYPE_FUNCTION);
