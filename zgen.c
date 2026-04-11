@@ -571,6 +571,16 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         );
 
     }
+    case NODE_UNARY: {
+        if (node->unary.operat->type != TOK_STAR) {
+            error(ctx->state, node->tok, "Unhandled unary operator");
+            return NULL;
+        }
+
+        LLVMTypeRef type = genType(ctx, node->resolved);
+        LLVMValueRef ptr = genLvalue(ctx, node->unary.operand);
+        return LLVMBuildLoad2(ctx->builder, type, ptr, label(ctx));
+    }
     default:
         error(ctx->state,
                 node->tok,
@@ -1293,9 +1303,10 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
 static void compile(ZCodegen *ctx, ZNode *root) {
 	switch (root->type) {
-	case NODE_FOREIGN:  genForeign  (ctx, root);    break;
+	case NODE_FOREIGN:  genForeign  (ctx, root);            break;
     case NODE_FUNC:     genFunc     (ctx, root);            break;
     case NODE_STRUCT:   genType     (ctx, root->resolved);  break;
+    case NODE_MACRO:                                        break;
 
 	case NODE_MODULE:
         beginModule(ctx, root);

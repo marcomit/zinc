@@ -132,7 +132,6 @@ static void addStaticFunc(ZSemantic *semantic, ZNode *func) {
     }
 
     if (!cur) {
-        printf("New base %s\n", stype(base));
         cur = addfunctable(semantic, base);
     }
     char *name = func->funcDef.name->str;
@@ -142,7 +141,6 @@ static void addStaticFunc(ZSemantic *semantic, ZNode *func) {
         return;
     }
 
-    printf("Static func '%s::%s' added\n", base->primitive.token->str, name);
 
     vecpush(cur->staticFuncDef, func);
 }
@@ -664,9 +662,7 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
         ZNode **staticFuncs = NULL;
         for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
             ZFuncTable *table = semantic->table->funcs[i];
-            printf("Table for %s\n", stype(table->base));
             if (table->base->kind != Z_TYPE_PRIMITIVE) {
-                printf("Skipped %s\n", stype(table->base));
                 continue;
             }
             if (!tokeneq(table->base->primitive.token, base)) continue;
@@ -1383,6 +1379,7 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
         case NODE_FOREIGN:  analyzeForeign(semantic, child);    break;
         case NODE_FUNC:     analyzeFunc(semantic, child);       break;
         case NODE_VAR_DECL: analyzeVar(semantic, child, true);  break;
+        case NODE_MACRO:                                        break;
 
         case NODE_STRUCT:
             for (usize i = 0; i < veclen(child->structDef.fields); i++) {
@@ -1398,6 +1395,7 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
                 endModule(semantic);
             }
             break;
+
 
         default: 
             warning(semantic->state, root->tok,
