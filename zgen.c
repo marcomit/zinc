@@ -467,11 +467,24 @@ static ZLLVMStack *getStackValue(ZCodegen *ctx, ZNode *key) {
     return NULL;
 }
 
+static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZType *to);
+
+static bool fitsInRegister(LLVMValueRef val) {
+    LLVMTypeKind kind = LLVMGetTypeKind(LLVMTypeOf(val));
+
+    return (
+        kind == LLVMPointerTypeKind || 
+        kind == LLVMIntegerTypeKind ||
+        kind == LLVMFloatTypeKind   ||
+        kind == LLVMDoubleTypeKind  );
+}
+
 static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
     if (!node->varDecl.rvalue) return NULL;
 
     ZLLVMStack *stack = getStackValue(ctx, node->varDecl.rvalue);
     if (!stack) {
+        printf("Stack allocation not found\n");
         error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
         return NULL;
     }
@@ -482,7 +495,11 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
      * genExpr stores the value directly. This check is necessary
      * to avoid store the value twice.
     */
-    if (val && (!node->resolved || typesPrimitive(node->resolved))) {
+    /* Skip the store if genExpr already wrote the value in-place (e.g. struct/array
+     * literals return the pre-allocated slot pointer — storing it would self-overwrite).
+     * For register-sized values, cast to the variable's declared type first. */
+    if (val && val != stack->stack && (!node->resolved || fitsInRegister(val))) {
+        val = castValue(ctx, val, node->varDecl.rvalue->resolved, node->resolved);
         LLVMBuildStore(ctx->builder, val, stack->stack);
     }
 
@@ -684,70 +701,89 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
-static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
-    ZType *to = node->castExpr.toType;
-    ZType *from = node->castExpr.expr->resolved;
+/* Emit the appropriate LLVM cast to convert val (of Zinc type `from`) to
+   Zinc type `to`. Returns val unchanged when the types are already equal. */
+static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZType *to) {
+    if (!val || !from || !to) return val;
+    if (typesEqual(from, to)) return val;
 
-	LLVMTypeRef toType = genType(ctx, to);
-    LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
+    LLVMTypeRef toType = genType(ctx, to);
+    if (!toType) return val;
 
-	if (!toType) return NULL;
+    bool fromIsFloat = false, toIsFloat = false;
+    bool fromIsPtr   = (from->kind == Z_TYPE_POINTER);
+    bool toIsPtr     = (to->kind   == Z_TYPE_POINTER);
+    bool fromIsSigned = false;
 
-	bool fromIsFloat = false, toIsFloat = false;
-	bool fromIsPtr   = (from->kind == Z_TYPE_POINTER);
-	bool toIsPtr     = (to->kind   == Z_TYPE_POINTER);
-	bool fromIsSigned = false;
-
-	if (from->kind == Z_TYPE_PRIMITIVE) {
-		ZTokenType tt = from->primitive.token->type;
-		fromIsFloat   = (tt == TOK_F32 || tt == TOK_F64);
-		fromIsSigned  = (tt & TOK_SIGNED) != 0;
-	}
-	if (to->kind == Z_TYPE_PRIMITIVE) {
-		ZTokenType tt = to->primitive.token->type;
-		toIsFloat = (tt == TOK_F32 || tt == TOK_F64);
-	}
+    if (from->kind == Z_TYPE_PRIMITIVE) {
+        ZTokenType tt = from->primitive.token->type;
+        fromIsFloat   = (tt == TOK_F32 || tt == TOK_F64);
+        fromIsSigned  = (tt & TOK_SIGNED) != 0;
+    }
+    if (to->kind == Z_TYPE_PRIMITIVE) {
+        ZTokenType tt = to->primitive.token->type;
+        toIsFloat = (tt == TOK_F32 || tt == TOK_F64);
+    }
 
     char *l = label(ctx);
-	if (fromIsPtr && toIsPtr)
-		return LLVMBuildBitCast(ctx->builder, val, toType, l);
+    unsigned toBits = LLVMGetIntTypeWidth(toType);
 
-	if (fromIsPtr && !toIsFloat)
-		return LLVMBuildPtrToInt(ctx->builder, val, toType, l);
+    if (LLVMGetTypeKind(toType) == LLVMIntegerTypeKind && toBits == 1) {
+        LLVMValueRef zero;
+        if (fromIsPtr) {
+            zero = LLVMConstNull(LLVMTypeOf(val));
+            return LLVMBuildICmp(ctx->builder, LLVMIntNE, val, zero, l);
+        }
+        if (fromIsFloat) {
+            zero = LLVMConstReal(LLVMTypeOf(val), 0.0);
+            return LLVMBuildFCmp(ctx->builder, LLVMRealONE, val, zero, l);
+        }
+        zero = LLVMConstInt(LLVMTypeOf(val), 0, false);
+        return LLVMBuildICmp(ctx->builder, LLVMIntNE, val, zero, l);
+    }
 
-	if (!fromIsFloat && toIsPtr)
-		return LLVMBuildIntToPtr(ctx->builder, val, toType, l);
+    if (fromIsPtr && toIsPtr)
+        return LLVMBuildBitCast(ctx->builder, val, toType, l);
 
-	if (fromIsFloat && toIsFloat) {
-		/* f64 -> f32: truncate; f32 -> f64: extend */
-		if (from->primitive.token->type == TOK_F64 &&
-		    to->primitive.token->type   == TOK_F32)
-			return LLVMBuildFPTrunc(ctx->builder, val, toType, l);
-		return LLVMBuildFPExt(ctx->builder, val, toType, l);
-	}
+    if (fromIsPtr && !toIsFloat)
+        return LLVMBuildPtrToInt(ctx->builder, val, toType, l);
 
-	if (fromIsFloat)
-		return fromIsSigned
-			? LLVMBuildFPToSI(ctx->builder, val, toType, l)
-			: LLVMBuildFPToUI(ctx->builder, val, toType, l);
+    if (!fromIsFloat && toIsPtr)
+        return LLVMBuildIntToPtr(ctx->builder, val, toType, l);
 
-	if (toIsFloat)
-		return fromIsSigned
-			? LLVMBuildSIToFP(ctx->builder, val, toType, l)
-			: LLVMBuildUIToFP(ctx->builder, val, toType, l);
+    if (fromIsFloat && toIsFloat) {
+        if (from->primitive.token->type == TOK_F64 &&
+            to->primitive.token->type   == TOK_F32)
+            return LLVMBuildFPTrunc(ctx->builder, val, toType, l);
+        return LLVMBuildFPExt(ctx->builder, val, toType, l);
+    }
 
-	/* Both integers: trunc or extend */
-	LLVMTypeRef fromType = LLVMTypeOf(val);
-	unsigned fromBits = LLVMGetIntTypeWidth(fromType);
-	unsigned toBits   = LLVMGetIntTypeWidth(toType);
-	if (fromBits > toBits)
-		return LLVMBuildTrunc(ctx->builder, val, toType, l);
-	if (fromBits < toBits)
-		return fromIsSigned
-			? LLVMBuildSExt(ctx->builder, val, toType, l)
-			: LLVMBuildZExt(ctx->builder, val, toType, l);
+    if (fromIsFloat)
+        return fromIsSigned
+            ? LLVMBuildFPToSI(ctx->builder, val, toType, l)
+            : LLVMBuildFPToUI(ctx->builder, val, toType, l);
 
-	return LLVMBuildBitCast(ctx->builder, val, toType, l);
+    if (toIsFloat)
+        return fromIsSigned
+            ? LLVMBuildSIToFP(ctx->builder, val, toType, l)
+            : LLVMBuildUIToFP(ctx->builder, val, toType, l);
+
+    /* Both integers: trunc or extend */
+    LLVMTypeRef fromType = LLVMTypeOf(val);
+    u32 fromBits = LLVMGetIntTypeWidth(fromType);
+    if (fromBits > toBits)
+        return LLVMBuildTrunc(ctx->builder, val, toType, l);
+    if (fromBits < toBits)
+        return fromIsSigned
+            ? LLVMBuildSExt(ctx->builder, val, toType, l)
+            : LLVMBuildZExt(ctx->builder, val, toType, l);
+
+    return LLVMBuildBitCast(ctx->builder, val, toType, l);
+}
+
+static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
+    return castValue(ctx, val, node->castExpr.expr->resolved, node->castExpr.toType);
 }
 
 /* dest: optional pre-allocated slot to write into (e.g. an array element GEP).
@@ -775,6 +811,9 @@ static LLVMValueRef genStructLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef de
         if (index == -1) {
             error(ctx->state, name, "Unknown field '%s'", name->str);
         }
+
+        ZType *fieldType = node->resolved->strct.fields[index]->field.type;
+        val = castValue(ctx, val, var->varDecl.rvalue->resolved, fieldType);
 
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
             ctx->builder,
@@ -1178,7 +1217,7 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
  * NOTE: this method stores always the expression that requires the stack allocation.
  * So for variable declaration always store the rvalue node and not the variable node.
  * */
-static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name) {
+static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name, ZType *typeOverride) {
     if (!node) {
         error(ctx->state, NULL, "'buildFuncVar' called with a null node");
         return;
@@ -1188,7 +1227,8 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name) {
         return;
     }
 
-    LLVMTypeRef type = genType(ctx, node->resolved);
+    ZType *allocaType = typeOverride ? typeOverride : node->resolved;
+    LLVMTypeRef type = genType(ctx, allocaType);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, name);
 
     ZLLVMStack *item = zalloc(ZLLVMStack);
@@ -1208,8 +1248,9 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name) {
 static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
     case NODE_FOR: {
-        char *name = node->forStmt.var->varDecl.ident->identNode.tok->str;
-        buildFuncVar(ctx, node->forStmt.var->varDecl.rvalue, name);
+        ZNode *forVar = node->forStmt.var;
+        char *name = forVar->varDecl.ident->identNode.tok->str;
+        buildFuncVar(ctx, forVar->varDecl.rvalue, name, forVar->resolved);
         genFuncVars(ctx, node->forStmt.block);
         break;
    }
@@ -1222,18 +1263,18 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->ifStmt.body);
         break;
     case NODE_VAR_DECL:
-        buildFuncVar(ctx, node->varDecl.rvalue, node->varDecl.ident->identNode.tok->str);
+        buildFuncVar(ctx, node->varDecl.rvalue, node->varDecl.ident->identNode.tok->str, node->resolved);
         break;
     case NODE_CALL:
         if (!node->resolved) {
             error(ctx->state, node->tok, "Unresolved type");
         }
         if (!typesPrimitive(node->resolved)) {
-            buildFuncVar(ctx, node, label(ctx));
+            buildFuncVar(ctx, node, label(ctx), NULL);
         }
         for (usize i = 0; i < veclen(node->call.args); i++) {
             if (!typesPrimitive(node->call.args[i]->resolved)) {
-                buildFuncVar(ctx, node->call.args[i], label(ctx));
+                buildFuncVar(ctx, node->call.args[i], label(ctx), NULL);
             }
         }
         break;
