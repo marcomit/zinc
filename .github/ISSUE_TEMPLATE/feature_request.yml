@@ -1,0 +1,44 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[FEATURE] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea? Describe it below!
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What do you want to add or change?
+      placeholder: Describe the feature...
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this needed? What problem does it solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Possible Implementation
+      description: Any rough ideas on how to implement this?
+      placeholder: Optional
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any other approaches you thought about?
+      placeholder: Optional
+    validations:
+      required: false
