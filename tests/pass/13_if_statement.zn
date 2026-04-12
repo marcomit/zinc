@@ -3,6 +3,10 @@ foreign u0 printf(*char)
 i32 main(i32 argc) {
     u64 val = 0
 
+    if argc == 1 {
+        printf("No command provided\n")
+    }
+
     if val == 0 {
     }
 
