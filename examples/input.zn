@@ -1,0 +1,19 @@
+foreign i32 read(i32, *u8, u64)
+foreign u0 printf(*char)
+foreign *u8 malloc(u64)
+foreign *u8 memset(*u8, i32, u64)
+
+i32 main() {
+    buf := malloc(1024)
+    bytesRead := 1
+
+    for bytesRead > 0 {
+        memset(buf, 0, 1024)
+        bytesRead = read(0, buf, 1024)
+        printf(buf)
+    }
+
+    printf("Exited\n")
+
+    return 0
+}

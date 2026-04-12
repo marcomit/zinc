@@ -824,8 +824,36 @@ static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
     ZType     *left     = resolveType(semantic, curr->binary.left);
     ZType     *right    = resolveType(semantic, curr->binary.right);
 
+
+    /* Auto promotion rules should be handled by typesCompatible. */
+    ZType *promoted     = typesCompatible(semantic->state, left, right);
+
+    if (!promoted) {
+        error(semantic->state,
+            curr->binary.op,
+            "Incompatible type '%s' with '%s'",
+            stype(left),
+            stype(right)
+        );
+    }
+
+    if (typesEqual(left, right)) {
+        /* Types are equal. it doesn't matter whether left or right is returned. */
+        return left;
+    } else if (op == TOK_EQ) {
+        /* Assignment yields the type of the left-hand side. */
+        if (!isLvalue(curr->binary.left)) {
+            error(semantic->state, left->tok, "is not a valid lvalue");
+        }
+        return left;
+    }
+
+    curr->binary.left = implicitCast(curr->binary.left, promoted);
+    curr->binary.right = implicitCast(curr->binary.right, promoted);
+
     /* Comparison / logical operators always produce a bool. */
-    if (op == TOK_EQEQ || op == TOK_NOTEQ ||
+    if (
+        op == TOK_EQEQ || op == TOK_NOTEQ ||
         op == TOK_LT   || op == TOK_GT    ||
         op == TOK_LTE  || op == TOK_GTE   ||
         op == TOK_AND  || op == TOK_OR    ||
@@ -833,31 +861,9 @@ static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
         ZType *boolType = maketype(Z_TYPE_PRIMITIVE);
         boolType->primitive.token = maketoken(TOK_BOOL, NULL);
         return boolType;
-    } else if (op == TOK_EQ) {
-        /* Assignment yields the type of the left-hand side. */
-        if (!isLvalue(curr->binary.left)) {
-            error(semantic->state, left->tok, "is not a valid lvalue");
-        }
-        return left;
-    } else if (typesEqual(left, right)) {
-        /* Types are equal. it doesn't matter whether left or right is returned. */
-        return left;
-    } else {
-        /* Auto promotion rules should be handled by typesCompatible. */
-        ZType *result = typesCompatible(semantic->state, left, right);
-        if (!result) {
-            error(semantic->state, curr->binary.op,
-                "%s type incompatible with %s type",
-                stype(left), stype(right)
-            );
-        }
-
-        curr->binary.left = implicitCast(curr->binary.left, result);
-        curr->binary.right = implicitCast(curr->binary.right, result);
-        
-        return result;
     }
-    return NULL;
+
+    return promoted;
 }
 
 static ZType *resolveArrayLiteral(ZSemantic *semantic, ZNode *curr) {
