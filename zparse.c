@@ -48,6 +48,7 @@ static ZNode *parseBinary                   (ZParser *);
 static ZNode *parseContinue                 (ZParser *);
 static ZNode *parseArrayLit                 (ZParser *);
 static ZNode *parseTupleLit                 (ZParser *);
+static ZType *parseTypeArray                 (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
 static ZNode *parseVarInferred              (ZParser *);
 static ZNode *parseVarDefTyped              (ZParser *);
@@ -276,6 +277,18 @@ static ZNode *parseGenericBinary(ZParser *parser,
     return node ? node : left;
 }
 
+static ZNode *parseArrayInit(ZParser *parser) {
+    ZType *arr = parseTypeArray(parser);
+
+    guard(arr);
+    guard(arr->array.size > 0);
+
+    ZNode *node = makenode(NODE_ARRAY_INIT);
+    node->arrayinit = arr;
+
+    return node;
+}
+
 static ZNode *parsePrimary(ZParser *parser) {
     ZToken *start = peek(parser);
     guard(start);
@@ -293,6 +306,10 @@ static ZNode *parsePrimary(ZParser *parser) {
         expect(parser, TOK_RPAREN);
         return node;
     } else if (check(parser, TOK_LSBRACKET)) {
+        return parseOrGrammar(parser, (ZParseFunc[]){
+            parseArrayInit,
+            parseArrayLit
+        }, 2);
         return parseArrayLit(parser);
     } else if (check(parser, TOK_IDENT)) {
         if (checkAhead(parser, TOK_DOUBLE_COLON, 1)) {

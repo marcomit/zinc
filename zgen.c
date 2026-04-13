@@ -948,6 +948,14 @@ static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
     );
 }
 
+static LLVMValueRef genArrayInit(ZCodegen *ctx, ZNode *node) {
+    ZLLVMStack *stack = getStackValue(ctx, node);
+
+    if (!stack) return NULL;
+
+    return stack->stack;
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 	switch (node->type) {
         case NODE_STRUCT_LIT:       return genStructLit     (ctx, node);
@@ -961,6 +969,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_MEMBER:           return genMemberAccess  (ctx, node);
         case NODE_BINARY:           return genBinary        (ctx, node);
         case NODE_UNARY:            return genUnary         (ctx, node);
+        case NODE_ARRAY_INIT:       return genArrayInit     (ctx, node);
 
 		case NODE_SIZEOF: {
 			usize size = typeSize(ctx, node->sizeofExpr.type);
@@ -1195,7 +1204,6 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     /* Variable already declared at the start of the function*/
     case NODE_VAR_DECL: genVarDecl  (ctx, stmt);    break;
     case NODE_RETURN:   genRet      (ctx, stmt);    break;
-    case NODE_BINARY:   genExpr     (ctx, stmt);    break;
     case NODE_CALL:     genCall     (ctx, stmt);    break;
     case NODE_IF:       genIf       (ctx, stmt);    break;
     case NODE_BLOCK:    genBlock    (ctx, stmt);    break;
@@ -1204,11 +1212,14 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     case NODE_BREAK:    genBreak    (ctx, stmt);    break;
     case NODE_CONTINUE: genContinue (ctx, stmt);    break;
     case NODE_DEFER:    genDefer    (ctx, stmt);    break;
-    default: 
-        printf("Node '%d' does not compile yet\n", stmt->type);
+    default: {
+        LLVMValueRef compiled = genExpr(ctx, stmt);
+        if (compiled) return;
         error(ctx->state, stmt->tok,
                 "Node '%d' does not compile yet",
                 stmt->type);
+        break;
+    }
     }
 }
 

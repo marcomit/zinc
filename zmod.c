@@ -12,9 +12,10 @@ static char *nodeLabels[] = {
     "VAR_DECL", "BINARY",       "UNARY",        "CALL",         "FUNC",
     "LITERAL",  "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
     "MODULE",   "UNION",        "FIELD",        "TYPEDEF",      "FOREIGN",
-    "DEFER",    "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "MACRO",
-    "GOTO",     "LABEL",        "TYPE",         "ENUM",         "BREAK",
-    "CONTINUE", "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATIC_ACCESS"
+    "DEFER",    "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
+    "MACRO",    "GOTO",         "LABEL",        "TYPE",         "ENUM",
+    "BREAK",    "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
+    "STATIC_ACCESS"
 
 };
 

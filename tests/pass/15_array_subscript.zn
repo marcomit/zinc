@@ -1,6 +1,9 @@
 foreign u0 printf(*char)
 
 u32 main() {
+
+    chars := [65, 66, 67, 68] as []char
+
     arr := ["a", "b", "c", "d"]
     arr[0] = "first"
     arr[3] = "last"

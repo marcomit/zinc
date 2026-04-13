@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Zinc test runner
-# Usage: ./run_tests.sh [--zinc <path>] [--tests <dir>]
+# Usage: ./run_tests.sh [<number>] [--zinc <path>] [--tests <dir>]
 #
+# If <number> is given, only run tests whose filename starts with that number.
 # Exit codes:
 #   0 - all pass/fail tests succeeded
 #   1 - one or more pass/fail tests failed
@@ -13,6 +14,13 @@ TESTS_DIR="${TESTS_DIR:-./tests}"
 PASS_DIR="$TESTS_DIR/pass"
 FAIL_DIR="$TESTS_DIR/fail"
 XFAIL_DIR="$TESTS_DIR/xfail"
+
+# Optional test number filter (first argument if it looks like a number)
+TEST_FILTER=""
+if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+    TEST_FILTER="$1"
+    shift
+fi
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -173,30 +181,43 @@ if [ ! -x "$ZINC" ]; then
 fi
 
 echo -e "${BOLD}Zinc test suite${NC}  (zinc: $ZINC)"
+[ -n "$TEST_FILTER" ] && echo -e "  filter: tests starting with ${BOLD}${TEST_FILTER}${NC}"
 echo ""
 
 if [ -d "$PASS_DIR" ] && compgen -G "$PASS_DIR/*.zn" > /dev/null 2>&1; then
-    echo -e "${BOLD}Pass tests${NC}"
+    ran=0
     for f in "$PASS_DIR"/*.zn; do
+        name=$(basename "$f")
+        [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+        [ "$ran" -eq 0 ] && echo -e "${BOLD}Pass tests${NC}"
+        ran=1
         run_pass_test "$f"
     done
-    echo ""
+    [ "$ran" -eq 1 ] && echo ""
 fi
 
 if [ -d "$FAIL_DIR" ] && compgen -G "$FAIL_DIR/*.zn" > /dev/null 2>&1; then
-    echo -e "${BOLD}Fail tests${NC}  (compiler must reject these)"
+    ran=0
     for f in "$FAIL_DIR"/*.zn; do
+        name=$(basename "$f")
+        [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+        [ "$ran" -eq 0 ] && echo -e "${BOLD}Fail tests${NC}  (compiler must reject these)"
+        ran=1
         run_fail_test "$f"
     done
-    echo ""
+    [ "$ran" -eq 1 ] && echo ""
 fi
 
 if [ -d "$XFAIL_DIR" ] && compgen -G "$XFAIL_DIR/*.zn" > /dev/null 2>&1; then
-    echo -e "${BOLD}Expected failures${NC}  (unimplemented features)"
+    ran=0
     for f in "$XFAIL_DIR"/*.zn; do
+        name=$(basename "$f")
+        [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+        [ "$ran" -eq 0 ] && echo -e "${BOLD}Expected failures${NC}  (unimplemented features)"
+        ran=1
         run_xfail_test "$f"
     done
-    echo ""
+    [ "$ran" -eq 1 ] && echo ""
 fi
 
 total=$((passed + failed))
