@@ -121,6 +121,7 @@ typedef enum {
     NODE_STRUCT_LIT,
     NODE_TUPLE_LIT,
     NODE_ARRAY_LIT,
+    NODE_ARRAY_INIT,
     NODE_MACRO,
     NODE_GOTO,
     NODE_LABEL,
@@ -378,6 +379,8 @@ struct ZNode {
         ZNode           **tuplelit;
 
         ZNode           **arraylit;
+
+        ZType           *arrayinit;
 
         struct {
             ZToken      *ident;

@@ -914,6 +914,12 @@ static ZType *resolveTupleLiteral(ZSemantic *semantic, ZNode *node) {
     return result;
 }
 
+static ZType *resolveArrayInit(ZSemantic *semantic, ZNode *node) {
+    node->arrayinit = resolveTypeRef(semantic, node->arrayinit);
+    node->resolved = node->arrayinit;
+    return node->arrayinit;
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -925,15 +931,16 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
     ZType *result = NULL;
 
     switch (curr->type) {
-    case NODE_CALL:         result = resolveFuncCall(semantic, curr);       break;
-    case NODE_LITERAL:      result = resolveLiteralType(curr);              break;
+    case NODE_CALL:         result = resolveFuncCall    (semantic, curr);   break;
+    case NODE_LITERAL:      result = resolveLiteralType (curr);             break;
     case NODE_MEMBER:       result = resolveMemberAccess(semantic, curr);   break;
     case NODE_SUBSCRIPT:    result = resolveArrSubscript(semantic, curr);   break;
-    case NODE_STRUCT_LIT:   result = resolveStructLit(semantic, curr);      break;
-    case NODE_IDENTIFIER:   result = resolveIdentifier(semantic, curr);     break;
+    case NODE_STRUCT_LIT:   result = resolveStructLit   (semantic, curr);   break;
+    case NODE_IDENTIFIER:   result = resolveIdentifier  (semantic, curr);   break;
     case NODE_ARRAY_LIT:    result = resolveArrayLiteral(semantic, curr);   break;
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral(semantic, curr);   break;
-    case NODE_BINARY:       result = resolveBinary(semantic, curr);         break;
+    case NODE_BINARY:       result = resolveBinary      (semantic, curr);   break;
+    case NODE_ARRAY_INIT:   result = resolveArrayInit   (semantic, curr);   break;
 
     case NODE_UNARY: {
         ZType     *operand = resolveType(semantic, curr->unary.operand);

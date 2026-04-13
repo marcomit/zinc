@@ -174,7 +174,10 @@ continue_statement = "continue" ;
 expression = assignment_expression
            | struct_literal
            | array_literal
-           | tuple_literal ;
+           | tuple_literal
+           | array_initializer;
+
+array_initializer = [ integer_constant ] arra_type ;
 
 assignment_expression = logical_or_expression, [ "=", assignment_expression ] ;
 
