@@ -355,6 +355,7 @@ struct ZNode {
         struct {
             ZNode       *object;
             ZToken      *field;
+            char        *mangled;
         } memberAccess;
 
         struct {

@@ -21,7 +21,6 @@
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
 static ZType *resolveTypeRef(ZSemantic *, ZType *);
-static ZType *resolveReceiverCall(ZSemantic *, ZType *, ZToken *);
 
 /* ================== Scope / Symbol helpers ================== */
 
@@ -703,8 +702,28 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
 
         ZToken *prop = callee->memberAccess.field;
 
-        result = resolveReceiverCall(semantic, obj, prop);
-        printType(result);
+        ZFuncTable **table = semantic->table->funcs;
+
+        ZFuncTable *funcs = NULL;
+        for (usize i = 0; i < veclen(table) && !funcs; i++) {
+            ZType *base = resolveTypeRef(semantic, table[i]->base);
+            if (typesEqual(base, obj)) funcs = table[i];
+        }
+
+        if (!funcs) {
+            error(semantic->state, curr->tok, "Receiver function not registered");
+            return NULL;
+        }
+
+        for (usize i = 0; i < veclen(funcs->funcDef); i++) {
+            ZNode *f = funcs->funcDef[i];
+            if (tokeneq(f->funcDef.name, prop)) {
+                callee->memberAccess.mangled = f->funcDef.mangled;
+                expectedArgs = f->resolved->func.args;
+                result = resolveTypeRef(semantic, f->funcDef.ret);
+                break;
+            }
+        }
     } else {
         /* Expression call: resolve callee type and extract return type. */
         ZType *calleeType = resolveType(semantic, callee);
@@ -1041,33 +1060,6 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
     return result;
 }
 
-static ZType *resolveReceiverCall(ZSemantic *semantic,
-        ZType *caller,
-        ZToken *name) {
-    ZFuncTable **table = semantic->table->funcs;
-    ZNode **funcs = NULL;
-
-    for (usize i = 0; i < veclen(table); i++) {
-        ZType *receiverType = resolveTypeRef(semantic, table[i]->base);
-        table[i]->base = receiverType;
-        table[i]->base = receiverType;
-        if (typesEqual(receiverType, caller)) {
-            funcs = table[i]->funcDef;
-            break;
-        }
-    }
-
-    if (!funcs) return NULL;
-
-    for (usize i = 0; i < veclen(funcs); i++) {
-        if (tokeneq(funcs[i]->funcDef.name, name)) {
-            return funcs[i]->resolved;
-        }
-    }
-
-    return NULL;
-}
-
 static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
     ZType *objType = resolveType(semantic, curr->memberAccess.object);
     if (!objType) {
@@ -1088,9 +1080,6 @@ static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
         if (tokeneq(fields[i]->field.identifier, curr->memberAccess.field))
             return resolveTypeRef(semantic, fields[i]->field.type);
     }
-
-    ZType *result = resolveReceiverCall(semantic, objType, curr->memberAccess.field);
-    if (result) return result;
 
     error(semantic->state, curr->memberAccess.field,
           "Member '%s' not found in struct", curr->memberAccess.field->str);
