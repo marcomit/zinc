@@ -1,0 +1,19 @@
+foreign u0 printf(*char)
+foreign *u8 malloc(u64)
+
+struct Vec {
+    f32 x
+    f32 y
+}
+
+u0 print() *Vec self {
+    printf("Received\n")
+}
+
+i32 main() {
+    *Vec v = malloc(sizeof Vec)
+
+    v.print()
+
+    return 0
+}

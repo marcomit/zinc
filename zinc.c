@@ -160,8 +160,10 @@ int main(int argc, char **argv) {
 
     allocator.close();
 
-    printf("  " COLOR_BOLD COLOR_GREEN "Finished" COLOR_RESET
+    if (!res) {
+        printf("  " COLOR_BOLD COLOR_GREEN "Finished" COLOR_RESET
             " build in %.02fs\n", elapsed);
+    }
 
     return res;
 }

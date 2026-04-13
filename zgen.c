@@ -1329,17 +1329,26 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     LLVMTypeRef funcType = LLVMFunctionType(ret, args, veclen(args), false);
     LLVMValueRef func =  LLVMAddFunction(ctx->mod, f->funcDef.mangled, funcType);
-
-    for (usize i = 0; i < veclen(f->funcDef.args); i++) {
-        char *name = f->funcDef.args[i]->field.identifier->str;
-        putLLVMValueRef(ctx, name, LLVMGetParam(func, i));
-    }
     ctx->currentFunc = func;
 
     LLVMBasicBlockRef entry = makeblock(ctx);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
-    /* All variable declarations are declared ad the start of the function. */
+    /* Allocate a stack slot for each parameter so they can be reassigned.
+     * The receiver (if present) occupies param index 0, so regular args
+     * start at offset 1. */
+    usize paramOffset = f->funcDef.receiver ? 1 : 0;
+    for (usize i = 0; i < veclen(f->funcDef.args); i++) {
+        char *name = f->funcDef.args[i]->field.identifier->str;
+        LLVMTypeRef paramType = genType(ctx, f->funcDef.args[i]->field.type);
+
+        LLVMValueRef slot = LLVMBuildAlloca(ctx->builder, paramType, name);
+        LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
+
+        putLLVMValueRef(ctx, name, slot);
+    }
+
+    /* All variable declarations are declared at the start of the function. */
     genFuncVars(ctx, f->funcDef.body);
 
     genBlock(ctx, f->funcDef.body);
