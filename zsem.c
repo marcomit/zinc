@@ -385,7 +385,7 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
         return a;
     }
 
-    if (typesEqual(a, b)) return a;
+    if (typesEqual(a, b)) return b;
 
     if (a->kind != Z_TYPE_PRIMITIVE || b->kind != Z_TYPE_PRIMITIVE)
         return NULL;
@@ -910,6 +910,8 @@ static ZType *resolveArrayLiteral(ZSemantic *semantic, ZNode *curr) {
     ZType *result       = maketype(Z_TYPE_ARRAY);
     result->array.base  = arrType;
     result->array.size  = len;
+
+
     return result;
 }
 
@@ -1005,12 +1007,19 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         }
         break;
 
-    case NODE_CAST:
+    case NODE_CAST: {
         /* Resolve the inner expression type (for side-effects / validation). */
-        resolveType(semantic, curr->castExpr.expr);
+        ZType *expr = resolveType(semantic, curr->castExpr.expr);
         result = resolveTypeRef(semantic, curr->castExpr.toType);
+
+        if (expr->kind == Z_TYPE_ARRAY &&
+            result->kind == Z_TYPE_ARRAY) {
+            result->array.size = expr->array.size;
+        }
+
         curr->castExpr.toType = result;
         break;
+    }
 
     case NODE_SIZEOF: {
         /* sizeof yields u64. */

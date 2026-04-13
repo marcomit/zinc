@@ -135,11 +135,20 @@ static void _stype(ZType *type, char **buff) {
         vecunion(*buff, "struct ", 7);
         vecunion(*buff, type->strct.name->str, strlen(type->strct.name->str));
         break;
-    case Z_TYPE_ARRAY:
+    case Z_TYPE_ARRAY: {
         vecpush(*buff, '[');
+        
+        usize len = type->array.size;
+
+        while (len > 0) {
+            vecpush(*buff, 48 + len % 10);
+            len /= 10;
+        }
+
         vecpush(*buff, ']');
         _stype(type->array.base, buff);
         break;
+    }
     case Z_TYPE_TUPLE:
         vecpush(*buff, '(');
         for (usize i = 0; i < veclen(type->tuple); i++) {
@@ -419,7 +428,7 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->deferStmt.expr, depth);
         break;
     case NODE_ARRAY_LIT:
-        printf("\n");
+        printf(" %zu\n", veclen(node->arraylit));
         for(usize i = 0; i < veclen(node->arraylit); i++) {
             printNode(node->arraylit[i], depth);
         }
