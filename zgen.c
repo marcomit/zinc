@@ -556,6 +556,13 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         veclen(args),
         isVoid(node->resolved) ? "" : label(ctx)
     );
+
+    if (!fitsInRegister(call)) {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (stack) {
+            LLVMBuildStore(ctx->builder, call, stack->stack);
+        }
+    }
     return call;
 }
 

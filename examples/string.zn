@@ -8,23 +8,27 @@ i32 main() {
     world.println()
 
     if hello.eq("Hello") {
-        printf("eq:          ok\n")
+        printf("eq:         ok\n")
     }
 
     if hello.neq("Goodbye") {
-        printf("neq:         ok\n")
+        printf("neq:        ok\n")
     }
 
     if hello.startsWith("He") {
-        printf("startsWith:  ok\n")
+        printf("startsWith: ok\n")
     }
 
     if world.contains("World") {
-        printf("contains:    ok\n")
+        printf("contains:   ok\n")
     }
 
     if empty.isEmpty() {
-        printf("isEmpty:     ok\n")
+        printf("isEmpty:    ok\n")
+    }
+
+    if not hello.isEmpty() {
+        printf("isNotEmpty: ok\n")
     }
 
     String greeting = hello.append(", Zinc!")
