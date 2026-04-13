@@ -541,10 +541,14 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
     case NODE_IDENTIFIER: {
-        char *key = node->identNode.mangled ? node->identNode.mangled : node->tok->str;
+        char *key = node->identNode.mangled ?
+                    node->identNode.mangled :
+                    node->tok->str;
         LLVMValueRef val = getLLVMValueRef(ctx, key);
         if (!val) {
-            error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
+            error(ctx->state, node->tok,
+                    "'%s' not found in the current scope",
+                    node->tok->str);
             return NULL;
         }
         return val;
@@ -566,7 +570,6 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         );
     }
     case NODE_MEMBER: {
-        
         ZType *objType = node->memberAccess.object->resolved;
         ZToken *tok = node->memberAccess.field;
         i32 index = typeIndex(objType, tok->str);

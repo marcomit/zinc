@@ -1,4 +1,5 @@
 #include "zinc.h"
+#include "zcolors.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -159,7 +160,8 @@ int main(int argc, char **argv) {
 
     allocator.close();
 
-    printf("Elapsed time: %.02f seconds\n", elapsed);
+    printf("  " COLOR_BOLD COLOR_GREEN "Finished" COLOR_RESET
+            " build in %.02fs\n", elapsed);
 
     return res;
 }

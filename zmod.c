@@ -1,5 +1,6 @@
 #include "zinc.h"
 #include "zvec.h"
+#include "zcolors.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -681,6 +682,7 @@ bool visit(ZState *state, char *filename) {
         if (strcmp(state->pathFiles[i], filename) == 0) return false;
     }
 
+    printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", filename);
     vecpush(state->visitedFiles,     filename);
     vecpush(state->pathFiles,         filename);
     state->filename = filename;
