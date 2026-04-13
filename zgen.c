@@ -589,7 +589,6 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     case NODE_MEMBER: {
         ZType *objType = node->memberAccess.object->resolved;
         ZToken *tok = node->memberAccess.field;
-        printf("Struct: %s, %s\n", stype(objType), tok->str);
         i32 index = typeIndex(objType, tok->str);
 
         if (index == -1) {
@@ -1296,7 +1295,6 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name, ZType *ty
     ZLLVMStack *item = zalloc(ZLLVMStack);
     *item = (ZLLVMStack){ .stack = val, .type = type, .node = node };
 
-    info(ctx->state, node->tok, "Pushed %p, %p", ctx->scope, node);
     vecpush(ctx->scope->stackAlloca, item);
 }
 
