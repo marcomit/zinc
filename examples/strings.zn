@@ -1,0 +1,93 @@
+pub foreign u0    printf(*char)
+pub foreign i32   putchar(i32)
+pub foreign *u8   malloc(u64)
+pub foreign u64   strlen(*char)
+pub foreign i32   strcmp(*char, *char)
+pub foreign i32   strncmp(*char, *char, u64)
+pub foreign *u8   strcpy(*u8, *char)
+pub foreign *u8   strcat(*u8, *char)
+pub foreign *char strstr(*char, *char)
+
+pub struct String {
+    *char data
+    u64   len
+}
+
+pub String String::from(*char s) {
+    u64 l = strlen(s)
+    String str = String { data: s, len: l }
+    return str
+}
+
+pub String String::withCapacity(u64 cap) {
+    *char buf = malloc(cap + 1)
+    String str = String { data: buf, len: 0 }
+    return str
+}
+
+pub String String::concat(*char a, *char b) {
+    u64 la    = strlen(a)
+    u64 lb    = strlen(b)
+    u64 total = la + lb
+    *u8 buf   = malloc(total + 1)
+    strcpy(buf, a)
+    strcat(buf, b)
+    String str = String { data: buf, len: total }
+    return str
+}
+
+pub u64 len() String self {
+    return self.len
+}
+
+pub i32 isEmpty() String self {
+    return self.len == 0
+}
+
+pub u0 print() String self {
+    printf(self.data)
+    return
+}
+
+pub u0 println() String self {
+    printf(self.data)
+    putchar(10)
+    return
+}
+
+pub i32 eq(*char other) String self {
+    return strcmp(self.data, other) == 0
+}
+
+pub i32 neq(*char other) String self {
+    return strcmp(self.data, other) != 0
+}
+
+pub i32 startsWith(*char prefix) String self {
+    u64 plen = strlen(prefix)
+    if plen > self.len { return 0 }
+    return strncmp(self.data, prefix, plen) == 0
+}
+
+pub i32 contains(*char sub) String self {
+    *char found = strstr(self.data, sub)
+    if not found { return 0 }
+    return 1
+}
+
+pub String append(*char other) String self {
+    u64 olen  = strlen(other)
+    u64 total = self.len + olen
+    *u8 buf   = malloc(total + 1)
+    strcpy(buf, self.data)
+    strcat(buf, other)
+    String str = String { data: buf, len: total }
+    return str
+}
+
+pub String clone() String self {
+    *u8 buf = malloc(self.len + 1)
+    strcpy(buf, self.data)
+    String str = String { data: buf, len: self.len }
+    return str
+}

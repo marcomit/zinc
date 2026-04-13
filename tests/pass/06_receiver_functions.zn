@@ -58,6 +58,10 @@ u0 describe() Rect self {
 // }
 
 
+i32 sum(i32 other) i32 self {
+    return other + self
+}
+
 i32 main() {
     Counter c = Counter { count: 3 }
 

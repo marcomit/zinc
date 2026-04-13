@@ -509,6 +509,10 @@ bool typesEqual(ZType *a, ZType *b) {
 }
 
 ZNode *implicitCast(ZNode *node, ZType *type) {
+    if (node->resolved && typesEqual(node->resolved, type)) {
+        return node;
+    }
+
     ZNode *cast = makenode(NODE_CAST);
     cast->castExpr.expr = node;
     cast->castExpr.toType = type;
@@ -1186,6 +1190,8 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
         );
     }
 
+    curr->ifStmt.cond = implicitCast(curr->ifStmt.cond, u1Type);
+
     analyzeBlock(semantic, curr->ifStmt.body, true);
 
     if (curr->ifStmt.elseBranch) {
@@ -1198,7 +1204,15 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 }
 
 static void analyzeWhile(ZSemantic *semantic, ZNode *curr) {
-    resolveType(semantic, curr->whileStmt.cond);
+    ZType *cond = resolveType(semantic, curr->whileStmt.cond);
+
+    if (!isComparable(semantic, cond)) {
+        error(semantic->state, curr->whileStmt.cond->tok,
+                "Is not a comparable value");
+    }
+
+    curr->whileStmt.cond = implicitCast(curr->whileStmt.cond, u1Type);
+
     semantic->loopDepth++;
     analyzeBlock(semantic, curr->whileStmt.branch, true);
     semantic->loopDepth--;
@@ -1210,11 +1224,13 @@ static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
     analyzeVar(semantic, f.var, false);
 
     ZType *cond = resolveType(semantic, f.cond);
+    curr->forStmt.cond->resolved = cond;
 
-    /* Check if the type is a valid condition. */
-    if (!cond || cond->kind != Z_TYPE_PRIMITIVE) {
-
+    if (!isComparable(semantic, cond)) {
+        error(semantic->state, f.cond->tok, "Is not a comparable value");
     }
+
+    curr->forStmt.cond = implicitCast(curr->forStmt.cond, u1Type);
 
     resolveType(semantic, f.incr);
 
