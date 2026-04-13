@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <libgen.h>
 
 #define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
@@ -548,11 +549,12 @@ ZState *makestate(char *filename) {
     self->output            = NULL;
     self->currentPhase      = Z_PHASE_LEXICAL;
     self->filename          = filename;
-    self->logs            = NULL;
+    self->logs              = NULL;
     self->verbose           = false;
     self->pathFiles         = NULL;
     self->debug             = false;
     self->canAdvance        = true;
+    self->currentPath       = NULL;
 
     self->unusedFunc        = false;
     self->unusedStruct      = false;
@@ -686,7 +688,31 @@ void _debug(ZState *state, ZToken *tok, const char *src_file,
     va_end(args);
 }
 
+static char *resolvePath(ZState *state, char *filename) {
+    if (!state->filename) return filename;
+    char path[256] = { 0 };
+    strncpy(path, state->filename, 256);
+
+    char *dir = dirname(path);
+    char *out = NULL;
+
+    while (*dir) {
+        vecpush(out, *dir);
+        dir++;
+    }
+    vecpush(out, '/');
+
+    while (*filename) {
+        vecpush(out, *filename);
+        filename++;
+    }
+
+    vecpush(out, '\0');
+    return out;
+}
+
 bool visit(ZState *state, char *filename) {
+    filename = resolvePath(state, filename);
     for (usize i = 0; i < veclen(state->pathFiles); i++) {
         if (strcmp(state->pathFiles[i], filename) == 0) return false;
     }
