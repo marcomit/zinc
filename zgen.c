@@ -151,21 +151,28 @@ static void initNativeTypes(ZCodegen *ctx) {
 }
 
 static void beginModule(ZCodegen *ctx, ZNode *node) {
-	LLVMModuleRef mod = LLVMModuleCreateWithNameInContext(
-        node->module.name, ctx->ctx
-    );
-
-	vecpush(ctx->modules, mod);
-	ctx->mod = mod;
+    /* Save the current LLVM module so endModule can restore it.
+       For the root module ctx->mod is NULL — create the one module
+       that the whole compilation shares.  Imported modules reuse it. */
+    LLVMModuleRef prev = ctx->mod;
+    if (!ctx->mod) {
+        ctx->mod = LLVMModuleCreateWithNameInContext(
+            node->module.name, ctx->ctx
+        );
+    }
+    vecpush(ctx->modules, prev);
     ctx->current = node->module.scope;
 }
 
 static void endModule(ZCodegen *ctx) {
-	if (veclen(ctx->modules) == 0) {
+    if (veclen(ctx->modules) == 0) {
         printf("Invalid call 'endModule'. The stack of modules is empty\n");
         return;
     }
-	ctx->mod = vecpop(ctx->modules);
+    LLVMModuleRef prev = vecpop(ctx->modules);
+    /* Only restore if we actually had a parent module (non-root case).
+       For the root the saved value is NULL; keep ctx->mod as-is. */
+    if (prev) ctx->mod = prev;
 }
 
 ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
@@ -1081,6 +1088,15 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     }
 
     LLVMValueRef val = genExpr(ctx, ret->returnStmt.expr);
+
+    /* If the expression produced i1 (e.g. a comparison) but the
+       function's declared return type is a wider integer, zero-extend. */
+    LLVMTypeRef funcType = LLVMGlobalGetValueType(ctx->currentFunc);
+    LLVMTypeRef retType  = LLVMGetReturnType(funcType);
+    if (LLVMTypeOf(val) == i1Type && retType != i1Type &&
+            LLVMGetTypeKind(retType) == LLVMIntegerTypeKind) {
+        val = LLVMBuildZExt(ctx->builder, val, retType, label(ctx));
+    }
 
     genRetChainDefer(ctx);
 

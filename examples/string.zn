@@ -1,0 +1,38 @@
+use "strings"
+
+i32 main() {
+    String hello   = String::from("Hello")
+    String world   = String::concat("Hello, ", "World!")
+    String empty   = String::withCapacity(64)
+
+    world.println()
+
+    if hello.eq("Hello") {
+        printf("eq:          ok\n")
+    }
+
+    if hello.neq("Goodbye") {
+        printf("neq:         ok\n")
+    }
+
+    if hello.startsWith("He") {
+        printf("startsWith:  ok\n")
+    }
+
+    if world.contains("World") {
+        printf("contains:    ok\n")
+    }
+
+    if empty.isEmpty() {
+        printf("isEmpty:     ok\n")
+    }
+
+    String greeting = hello.append(", Zinc!")
+    greeting.println()
+
+    String copy = greeting.clone()
+    copy.println()
+
+    return 0
+}
+
