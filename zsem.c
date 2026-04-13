@@ -21,6 +21,7 @@
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
 static ZType *resolveTypeRef(ZSemantic *, ZType *);
+static ZType *resolveReceiverCall(ZSemantic *, ZType *, ZToken *);
 
 /* ================== Scope / Symbol helpers ================== */
 
@@ -157,13 +158,17 @@ static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
 
     ZNode *receiver         = node->funcDef.receiver;
     ZFuncTable **funcs      = semantic->table->funcs;
-    for (usize i = 0; i < veclen(funcs); i++) {
+    ZFuncTable *table       = NULL;
+    for (usize i = 0; i < veclen(funcs) && !table; i++) {
         if (typesEqual(funcs[i]->base, receiver->field.type)) {
-            vecpush(funcs[i]->funcDef, node);
-            return;
+            table = funcs[i];
         }
     }
 
+    if (!table) table = makefunctable(receiver->field.type);
+
+    vecpush(table->funcDef, node);
+    vecpush(semantic->table->funcs, table);
 }
 
 static void putStaticFunc(ZSemantic *semantic, ZNode *node) {
@@ -380,7 +385,7 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
         return a;
     }
 
-    if (typesEqual(a, b)) return a;
+    if (typesEqual(a, b)) return b;
 
     if (a->kind != Z_TYPE_PRIMITIVE || b->kind != Z_TYPE_PRIMITIVE)
         return NULL;
@@ -468,6 +473,13 @@ bool typesEqual(ZType *a, ZType *b) {
     case Z_TYPE_POINTER:
         return typesEqual(a->base, b->base);
     case Z_TYPE_ARRAY:
+        if (a->array.size == 0 && b->array.size > 0) {
+            a->array.size = b->array.size;
+        } else if (b->array.size == 0 && a->array.size > 0) {
+            b->array.size = a->array.size;
+        } else if (a->array.size != b->array.size) {
+            printf("Mismatch array size\n");
+        }
         return typesEqual(a->array.base, b->array.base);
     case Z_TYPE_STRUCT:
     case Z_TYPE_FUNCTION:
@@ -686,6 +698,13 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
                 expectedArgs = func->resolved->func.args;
             }
         }
+    } else if (callee->type == NODE_MEMBER) {
+        ZType *obj = resolveType(semantic, callee->memberAccess.object);
+
+        ZToken *prop = callee->memberAccess.field;
+
+        result = resolveReceiverCall(semantic, obj, prop);
+        printType(result);
     } else {
         /* Expression call: resolve callee type and extract return type. */
         ZType *calleeType = resolveType(semantic, callee);
@@ -891,6 +910,8 @@ static ZType *resolveArrayLiteral(ZSemantic *semantic, ZNode *curr) {
     ZType *result       = maketype(Z_TYPE_ARRAY);
     result->array.base  = arrType;
     result->array.size  = len;
+
+
     return result;
 }
 
@@ -986,12 +1007,19 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         }
         break;
 
-    case NODE_CAST:
+    case NODE_CAST: {
         /* Resolve the inner expression type (for side-effects / validation). */
-        resolveType(semantic, curr->castExpr.expr);
+        ZType *expr = resolveType(semantic, curr->castExpr.expr);
         result = resolveTypeRef(semantic, curr->castExpr.toType);
+
+        if (expr->kind == Z_TYPE_ARRAY &&
+            result->kind == Z_TYPE_ARRAY) {
+            result->array.size = expr->array.size;
+        }
+
         curr->castExpr.toType = result;
         break;
+    }
 
     case NODE_SIZEOF: {
         /* sizeof yields u64. */
@@ -1028,14 +1056,16 @@ static ZType *resolveReceiverCall(ZSemantic *semantic,
     ZFuncTable **table = semantic->table->funcs;
     ZNode **funcs = NULL;
 
-    for (usize i = 0; i < veclen(table) && !funcs; i++) {
+    for (usize i = 0; i < veclen(table); i++) {
         ZType *receiverType = resolveTypeRef(semantic, table[i]->base);
         table[i]->base = receiverType;
         table[i]->base = receiverType;
         if (typesEqual(receiverType, caller)) {
             funcs = table[i]->funcDef;
+            break;
         }
     }
+
     if (!funcs) return NULL;
 
     for (usize i = 0; i < veclen(funcs); i++) {
@@ -1230,6 +1260,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
     if (curr->funcDef.receiver) {
         ZNode *receiver = curr->funcDef.receiver;
         ZType *recType  = resolveTypeRef(semantic, receiver->field.type);
+        curr->funcDef.receiver->resolved = recType;
         receiver->field.type = recType;
 
         ZSymbol *sym = makesymbol(Z_SYM_VAR);

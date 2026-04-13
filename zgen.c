@@ -541,10 +541,14 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
     case NODE_IDENTIFIER: {
-        char *key = node->identNode.mangled ? node->identNode.mangled : node->tok->str;
+        char *key = node->identNode.mangled ?
+                    node->identNode.mangled :
+                    node->tok->str;
         LLVMValueRef val = getLLVMValueRef(ctx, key);
         if (!val) {
-            error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
+            error(ctx->state, node->tok,
+                    "'%s' not found in the current scope",
+                    node->tok->str);
             return NULL;
         }
         return val;
@@ -566,7 +570,6 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         );
     }
     case NODE_MEMBER: {
-        
         ZType *objType = node->memberAccess.object->resolved;
         ZToken *tok = node->memberAccess.field;
         i32 index = typeIndex(objType, tok->str);
@@ -782,8 +785,38 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
 }
 
 static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
+    ZType *from = node->castExpr.expr->resolved;
+    ZType *to   = node->castExpr.toType;
+
+    /* Array-literal cast: [n]T as []U — write each element directly into
+     * the pre-allocated slot with per-element casting.
+     * genArrayLit can't be used here because the stack slot is keyed on
+     * this cast node, not on the inner array-literal node. */
+    if (from->kind == Z_TYPE_ARRAY && to->kind == Z_TYPE_ARRAY &&
+        node->castExpr.expr->type == NODE_ARRAY_LIT) {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (!stack) {
+            error(ctx->state, node->tok, "Missing stack value for array cast");
+            return NULL;
+        }
+        ZNode *lit = node->castExpr.expr;
+        for (usize i = 0; i < veclen(lit->arraylit); i++) {
+            LLVMValueRef indices[] = {
+                LLVMConstInt(i32Type, 0, false),
+                LLVMConstInt(i32Type, i, false)
+            };
+            LLVMValueRef gep = LLVMBuildGEP2(
+                ctx->builder, stack->type,
+                stack->stack, indices, 2, label(ctx));
+            LLVMValueRef elem = genExpr(ctx, lit->arraylit[i]);
+            elem = castValue(ctx, elem, from->array.base, to->array.base);
+            LLVMBuildStore(ctx->builder, elem, gep);
+        }
+        return stack->stack;
+    }
+
     LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
-    return castValue(ctx, val, node->castExpr.expr->resolved, node->castExpr.toType);
+    return castValue(ctx, val, from, to);
 }
 
 /* dest: optional pre-allocated slot to write into (e.g. an array element GEP).
@@ -842,7 +875,7 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack = getStackValue(ctx, node);
 
     if (!stack) {
-        error(ctx->state, node->tok, "Missing stack value");
+        error(ctx->state, node->tok, "Missing stack value %p", node);
         return NULL;
     }
 
@@ -1245,6 +1278,7 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name, ZType *ty
     ZLLVMStack *item = zalloc(ZLLVMStack);
     *item = (ZLLVMStack){ .stack = val, .type = type, .node = node };
 
+    info(ctx->state, node->tok, "Pushed %p, %p", ctx->scope, node);
     vecpush(ctx->scope->stackAlloca, item);
 }
 
@@ -1274,7 +1308,9 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->ifStmt.body);
         break;
     case NODE_VAR_DECL:
-        buildFuncVar(ctx, node->varDecl.rvalue, node->varDecl.ident->identNode.tok->str, node->resolved);
+        buildFuncVar(ctx, node->varDecl.rvalue,
+            node->varDecl.ident->identNode.tok->str,
+            node->resolved);
         break;
     case NODE_CALL:
         if (!node->resolved) {
@@ -1325,17 +1361,26 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     LLVMTypeRef funcType = LLVMFunctionType(ret, args, veclen(args), false);
     LLVMValueRef func =  LLVMAddFunction(ctx->mod, f->funcDef.mangled, funcType);
-
-    for (usize i = 0; i < veclen(f->funcDef.args); i++) {
-        char *name = f->funcDef.args[i]->field.identifier->str;
-        putLLVMValueRef(ctx, name, LLVMGetParam(func, i));
-    }
     ctx->currentFunc = func;
 
     LLVMBasicBlockRef entry = makeblock(ctx);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
-    /* All variable declarations are declared ad the start of the function. */
+    /* Allocate a stack slot for each parameter so they can be reassigned.
+     * The receiver (if present) occupies param index 0, so regular args
+     * start at offset 1. */
+    usize paramOffset = f->funcDef.receiver ? 1 : 0;
+    for (usize i = 0; i < veclen(f->funcDef.args); i++) {
+        char *name = f->funcDef.args[i]->field.identifier->str;
+        LLVMTypeRef paramType = genType(ctx, f->funcDef.args[i]->field.type);
+
+        LLVMValueRef slot = LLVMBuildAlloca(ctx->builder, paramType, name);
+        LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
+
+        putLLVMValueRef(ctx, name, slot);
+    }
+
+    /* All variable declarations are declared at the start of the function. */
     genFuncVars(ctx, f->funcDef.body);
 
     genBlock(ctx, f->funcDef.body);
