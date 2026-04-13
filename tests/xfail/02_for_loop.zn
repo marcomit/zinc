@@ -1,9 +1,0 @@
-// xfail: for loop not yet implemented in code generator (genStmt)
-foreign u0 printf(*char)
-
-u32 main() {
-    for i32 i = 0; i < 3; i = i + 1 {
-        printf("loop\n")
-    }
-    return 0
-}

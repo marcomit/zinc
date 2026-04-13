@@ -1,0 +1,40 @@
+foreign u0 putchar(char)
+foreign *u8 malloc(u64)
+foreign u0 printf(*char)
+
+struct Vec2 {
+    f32 x
+    f32 y
+}
+
+struct Color {
+    u8 r
+    u8 g
+    u8 b
+}
+
+struct Point {
+    i32 x
+    i32 y
+}
+
+f32 sum(f64 x, f64 y) {
+    return x + y
+}
+
+i32 main() {
+    Point p = Point { x: 10, y: 20 }
+    i32 val = p.x
+    printf("member ok\n")
+
+    i32 ival = 10
+    v := Vec2 { x: ival, y: 10 }
+
+    i32 res = sum(v.x, v.y)
+    putchar(48 + res)
+    putchar(10)
+
+    *Point ptr = malloc(sizeof Point)
+
+    return res - res
+}

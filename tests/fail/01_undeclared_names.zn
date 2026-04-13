@@ -2,5 +2,6 @@ foreign u0 printf(*char)
 
 u32 main() {
     printf(undeclared)
+    unknownFunc()
     return 0
 }

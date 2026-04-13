@@ -1,0 +1,59 @@
+foreign u0 printf(*char)
+
+u0 greet() {
+    printf("greet\n")
+    return
+}
+
+u0 say_bye() {
+    printf("bye\n")
+    return
+}
+
+u0 print_msg(*char msg) {
+    printf(msg)
+    return
+}
+
+i32 add(i32 a, i32 b) {
+    return a + b
+}
+
+struct Vec {
+    i32 len
+}
+
+struct Counter {
+    i32 count
+}
+
+u0 Vec::create() {
+    printf("Vec:new\n")
+    return
+}
+
+u0 Counter::say(*char msg) {
+    printf(msg)
+}
+
+i32 Counter::value() {
+    return 65
+}
+
+i32 main() {
+    greet()
+    say_bye()
+    print_msg("msg\n")
+
+    i32 r = add(3, 4)
+    printf("add\n")
+
+    Vec::create()
+    Counter::say("hello\n")
+    Counter::say("world\n")
+
+    v   := Counter::value()
+    i32 val = Counter::value()
+
+    return 0
+}

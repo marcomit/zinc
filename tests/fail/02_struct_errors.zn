@@ -9,12 +9,11 @@ u0 Greeter::say() {
 }
 
 u0 Greeter::say() {
-    printf("Hi 2")
+    printf("duplicate\n")
 }
 
 i32 main() {
-    Greeter::say()
-    Greeter::unkown()
-    
+    Ghost::method()
+    Greeter::unknown()
     return 0
 }

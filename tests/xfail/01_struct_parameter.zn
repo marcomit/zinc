@@ -1,0 +1,9 @@
+// xfail: passing a struct by value as a function parameter not yet implemented
+struct Vec { f32 x }
+
+i32 double(Vec v) { return v.x * 2 }
+
+i32 main() {
+    v := Vec { x: 10 }
+    return 0
+}
