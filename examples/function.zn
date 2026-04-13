@@ -1,0 +1,18 @@
+foreign u0 printf(*char)
+struct Vec {
+    f32 x
+    f32 y
+}
+
+u0 print() Vec self {
+    printf("Received\n")
+}
+
+i32 main() {
+    v := Vec{ x: 10, y: 10 }
+
+    v.print()
+
+    return 0
+}
+

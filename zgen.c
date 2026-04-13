@@ -1314,6 +1314,7 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     }
 
     if (f->funcDef.receiver) {
+        printf("receiver func: %s\n", stype(f->funcDef.receiver->resolved));
         LLVMTypeRef receiverType = genType(ctx, f->funcDef.receiver->resolved);
         vecpush(args, receiverType);
     }
