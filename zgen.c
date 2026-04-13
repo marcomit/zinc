@@ -508,20 +508,37 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef func = genExpr(ctx, node->call.callee);
+    LLVMValueRef func;
+    LLVMValueRef *args = NULL;
+    ZNode *callee = node->call.callee;
+
+    bool isRecFunc = callee->type == NODE_MEMBER;
+    if (isRecFunc) {
+        if (!callee->memberAccess.mangled) {
+            error(ctx->state, callee->memberAccess.object->tok,
+                    "Mangling name not found");
+        }
+
+        func = getLLVMValueRef(ctx, callee->memberAccess.mangled);
+
+        if (!func) error(ctx->state,
+                    callee->tok,
+                    "Receiver function '%s' not found",
+                    callee->memberAccess.mangled);
+
+        // Prepend 'self' as the first argument
+        LLVMValueRef self = genExpr(ctx, callee->memberAccess.object);
+        vecpush(args, self);
+
+    } else {
+        func = genExpr(ctx, callee);
+    }
     LLVMTypeRef funcType = LLVMGlobalGetValueType(func);
 
-    LLVMValueRef *args = NULL;
 
     for (usize i = 0; i < veclen(node->call.args); i++) {
         LLVMValueRef arg = genExpr(ctx, node->call.args[i]);
         vecpush(args, arg);
-    }
-
-    char *name = "";
-
-    if (!isVoid(node->resolved)) {
-        name = label(ctx);
     }
 
     LLVMValueRef call = LLVMBuildCall2(
@@ -530,7 +547,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         func,
         args,
         veclen(args),
-        name
+        isVoid(node->resolved) ? "" : label(ctx)
     );
     return call;
 }
@@ -572,6 +589,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     case NODE_MEMBER: {
         ZType *objType = node->memberAccess.object->resolved;
         ZToken *tok = node->memberAccess.field;
+        printf("Struct: %s, %s\n", stype(objType), tok->str);
         i32 index = typeIndex(objType, tok->str);
 
         if (index == -1) {
@@ -1365,6 +1383,14 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     LLVMBasicBlockRef entry = makeblock(ctx);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
+
+    if (f->funcDef.receiver) {
+      char *name = f->funcDef.receiver->field.identifier->str;
+      LLVMTypeRef recType = genType(ctx, f->funcDef.receiver->resolved);
+      LLVMValueRef slot = LLVMBuildAlloca(ctx->builder, recType, name);
+      LLVMBuildStore(ctx->builder, LLVMGetParam(func, 0), slot);
+      putLLVMValueRef(ctx, name, slot);
+    }
 
     /* Allocate a stack slot for each parameter so they can be reassigned.
      * The receiver (if present) occupies param index 0, so regular args

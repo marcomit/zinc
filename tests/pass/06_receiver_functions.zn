@@ -1,0 +1,102 @@
+foreign u0 printf(*char)
+foreign i32 putchar(i32)
+
+
+struct Counter {
+    i32 count
+}
+
+struct Rect {
+    i32 w
+    i32 h
+}
+
+
+u0 print() Counter self {
+    putchar(48 + self.count)
+    putchar(10)
+    return
+}
+
+i32 get() Counter self {
+    return self.count
+}
+
+i32 add(i32 n) Counter self {
+    return self.count + n
+}
+
+i32 between(i32 lo, i32 hi) Counter self {
+    if self.count > lo {
+        if self.count < hi {
+            return 1
+        }
+    }
+    return 0
+}
+
+
+i32 area() Rect self {
+    return self.w * self.h
+}
+
+i32 scaledArea(i32 factor) Rect self {
+    return self.w * self.h * factor
+}
+
+u0 describe() Rect self {
+    putchar(48 + self.w)
+    putchar(32)
+    putchar(48 + self.h)
+    putchar(10)
+}
+
+
+// Auto-dereference not yet implemented
+// u0 inc(*Counter self) {
+//     self.count = self.count + 1
+// }
+
+
+i32 main() {
+    Counter c = Counter { count: 3 }
+
+    c.print()
+
+    i32 v = c.get()
+    putchar(48 + v)
+    putchar(10)
+
+    i32 sum = c.add(4)
+    putchar(48 + sum)
+    putchar(10)
+
+    i32 inside = c.between(1, 5)
+    putchar(48 + inside)
+    putchar(10)
+
+    i32 outside = c.between(4, 9)
+    putchar(48 + outside)
+    putchar(10)
+
+    Rect r = Rect { w: 3, h: 4 }
+
+    r.describe()
+
+    i32 area = r.area()
+    putchar(48 + area)
+    putchar(10)
+
+    i32 scaled = r.scaledArea(2)
+    putchar(48 + scaled)
+    putchar(10)
+
+    Counter a = Counter { count: 1 }
+    Counter b = Counter { count: 2 }
+    putchar(48 + a.get())
+    putchar(10)
+    putchar(48 + b.get())
+    putchar(10)
+
+    return 0
+}
