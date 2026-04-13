@@ -61,7 +61,7 @@ static ZNode *parseFuncDecl                 (ZParser *, bool);
 static ZNode *parseUnionDecl                (ZParser *, bool);
 static ZNode *parseEnumDecl                 (ZParser *, bool);
 static ZNode *parseStructDecl               (ZParser *, bool);
-static ZNode *parseForeignDecl              (ZParser *);
+static ZNode *parseForeignDecl              (ZParser *, bool);
 
 static ZToken **parseGenericsDecl           (ZParser *);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
@@ -1454,7 +1454,7 @@ static ZNode *parseTypedef(ZParser *parser, bool public) {
     return node;
 }
 
-static ZNode *parseForeignDecl(ZParser *parser) {
+static ZNode *parseForeignDecl(ZParser *parser, bool public) {
     expect(parser, TOK_FOREIGN);
 
     ZType *ret = wrapType(parser, parseType);
@@ -1475,12 +1475,13 @@ static ZNode *parseForeignDecl(ZParser *parser) {
     expect(parser, TOK_RPAREN);
 
     ZNode *node = makenode(NODE_FOREIGN);
-    node->foreignFunc.ret = ret;
-    node->foreignFunc.tok = name;
+    node->foreignFunc.ret  = ret;
+    node->foreignFunc.tok  = name;
     node->foreignFunc.args = args;
-    
+    node->foreignFunc.pub  = public;
+
     ZType *type = maketype(Z_TYPE_FUNCTION);
-    type->func.ret = ret;
+    type->func.ret  = ret;
     type->func.args = args;
 
     node->resolved = type;
@@ -1712,11 +1713,9 @@ static ZNode *parse(ZParser *parser) {
 
     ZTokenType t = peek(parser)->type;
 
-    // Statements that don't support 'pub' keyword are parsed first
+    // 'use' (module import) never takes pub
     if (t == TOK_MODULE) {
         return parseImport(parser);
-    } else if (t == TOK_FOREIGN) {
-        return parseForeignDecl(parser);
     }
 
     bool public = match(parser, TOK_PUB);
@@ -1724,6 +1723,11 @@ static ZNode *parse(ZParser *parser) {
     guard(canPeek(parser));
 
     t = peek(parser)->type;
+
+    // 'foreign' supports an optional leading 'pub'
+    if (t == TOK_FOREIGN) {
+        return parseForeignDecl(parser, public);
+    }
 
     if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
         return parseVarInferred(parser);

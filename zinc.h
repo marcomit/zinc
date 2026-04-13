@@ -305,6 +305,7 @@ struct ZNode {
             ZType     *ret;
             ZToken     *tok;
             ZType     **args;
+            bool       pub;
         } foreignFunc;
 
         struct {
@@ -580,10 +581,10 @@ ZType *maketype(ZTypeKind);
 /* Semantic */
 ZType *resolveType(ZSemantic *, ZNode *);
 ZSymbol *resolve(ZSemantic *, ZToken *);
-void zanalyze(ZState *, ZNode *);
+ZSemantic *zanalyze(ZState *, ZNode *);
 
 /* Code generation */
-void zcompile(ZState *, ZNode *, const char *output);
+void zcompile(ZState *, ZNode *, const char *output, ZSemantic *);
 
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);

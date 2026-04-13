@@ -75,8 +75,15 @@ static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
     ZScope *scope = semantic->table->current;
 
     if (symbol->isPublic) scope = semantic->table->global;
-    
+
     if (!hashset_insert(&scope->seen, symbol->name->str)) {
+        /* Duplicate pub foreign declarations are valid: multiple modules
+           may re-export the same C extern (like a shared header). Skip
+           silently instead of raising an error. */
+        if (symbol->isPublic && symbol->kind == Z_SYM_FUNC &&
+                symbol->node && symbol->node->type == NODE_FOREIGN) {
+            return;
+        }
         error(semantic->state, symbol->name,
                 "'%s' already defined in the same scope",
                 symbol->name->str);
@@ -1136,6 +1143,7 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
 
     if (curr->varDecl.rvalue) {
         rvalueType = resolveType(semantic, curr->varDecl.rvalue);
+        rvalueType = resolveTypeRef(semantic, rvalueType);
     }
 
     if (curr->resolved) {
@@ -1379,12 +1387,15 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
         }
 
         case NODE_FOREIGN: {
-            /* Foreign functions are callable like regular functions. */
+            /* Foreign functions are callable like regular functions.
+               pub foreign declarations are placed in the global scope
+               so importers of this module can call them without
+               re-declaring the foreign themselves. */
             ZSymbol *symbol   = makesymbol(Z_SYM_FUNC);
             symbol->name      = child->foreignFunc.tok;
             symbol->node      = child;
             symbol->type      = child->resolved;
-            symbol->isPublic  = false;
+            symbol->isPublic  = child->foreignFunc.pub;
             putSymbol(semantic, symbol);
             break;
         }
@@ -1446,7 +1457,7 @@ ZType *makePrimitiveType(ZTokenType type) {
     return self;
 }
 
-void zanalyze(ZState *state, ZNode *root) {
+ZSemantic *zanalyze(ZState *state, ZNode *root) {
     state->currentPhase = Z_PHASE_SEMANTIC;
     ZSemantic *semantic = makesemantic(state, root);
 
@@ -1459,4 +1470,5 @@ void zanalyze(ZState *state, ZNode *root) {
     registerModule(semantic, root);
     discoverGlobalScope(semantic, root);
     analyze(semantic, root);
+    return semantic;
 }

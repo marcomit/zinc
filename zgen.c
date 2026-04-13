@@ -1488,8 +1488,8 @@ static void freeCodegen(ZCodegen *ctx) {
 	LLVMContextDispose(ctx->ctx);
 }
 
-void zcompile(ZState *state, ZNode *root, const char *output) {
-	ZCodegen *ctx = makecodegen(state, NULL);
+void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semantic) {
+	ZCodegen *ctx = makecodegen(state, semantic);
 	initNativeTypes(ctx);
 	compile(ctx, root);
 
