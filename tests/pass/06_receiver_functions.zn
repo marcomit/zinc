@@ -52,9 +52,10 @@ u0 describe() Rect self {
 }
 
 
-u0 inc(*Counter self) {
-    // self.count = self.count + 1
-}
+// Auto-dereference not yet implemented
+// u0 inc(*Counter self) {
+//     self.count = self.count + 1
+// }
 
 
 i32 main() {
