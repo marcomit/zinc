@@ -956,9 +956,13 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genSubscript(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef base = genLvalue(ctx, node->subscript.arr);
+    LLVMValueRef base = genLvalue(ctx, node);
     ZType *arrType = node->subscript.arr->resolved;
-    LLVMTypeRef elemType = genType(ctx, arrType->array.base);
+    
+    ZType *baseType = arrType->kind == Z_TYPE_ARRAY ?
+        arrType->array.base :
+        arrType->base;
+    LLVMTypeRef elemType = genType(ctx, baseType);
 
     return LLVMBuildLoad2(
         ctx->builder,   elemType,
