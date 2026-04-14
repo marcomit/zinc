@@ -1403,20 +1403,31 @@ static ZNode *parseStructLit(ZParser *parser) {
     return structlit;
 }
 
-static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
-    usize len = strlen(name->str);
-    char *filename = znalloc(char, len + 4);
-    // memcpy(filename, name->str);
-    memcpy(filename, name->str, len);
-    filename[len] = '.';
-    filename[len+1] = 'z';
-    filename[len+2] = 'n';
-    filename[len+3] = '\0';
+static ZNode *getModuleByName(ZParser *parser, ZToken **module, bool isStd) {
+    char *filename = NULL;
+    if (isStd) {
+        usize len = strlen(parser->state->compilerPath);
+        vecunion(filename, parser->state->compilerPath, len);
+        vecpush(filename, sep);
+        vecunion(filename, "std", 3);
+        vecpush(filename, sep);
+    }
+
+    usize len = veclen(module);
+    for (usize i = 0; i < len; i++) {
+        for (usize j = 0; j < strlen(module[i]->str); j++) {
+            vecpush(filename, module[i]->str[j]);
+        }
+        if (i < len - 1) vecpush(filename, sep);
+    }
+    vecunion(filename, ".zn", 3);
+    vecpush(filename, '\0');
+
     bool canVisit = visit(parser->state, filename);
     ZNode *node = makenode(NODE_MODULE);
 
     if (!canVisit) {
-        node->module.name = name->str;
+        node->module.name = filename;
         node->module.root = NULL;
         return node;
     }
@@ -1432,9 +1443,27 @@ static ZNode *getModuleByName(ZParser *parser, ZToken *name) {
 static ZNode *parseImport(ZParser *parser) {
     expect(parser, TOK_MODULE);
 
-    ensure(check(parser, TOK_STR_LIT), "Expected a string literal");
+    bool isStd = match(parser, TOK_LT);
 
-    return getModuleByName(parser, consume(parser));
+    ZToken **module = NULL;
+    ZToken *segment;
+    while (canPeek(parser)) {
+        if (peek(parser)->newlineBefore) break;
+        if (!check(parser, TOK_IDENT)) {
+            error(parser->state, peek(parser), "Unexpected token");
+        }
+
+        segment = consume(parser);
+        vecpush(module, segment);
+        if (check(parser, TOK_GT)) break;
+        if (!match(parser, TOK_DOUBLE_COLON)) {
+            break;
+        }
+    }
+
+    if (isStd) expect(parser, TOK_GT);
+
+    return getModuleByName(parser, module, isStd);
 }
 
 static ZNode *parseTypedef(ZParser *parser, bool public) {

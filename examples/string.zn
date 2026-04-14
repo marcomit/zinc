@@ -1,42 +1,18 @@
-use "strings"
+use <mem>
+use <strings>
 
 i32 main() {
-    String hello   = String::from("Hello")
-    String world   = String::concat("Hello, ", "World!")
-    String empty   = String::withCapacity(64)
 
-    world.println()
+    heap := Allocator{ bytes: 0}
 
-    if hello.eq("Hello") {
-        printf("eq:         ok\n")
-    }
 
-    if hello.neq("Goodbye") {
-        printf("neq:        ok\n")
-    }
+    hello := String::from("hello")
 
-    if hello.startsWith("He") {
-        printf("startsWith: ok\n")
-    }
+    cap := String::withCapacity(64)
 
-    if world.contains("World") {
-        printf("contains:   ok\n")
-    }
+    concat := String::concat("Hello, ", "World!")
 
-    if empty.isEmpty() {
-        printf("isEmpty:    ok\n")
-    }
-
-    if not hello.isEmpty() {
-        printf("isNotEmpty: ok\n")
-    }
-
-    String greeting = hello.append(", Zinc!")
-    greeting.println()
-
-    String copy = greeting.clone()
-    copy.println()
+    hello.println()
 
     return 0
 }
-
