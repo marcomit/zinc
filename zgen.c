@@ -587,12 +587,27 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     case NODE_SUBSCRIPT: {
         LLVMValueRef ptr        = genLvalue(ctx, node->subscript.arr);
         LLVMValueRef i          = genExpr(ctx, node->subscript.index);
-        LLVMTypeRef type        = genType(ctx, node->subscript.arr->resolved);
+        ZType *arrType          = node->subscript.arr->resolved;
+        LLVMTypeRef type        = genType(ctx, arrType);
+        const char *name        = label(ctx);
+        
+        if (arrType->kind == Z_TYPE_POINTER) {
+            LLVMTypeRef elemType = genType(ctx, arrType->base);
+            LLVMValueRef loaded = LLVMBuildLoad2(
+                ctx->builder,   type,
+                ptr,            name
+            );
+            return LLVMBuildGEP2(
+                ctx->builder,   elemType,
+                loaded,         &i,
+                1,              name
+            );
+        }
+
         LLVMValueRef indices[]  = {
             LLVMConstInt(i64Type, 0, false),
             i
         };
-
         return LLVMBuildGEP2(
             ctx->builder,
             type, ptr,
@@ -972,25 +987,17 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genSubscript(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef base = genLvalue(ctx, node->subscript.arr);
+    LLVMValueRef base = genLvalue(ctx, node);
     ZType *arrType = node->subscript.arr->resolved;
-    LLVMTypeRef baseType = genType(ctx, arrType);
-    LLVMTypeRef elemType = genType(ctx, arrType->array.base);
-
-    LLVMValueRef index = genExpr(ctx, node->subscript.index);
-
-    LLVMValueRef indices[] = {
-        LLVMConstInt(i32Type, 0, false),
-        index
-    };
-    LLVMValueRef ptr = LLVMBuildGEP2(ctx->builder,
-        baseType, base,
-        indices, 2, label(ctx)
-    );
+    
+    ZType *baseType = arrType->kind == Z_TYPE_ARRAY ?
+        arrType->array.base :
+        arrType->base;
+    LLVMTypeRef elemType = genType(ctx, baseType);
 
     return LLVMBuildLoad2(
         ctx->builder,   elemType,
-        ptr,            label(ctx)
+        base,           label(ctx)
     );
 }
 
@@ -1238,7 +1245,10 @@ static void genFor(ZCodegen *ctx, ZNode *node) {
     // Fire all defer statements
     genChainDefer(ctx, ctx->scope->parent);
 
-    LLVMBuildBr(ctx->builder, entry);
+    /* If the block contains a break or a continue this block is already terminated.*/
+    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+        LLVMBuildBr(ctx->builder, entry);
+    }
 
     LLVMPositionBuilderAtEnd(ctx->builder, endfor);
     endScope(ctx);
@@ -1262,7 +1272,11 @@ static void genBreak(ZCodegen *ctx, ZNode *node) {
     }
 
     genChainDefer(ctx, scope);
-    LLVMBuildBr(ctx->builder, ctx->scope->endLoop);
+
+    /* If the block contains a break or a continue this block is already terminated.*/
+    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+        LLVMBuildBr(ctx->builder, ctx->scope->endLoop);
+    }
 }
 
 static void genContinue(ZCodegen *ctx, ZNode *node) {
@@ -1277,7 +1291,11 @@ static void genContinue(ZCodegen *ctx, ZNode *node) {
     }
 
     genChainDefer(ctx, scope);
-    LLVMBuildBr(ctx->builder, ctx->scope->startLoop);
+
+    /* If the block contains a break or a continue this block is already terminated.*/
+    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+        LLVMBuildBr(ctx->builder, ctx->scope->startLoop);
+    }
 }
 
 /* Defer statement is compiled using a per-scope stack.
