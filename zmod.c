@@ -1,4 +1,5 @@
 #include "zinc.h"
+#include "zmem.h"
 #include "zvec.h"
 #include "zcolors.h"
 
@@ -33,6 +34,55 @@ static char *colors[] = {
 };
 
 static void printLog(ZState *, ZLog *);
+
+static char *getCompilerPath();
+
+#ifdef __linux__
+#include <unistd.h>
+#include <linux/limits.h>
+
+static char *getCompilerPath() {
+    char *buf[PATH_MAX];
+    usize len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len == -1) return NULL;
+    buf[len] = '\0';
+    return strdup(dirname(buf));
+}
+
+#elif __APPLE__
+#include <mach-o/dyld.h>
+#include <sys/syslimits.h>
+
+static char *getCompilerPath() {
+    char buf[PATH_MAX];
+    u32 size = sizeof(buf);
+
+    if (_NSGetExecutablePath(buf, &size) != 0)  return NULL;
+
+    char *real = realpath(buf, NULL);
+    if (!real) return NULL;
+
+    char *dir = strdup(dirname(real));
+
+    free(real);
+    return dir;
+}
+
+#elif _WIN32
+#include <windows.h>
+
+static char *getCompilerPath() {
+    char buf[MAX_PATH];
+    DWORD len = GetModuleFileNameA(NULL, buf, MAX_PATH);
+
+    if (len == 0) return NULL;
+
+    char *last = strrchr(buf, '\\');
+    if (last) *last = '\0';
+    return strdup(last);
+}
+
+#endif
 
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
@@ -554,6 +604,7 @@ ZState *makestate(char *filename) {
     self->pathFiles         = NULL;
     self->debug             = false;
     self->canAdvance        = true;
+    self->compilerPath      = getCompilerPath();
     self->currentPath       = NULL;
 
     self->unusedFunc        = false;
@@ -690,6 +741,9 @@ void _debug(ZState *state, ZToken *tok, const char *src_file,
 
 static char *resolvePath(ZState *state, char *filename) {
     if (!state->filename) return filename;
+    if (filename[0] == sep) return filename;
+
+
     char path[256] = { 0 };
     strncpy(path, state->filename, 256);
 
@@ -725,8 +779,8 @@ bool visit(ZState *state, char *filename) {
 }
 
 void undoVisit(ZState *state) {
-    char *filename = vecpop(state->pathFiles);
-    state->filename = filename;
+    vecpop(state->pathFiles);
+    state->filename = veclen(state->pathFiles) > 0 ? veclast(state->pathFiles) : NULL;
 }
 
 static void printLineHighlight(ZToken *tok, const char *color) {
@@ -769,7 +823,7 @@ static void printLog(ZState *state, ZLog *log) {
     if (log->token) {
         printf("%zu:%zu: ", log->token->row, log->token->col);
     }
-    printf("%s%s\033[0m: ", colors[log->level], levels[log->level]);
+    printf(COLOR_BOLD "%s%s\033[0m: ", colors[log->level], levels[log->level]);
     printf("%s\n", log->message);
 
     if (log->token) printLineHighlight(log->token, colors[log->level]);

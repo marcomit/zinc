@@ -6,6 +6,13 @@
 #include "zhset.h"
 #include "zmem.h"
 
+#ifdef _WIN32
+static char sep = '\\';
+#else
+static char sep = '/';
+#endif
+
+
 typedef enum {
 
 #define DEF(id, str, m) id = m,
@@ -71,6 +78,7 @@ typedef struct {
     ZPhase      currentPhase;
     char        *currentPath;
     char        *filename;
+    char        *compilerPath;
 
     char        **pathFiles;
     char        **visitedFiles;

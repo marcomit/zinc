@@ -69,6 +69,9 @@ static KeyboardEntry keywords[] = {
 };
 
 static void initKeywords() {
+	static bool initialized = false;
+	if (initialized) return;
+	initialized = true;
 	usize len = sizeof(keywords) / sizeof(keywords[0]);
 	for (size_t i = 0; i < len; i++) {
 		const char *name = keywords[i].keyword;

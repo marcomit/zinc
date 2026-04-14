@@ -1,4 +1,5 @@
 #include "base.h"
+#include "zcolors.h"
 #include "zinc.h"
 #include "zlink.h"
 
@@ -1544,6 +1545,7 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
 	}
 
 	const char *outname = output ? output : "a.out";
+    printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", output);
 	int ret = zinc_lld_link(objfile, outname);
 	if (ret != 0) {
 		error(state, NULL, "Linker failed with code %d", ret);

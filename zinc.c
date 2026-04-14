@@ -7,6 +7,7 @@
 #include <signal.h>
 #include <execinfo.h>
 #include <time.h>
+#include <libgen.h>
 
 // #ifdef VEC_ALLOC
 // #undef VEC_ALLOC
@@ -93,6 +94,15 @@ ZState *loadState(int argc, char **argv) {
 
         default: usage(argv[0]); return NULL;
         }
+    }
+
+    if (!state->output) {
+        char *copy = strdup(filename);
+
+        char *base = basename(copy);
+        char *dot = strrchr(base, '.');
+        if (dot) *dot = '\0';
+        state->output = base;
     }
 
     visit(state, filename);
