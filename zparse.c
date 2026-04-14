@@ -58,7 +58,6 @@ static ZNode *parseImport                   (ZParser *);
 static ZNode *skipMacro                     (ZParser *, bool);
 static ZNode *parseTypedef                  (ZParser *, bool);
 static ZNode *parseFuncDecl                 (ZParser *, bool);
-static ZNode *parseUnionDecl                (ZParser *, bool);
 static ZNode *parseEnumDecl                 (ZParser *, bool);
 static ZNode *parseStructDecl               (ZParser *, bool);
 static ZNode *parseForeignDecl              (ZParser *, bool);
@@ -807,7 +806,7 @@ ZNode *parseStmt(ZParser *parser) {
 
     if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
         return parseVarInferred(parser);
-    } else if (t == TOK_IDENT && checkAhead(parser, 1, TOK_COLON)) {
+    } else if (t == TOK_IDENT && checkAhead(parser, TOK_COLON, 1)) {
         return parseLabel(parser);
     }
 
@@ -913,7 +912,7 @@ static ZNode *parseEnumDecl(ZParser *parser, bool public) {
     }
 
     ZNode **fields = parseGenericList(parser,
-            TOK_LSBRACKET, TOK_RSBRACKET,
+            TOK_LBRACKET, TOK_RBRACKET,
             parseEnumField, false);
 
     if (!fields || veclen(fields) < 2) {
@@ -927,26 +926,6 @@ static ZNode *parseEnumDecl(ZParser *parser, bool public) {
     node->enumDef.pub   = public;
     node->tok           = node->enumDef.name;
     
-    return node;
-}
-
-static ZNode *parseUnionDecl(ZParser *parser, bool public) {
-    expect(parser, TOK_UNION);
-    if (!check(parser, TOK_IDENT)) {
-        error(parser->state, peek(parser), "Expected an identifier");
-        return NULL;
-    }
-    ZToken *ident     = peek(parser);
-    
-    ZNode **fields     = parseGenericList(parser,
-            TOK_RSBRACKET, TOK_LSBRACKET,
-            parseField, false);
-
-    ZNode *node             = makenode(NODE_UNION);
-    node->tok               = ident;
-    node->unionDef.ident    = ident;
-    node->unionDef.fields   = fields;
-    node->unionDef.pub      = public;
     return node;
 }
 
@@ -1109,11 +1088,15 @@ static ZNode *parseLoops(ZParser *parser) {
     ensure(check(parser, TOK_FOR), "Expected 'for' keyword");
 
     // Infinite loop without condition
-    if (checkAhead(parser, 1, TOK_LBRACKET)) {
-        ZNode *node = makenode(NODE_WHILE);
+    if (checkAhead(parser, TOK_LBRACKET, 1)) {
+        ZNode *cond             = makenode(NODE_LITERAL);
+        cond->tok               = maketoken(TOK_TRUE, NULL);
+        cond->literalTok        = cond->tok;
+        ZNode *node             = makenode(NODE_WHILE);
+        node->tok               = consume(parser);
         node->whileStmt.branch  = parseBlock(parser);
-        node->whileStmt.cond    = NULL;
-        node->tok               = start;
+        node->whileStmt.cond    = cond;
+
         return node;
     }
 
@@ -1767,7 +1750,6 @@ static ZNode *parse(ZParser *parser) {
     case TOK_TYPEDEF:   return parseTypedef     (parser, public);
     case TOK_STRUCT:    return parseStructDecl  (parser, public);
     case TOK_MACRO:     return skipMacro        (parser, public);
-    case TOK_UNION:     return parseUnionDecl   (parser, public);
     case TOK_ENUM:      return parseEnumDecl    (parser, public);
     default:            return parseFuncDecl    (parser, public);
     }

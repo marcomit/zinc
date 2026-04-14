@@ -121,7 +121,6 @@ typedef enum {
     NODE_SUBSCRIPT,
     NODE_MEMBER,
     NODE_MODULE,
-    NODE_UNION,
     NODE_FIELD,
     NODE_TYPEDEF,
     NODE_FOREIGN,

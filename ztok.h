@@ -61,7 +61,6 @@ DEF(TOK_U16,        "u16",              TOK_TYPES_MASK | TOK_UNSIGNED           
 DEF(TOK_U32,        "u32",              TOK_TYPES_MASK | TOK_UNSIGNED                                 | 0x2B)
 DEF(TOK_U64,        "u64",              TOK_TYPES_MASK | TOK_UNSIGNED                                 | 0x2C)
 DEF(TOK_STRUCT,     "struct",           TOK_TYPES_SIGNATURE_MASK | TOK_OVERRIDABLE     | 0x2D)
-DEF(TOK_UNION,      "union",            TOK_TYPES_SIGNATURE_MASK | TOK_OVERRIDABLE     | 0x2E)
 DEF(TOK_TYPEDEF,    "type",             TOK_TYPES_SIGNATURE_MASK                                     | 0x2F)
 DEF(TOK_ENUM,       "enum",             TOK_TYPES_SIGNATURE_MASK | TOK_OVERRIDABLE     | 0x30)
 DEF(TOK_CONST,      "const",            TOK_TYPES_SIGNATURE_MASK                                     | 0x31)
