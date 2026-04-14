@@ -1,0 +1,16 @@
+use <strings>
+
+i32 main() {
+    hello := String::from("Ciao")
+    cap := String::withCapacity(64)
+
+    hello2 := String::from("Ciao")
+    
+    hello.println()
+
+    if hello.eq(hello2.data) {
+        printf("ok\n")
+    }
+
+    return 0
+}
