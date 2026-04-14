@@ -48,7 +48,7 @@ static ZNode *parseBinary                   (ZParser *);
 static ZNode *parseContinue                 (ZParser *);
 static ZNode *parseArrayLit                 (ZParser *);
 static ZNode *parseTupleLit                 (ZParser *);
-static ZType *parseTypeArray                 (ZParser *);
+static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
 static ZNode *parseVarInferred              (ZParser *);
 static ZNode *parseVarDefTyped              (ZParser *);
