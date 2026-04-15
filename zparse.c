@@ -122,7 +122,7 @@ static ZToken *peekAhead(ZParser *parser, usize next) {
         stream = stream->prev;
     }
     
-    if (stream->current + next >= veclen(parser->source->list)) return NULL;
+    if (stream->current + next >= veclen(stream->list)) return NULL;
 
     return stream->list[stream->current + next];
 }
@@ -195,21 +195,39 @@ static bool isValidToken(ZParser *parser, ZTokenType *validTokens, size_t len) {
     return false;
 }
 
+typedef struct ZParserSnapshot {
+    ZTokenStream    *stream;
+    usize           streamIndex;
+    usize           tokenIndex;
+} ZParserSnapshot;
+
+static ZParserSnapshot *store(ZParser *parser) {
+    ZParserSnapshot *self = zalloc(ZParserSnapshot);
+    (*self) = (ZParserSnapshot){
+        .stream         = parser->source,
+        .streamIndex    = parser->source->current,
+        .tokenIndex     = parser->tokenIndex
+    };
+    return self;
+}
+
+static void undo(ZParser *parser, ZParserSnapshot *snap) {
+    parser->source          = snap->stream;
+    parser->source->current = snap->streamIndex;
+    parser->tokenIndex      = snap->tokenIndex;
+}
+
 /* Since this function tries to parse macros for now i save the current source of tokens
  * such that after the execution of the function i can undo the modification. */
 static ZNode *wrapNode(ZParser *parser, ZParseFunc parse) {
-    ZTokenStream *savedStream = parser->source;
-    usize savedIndex                     = savedStream->current;
-    usize tokIndex                         = parser->tokenIndex;
+    ZParserSnapshot *saved = store(parser);
 
     pushErrorCheckpoint(parser);
     ZNode *res = parse(parser);
 
     if (!res) {
         // Consumed parser->tokenIndex - tokIndex
-        parser->source                     = savedStream;
-        parser->source->current = savedIndex;
-        parser->tokenIndex            = tokIndex;
+        undo(parser, saved);
         rollbackErrors(parser);
     } else {
         commitErrors(parser);
@@ -218,15 +236,13 @@ static ZNode *wrapNode(ZParser *parser, ZParseFunc parse) {
 }
 
 static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
-    ZTokenStream *savedStream = parser->source;
-    usize savedIndex = savedStream->current;
+    ZParserSnapshot *saved = store(parser);
 
     pushErrorCheckpoint(parser);
     ZType *res = parse(parser);
 
     if (!res) {
-        parser->source = savedStream;
-        parser->source->current = savedIndex;
+        undo(parser, saved);
         rollbackErrors(parser);
     } else {
         commitErrors(parser);
@@ -301,7 +317,10 @@ static ZNode *parsePrimary(ZParser *parser) {
         ZToken *tok = consume(parser);
         return getMacroCapturedVar(parser->macroParser.currentMacro, tok);
     } else if (match(parser, TOK_LPAREN)) {
-        ZNode *node         = wrapNode(parser, parseExpr);
+        bool prevNoStructLit = parser->noStructLit;
+        parser->noStructLit  = false;
+        ZNode *node          = wrapNode(parser, parseExpr);
+        parser->noStructLit  = prevNoStructLit;
         expect(parser, TOK_RPAREN);
         return node;
     } else if (check(parser, TOK_LSBRACKET)) {
@@ -330,6 +349,9 @@ static ZNode *parsePrimary(ZParser *parser) {
 
             node->staticAccess.mangled = mangler(segments);
             return node;
+        }
+        if (!parser->noStructLit && checkAhead(parser, TOK_LBRACKET, 1)) {
+            return parseStructLit(parser);
         }
         ZNode *node         = makenode(NODE_IDENTIFIER);
         node->identNode.tok = consume(parser);
@@ -910,6 +932,7 @@ static ZNode *parseEnumDecl(ZParser *parser, bool public) {
         error(parser->state, peek(parser), "Expected an identifier");
         return NULL;
     }
+    ZToken *name = consume(parser);
 
     ZNode **fields = parseGenericList(parser,
             TOK_LBRACKET, TOK_RBRACKET,
@@ -922,7 +945,7 @@ static ZNode *parseEnumDecl(ZParser *parser, bool public) {
 
     ZNode *node = makenode(NODE_ENUM);
 
-    node->enumDef.name  = consume(parser);
+    node->enumDef.name  = name;
     node->enumDef.pub   = public;
     node->tok           = node->enumDef.name;
     
@@ -991,9 +1014,6 @@ ZNode *parseExpr(ZParser *parser) {
         return placeholder;
     }
 
-    if (check(parser, TOK_IDENT) && checkAhead(parser, TOK_LBRACKET, 1)) {
-        return parseStructLit(parser);
-    }
     // else if (check(parser, TOK_LSBRACKET)) {
     //     return parseArrayLit(parser);
     // }
@@ -1014,15 +1034,20 @@ static ZNode *parseReturn(ZParser *parser) {
 static ZNode *parseIf(ZParser *parser) {
     ZToken *start = peek(parser);
     expect(parser, TOK_IF);
-    
-    ZNode *cond = wrapNode(parser, parseExpr);
+
+    parser->noStructLit = true;
+    ZNode *cond = parseExpr(parser);
+    parser->noStructLit = false;
+
+    guard(cond);
 
     ZParseFunc elseBranch[] = {
         parseIf, parseBlock
     };
 
-    ZNode *body = wrapNode(parser, parseBlock);
-    if (!body) return NULL;
+    ZNode *body = parseBlock(parser);
+
+    guard(body);
 
     ZNode *node = makenode(NODE_IF);
 
@@ -1046,7 +1071,9 @@ static ZNode *parseFor(ZParser *parser) {
     ensure(var, "Expected a variable declaration");
     expect(parser, TOK_SEMICOLON);
 
+    parser->noStructLit = true;
     ZNode *cond = parseExpr(parser);
+    parser->noStructLit = false;
 
     ensure(cond, "Expected an expression");
     expect(parser, TOK_SEMICOLON);
@@ -1070,7 +1097,9 @@ static ZNode *parseFor(ZParser *parser) {
 static ZNode *parseWhile(ZParser *parser) {
     expect(parser, TOK_FOR);
 
+    parser->noStructLit = true;
     ZNode *cond = wrapNode(parser, parseExpr);
+    parser->noStructLit = false;
     if (!cond) {
         error(parser->state, peek(parser),
                 "Expected condition expression after 'while'");
@@ -1751,7 +1780,25 @@ static ZNode *parse(ZParser *parser) {
     case TOK_STRUCT:    return parseStructDecl  (parser, public);
     case TOK_MACRO:     return skipMacro        (parser, public);
     case TOK_ENUM:      return parseEnumDecl    (parser, public);
-    default:            return parseFuncDecl    (parser, public);
+    default: {
+        ZParserSnapshot *snap = store(parser);
+        ZNode *res = parseFuncDecl(parser, public);
+
+        if (res) return res;
+
+        undo(parser, snap);
+        res = parseVarDef(parser);
+
+        if (res) return res;
+        
+        undo(parser, snap);
+        error(parser->state,
+            peek(parser),
+            "Unexpected token '%s', expected a top-level declaration",
+            stoken(peek(parser)));
+
+        return NULL;
+    }
     }
 }
 

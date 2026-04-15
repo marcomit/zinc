@@ -171,10 +171,12 @@ static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
         }
     }
 
-    if (!table) table = makefunctable(receiver->field.type);
+    if (!table) {
+        table = makefunctable(receiver->field.type);
+        vecpush(semantic->table->funcs, table);
+    }
 
     vecpush(table->funcDef, node);
-    vecpush(semantic->table->funcs, table);
 }
 
 static void putStaticFunc(ZSemantic *semantic, ZNode *node) {
@@ -484,7 +486,7 @@ bool typesEqual(ZType *a, ZType *b) {
         } else if (b->array.size == 0 && a->array.size > 0) {
             b->array.size = a->array.size;
         } else if (a->array.size != b->array.size) {
-            printf("Mismatch array size\n");
+            return false;
         }
         return typesEqual(a->array.base, b->array.base);
     case Z_TYPE_STRUCT:
@@ -577,6 +579,49 @@ static ZType *resolveLiteralType(ZNode *curr) {
     }
 }
 
+
+static ZType *_resolveTypeRef(ZSemantic *semantic, ZType *type, ZType **seen) {
+    if (!type) return NULL;
+
+    // for (usize i = 0; i < veclen(seen); i++) {
+    //     if (typesEqual(type, seen[i])) {
+    //         printf("Cycle detected\n");
+    //         return NULL;
+    //     }
+    // }
+
+    // vecpush(seen, type);
+
+    switch (type->kind) {
+    case Z_TYPE_PRIMITIVE: {
+        if (type->primitive.token->type != TOK_IDENT) return type;
+        ZSymbol *sym = resolve(semantic, type->primitive.token);
+        if (!sym) {
+            error(semantic->state, type->primitive.token,
+                  "Unknown type '%s'", type->primitive.token->str);
+            return NULL;
+        }
+        return sym->type;
+    }
+    case Z_TYPE_POINTER:
+        type->base = _resolveTypeRef(semantic, type->base, seen);
+        return type;
+    case Z_TYPE_ARRAY:
+        type->array.base = _resolveTypeRef(semantic, type->array.base, seen);
+        return type;
+    case Z_TYPE_FUNCTION:
+        type->func.ret = _resolveTypeRef(semantic, type->func.ret, seen);
+        for (usize i = 0; i < veclen(type->func.args); i++)
+            type->func.args[i] = _resolveTypeRef(semantic, type->func.args[i], seen);
+        return type;
+    case Z_TYPE_TUPLE:
+        for (usize i = 0; i < veclen(type->tuple); i++)
+            type->tuple[i] = _resolveTypeRef(semantic, type->tuple[i], seen);
+        return type;
+    default: return type;
+    }
+}
+
 /*
  * Resolve a ZType that may contain named references (user-defined types).
  *
@@ -596,35 +641,8 @@ static ZType *resolveLiteralType(ZNode *curr) {
  */
 static ZType *resolveTypeRef(ZSemantic *semantic, ZType *type) {
     if (!type) return NULL;
-
-    switch (type->kind) {
-    case Z_TYPE_PRIMITIVE: {
-        if (type->primitive.token->type != TOK_IDENT) return type;
-        ZSymbol *sym = resolve(semantic, type->primitive.token);
-        if (!sym) {
-            error(semantic->state, type->primitive.token,
-                  "Unknown type '%s'", type->primitive.token->str);
-            return NULL;
-        }
-        return sym->type;
-    }
-    case Z_TYPE_POINTER:
-        type->base = resolveTypeRef(semantic, type->base);
-        return type;
-    case Z_TYPE_ARRAY:
-        type->array.base = resolveTypeRef(semantic, type->array.base);
-        return type;
-    case Z_TYPE_FUNCTION:
-        type->func.ret = resolveTypeRef(semantic, type->func.ret);
-        for (usize i = 0; i < veclen(type->func.args); i++)
-            type->func.args[i] = resolveTypeRef(semantic, type->func.args[i]);
-        return type;
-    case Z_TYPE_TUPLE:
-        for (usize i = 0; i < veclen(type->tuple); i++)
-            type->tuple[i] = resolveTypeRef(semantic, type->tuple[i]);
-        return type;
-    default: return type;
-    }
+    ZType **seen = NULL;
+    return _resolveTypeRef(semantic, type, seen);
 }
 
 static ZType *resolveMemberAccess(ZSemantic *, ZNode *);
@@ -823,7 +841,7 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
         for (usize j = 0; j < structLen; j++) {
             if (!tokeneq(structFields[j]->field.identifier, field->tok)) continue;
             expectedType = resolveTypeRef(semantic, structFields[j]->field.type);
-            structFields[i]->field.type = expectedType;
+            structFields[j]->field.type = expectedType;
             promoted = typesCompatible(semantic->state, expectedType, type);
             if (!promoted) {
                 error(semantic->state,
@@ -833,7 +851,6 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
                     stype(type)
                 );
             } else {
-                
             }
 
             break;
@@ -886,10 +903,7 @@ static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
         );
     }
 
-    if (typesEqual(left, right)) {
-        /* Types are equal. it doesn't matter whether left or right is returned. */
-        return left;
-    } else if (op == TOK_EQ) {
+    if (op == TOK_EQ) {
         /* Assignment yields the type of the left-hand side. */
         if (!isLvalue(curr->binary.left)) {
             error(semantic->state, left->tok, "is not a valid lvalue");

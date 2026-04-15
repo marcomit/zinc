@@ -79,7 +79,7 @@ ZState *loadState(int argc, char **argv) {
 
     ZState *state = makestate(argv[1]);
 
-    int opt;   
+    int opt;
 
     while (( opt = getopt_long(argc, argv, "dvo:", long_options, NULL) ) != -1) {
         switch (opt) {
@@ -120,7 +120,7 @@ void handler(int sig) {
     write(STDERR_FILENO, "Error: signal received\n", 23);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
-    if (state->debug) printLogs(state);
+    if (state && state->debug) printLogs(state);
     _exit(1);
 }
 
