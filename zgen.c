@@ -50,21 +50,21 @@ typedef struct ZLLVMScope {
 } ZLLVMScope;
 
 typedef struct {
-	LLVMContextRef  ctx;
+    LLVMContextRef  ctx;
 
-	LLVMModuleRef   *modules;
-	LLVMModuleRef   mod;
+    LLVMModuleRef   *modules;
+    LLVMModuleRef   mod;
 
-	LLVMBuilderRef  builder;
-	ZSemantic       *semantic;
-	ZState          *state;
+    LLVMBuilderRef  builder;
+    ZSemantic       *semantic;
+    ZState          *state;
     ZScope          *current;
 
     ZLLVMScope      *scope;
 
-	/* Struct type cache — parallel arrays keyed by name */
-	char            **structNames;
-	LLVMTypeRef     *structTypes;
+    /* Struct type cache — parallel arrays keyed by name */
+    char            **structNames;
+    LLVMTypeRef     *structTypes;
 
     LLVMValueRef    currentFunc;
 
@@ -76,20 +76,22 @@ typedef struct {
     char            *str;
 } ZCodegen;
 
-static void         genStmt(ZCodegen *, ZNode *);
-static LLVMTypeRef  genType(ZCodegen *, ZType *);
-static LLVMValueRef genExpr(ZCodegen *, ZNode *);
+static void         genStmt         (ZCodegen *, ZNode *);
+static LLVMTypeRef  genType         (ZCodegen *, ZType *);
+static LLVMValueRef genExpr         (ZCodegen *, ZNode *);
+static LLVMValueRef genStructLitInto(ZCodegen *, ZNode *, LLVMValueRef);
+
 
 /* ========== Native types ==========*/
-static LLVMTypeRef i0Type 	= NULL;
-static LLVMTypeRef i1Type 	= NULL;
-static LLVMTypeRef i8Type 	= NULL;
-static LLVMTypeRef i16Type 	= NULL;
-static LLVMTypeRef i32Type 	= NULL;
-static LLVMTypeRef i64Type 	= NULL;
+static LLVMTypeRef i0Type   = NULL;
+static LLVMTypeRef i1Type   = NULL;
+static LLVMTypeRef i8Type   = NULL;
+static LLVMTypeRef i16Type  = NULL;
+static LLVMTypeRef i32Type  = NULL;
+static LLVMTypeRef i64Type  = NULL;
 
-static LLVMTypeRef f32Type 	= NULL;
-static LLVMTypeRef f64Type 	= NULL;
+static LLVMTypeRef f32Type  = NULL;
+static LLVMTypeRef f64Type  = NULL;
 
 static ZLLVMSymbol *makesymbol() {
     ZLLVMSymbol *self = zalloc(ZLLVMSymbol);
@@ -139,16 +141,16 @@ static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
 }
 
 static void initNativeTypes(ZCodegen *ctx) {
-	if (i0Type) return;
-	i0Type	= LLVMVoidTypeInContext(ctx->ctx);
-	i1Type 	= LLVMInt1TypeInContext(ctx->ctx);
-	i8Type 	= LLVMInt8TypeInContext(ctx->ctx);
-	i16Type = LLVMInt16TypeInContext(ctx->ctx);
-	i32Type = LLVMInt32TypeInContext(ctx->ctx);
-	i64Type = LLVMInt64TypeInContext(ctx->ctx);
+    if (i0Type) return;
+    i0Type  = LLVMVoidTypeInContext(ctx->ctx);
+    i1Type  = LLVMInt1TypeInContext(ctx->ctx);
+    i8Type  = LLVMInt8TypeInContext(ctx->ctx);
+    i16Type = LLVMInt16TypeInContext(ctx->ctx);
+    i32Type = LLVMInt32TypeInContext(ctx->ctx);
+    i64Type = LLVMInt64TypeInContext(ctx->ctx);
 
-	f32Type = LLVMFloatTypeInContext(ctx->ctx);
-	f64Type = LLVMDoubleTypeInContext(ctx->ctx);
+    f32Type = LLVMFloatTypeInContext(ctx->ctx);
+    f64Type = LLVMDoubleTypeInContext(ctx->ctx);
 }
 
 static void beginModule(ZCodegen *ctx, ZNode *node) {
@@ -177,20 +179,20 @@ static void endModule(ZCodegen *ctx) {
 }
 
 ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
-	ZCodegen *self      = zalloc(ZCodegen);
-	self->ctx           = LLVMContextCreate();
+    ZCodegen *self      = zalloc(ZCodegen);
+    self->ctx           = LLVMContextCreate();
     self->builder       = LLVMCreateBuilderInContext(self->ctx);
 
-	self->modules       = NULL;
-	self->structNames   = NULL;
-	self->structTypes   = NULL;
+    self->modules       = NULL;
+    self->structNames   = NULL;
+    self->structTypes   = NULL;
     self->scope         = makescope(Z_SCOPE_GLOB, NULL);
-	self->state         = state;
-	self->semantic      = semantic;
+    self->state         = state;
+    self->semantic      = semantic;
     self->count         = 0;
     self->str           = NULL;
     vecunion(self->str, "        ", 9);
-	return self;
+    return self;
 }
 
 char *label(ZCodegen *ctx) {
@@ -203,51 +205,51 @@ char *label(ZCodegen *ctx) {
 
 /* Does not consider alignment. */
 usize typeSize(ZCodegen *ctx, ZType *type) {
-	usize res = 0;
-	switch (type->kind) {
-	case Z_TYPE_PRIMITIVE:
-		switch (type->primitive.token->type) {
-		case TOK_VOID:  return 0;
-		case TOK_BOOL:
-		case TOK_I8:
-		case TOK_U8:
-		case TOK_CHAR:  return 1;
-		case TOK_I16:
-		case TOK_U16:   return 2;
-		case TOK_I32:
-		case TOK_U32:
-		case TOK_F32:   return 4;
-		case TOK_I64:
-		case TOK_U64:
-		case TOK_F64:   return 8;
+    usize res = 0;
+    switch (type->kind) {
+    case Z_TYPE_PRIMITIVE:
+        switch (type->primitive.token->type) {
+        case TOK_VOID:  return 0;
+        case TOK_BOOL:
+        case TOK_I8:
+        case TOK_U8:
+        case TOK_CHAR:  return 1;
+        case TOK_I16:
+        case TOK_U16:   return 2;
+        case TOK_I32:
+        case TOK_U32:
+        case TOK_F32:   return 4;
+        case TOK_I64:
+        case TOK_U64:
+        case TOK_F64:   return 8;
         default:
             error(ctx->state, type->tok, "Unknown type");
             return 0;
-		}
-	case Z_TYPE_POINTER:
-		return 8; /* 64-bit pointer */
-	case Z_TYPE_ARRAY:
-		return typeSize(ctx, type->array.base) * type->array.size;
-	case Z_TYPE_FUNCTION:
-		return 8; /* function pointer */
+        }
+    case Z_TYPE_POINTER:
+        return 8; /* 64-bit pointer */
+    case Z_TYPE_ARRAY:
+        return typeSize(ctx, type->array.base) * type->array.size;
+    case Z_TYPE_FUNCTION:
+        return 8; /* function pointer */
 
-	case Z_TYPE_STRUCT: {
+    case Z_TYPE_STRUCT: {
         usize cur = 0;
-		for (usize i = 0; i < veclen(type->strct.fields); i++) {
-			cur = typeSize(ctx, type->strct.fields[i]->field.type);
+        for (usize i = 0; i < veclen(type->strct.fields); i++) {
+            cur = typeSize(ctx, type->strct.fields[i]->field.type);
             if (cur) res = (res + cur - 1) / cur * cur;
             res += cur;
-		}
-		return res;
-	}
+        }
+        return res;
+    }
 
-	case Z_TYPE_TUPLE:
-		for (usize i = 0; i < veclen(type->tuple); i++) {
-			res += typeSize(ctx, type->tuple[i]);
-		}
-		return res;
-	default: return 0;
-	}
+    case Z_TYPE_TUPLE:
+        for (usize i = 0; i < veclen(type->tuple); i++) {
+            res += typeSize(ctx, type->tuple[i]);
+        }
+        return res;
+    default: return 0;
+    }
 }
 
 /* Returns the index of the field for a struct.
@@ -299,101 +301,101 @@ static LLVMTypeRef genStruct(ZCodegen *ctx, ZType *strct) {
 }
 
 static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
-	if (!type) {
+    if (!type) {
         error(ctx->state, NULL, "Invalid 'genType' call");
         return LLVMVoidTypeInContext(ctx->ctx);
     }
 
-	switch (type->kind) {
+    switch (type->kind) {
 
-	case Z_TYPE_PRIMITIVE: {
-		const ZToken *name = type->primitive.token;
-		switch (name->type) {
-		case TOK_VOID:  return i0Type;
-		case TOK_BOOL:  return i1Type;
-		case TOK_CHAR:
-		case TOK_I8:
-		case TOK_U8: 	return i8Type;
-		case TOK_I16:
-		case TOK_U16: 	return i16Type;
-		case TOK_I32:
-		case TOK_U32:	return i32Type;
-		case TOK_I64:
-		case TOK_U64: 	return i64Type;
-		case TOK_F32:	return f32Type;
-		case TOK_F64:	return f64Type;
-		default: {
+    case Z_TYPE_PRIMITIVE: {
+        const ZToken *name = type->primitive.token;
+        switch (name->type) {
+        case TOK_VOID:  return i0Type;
+        case TOK_BOOL:  return i1Type;
+        case TOK_CHAR:
+        case TOK_I8:
+        case TOK_U8:    return i8Type;
+        case TOK_I16:
+        case TOK_U16:   return i16Type;
+        case TOK_I32:
+        case TOK_U32:   return i32Type;
+        case TOK_I64:
+        case TOK_U64:   return i64Type;
+        case TOK_F32:   return f32Type;
+        case TOK_F64:   return f64Type;
+        default: {
             LLVMTypeRef ref = getCachedStruct(ctx, name->str);
             if (ref) return ref;
-			error(ctx->state,
-						type->primitive.token,
-						"unknown primitive type '%s'",
-						name->str);
-			return NULL;
+            error(ctx->state,
+                        type->primitive.token,
+                        "unknown primitive type '%s'",
+                        name->str);
+            return NULL;
          }
-		}
-	}
+        }
+    }
 
-	case Z_TYPE_POINTER: {
-		ZType *base = type->base;
+    case Z_TYPE_POINTER: {
+        ZType *base = type->base;
         if (!base) {
             error(ctx->state, type->tok, "Pointer must have a base type");
             return NULL;
         }
-		if (base && base->kind == Z_TYPE_PRIMITIVE &&
-		    base->primitive.token->type == TOK_VOID) {
-			return LLVMPointerType(i8Type, 0);
-		}
-		return LLVMPointerType(genType(ctx, base), 0);
-	}
+        if (base && base->kind == Z_TYPE_PRIMITIVE &&
+            base->primitive.token->type == TOK_VOID) {
+            return LLVMPointerType(i8Type, 0);
+        }
+        return LLVMPointerType(genType(ctx, base), 0);
+    }
 
-	case Z_TYPE_ARRAY: {
-		LLVMTypeRef base = genType(ctx, type->array.base);
-		if (!base) return NULL;
-		return LLVMArrayType(base, (unsigned)type->array.size);
-	}
+    case Z_TYPE_ARRAY: {
+        LLVMTypeRef base = genType(ctx, type->array.base);
+        if (!base) return NULL;
+        return LLVMArrayType(base, (unsigned)type->array.size);
+    }
 
-	case Z_TYPE_FUNCTION: {
-		usize argc = veclen(type->func.args);
-		LLVMTypeRef *params = znalloc(LLVMTypeRef, argc ? argc : 1);
-		for (usize i = 0; i < argc; i++) {
-			params[i] = genType(ctx, type->func.args[i]);
-			if (!params[i]) return NULL;
-		}
-		LLVMTypeRef ret = genType(ctx, type->func.ret);
-		return LLVMFunctionType(ret, params, (unsigned)argc, 0);
-	}
+    case Z_TYPE_FUNCTION: {
+        usize argc = veclen(type->func.args);
+        LLVMTypeRef *params = znalloc(LLVMTypeRef, argc ? argc : 1);
+        for (usize i = 0; i < argc; i++) {
+            params[i] = genType(ctx, type->func.args[i]);
+            if (!params[i]) return NULL;
+        }
+        LLVMTypeRef ret = genType(ctx, type->func.ret);
+        return LLVMFunctionType(ret, params, (unsigned)argc, 0);
+    }
 
-	case Z_TYPE_STRUCT: {
-		const char *name = type->strct.name->str;
+    case Z_TYPE_STRUCT: {
+        const char *name = type->strct.name->str;
 
-		/* Check cache */
-		LLVMTypeRef cached = getCachedStruct(ctx, name);
+        /* Check cache */
+        LLVMTypeRef cached = getCachedStruct(ctx, name);
         if (cached) return cached;
 
         LLVMTypeRef structType = genStruct(ctx, type);
         putStructInCache(ctx, (char *)name, structType);
         return structType;
-	}
+    }
 
-	case Z_TYPE_TUPLE: {
-		usize len = veclen(type->tuple);
-		LLVMTypeRef *elems = znalloc(LLVMTypeRef, len ? len : 1);
-		for (usize i = 0; i < len; i++) {
-			elems[i] = genType(ctx, type->tuple[i]);
-			if (!elems[i]) return NULL;
-		}
-		return LLVMStructTypeInContext(ctx->ctx, elems, len, 0);
-	}
+    case Z_TYPE_TUPLE: {
+        usize len = veclen(type->tuple);
+        LLVMTypeRef *elems = znalloc(LLVMTypeRef, len ? len : 1);
+        for (usize i = 0; i < len; i++) {
+            elems[i] = genType(ctx, type->tuple[i]);
+            if (!elems[i]) return NULL;
+        }
+        return LLVMStructTypeInContext(ctx->ctx, elems, len, 0);
+    }
 
-	case Z_TYPE_NONE:
-		/* none literal — represent as i8* null */
-		return LLVMPointerType(i8Type, 0);
+    case Z_TYPE_NONE:
+        /* none literal — represent as i8* null */
+        return LLVMPointerType(i8Type, 0);
 
-	default:
-		error(ctx->state, NULL, "genType: unhandled type kind %d", type->kind);
-		return NULL;
-	}
+    default:
+        error(ctx->state, NULL, "genType: unhandled type kind %d", type->kind);
+        return NULL;
+    }
 }
 
 static LLVMBasicBlockRef makeblock(ZCodegen *ctx) {
@@ -428,8 +430,10 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
         return LLVMConstInt(i1Type, false, false);
     case TOK_FLOAT_LIT:
         return LLVMConstReal(f64Type, tok->floating);
-    case TOK_NONE:
-        return LLVMConstPointerNull(i8Type);
+    case TOK_NONE: {
+        LLVMTypeRef type = genType(ctx, node->resolved);
+        return LLVMConstPointerNull(type);
+    }
     default: return NULL;
     }
 }
@@ -637,6 +641,16 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         );
 
     }
+
+    case NODE_STRUCT_LIT: {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (!stack) {
+            error(ctx->state, node->tok, "Missing stack value");
+            return NULL;
+        }
+        genStructLitInto(ctx, node, stack->stack);
+        return stack->stack;
+    }
     case NODE_UNARY: {
         if (node->unary.operat->type != TOK_STAR) {
             error(ctx->state, node->tok, "Unhandled unary operator");
@@ -664,17 +678,21 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         return LLVMBuildStore(ctx->builder, val, ptr);
     }
 
-	LLVMValueRef left = genExpr(ctx, root->binary.left);
-	LLVMValueRef right = genExpr(ctx, root->binary.right);
+    LLVMValueRef left = genExpr(ctx, root->binary.left);
+    LLVMValueRef right = genExpr(ctx, root->binary.right);
 
-	if (!left || !right) return NULL;
+    if (!left || !right) return NULL;
 
-	ZTokenType op = root->binary.op->type;
-	LLVMTypeRef left_type = LLVMTypeOf(left);
-	bool is_float = (LLVMGetTypeKind(left_type) == LLVMFloatTypeKind ||
-	                 LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
+    ZTokenType op = root->binary.op->type;
+    LLVMTypeRef left_type = LLVMTypeOf(left);
+    bool is_float = (LLVMGetTypeKind(left_type) == LLVMFloatTypeKind ||
+                     LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
+
+
+    bool bothUnsigned = true;
 
     char *l = label(ctx);
+
     if (is_float) {
         switch (op) {
         case TOK_PLUS:  return LLVMBuildFAdd(ctx->builder, left, right, l);
@@ -684,28 +702,34 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         case TOK_MOD:   return LLVMBuildFRem(ctx->builder, left, right, l);
         case TOK_LT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOLT, left, right, l);
         case TOK_GT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
-        case TOK_LTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
-        case TOK_GTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
-        case TOK_EQEQ:  return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
-        case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
+        case TOK_LTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOLE, left, right, l);
+        case TOK_GTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGE, left, right, l);
+        case TOK_EQEQ:  return LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, left, right, l);
+        case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealONE, left, right, l);
         default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
         }
+    } else if (bothUnsigned) {
+
     }
 
-	switch (op) {
-	case TOK_PLUS:  return LLVMBuildAdd(ctx->builder, left, right, l);
-	case TOK_MINUS: return LLVMBuildSub(ctx->builder, left, right, l);
-	case TOK_STAR:  return LLVMBuildMul(ctx->builder, left, right, l);
-	case TOK_DIV:   return LLVMBuildSDiv(ctx->builder, left, right, l);
-    case TOK_MOD:   return LLVMBuildSRem(ctx->builder, left, right, l);
-	case TOK_LT:    return LLVMBuildICmp(ctx->builder, LLVMIntSLT, left, right, l);
-	case TOK_GT:    return LLVMBuildICmp(ctx->builder, LLVMIntSGT, left, right, l);
-	case TOK_LTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSLE, left, right, l);
-	case TOK_GTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSGE, left, right, l);
-	case TOK_EQEQ:  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, l);
-	case TOK_NOTEQ: return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, l);
-	default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
-	}
+
+    let div = bothUnsigned ? LLVMBuildUDiv : LLVMBuildSDiv;
+    let mod = bothUnsigned ? LLVMBuildURem : LLVMBuildSRem;
+
+    switch (op) {
+    case TOK_PLUS:  return LLVMBuildAdd (ctx->builder, left, right, l);
+    case TOK_MINUS: return LLVMBuildSub (ctx->builder, left, right, l);
+    case TOK_STAR:  return LLVMBuildMul (ctx->builder, left, right, l);
+    case TOK_DIV:   return div          (ctx->builder, left, right, l);
+    case TOK_MOD:   return mod          (ctx->builder, left, right, l);
+    case TOK_LT:    return LLVMBuildICmp(ctx->builder, LLVMIntSLT, left, right, l);
+    case TOK_GT:    return LLVMBuildICmp(ctx->builder, LLVMIntSGT, left, right, l);
+    case TOK_LTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSLE, left, right, l);
+    case TOK_GTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSGE, left, right, l);
+    case TOK_EQEQ:  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, l);
+    case TOK_NOTEQ: return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, l);
+    default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
+    }
 }
 
 static LLVMValueRef genRef(ZCodegen *ctx, ZNode *node, LLVMValueRef val) {
@@ -719,8 +743,8 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     ZTokenType op = node->unary.operat->type;
 
     LLVMTypeRef argType = LLVMTypeOf(arg);
-	bool isFloat = (LLVMGetTypeKind(argType) == LLVMFloatTypeKind ||
-	                 LLVMGetTypeKind(argType) == LLVMDoubleTypeKind);
+    bool isFloat = (LLVMGetTypeKind(argType) == LLVMFloatTypeKind ||
+                     LLVMGetTypeKind(argType) == LLVMDoubleTypeKind);
 
     char *l = label(ctx);
     switch (op) {
@@ -738,7 +762,10 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
 
         return arr[op == TOK_MINUS][isFloat](ctx->builder, zero, arg, l);
     }
-    case TOK_STAR:  return LLVMBuildLoad2(ctx->builder, argType, arg, l);
+    case TOK_STAR: {
+        LLVMTypeRef base = genType(ctx, node->resolved);
+        return LLVMBuildLoad2(ctx->builder, base, arg, l);
+    }
     case TOK_SNOT:
     case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
     case TOK_REF:   return genRef(ctx, node, arg);
@@ -755,6 +782,10 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZType *to) {
     if (!val || !from || !to) return val;
     if (typesEqual(from, to)) return val;
+
+    /* none (null pointer) is compatible with any pointer — val is already ptr null */
+    if (from->kind == Z_TYPE_NONE && to->kind == Z_TYPE_POINTER)
+        return val;
 
     LLVMTypeRef toType = genType(ctx, to);
     if (!toType) return val;
@@ -895,11 +926,8 @@ static LLVMValueRef genStructLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef de
         val = castValue(ctx, val, var->varDecl.rvalue->resolved, fieldType);
 
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
-            ctx->builder,
-            structType,
-            ptr,
-            index,
-            name->str
+            ctx->builder, structType,
+            ptr, index, name->str
         );
 
         LLVMBuildStore(ctx->builder, val, fieldPtr);
@@ -915,6 +943,34 @@ static LLVMValueRef genStructLit(
         return NULL;
     }
     return genStructLitInto(ctx, node, stack->stack);
+}
+
+static LLVMValueRef genTupleLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef dest) {
+    LLVMTypeRef type = genType(ctx, node->resolved);
+    const char *name = label(ctx);
+
+    LLVMTypeRef tupleType = genType(ctx, node->resolved);
+    LLVMValueRef ptr = dest ? dest : LLVMBuildAlloca(ctx->builder, type, name);
+    LLVMValueRef fieldPtr, val;
+
+    usize len = veclen(node->tuplelit);
+    for (usize i = 0; i < len; i++) {
+        val = genExpr(ctx, node->tuplelit[i]);
+
+        fieldPtr = LLVMBuildStructGEP2(
+            ctx->builder, tupleType,
+            ptr, i, label(ctx)
+        );
+
+        LLVMBuildStore(ctx->builder, val, fieldPtr);
+    }
+    return ptr;
+}
+
+static LLVMValueRef genTupleLit(ZCodegen *ctx, ZNode *node) {
+    ZLLVMStack *stack = getStackValue(ctx, node);
+
+    return genTupleLitInto(ctx, node, stack->stack);
 }
 
 static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
@@ -1028,56 +1084,57 @@ static LLVMValueRef genArrayInit(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
-	switch (node->type) {
+    switch (node->type) {
         case NODE_STRUCT_LIT:       return genStructLit     (ctx, node);
         case NODE_ARRAY_LIT:        return genArrayLit      (ctx, node);
+        case NODE_TUPLE_LIT:        return genTupleLit      (ctx, node);
         case NODE_LITERAL:          return genLit           (ctx, node);
         case NODE_IDENTIFIER:       return genIdent         (ctx, node);
         case NODE_CALL:             return genCall          (ctx, node);
         case NODE_SUBSCRIPT:        return genSubscript     (ctx, node);
-		case NODE_CAST:             return genCast          (ctx, node);
+        case NODE_CAST:             return genCast          (ctx, node);
         case NODE_STATIC_ACCESS:    return genStaticAccess  (ctx, node);
         case NODE_MEMBER:           return genMemberAccess  (ctx, node);
         case NODE_BINARY:           return genBinary        (ctx, node);
         case NODE_UNARY:            return genUnary         (ctx, node);
         case NODE_ARRAY_INIT:       return genArrayInit     (ctx, node);
 
-		case NODE_SIZEOF: {
-			usize size = typeSize(ctx, node->sizeofExpr.type);
-			return LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
-		}
+        case NODE_SIZEOF: {
+            usize size = typeSize(ctx, node->sizeofExpr.type);
+            return LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
+        }
 
 
-		default: 
+        default: 
             printf("Node '%d' not handled\n", node->type);
             error(ctx->state,
                     node->tok,
                     "Node '%d' not yet implemented in the code generator",
                     node->type);
             break;
-	}
-	return NULL;
+    }
+    return NULL;
 }
 
 static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
-	LLVMTypeRef ret = genType(ctx, node->foreignFunc.ret);
-	usize argc = veclen(node->foreignFunc.args);
+    LLVMTypeRef ret = genType(ctx, node->foreignFunc.ret);
+    usize argc = veclen(node->foreignFunc.args);
 
-	LLVMTypeRef *paramTypes = znalloc(LLVMTypeRef, argc ? argc : 1);
-	for (usize i = 0; i < argc; i++) {
-		paramTypes[i] = genType(ctx, node->foreignFunc.args[i]);
-	}
-	LLVMTypeRef funcType = LLVMFunctionType(ret, paramTypes, (unsigned)argc, 0);
+    LLVMTypeRef *paramTypes = znalloc(LLVMTypeRef, argc ? argc : 1);
+    for (usize i = 0; i < argc; i++) {
+        paramTypes[i] = genType(ctx, node->foreignFunc.args[i]);
+    }
+    LLVMTypeRef funcType = LLVMFunctionType(ret, paramTypes, (unsigned)argc, 0);
 
-	LLVMValueRef func = LLVMAddFunction(
-		ctx->mod,
-		node->foreignFunc.tok->str,
-		funcType
-	);
+    LLVMValueRef func = LLVMAddFunction(
+        ctx->mod,
+        node->foreignFunc.tok->str,
+        funcType
+    );
 
     putLLVMValueRef(ctx, node->foreignFunc.tok->str, func);
 
-	return func;
+    return func;
 }
 
 static void genRetChainDefer(ZCodegen *ctx) {
@@ -1349,7 +1406,17 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name, ZType *ty
  * that return a non-primitive type (so a type that does not fit in a register).
  * */
 static void genFuncVars(ZCodegen *ctx, ZNode *node) {
+    if (!node) return;
     switch (node->type) {
+    case NODE_STRUCT_LIT:
+        buildFuncVar(ctx, node, label(ctx), NULL);
+        break;
+    case NODE_CAST:
+        genFuncVars(ctx, node->castExpr.expr);
+        break;
+    case NODE_MEMBER:
+        genFuncVars(ctx, node->memberAccess.object);
+        break;
     case NODE_FOR: {
         ZNode *forVar = node->forStmt.var;
         char *name = forVar->varDecl.ident->identNode.tok->str;
@@ -1364,6 +1431,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_IF:
         genFuncVars(ctx, node->ifStmt.cond);
         genFuncVars(ctx, node->ifStmt.body);
+        genFuncVars(ctx, node->ifStmt.elseBranch);
         break;
     case NODE_VAR_DECL:
         buildFuncVar(ctx, node->varDecl.rvalue,
@@ -1465,111 +1533,111 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 }
 
 static void compile(ZCodegen *ctx, ZNode *root) {
-	switch (root->type) {
-	case NODE_FOREIGN:  genForeign  (ctx, root);            break;
+    switch (root->type) {
+    case NODE_FOREIGN:  genForeign  (ctx, root);            break;
     case NODE_FUNC:     genFunc     (ctx, root);            break;
     case NODE_STRUCT:   genType     (ctx, root->resolved);  break;
     case NODE_MACRO:                                        break;
 
-	case NODE_MODULE:
+    case NODE_MODULE:
         beginModule(ctx, root);
-		for (usize i = 0; i < veclen(root->module.root); i++) {
-			compile(ctx, root->module.root[i]);
-		}
-		endModule(ctx);
-		break;
-	default:
-		error(ctx->state, root->tok, "(compilation not yet implemented for %d)", root->type);
-		break;
-	}
+        for (usize i = 0; i < veclen(root->module.root); i++) {
+            compile(ctx, root->module.root[i]);
+        }
+        endModule(ctx);
+        break;
+    default:
+        error(ctx->state, root->tok, "(compilation not yet implemented for %d)", root->type);
+        break;
+    }
 }
 
 static bool emitObjectFile(ZCodegen *ctx, const char *filename) {
-	LLVMInitializeAllTargetInfos();
-	LLVMInitializeAllTargets();
-	LLVMInitializeAllTargetMCs();
-	LLVMInitializeAllAsmParsers();
-	LLVMInitializeAllAsmPrinters();
+    LLVMInitializeAllTargetInfos();
+    LLVMInitializeAllTargets();
+    LLVMInitializeAllTargetMCs();
+    LLVMInitializeAllAsmParsers();
+    LLVMInitializeAllAsmPrinters();
 
-	char *triple = LLVMGetDefaultTargetTriple();
-	LLVMSetTarget(ctx->mod, triple);
+    char *triple = LLVMGetDefaultTargetTriple();
+    LLVMSetTarget(ctx->mod, triple);
 
-	LLVMTargetRef target;
-	char *errmsg = NULL;
-	if (LLVMGetTargetFromTriple(triple, &target, &errmsg)) {
-		error(ctx->state, NULL, "Failed to get target: %s", errmsg);
-		LLVMDisposeMessage(errmsg);
-		LLVMDisposeMessage(triple);
-		return false;
-	}
+    LLVMTargetRef target;
+    char *errmsg = NULL;
+    if (LLVMGetTargetFromTriple(triple, &target, &errmsg)) {
+        error(ctx->state, NULL, "Failed to get target: %s", errmsg);
+        LLVMDisposeMessage(errmsg);
+        LLVMDisposeMessage(triple);
+        return false;
+    }
 
-	LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
-		target, triple, "generic", "",
-		LLVMCodeGenLevelDefault,
-		LLVMRelocPIC,
-		LLVMCodeModelDefault
-	);
+    LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
+        target, triple, "generic", "",
+        LLVMCodeGenLevelDefault,
+        LLVMRelocPIC,
+        LLVMCodeModelDefault
+    );
 
-	if (LLVMTargetMachineEmitToFile(machine, ctx->mod, (char *)filename,
-	                                 LLVMObjectFile, &errmsg)) {
-		error(ctx->state, NULL, "Failed to emit object file: %s", errmsg);
-		LLVMDisposeMessage(errmsg);
-		LLVMDisposeTargetMachine(machine);
-		LLVMDisposeMessage(triple);
-		return false;
-	}
+    if (LLVMTargetMachineEmitToFile(machine, ctx->mod, (char *)filename,
+                                     LLVMObjectFile, &errmsg)) {
+        error(ctx->state, NULL, "Failed to emit object file: %s", errmsg);
+        LLVMDisposeMessage(errmsg);
+        LLVMDisposeTargetMachine(machine);
+        LLVMDisposeMessage(triple);
+        return false;
+    }
 
-	LLVMDisposeTargetMachine(machine);
-	LLVMDisposeMessage(triple);
-	return true;
+    LLVMDisposeTargetMachine(machine);
+    LLVMDisposeMessage(triple);
+    return true;
 }
 
 static void freeCodegen(ZCodegen *ctx) {
-	LLVMDisposeBuilder(ctx->builder);
-	LLVMDisposeModule(ctx->mod);
-	LLVMContextDispose(ctx->ctx);
+    LLVMDisposeBuilder(ctx->builder);
+    LLVMDisposeModule(ctx->mod);
+    LLVMContextDispose(ctx->ctx);
 }
 
 void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semantic) {
-	ZCodegen *ctx = makecodegen(state, semantic);
-	initNativeTypes(ctx);
-	compile(ctx, root);
+    ZCodegen *ctx = makecodegen(state, semantic);
+    initNativeTypes(ctx);
+    compile(ctx, root);
 
-	char *errmsg = NULL;
-	if (LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
-		error(state, NULL, "LLVM: %s", errmsg);
-		LLVMDisposeMessage(errmsg);
-		freeCodegen(ctx);
-		return;
-	}
-	LLVMDisposeMessage(errmsg);
+    char *errmsg = NULL;
+    if (LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
+        error(state, NULL, "LLVM: %s", errmsg);
+        LLVMDisposeMessage(errmsg);
+        freeCodegen(ctx);
+        return;
+    }
+    LLVMDisposeMessage(errmsg);
 
-	if (state->emitLLVM) {
-		const char *llfile = output ? output : "output.ll";
-		if (LLVMPrintModuleToFile(ctx->mod, llfile, &errmsg)) {
-			error(state, NULL, "Failed to write IR file: %s", errmsg);
-			LLVMDisposeMessage(errmsg);
-		} else {
-			printf("LLVM IR written to %s\n", llfile);
-		}
-		freeCodegen(ctx);
-		return;
-	}
+    if (state->emitLLVM) {
+        const char *llfile = output ? output : "output.ll";
+        if (LLVMPrintModuleToFile(ctx->mod, llfile, &errmsg)) {
+            error(state, NULL, "Failed to write IR file: %s", errmsg);
+            LLVMDisposeMessage(errmsg);
+        } else {
+            printf("LLVM IR written to %s\n", llfile);
+        }
+        freeCodegen(ctx);
+        return;
+    }
 
-	const char *objfile = "output.o";
-	if (!emitObjectFile(ctx, objfile)) {
-		freeCodegen(ctx);
-		return;
-	}
+    const char *objfile = "output.o";
+    if (!emitObjectFile(ctx, objfile)) {
+        freeCodegen(ctx);
+        return;
+    }
 
-	const char *outname = output ? output : "a.out";
+    const char *outname = output ? output : "a.out";
     printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", output);
-	int ret = zinc_lld_link(objfile, outname);
-	if (ret != 0) {
-		error(state, NULL, "Linker failed with code %d", ret);
-	}
+    int ret = zinc_lld_link(objfile, outname);
+    if (ret != 0) {
+        error(state, NULL, "Linker failed with code %d", ret);
+    }
 
-	remove(objfile);
+    remove(objfile);
 
-	freeCodegen(ctx);
+    freeCodegen(ctx);
 }

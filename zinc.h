@@ -121,7 +121,6 @@ typedef enum {
     NODE_SUBSCRIPT,
     NODE_MEMBER,
     NODE_MODULE,
-    NODE_UNION,
     NODE_FIELD,
     NODE_TYPEDEF,
     NODE_FOREIGN,
@@ -481,6 +480,11 @@ typedef struct ZParser {
     ZMacroParser    macroParser;
 
     u8              depth;
+
+    /* When true, parseExpr will not attempt to parse a struct literal.
+     * Set by condition-parsing sites (if, for, while) to prevent `ident {`
+     * from being mistaken for a struct literal instead of a block. */
+    bool            noStructLit;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */

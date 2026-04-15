@@ -7,7 +7,6 @@ declaration = function_declaration
             | foreign_function_declaration
             | variable_declaration
             | struct_declaration
-            | union_declaration
             | typedef_declaration
             | interface_declaration
             | import_declaration
@@ -90,10 +89,6 @@ interface_list = "(", identifier, { ",", identifier }, ")" ;
 struct_declaration = [ "pub" ], "struct", identifier, [ generic_params ], [ interface_list ], "{", { struct_field }, "}" ;
 
 struct_field = type, identifier ;
-
-(* ============ Unions ============ *)
-
-union_declaration = "union", identifier, [ interface_list ], "{", { struct_field }, "}" ;
 
 (* ============ Type Aliases ============ *)
 
