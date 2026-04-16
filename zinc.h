@@ -91,6 +91,7 @@ typedef struct {
     bool        unusedStruct;
 
     bool        emitLLVM;   /* --emit-llvm: write .ll IR file instead of native binary */
+    bool        skipLLVMValidation;
 
     /* Not yet implemented */
     bool        verbose;

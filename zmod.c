@@ -455,10 +455,11 @@ void printNode(ZNode *node, u8 depth) {
         }
         break;
     
-    case NODE_MEMBER:
-        printf("Field: %s\n", node->memberAccess.field->str);
+    case NODE_MEMBER: {
+        printf("\n");
         printNode(node->memberAccess.object, depth);
         break;
+    }
     case NODE_TYPEDEF:
         printf(" %s alias for ", node->typeDef.alias->str);
         printType(node->typeDef.type);
