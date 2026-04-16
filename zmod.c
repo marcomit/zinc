@@ -593,25 +593,26 @@ void printScope(ZScope *scope) {
 }
 
 ZState *makestate(char *filename) {
-    ZState *self            = zalloc(ZState);
-
-    self->output            = NULL;
-    self->currentPhase      = Z_PHASE_LEXICAL;
-    self->filename          = filename;
-    self->logs              = NULL;
-    self->verbose           = false;
-    self->pathFiles         = NULL;
-    self->debug             = false;
-    self->canAdvance        = true;
-    self->compilerPath      = getCompilerPath();
-    self->currentPath       = NULL;
-
-    self->unusedFunc        = false;
-    self->unusedStruct      = false;
-    self->unusedVar         = false;
-
-    self->visitedFiles      = NULL;
-    self->optimizationLevel = 0;
+    ZState *self                = zalloc(ZState);
+                                
+    self->output                = NULL;
+    self->currentPhase          = Z_PHASE_LEXICAL;
+    self->filename              = filename;
+    self->logs                  = NULL;
+    self->verbose               = false;
+    self->pathFiles             = NULL;
+    self->debug                 = false;
+    self->canAdvance            = true;
+    self->compilerPath          = getCompilerPath();
+    self->currentPath           = NULL;
+                                
+    self->unusedFunc            = false;
+    self->unusedStruct          = false;
+    self->unusedVar             = false;
+                                
+    self->visitedFiles          = NULL;
+    self->skipLLVMValidation    = false;
+    self->optimizationLevel     = 0;
 
     return self;
 }

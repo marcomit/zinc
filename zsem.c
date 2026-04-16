@@ -1103,6 +1103,8 @@ static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
     }
 
     ZType *base = derefType(objType);
+    ZToken *field = curr->memberAccess.field;
+
     if (!base) {
         error(semantic->state, curr->tok,
               "Base type not found");
@@ -1112,16 +1114,27 @@ static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
     if (base->kind == Z_TYPE_STRUCT) {
         ZNode **fields = base->strct.fields;
         for (usize i = 0; i < veclen(fields); i++) {
-            if (tokeneq(fields[i]->field.identifier, curr->memberAccess.field))
+            if (tokeneq(fields[i]->field.identifier, field))
                 return resolveTypeRef(semantic, fields[i]->field.type);
         }
 
-        error(semantic->state, curr->memberAccess.field,
-              "Member '%s' not found in struct", curr->memberAccess.field->str);
+        error(semantic->state, field,
+              "Member '%s' not found in struct", field->str);
         return NULL;
     } else if (base->kind == Z_TYPE_TUPLE) {
+        usize len = veclen(base->tuple);
 
-        return NULL;
+        if (field->type != TOK_INT_LIT) {
+            error(semantic->state, field, "Expected integer literal");
+            return NULL;
+        }
+
+        if (field->integer < 0 || field->integer >= (i64)len) {
+            error(semantic->state, field,
+                    "Integer literal out of range for tuple indexing");
+        }
+
+        return base->tuple[field->integer];
     } else {
         error(semantic->state, curr->tok,
                 "Expected a struct or tuple for '.' access");
@@ -1349,6 +1362,10 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
     ZType *promoted = NULL;
     if (curr->returnStmt.expr) {
         retType     = resolveType(semantic, curr->returnStmt.expr);
+        if (!retType) {
+            error(semantic->state, curr->tok, "Invalid expression");
+            return;
+        }
     }
 
     curr->resolved  = retType;

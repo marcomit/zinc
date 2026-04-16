@@ -1,0 +1,15 @@
+foreign u0 printf(*char)
+foreign i32 putchar(i32)
+
+(*char, i32) tuple() {
+    return ("hello", 4)
+}
+
+i32 main() {
+
+    val := tuple()
+
+    printf(val.0)
+
+    return 0
+}

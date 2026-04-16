@@ -622,7 +622,13 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     case NODE_MEMBER: {
         ZType *objType = node->memberAccess.object->resolved;
         ZToken *tok = node->memberAccess.field;
-        i32 index = typeIndex(objType, tok->str);
+        i32 index = -1;
+
+        if (objType->kind == Z_TYPE_STRUCT) {
+            index = typeIndex(objType, tok->str);
+        } else if (objType->kind == Z_TYPE_TUPLE) {
+            index = tok->integer;
+        }
 
         if (index == -1) {
             error(ctx->state, tok, "'%s' member not found", tok->str);
@@ -946,7 +952,6 @@ static LLVMValueRef genStructLit(
 }
 
 static LLVMValueRef genTupleLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef dest) {
-    printf("genTupleLitInto\n");
     LLVMTypeRef type = genType(ctx, node->resolved);
     const char *name = label(ctx);
 
@@ -969,7 +974,6 @@ static LLVMValueRef genTupleLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef des
 }
 
 static LLVMValueRef genTupleLit(ZCodegen *ctx, ZNode *node) {
-    printf("genTupleLit\n");
     ZLLVMStack *stack = getStackValue(ctx, node);
 
     if (!stack) {
@@ -1049,17 +1053,26 @@ static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef ptr = genLvalue(ctx, node->memberAccess.object);
-    LLVMTypeRef structType = genType(ctx, node->memberAccess.object->resolved);
+
+    ZNode *obj = node->memberAccess.object;
+
+    LLVMValueRef ptr = genLvalue(ctx, obj);
+    LLVMTypeRef objType = genType(ctx, obj->resolved);
 
     ZToken *field = node->memberAccess.field;
-    ZNode **fields = node->memberAccess.object->resolved->strct.fields;
+
     int index = -1;
-    for (usize i = 0; i < veclen(fields) && index == -1; i++) {
-        if (tokeneq(fields[i]->field.identifier, field)) {
-            index = i;
+    if (obj->resolved->kind == Z_TYPE_STRUCT) {
+        ZNode **fields = obj->resolved->strct.fields;
+        for (usize i = 0; i < veclen(fields) && index == -1; i++) {
+            if (tokeneq(fields[i]->field.identifier, field)) {
+                index = i;
+            }
         }
+    } else if (obj->resolved->kind == Z_TYPE_TUPLE) {
+        index = field->integer;
     }
+    
 
     if (index == -1) {
         error(ctx->state, field, "'%s' member not found", field->str);
@@ -1067,7 +1080,7 @@ static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
     }
     
     ptr = LLVMBuildStructGEP2(
-        ctx->builder,   structType,
+        ctx->builder,   objType,
         ptr,            (u32)index,
         label(ctx)
     );
@@ -1161,7 +1174,6 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
         return LLVMBuildRetVoid(ctx->builder);
     }
 
-    printf("genRetExpr\n");
     LLVMValueRef val = genExpr(ctx, ret->returnStmt.expr);
 
     /* If the expression produced i1 (e.g. a comparison) but the
