@@ -414,6 +414,13 @@ static ZNode **parseArgs(ZParser *parser) {
 static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
     expect(parser, TOK_DOT);
 
+    if (!check(parser, TOK_IDENT) &&
+        !check(parser, TOK_INT_LIT)) {
+        error(parser->state, peek(parser),
+                "Expected an identifier or a number");
+        return NULL;
+    }
+
     ZToken *member = consume(parser);
     ZNode *node = makenode(NODE_MEMBER);
 
@@ -1496,6 +1503,7 @@ static ZNode *parseTypedef(ZParser *parser, bool public) {
 }
 
 static ZNode *parseForeignDecl(ZParser *parser, bool public) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_FOREIGN);
 
     ZType *ret = wrapType(parser, parseType);
@@ -1516,16 +1524,15 @@ static ZNode *parseForeignDecl(ZParser *parser, bool public) {
     expect(parser, TOK_RPAREN);
 
     ZNode *node = makenode(NODE_FOREIGN);
-    node->foreignFunc.ret  = ret;
-    node->foreignFunc.tok  = name;
-    node->foreignFunc.args = args;
-    node->foreignFunc.pub  = public;
-
-    ZType *type = maketype(Z_TYPE_FUNCTION);
-    type->func.ret  = ret;
-    type->func.args = args;
-
-    node->resolved = type;
+    node->foreignFunc.ret   = ret;
+    node->foreignFunc.tok   = name;
+    node->foreignFunc.args  = args;
+    node->foreignFunc.pub   = public;
+    node->tok               = start;
+    ZType *type             = maketype(Z_TYPE_FUNCTION);
+    type->func.ret          = ret;
+    type->func.args         = args;
+    node->resolved          = type;
     return node;
 }
 

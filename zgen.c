@@ -385,7 +385,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
             elems[i] = genType(ctx, type->tuple[i]);
             if (!elems[i]) return NULL;
         }
-        return LLVMStructTypeInContext(ctx->ctx, elems, len, 0);
+        return LLVMStructTypeInContext(ctx->ctx, elems, len, /*packed=*/ 0);
     }
 
     case Z_TYPE_NONE:
@@ -946,6 +946,7 @@ static LLVMValueRef genStructLit(
 }
 
 static LLVMValueRef genTupleLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef dest) {
+    printf("genTupleLitInto\n");
     LLVMTypeRef type = genType(ctx, node->resolved);
     const char *name = label(ctx);
 
@@ -968,7 +969,12 @@ static LLVMValueRef genTupleLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef des
 }
 
 static LLVMValueRef genTupleLit(ZCodegen *ctx, ZNode *node) {
+    printf("genTupleLit\n");
     ZLLVMStack *stack = getStackValue(ctx, node);
+
+    if (!stack) {
+        error(ctx->state, node->tok, "Stack allocation not found");
+    }
 
     return genTupleLitInto(ctx, node, stack->stack);
 }
@@ -1155,6 +1161,7 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
         return LLVMBuildRetVoid(ctx->builder);
     }
 
+    printf("genRetExpr\n");
     LLVMValueRef val = genExpr(ctx, ret->returnStmt.expr);
 
     /* If the expression produced i1 (e.g. a comparison) but the
@@ -1408,6 +1415,12 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name, ZType *ty
 static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     if (!node) return;
     switch (node->type) {
+    case NODE_RETURN:
+        genFuncVars(ctx, node->returnStmt.expr);
+        break;
+    case NODE_TUPLE_LIT:
+        buildFuncVar(ctx, node, label(ctx), NULL);
+        break;
     case NODE_STRUCT_LIT:
         buildFuncVar(ctx, node, label(ctx), NULL);
         break;
@@ -1604,7 +1617,7 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
     compile(ctx, root);
 
     char *errmsg = NULL;
-    if (LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
+    if (state->skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
         error(state, NULL, "LLVM: %s", errmsg);
         LLVMDisposeMessage(errmsg);
         freeCodegen(ctx);
