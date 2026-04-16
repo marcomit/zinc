@@ -8,12 +8,29 @@ Zinc is a personal project maintained by a single owner. All contributions are w
 
 ## Setup
 
-After cloning, install the pre-push hook so tests run before every push:
+After cloning, copy the pre-push hook so tests run before every push:
 
 ```bash
-cp hooks/pre-push .git/hooks/pre-push
-chmod +x .git/hooks/pre-push
-```
+#!/usr/bin/env bash
+# Runs the Zinc test suite before every push.
+# Push is aborted if any pass/fail test regresses.
+
+set -uo pipefail
+
+echo "==> Building zinc..."
+if ! make --silent; then
+    echo "error: build failed — push aborted"
+    exit 1
+fi
+
+echo "==> Running tests..."
+if ! bash run_tests.sh; then
+    echo ""
+    echo "error: tests failed — push aborted"
+    echo "       Fix the failures above, then push again."
+    exit 1
+fi
+exit 0```
 
 ## How to Contribute
 
