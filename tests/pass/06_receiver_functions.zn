@@ -11,56 +11,54 @@ struct Rect {
     i32 h
 }
 
-
-u0 print() Counter self {
-    putchar(48 + self.count)
-    putchar(10)
-    return
-}
-
-i32 get() Counter self {
-    return self.count
-}
-
-i32 add(i32 n) Counter self {
-    return self.count + n
-}
-
-i32 between(i32 lo, i32 hi) Counter self {
-    if self.count > lo {
-        if self.count < hi {
-            return 1
-        }
+for Counter self {
+    u0 print() {
+        putchar(48 + self.count)
+        putchar(10)
     }
-    return 0
+
+    i32 get() {
+        return self.count
+    }
+
+    i32 add(i32 n) {
+        return self.count + n
+    }
+
+    i32 between(i32 lo, i32 hi) {
+        if self.count <= lo { return 0 }
+        if self.count >= hi { return 0 }
+        return 1
+    }
 }
 
+for Rect self {
+    i32 area() {
+        return self.w * self.h
+    }
 
-i32 area() Rect self {
-    return self.w * self.h
+    u0 describe() {
+        putchar(48 + self.w)
+        putchar(32)
+        putchar(48 + self.h)
+        putchar(10)   
+    }
+
+    i32 scaledArea(i32 factor) {
+        return self.w * self.h * factor
+    }
 }
 
-i32 scaledArea(i32 factor) Rect self {
-    return self.w * self.h * factor
+for i32 self {
+    i32 sum(i32 other) {
+        return other + self
+    }
 }
-
-u0 describe() Rect self {
-    putchar(48 + self.w)
-    putchar(32)
-    putchar(48 + self.h)
-    putchar(10)
-}
-
 
 // Auto-dereference not yet implemented
 // u0 inc(*Counter self) {
 //     self.count = self.count + 1
 // }
-
-
-i32 sum(i32 other) i32 self {
-    return other + self
-}
 
 i32 main() {
     Counter c = Counter { count: 3 }

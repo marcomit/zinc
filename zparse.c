@@ -1,6 +1,4 @@
-#include "zhset.h"
 #include "zinc.h"
-#include "zvec.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -413,6 +411,13 @@ static ZNode **parseArgs(ZParser *parser) {
 
 static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
     expect(parser, TOK_DOT);
+
+    if (!check(parser, TOK_IDENT) &&
+        !check(parser, TOK_INT_LIT)) {
+        error(parser->state, peek(parser),
+                "Expected an identifier or a number");
+        return NULL;
+    }
 
     ZToken *member = consume(parser);
     ZNode *node = makenode(NODE_MEMBER);
@@ -1153,11 +1158,14 @@ static ZToken **parseGenericsDecl(ZParser *parser) {
     return generics;
 }
 
+/* The caller must handle:
+ * - the mangling name.
+ * - the receiver node if it is a receiver function.
+ * - the base type if it is a static function.
+ *   */
 static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     ZToken *start = peek(parser);
     ZType *ret = wrapType(parser, parseType);
-
-    ZToken *segments[3] = { 0 };
 
     if (!ret) {
         error(parser->state, start, "Expected return type");
@@ -1168,22 +1176,6 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     }
 
     ZToken *name    = consume(parser);
-    ZType *base     = NULL;
-
-    segments[0] = name;
-    if (match(parser, TOK_DOUBLE_COLON)) {
-        if (!check(parser, TOK_IDENT)) {
-            error(parser->state, peek(parser), "Expected an identifier");
-            return NULL;
-        }
-        base                    = maketype(Z_TYPE_PRIMITIVE);
-        base->primitive.token   = name;
-        name                    = consume(parser);
-
-        segments[0] = base->primitive.token;
-        segments[1] = name;
-    }
-
     ZToken **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
@@ -1199,15 +1191,6 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
         parseField,
         true);
 
-    ZNode *receiver = NULL;
-    if (!check(parser, TOK_LBRACKET)) {
-        receiver = wrapNode(parser, parseField);
-        if (!receiver) {
-            error(parser->state, peek(parser),
-                    "Expected receiver declaration or function body");
-        }
-    }
-
     ZNode *body = wrapNode(parser, parseBlock);
 
     if (!body) {
@@ -1218,14 +1201,14 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     ZNode *node = makenode(NODE_FUNC);
     node->funcDef.ret       = ret;
     node->funcDef.name      = name;
-    node->funcDef.base      = base;
     node->funcDef.args      = args;
     node->funcDef.body      = body;
     node->funcDef.pub       = public;
-    node->funcDef.receiver  = receiver;
     node->funcDef.generics  = generics;
-    node->funcDef.mangled   = mangler(segments);
     node->tok               = name;
+    node->funcDef.base      = NULL;
+    node->funcDef.receiver  = NULL;
+    node->funcDef.mangled   = name->str;
 
     ZType *func             = maketype(Z_TYPE_FUNCTION);
     func->func.ret          = ret;
@@ -1496,6 +1479,7 @@ static ZNode *parseTypedef(ZParser *parser, bool public) {
 }
 
 static ZNode *parseForeignDecl(ZParser *parser, bool public) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_FOREIGN);
 
     ZType *ret = wrapType(parser, parseType);
@@ -1516,16 +1500,15 @@ static ZNode *parseForeignDecl(ZParser *parser, bool public) {
     expect(parser, TOK_RPAREN);
 
     ZNode *node = makenode(NODE_FOREIGN);
-    node->foreignFunc.ret  = ret;
-    node->foreignFunc.tok  = name;
-    node->foreignFunc.args = args;
-    node->foreignFunc.pub  = public;
-
-    ZType *type = maketype(Z_TYPE_FUNCTION);
-    type->func.ret  = ret;
-    type->func.args = args;
-
-    node->resolved = type;
+    node->foreignFunc.ret   = ret;
+    node->foreignFunc.tok   = name;
+    node->foreignFunc.args  = args;
+    node->foreignFunc.pub   = public;
+    node->tok               = start;
+    ZType *type             = maketype(Z_TYPE_FUNCTION);
+    type->func.ret          = ret;
+    type->func.args         = args;
+    node->resolved          = type;
     return node;
 }
 
@@ -1744,9 +1727,80 @@ static ZNode *parseModule(ZParser *parser) {
     while (canPeek(parser)) {
         ZNode *child = parse(parser);
         if (!child) break;
-        vecpush(root->module.root, child);
+
+        // Block of functions
+        if (child->type == NODE_BLOCK) {
+            for (usize i = 0; i < veclen(child->block); i++) {
+                vecpush(root->module.root, child->block[i]);
+            }
+        } else {
+            vecpush(root->module.root, child);
+        }
     }
     return root;
+}
+
+static ZNode *parseFuncBlock(ZParser *parser) {
+    expect(parser, TOK_FOR);
+    ZType *type = parseType(parser);
+
+    guard(type);
+
+    ZToken *rec = NULL;
+    if (check(parser, TOK_IDENT)) rec = consume(parser);
+
+    expect(parser, TOK_LBRACKET);
+
+    ZNode *func = NULL;
+    bool public = false;
+
+    ZNode *block = makenode(NODE_BLOCK);
+    block->block = NULL;
+    while (true) {
+        public = match(parser, TOK_PUB);
+        func = parseFuncDecl(parser, public);
+        if (!func) break;
+        vecpush(block->block, func);
+
+        if (check(parser, TOK_RBRACKET)) break;
+    }
+
+    expect(parser, TOK_RBRACKET);
+
+    usize len = veclen(block->block);
+
+    /* For static mangling we key on the primitive type name (matching what the
+     * call-site parser emits for `Type::method`). Strip pointer levels to get
+     * the base primitive token. */
+    ZType *baseType = type;
+    while (baseType->kind == Z_TYPE_POINTER) baseType = baseType->base;
+    ZToken *typeNameTok = baseType->primitive.token;
+
+    if (rec) { // receiver functions
+        ZNode *receiver = makenode(NODE_FIELD);
+        receiver->field.identifier = rec;
+        receiver->field.type = type;
+        for (usize i = 0; i < len; i++) {
+            /* manglerM encodes the full receiver type (pointer or not), so
+             * `for String self` and `for *String self` get distinct names. */
+            block->block[i]->funcDef.mangled = manglerM(
+                type,
+                block->block[i]->funcDef.name
+            );
+            block->block[i]->funcDef.receiver = receiver;
+        }
+    } else { // static functions
+        for (usize i = 0; i < len; i++) {
+            block->block[i]->funcDef.mangled = mangler((ZToken*[]) {
+                typeNameTok,
+                block->block[i]->funcDef.name,
+                NULL
+            });
+            block->block[i]->funcDef.base = type;
+        }
+    }
+
+    return block;
 }
 
 static ZNode *parse(ZParser *parser) {
@@ -1765,21 +1819,18 @@ static ZNode *parse(ZParser *parser) {
 
     t = peek(parser)->type;
 
-    // 'foreign' supports an optional leading 'pub'
-    if (t == TOK_FOREIGN) {
-        return parseForeignDecl(parser, public);
-    }
-
     if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
         return parseVarInferred(parser);
     }
 
 
     switch (t) {
+    case TOK_FOREIGN:   return parseForeignDecl (parser, public);
     case TOK_TYPEDEF:   return parseTypedef     (parser, public);
     case TOK_STRUCT:    return parseStructDecl  (parser, public);
     case TOK_MACRO:     return skipMacro        (parser, public);
     case TOK_ENUM:      return parseEnumDecl    (parser, public);
+    case TOK_FOR:       return parseFuncBlock   (parser);
     default: {
         ZParserSnapshot *snap = store(parser);
         ZNode *res = parseFuncDecl(parser, public);
@@ -1805,7 +1856,6 @@ static ZNode *parse(ZParser *parser) {
 ZNode *zparse(ZState *state, ZToken **tokens) {
     state->currentPhase = Z_PHASE_SYNTAX;
     ZParser *parser = makeparser(state, tokens);
-
 
     discoverMacros(parser);
 

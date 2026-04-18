@@ -91,6 +91,7 @@ typedef struct {
     bool        unusedStruct;
 
     bool        emitLLVM;   /* --emit-llvm: write .ll IR file instead of native binary */
+    bool        skipLLVMValidation;
 
     /* Not yet implemented */
     bool        verbose;
@@ -609,6 +610,7 @@ ZState *makestate(char *);
 char *readfile(char *);
 
 char *mangler(ZToken **);
+char *manglerM(ZType *, ZToken *);
 
 void _error  (ZState *, ZToken *, const char *, int, const char *, ...);
 void _warning(ZState *, ZToken *, const char *, int, const char *, ...);

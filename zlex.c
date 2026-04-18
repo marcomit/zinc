@@ -3,7 +3,7 @@
 #define FNV_OFFSET 2166136261u
 #define FNV_PRIME	 16777619u
 
-#define HASHMAP_TOK_LEN 128
+#define HASHMAP_TOK_LEN 256
 #define HASHMAP_TOK_MASK (HASHMAP_TOK_LEN - 1)
 
 typedef struct {
@@ -34,6 +34,9 @@ typedef struct {
 	ZTokenType type;
 } KeyboardEntry;
 
+/* hashmap with fixed size. 
+ * The fixed size is not a problem because the entries are limited
+ * to the number of symbols (defined in ztok.h). */
 static KeyboardEntry keyboardEntries[HASHMAP_TOK_LEN];
 
 ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {

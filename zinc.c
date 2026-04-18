@@ -29,11 +29,12 @@ static ZState *state = NULL;
 static void usage(char *program) {
     printf("Usage: %s <filename> [options]\n", program);
     printf("Options:\n");
-    printf("\t --debug -d           Enable debug mode\n");
-    printf("\t --emit-llvm          Emit LLVM IR (.ll) instead of a native binary\n");
-    printf("\t --unused-variable    Suppress 'unused variable' warnings\n");
-    printf("\t --unused-function    Suppress 'unused function' warnings\n");
-    printf("\t --unused-struct      Suppress 'unused struct' warnings\n");
+    printf("\t --debug -d               Enable debug mode\n");
+    printf("\t --emit-llvm              Emit LLVM IR (.ll) instead of a native binary\n");
+    printf("\t --unused-variable        Suppress 'unused variable' warnings\n");
+    printf("\t --unused-function        Suppress 'unused function' warnings\n");
+    printf("\t --unused-struct          Suppress 'unused struct' warnings\n");
+    printf("\t --skip-llvm-validation   Does not verify the generated LLVM code\n");
 }
 
 #define CHECK_FLAG(flag, name) if (flag) {                                  \
@@ -56,18 +57,20 @@ enum {
     OPT_EMIT_LLVM = 1 << 8,
     OPT_UNUSED_FUNC,
     OPT_UNUSED_VAR,
-    OPT_UNUSED_STRUCT
+    OPT_UNUSED_STRUCT,
+    OPT_SKIP_LLVM_VALIDATION
 };
 
 static struct option long_options[] = {
-    {"debug",           no_argument,        NULL, 'd'               },
-    {"verbose",         no_argument,        NULL, 'v'               },
-    {"emit-llvm",       no_argument,        NULL, OPT_EMIT_LLVM     },
-    {"unused-function", no_argument,        NULL, OPT_UNUSED_FUNC   },
-    {"unused-variable", no_argument,        NULL, OPT_UNUSED_VAR    },
-    {"unused-struct",   no_argument,        NULL, OPT_UNUSED_STRUCT },
-    {"output",          required_argument,  NULL, 'o'               },
-    {NULL,              0,                  NULL, 0                 }
+    {"debug",                   no_argument,        NULL,   'd'                     },
+    {"verbose",                 no_argument,        NULL,   'v'                     },
+    {"emit-llvm",               no_argument,        NULL,   OPT_EMIT_LLVM           },
+    {"unused-function",         no_argument,        NULL,   OPT_UNUSED_FUNC         },
+    {"unused-variable",         no_argument,        NULL,   OPT_UNUSED_VAR          },
+    {"unused-struct",           no_argument,        NULL,   OPT_UNUSED_STRUCT       },
+    {"skip-llvm-validation",    no_argument,        NULL,   OPT_SKIP_LLVM_VALIDATION},
+    {"output",                  required_argument,  NULL,   'o'                     },
+    {NULL,                      0,                  NULL,   0                       }
 };
 
 ZState *loadState(int argc, char **argv) {
@@ -83,15 +86,14 @@ ZState *loadState(int argc, char **argv) {
 
     while (( opt = getopt_long(argc, argv, "dvo:", long_options, NULL) ) != -1) {
         switch (opt) {
-        case 'o':               SET_ARG(state->output,          "Output file");             break;
-        case 'd':               SET_FLAG(state->debug,          "Debug mode");              break;
-        case 'v':               SET_FLAG(state->verbose,        "Verbose");                 break;
-        case OPT_EMIT_LLVM:     SET_FLAG(state->emitLLVM,       "emit-llvm");               break;
-        case OPT_UNUSED_FUNC:   SET_FLAG(state->unusedFunc,     "Unused function flag");    break;
-        case OPT_UNUSED_VAR:    SET_FLAG(state->unusedVar,      "Unused function flag");    break;
-        case OPT_UNUSED_STRUCT: SET_FLAG(state->unusedStruct,   "Unused function flag");    break;
-
-
+        case 'o':                       SET_ARG(state->output,              "Output file");             break;
+        case 'd':                       SET_FLAG(state->debug,              "Debug mode");              break;
+        case 'v':                       SET_FLAG(state->verbose,            "Verbose");                 break;
+        case OPT_EMIT_LLVM:             SET_FLAG(state->emitLLVM,           "emit-llvm");               break;
+        case OPT_UNUSED_FUNC:           SET_FLAG(state->unusedFunc,         "Unused function flag");    break;
+        case OPT_UNUSED_VAR:            SET_FLAG(state->unusedVar,          "Unused function flag");    break;
+        case OPT_UNUSED_STRUCT:         SET_FLAG(state->unusedStruct,       "Unused function flag");    break;
+        case OPT_SKIP_LLVM_VALIDATION:  SET_FLAG(state->skipLLVMValidation, "Skip llvm validation");    break;
         default: usage(argv[0]); return NULL;
         }
     }

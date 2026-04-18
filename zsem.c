@@ -1103,21 +1103,43 @@ static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
     }
 
     ZType *base = derefType(objType);
-    if (!base || base->kind != Z_TYPE_STRUCT) {
+    ZToken *field = curr->memberAccess.field;
+
+    if (!base) {
         error(semantic->state, curr->tok,
-              "Expected a struct type for '.' access");
+              "Base type not found");
         return NULL;
     }
+    
+    if (base->kind == Z_TYPE_STRUCT) {
+        ZNode **fields = base->strct.fields;
+        for (usize i = 0; i < veclen(fields); i++) {
+            if (tokeneq(fields[i]->field.identifier, field))
+                return resolveTypeRef(semantic, fields[i]->field.type);
+        }
 
-    ZNode **fields = base->strct.fields;
-    for (usize i = 0; i < veclen(fields); i++) {
-        if (tokeneq(fields[i]->field.identifier, curr->memberAccess.field))
-            return resolveTypeRef(semantic, fields[i]->field.type);
+        error(semantic->state, field,
+              "Member '%s' not found in struct", field->str);
+        return NULL;
+    } else if (base->kind == Z_TYPE_TUPLE) {
+        usize len = veclen(base->tuple);
+
+        if (field->type != TOK_INT_LIT) {
+            error(semantic->state, field, "Expected integer literal");
+            return NULL;
+        }
+
+        if (field->integer < 0 || field->integer >= (i64)len) {
+            error(semantic->state, field,
+                    "Integer literal out of range for tuple indexing");
+        }
+
+        return base->tuple[field->integer];
+    } else {
+        error(semantic->state, curr->tok,
+                "Expected a struct or tuple for '.' access");
+        return NULL;
     }
-
-    error(semantic->state, curr->memberAccess.field,
-          "Member '%s' not found in struct", curr->memberAccess.field->str);
-    return NULL;
 }
 
 static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
@@ -1129,7 +1151,7 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 
 
     if (arrType->kind != Z_TYPE_ARRAY &&
-            arrType->kind != Z_TYPE_POINTER) {
+        arrType->kind != Z_TYPE_POINTER) {
         error(semantic->state, curr->tok,
               "Expected an array type for subscript");
         return NULL;
@@ -1142,7 +1164,9 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
         return NULL;
     }
 
-
+    if (arrType->kind == Z_TYPE_ARRAY) {
+        return arrType->array.base;
+    }
     return arrType->base;
 }
 
@@ -1338,6 +1362,10 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
     ZType *promoted = NULL;
     if (curr->returnStmt.expr) {
         retType     = resolveType(semantic, curr->returnStmt.expr);
+        if (!retType) {
+            error(semantic->state, curr->tok, "Invalid expression");
+            return;
+        }
     }
 
     curr->resolved  = retType;
@@ -1394,8 +1422,16 @@ static void analyzeBlock(ZSemantic *semantic, ZNode *block, bool scoped) {
     if (scoped) beginScope(semantic, block);
 
     ZNode **stmts = block->block;
-    for (usize i = 0; i < veclen(stmts); i++)
+    usize len = veclen(stmts);
+    for (usize i = 0; i < len; i++) {
+        if (i + 1 < len && 
+            (stmts[i]->type == NODE_BREAK ||
+            stmts[i]->type == NODE_CONTINUE ||
+            stmts[i]->type == NODE_RETURN)) {
+            error(semantic->state, stmts[i+1]->tok, "Unreachable code");
+        }
         analyzeStmt(semantic, stmts[i]);
+    }
 
     if (scoped) endScope(semantic);
 }

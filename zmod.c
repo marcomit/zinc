@@ -455,10 +455,11 @@ void printNode(ZNode *node, u8 depth) {
         }
         break;
     
-    case NODE_MEMBER:
-        printf("Field: %s\n", node->memberAccess.field->str);
+    case NODE_MEMBER: {
+        printf("\n");
         printNode(node->memberAccess.object, depth);
         break;
+    }
     case NODE_TYPEDEF:
         printf(" %s alias for ", node->typeDef.alias->str);
         printType(node->typeDef.type);
@@ -560,6 +561,44 @@ char *mangler(ZToken *segments[]) {
     return mangled;
 }
 
+/* Encode a ZType into a mangled name buffer.
+ * Pointer types get a 'P' prefix; primitives get a length-prefixed name.
+ * e.g. String -> "6String", *String -> "P6String" */
+static void encodeType(ZType *type, char **buf) {
+    if (type->kind == Z_TYPE_POINTER) {
+        vecpush(*buf, 'P');
+        encodeType(type->base, buf);
+    } else if (type->kind == Z_TYPE_PRIMITIVE) {
+        const char *name = type->primitive.token->str;
+        int len = strlen(name);
+        int tmp = len;
+        while (tmp) {
+            vecpush(*buf, '0' + tmp % 10);
+            tmp /= 10;
+        }
+        vecunion(*buf, name, (usize)len);
+    }
+}
+
+/* Mangle a receiver (non-static) method using the _ZNM prefix so it never
+ * collides with a static function of the same name on the same type.
+ * The full receiver type is encoded, so `for String self` and
+ * `for *String self` produce distinct names. */
+char *manglerM(ZType *recvType, ZToken *funcName) {
+    char *mangled = NULL;
+    vecunion(mangled, "_ZNM", 4);
+    encodeType(recvType, &mangled);
+    int len = strlen(funcName->str);
+    int tmp = len;
+    while (tmp) {
+        vecpush(mangled, '0' + tmp % 10);
+        tmp /= 10;
+    }
+    vecunion(mangled, funcName->str, (usize)len);
+    vecpush(mangled, '\0');
+    return mangled;
+}
+
 void printSymbol(ZSymbol *symbol) {
     switch (symbol->kind) {
     case Z_SYM_VAR:
@@ -592,25 +631,26 @@ void printScope(ZScope *scope) {
 }
 
 ZState *makestate(char *filename) {
-    ZState *self            = zalloc(ZState);
-
-    self->output            = NULL;
-    self->currentPhase      = Z_PHASE_LEXICAL;
-    self->filename          = filename;
-    self->logs              = NULL;
-    self->verbose           = false;
-    self->pathFiles         = NULL;
-    self->debug             = false;
-    self->canAdvance        = true;
-    self->compilerPath      = getCompilerPath();
-    self->currentPath       = NULL;
-
-    self->unusedFunc        = false;
-    self->unusedStruct      = false;
-    self->unusedVar         = false;
-
-    self->visitedFiles      = NULL;
-    self->optimizationLevel = 0;
+    ZState *self                = zalloc(ZState);
+                                
+    self->output                = NULL;
+    self->currentPhase          = Z_PHASE_LEXICAL;
+    self->filename              = filename;
+    self->logs                  = NULL;
+    self->verbose               = false;
+    self->pathFiles             = NULL;
+    self->debug                 = false;
+    self->canAdvance            = true;
+    self->compilerPath          = getCompilerPath();
+    self->currentPath           = NULL;
+                                
+    self->unusedFunc            = false;
+    self->unusedStruct          = false;
+    self->unusedVar             = false;
+                                
+    self->visitedFiles          = NULL;
+    self->skipLLVMValidation    = false;
+    self->optimizationLevel     = 0;
 
     return self;
 }
