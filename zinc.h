@@ -610,6 +610,7 @@ ZState *makestate(char *);
 char *readfile(char *);
 
 char *mangler(ZToken **);
+char *manglerM(ZType *, ZToken *);
 
 void _error  (ZState *, ZToken *, const char *, int, const char *, ...);
 void _warning(ZState *, ZToken *, const char *, int, const char *, ...);

@@ -27,17 +27,20 @@ struct Counter {
     i32 count
 }
 
-u0 Vec::create() {
-    printf("Vec:new\n")
-    return
+for Vec {
+    u0 create() {
+        printf("Vec:new\n")
+    }
 }
 
-u0 Counter::say(*char msg) {
-    printf(msg)
-}
+for Counter {
+    u0 say(*char msg) {
+        printf(msg)
+    }
 
-i32 Counter::value() {
-    return 65
+    i32 value() {
+        return 65
+    }
 }
 
 i32 main() {
