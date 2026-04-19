@@ -1436,6 +1436,10 @@ static void analyzeBlock(ZSemantic *semantic, ZNode *block, bool scoped) {
             stmts[i]->type == NODE_CONTINUE ||
             stmts[i]->type == NODE_RETURN)) {
             error(semantic->state, stmts[i+1]->tok, "Unreachable code");
+
+            vecsetlen(block->block, i);
+
+            break;
         }
         analyzeStmt(semantic, stmts[i]);
     }

@@ -684,12 +684,48 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         return LLVMBuildStore(ctx->builder, val, ptr);
     }
 
+    ZTokenType op = root->binary.op->type;
+    /* Logical operator. */
+    if (op == TOK_AND || op == TOK_SAND ||
+        op == TOK_OR  || op == TOK_SOR) {
+        bool is_and = (op == TOK_AND || op == TOK_SAND);
+
+        LLVMValueRef lv = genExpr(ctx, root->binary.left);
+        if (!lv) return NULL;
+        LLVMValueRef lv_bool = LLVMBuildICmp(ctx->builder, LLVMIntNE, lv,
+            LLVMConstInt(LLVMTypeOf(lv), 0, false), label(ctx));
+
+        LLVMBasicBlockRef entry_bb = LLVMGetInsertBlock(ctx->builder);
+        LLVMBasicBlockRef rhs_bb   = makeblock(ctx);
+        LLVMBasicBlockRef merge_bb = makeblock(ctx);
+
+        if (is_and)
+            LLVMBuildCondBr(ctx->builder, lv_bool, rhs_bb, merge_bb);
+        else
+            LLVMBuildCondBr(ctx->builder, lv_bool, merge_bb, rhs_bb);
+
+        LLVMPositionBuilderAtEnd(ctx->builder, rhs_bb);
+        LLVMValueRef rv = genExpr(ctx, root->binary.right);
+        if (!rv) return NULL;
+        LLVMValueRef rv_bool = LLVMBuildICmp(ctx->builder, LLVMIntNE, rv,
+            LLVMConstInt(LLVMTypeOf(rv), 0, false), label(ctx));
+        LLVMBuildBr(ctx->builder, merge_bb);
+        LLVMBasicBlockRef rhs_end = LLVMGetInsertBlock(ctx->builder);
+
+        LLVMPositionBuilderAtEnd(ctx->builder, merge_bb);
+        LLVMValueRef phi = LLVMBuildPhi(ctx->builder, i1Type, label(ctx));
+        LLVMValueRef short_val = LLVMConstInt(i1Type, is_and ? 0 : 1, false);
+        LLVMValueRef  vals[2]   = {short_val, rv_bool};
+        LLVMBasicBlockRef bbs[2] = {entry_bb, rhs_end};
+        LLVMAddIncoming(phi, vals, bbs, 2);
+        return phi;
+    }
+
     LLVMValueRef left = genExpr(ctx, root->binary.left);
     LLVMValueRef right = genExpr(ctx, root->binary.right);
 
     if (!left || !right) return NULL;
 
-    ZTokenType op = root->binary.op->type;
     LLVMTypeRef left_type = LLVMTypeOf(left);
     bool is_float = (LLVMGetTypeKind(left_type) == LLVMFloatTypeKind ||
                      LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);

@@ -1385,8 +1385,11 @@ static ZNode *getModuleByName(ZParser *parser, ZToken **module, bool isStd) {
 
     usize len = veclen(module);
     for (usize i = 0; i < len; i++) {
-        for (usize j = 0; j < strlen(module[i]->str); j++) {
-            vecpush(filename, module[i]->str[j]);
+        const char *seg = strcmp(module[i]->str, "super") == 0 ?
+            ".." :
+            module[i]->str;
+        for (usize j = 0; j < strlen(seg); j++) {
+            vecpush(filename, seg[j]);
         }
         if (i < len - 1) vecpush(filename, sep);
     }
