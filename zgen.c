@@ -624,9 +624,13 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         ZToken *tok = node->memberAccess.field;
         i32 index = -1;
 
-        if (objType->kind == Z_TYPE_STRUCT) {
-            index = typeIndex(objType, tok->str);
-        } else if (objType->kind == Z_TYPE_TUPLE) {
+        ZType *baseType = objType;
+        while (baseType && baseType->kind == Z_TYPE_POINTER)
+            baseType = baseType->base;
+
+        if (baseType->kind == Z_TYPE_STRUCT) {
+            index = typeIndex(baseType, tok->str);
+        } else if (baseType->kind == Z_TYPE_TUPLE) {
             index = tok->integer;
         }
 
@@ -635,8 +639,10 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
             return NULL;
         }
 
-        LLVMTypeRef strctType   = genType(ctx, objType);
-        LLVMValueRef objPtr     = genLvalue(ctx, node->memberAccess.object);
+        LLVMTypeRef  strctType = genType(ctx, baseType);
+        LLVMValueRef objPtr    = objType->kind == Z_TYPE_POINTER
+            ? genExpr  (ctx, node->memberAccess.object)   // load pointer, then GEP
+            : genLvalue(ctx, node->memberAccess.object);  // get struct address, then GEP
 
         return LLVMBuildStructGEP2(
             ctx->builder,
@@ -775,13 +781,10 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     }
 }
 
-static LLVMValueRef genRef(ZCodegen *ctx, ZNode *node, LLVMValueRef val) {
-    (void)val;
-    error(ctx->state, node->tok, "Reference not yet implemented");
-    return NULL;
-}
-
 static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
+    if (node->unary.operat->type == TOK_REF)
+        return genLvalue(ctx, node->unary.operand);
+
     LLVMValueRef arg = genExpr(ctx, node->unary.operand);
     ZTokenType op = node->unary.operat->type;
 
@@ -811,7 +814,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     }
     case TOK_SNOT:
     case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
-    case TOK_REF:   return genRef(ctx, node, arg);
+    case TOK_REF:   return genLvalue(ctx, node->unary.operand);
     default:
         error(ctx->state, node->unary.operat, "Unknown binary operator");
         return NULL;
@@ -1104,30 +1107,36 @@ static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
 
     ZNode *obj = node->memberAccess.object;
+    ZType *rawType = obj->resolved;
 
-    LLVMValueRef ptr = genLvalue(ctx, obj);
-    LLVMTypeRef objType = genType(ctx, obj->resolved);
+    ZType *baseType = rawType;
+    while (baseType && baseType->kind == Z_TYPE_POINTER)
+        baseType = baseType->base;
+
+    LLVMValueRef ptr = rawType->kind == Z_TYPE_POINTER
+        ? genExpr  (ctx, obj)
+        : genLvalue(ctx, obj);
+    LLVMTypeRef objType = genType(ctx, baseType);
 
     ZToken *field = node->memberAccess.field;
 
     int index = -1;
-    if (obj->resolved->kind == Z_TYPE_STRUCT) {
-        ZNode **fields = obj->resolved->strct.fields;
+    if (baseType->kind == Z_TYPE_STRUCT) {
+        ZNode **fields = baseType->strct.fields;
         for (usize i = 0; i < veclen(fields) && index == -1; i++) {
             if (tokeneq(fields[i]->field.identifier, field)) {
                 index = i;
             }
         }
-    } else if (obj->resolved->kind == Z_TYPE_TUPLE) {
+    } else if (baseType->kind == Z_TYPE_TUPLE) {
         index = field->integer;
     }
-    
 
     if (index == -1) {
         error(ctx->state, field, "'%s' member not found", field->str);
         return NULL;
     }
-    
+
     ptr = LLVMBuildStructGEP2(
         ctx->builder,   objType,
         ptr,            (u32)index,
