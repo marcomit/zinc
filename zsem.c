@@ -180,7 +180,13 @@ static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
 }
 
 static void putStaticFunc(ZSemantic *semantic, ZNode *node) {
-    ZToken *base = node->funcDef.base->primitive.token;
+    ZType *baseType = node->funcDef.base;
+    
+    if (baseType->kind != Z_TYPE_PRIMITIVE) {
+        error(semantic->state, node->tok,
+                "Static function must be attached to a primitive type");
+    }
+    ZToken *base = baseType->primitive.token;
     if (!base) {
         error(semantic->state,
                 node->tok,
@@ -906,7 +912,8 @@ static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
     if (op == TOK_EQ) {
         /* Assignment yields the type of the left-hand side. */
         if (!isLvalue(curr->binary.left)) {
-            error(semantic->state, left->tok, "is not a valid lvalue");
+            error(semantic->state, curr->binary.left->tok,
+                    "is not a valid lvalue");
         }
         return left;
     }
@@ -1056,7 +1063,7 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
         ZType *expr = resolveType(semantic, curr->castExpr.expr);
         result = resolveTypeRef(semantic, curr->castExpr.toType);
 
-        if (expr->kind == Z_TYPE_ARRAY &&
+        if (expr && expr->kind == Z_TYPE_ARRAY &&
             result->kind == Z_TYPE_ARRAY) {
             result->array.size = expr->array.size;
         }
@@ -1303,7 +1310,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
             error(semantic->state,
                     curr->funcDef.base->primitive.token,
                     "'%s' is not a valid identifier",
-                    curr->funcDef.base->primitive.token);
+                    curr->funcDef.base->primitive.token->str);
             return;
         }
     }

@@ -1642,7 +1642,7 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
     compile(ctx, root);
 
     char *errmsg = NULL;
-    if (state->skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
+    if (!state->skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
         error(state, NULL, "LLVM: %s", errmsg);
         LLVMDisposeMessage(errmsg);
         freeCodegen(ctx);

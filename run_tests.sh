@@ -44,11 +44,12 @@ binary_was_produced() {
     [ -f "$bin" ] && [ -x "$bin" ]
 }
 
+COMPILE_EXIT=0
+
 compile() {
     local src="$1" bin="$2" log="$3"
-    # Redirect all compiler noise (including crash messages) to the log file.
-    # zinc always exits 0 on normal errors, but can segfault on bad input.
-    { "$ZINC" "$src" -o "$bin" > "$log" 2>&1; } 2>/dev/null || true
+    COMPILE_EXIT=0
+    "$ZINC" "$src" -o "$bin" > "$log" 2>&1 || COMPILE_EXIT=$?
 }
 
 # ── pass tests ───────────────────────────────────────────────────────────────
@@ -122,6 +123,9 @@ run_fail_test() {
 
     if binary_was_produced "$bin"; then
         echo -e "  ${RED}FAIL${NC}  $name  (should have been rejected, but compiled)"
+        failed=$((failed + 1))
+    elif [ "$COMPILE_EXIT" -ge 128 ]; then
+        echo -e "  ${RED}FAIL${NC}  $name  (compiler crashed, exit $COMPILE_EXIT — must show error, not crash)"
         failed=$((failed + 1))
     else
         echo -e "  ${GREEN}PASS${NC}  $name  (correctly rejected)"

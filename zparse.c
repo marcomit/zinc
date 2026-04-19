@@ -33,12 +33,10 @@ ZType *parseType                            (ZParser *);
 ZNode *parseExpr                            (ZParser *);
 static ZNode *parse                         (ZParser *);
 static ZNode *parseIf                       (ZParser *);
-static ZNode *parseGoto                     (ZParser *);
 static ZNode *parseBreak                    (ZParser *);
 static ZNode *parseBlock                    (ZParser *);
 static ZNode *parseMatch                    (ZParser *);
 static ZNode *parseDefer                    (ZParser *);
-static ZNode *parseLabel                    (ZParser *);
 static ZNode *parseLoops                    (ZParser *);
 static ZNode *parseReturn                   (ZParser *);
 static ZNode *parseVarDef                   (ZParser *);
@@ -326,7 +324,6 @@ static ZNode *parsePrimary(ZParser *parser) {
             parseArrayInit,
             parseArrayLit
         }, 2);
-        return parseArrayLit(parser);
     } else if (check(parser, TOK_IDENT)) {
         if (checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
             if (!checkAhead(parser, TOK_IDENT, 2)) {
@@ -785,23 +782,6 @@ static ZNode *parseMatch(ZParser *parser) {
     return NULL;
 }
 
-static ZNode *parseGoto(ZParser *parser) {
-    expect(parser, TOK_GOTO);
-    ensure(check(parser, TOK_IDENT), "Expected a label");
-    ZNode *node = makenode(NODE_GOTO);
-    node->tok = consume(parser);
-    return node;
-}
-
-static ZNode *parseLabel(ZParser *parser) {
-    ensure(check(parser, TOK_IDENT), "Expected an identifier");
-    ZToken *tok = consume(parser);
-    expect(parser, TOK_COLON);
-    ZNode *node = makenode(NODE_LABEL);
-    node->tok = tok;
-    return node;
-}
-
 /* Not handled yet. */
 ZNode *expandListMacro(ZParser *parser) {
     if (!parser->macroParser.currentMacro) return NULL;
@@ -833,8 +813,6 @@ ZNode *parseStmt(ZParser *parser) {
 
     if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
         return parseVarInferred(parser);
-    } else if (t == TOK_IDENT && checkAhead(parser, TOK_COLON, 1)) {
-        return parseLabel(parser);
     }
 
     switch (t) {
@@ -845,7 +823,6 @@ ZNode *parseStmt(ZParser *parser) {
     case TOK_RETURN:    return parseReturn  (parser);
     case TOK_BREAK:     return parseBreak   (parser);
     case TOK_CONTINUE:  return parseContinue(parser);
-    case TOK_GOTO:      return parseGoto    (parser);
     case TOK_LBRACKET:  return parseBlock   (parser);
     default: {
         ZParseFunc f[] = {
@@ -950,9 +927,10 @@ static ZNode *parseEnumDecl(ZParser *parser, bool public) {
 
     ZNode *node = makenode(NODE_ENUM);
 
-    node->enumDef.name  = name;
-    node->enumDef.pub   = public;
-    node->tok           = node->enumDef.name;
+    node->enumDef.name      = name;
+    node->enumDef.pub       = public;
+    node->enumDef.fields    = fields;
+    node->tok               = node->enumDef.name;
     
     return node;
 }
@@ -1019,9 +997,6 @@ ZNode *parseExpr(ZParser *parser) {
         return placeholder;
     }
 
-    // else if (check(parser, TOK_LSBRACKET)) {
-    //     return parseArrayLit(parser);
-    // }
     return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
 
 }
@@ -1759,7 +1734,14 @@ static ZNode *parseFuncBlock(ZParser *parser) {
     while (true) {
         public = match(parser, TOK_PUB);
         func = parseFuncDecl(parser, public);
-        if (!func) break;
+        if (!func) {
+            if (public) {
+                error(parser->state, peek(parser),
+                        "Expected a function declaration after 'pub'");
+                return NULL;
+            }
+            break;
+        }
         vecpush(block->block, func);
 
         if (check(parser, TOK_RBRACKET)) break;
