@@ -278,28 +278,6 @@ static void putStructInCache(ZCodegen *ctx, char *name, LLVMTypeRef strct) {
     vecpush(ctx->structTypes, strct);
 }
 
-static LLVMTypeRef genStruct(ZCodegen *ctx, ZType *strct) {
-    LLVMTypeRef structType = LLVMStructCreateNamed(ctx->ctx,
-            strct->strct.name->str);
-
-    ZNode **fields = strct->strct.fields;
-    usize nfields = veclen(fields);
-    LLVMTypeRef *ftypes = znalloc(LLVMTypeRef, nfields ? nfields : 1);
-
-    for (usize i = 0; i < nfields; i++) {
-
-        if (!fields[i]->field.type) {
-            error(ctx->state, strct->strct.name, "Type not found");
-        }
-
-        ftypes[i] = genType(ctx, fields[i]->field.type);
-        if (!ftypes[i]) return NULL;
-    }
-    LLVMStructSetBody(structType, ftypes, (unsigned)nfields, /*packed=*/0);
-
-    return structType;
-}
-
 static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     if (!type) {
         error(ctx->state, NULL, "Invalid 'genType' call");
@@ -373,8 +351,23 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         LLVMTypeRef cached = getCachedStruct(ctx, name);
         if (cached) return cached;
 
-        LLVMTypeRef structType = genStruct(ctx, type);
+        /* Cache the opaque named struct before generating its body so that
+         * self-referential fields find the entry and don't recurse infinitely. */
+        LLVMTypeRef structType = LLVMStructCreateNamed(ctx->ctx, name);
         putStructInCache(ctx, (char *)name, structType);
+
+        ZNode **fields = type->strct.fields;
+        usize nfields = veclen(fields);
+        LLVMTypeRef *ftypes = znalloc(LLVMTypeRef, nfields ? nfields : 1);
+        for (usize i = 0; i < nfields; i++) {
+            if (!fields[i]->field.type) {
+                error(ctx->state, type->strct.name, "Type not found");
+                return NULL;
+            }
+            ftypes[i] = genType(ctx, fields[i]->field.type);
+            if (!ftypes[i]) return NULL;
+        }
+        LLVMStructSetBody(structType, ftypes, (unsigned)nfields, /*packed=*/0);
         return structType;
     }
 
