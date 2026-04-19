@@ -15,8 +15,10 @@
  * We have a global scope for the entire project,
  * then a child scope for the current file and then a child for blocks like functions, loops etc..
  * */
+#include "zhset.h"
 #include "zinc.h"
 #include "zvec.h"
+#include <stdbool.h>
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
@@ -585,18 +587,38 @@ static ZType *resolveLiteralType(ZNode *curr) {
     }
 }
 
+/*
+ * Returns true if `type` embeds `root` by value (not through a pointer),
+ * which would make the struct infinitely large. `seen` is a visited-struct
+ * set to avoid re-entering mutual-recursion loops.
+ */
+static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
+    if (!type) return false;
+    switch (type->kind) {
+    case Z_TYPE_STRUCT:
+        if (type == root) return true;
+        for (usize i = 0; i < veclen(seen); i++)
+            if (seen[i] == type) return false;
+        vecpush(seen, type);
+        for (usize i = 0; i < veclen(type->strct.fields); i++)
+            if (isInfiniteSize(type->strct.fields[i]->field.type, root, seen))
+                return true;
+        return false;
+    case Z_TYPE_POINTER:
+        return false;
+    case Z_TYPE_ARRAY:
+        return isInfiniteSize(type->array.base, root, seen);
+    case Z_TYPE_TUPLE:
+        for (usize i = 0; i < veclen(type->tuple); i++)
+            if (isInfiniteSize(type->tuple[i], root, seen)) return true;
+        return false;
+    default:
+        return false;
+    }
+}
 
 static ZType *_resolveTypeRef(ZSemantic *semantic, ZType *type, ZType **seen) {
     if (!type) return NULL;
-
-    // for (usize i = 0; i < veclen(seen); i++) {
-    //     if (typesEqual(type, seen[i])) {
-    //         printf("Cycle detected\n");
-    //         return NULL;
-    //     }
-    // }
-
-    // vecpush(seen, type);
 
     switch (type->kind) {
     case Z_TYPE_PRIMITIVE: {
@@ -1503,12 +1525,24 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
         case NODE_VAR_DECL: analyzeVar(semantic, child, true);  break;
         case NODE_MACRO:                                        break;
 
-        case NODE_STRUCT:
+        case NODE_STRUCT: {
+            ZType **seen = NULL;
             for (usize i = 0; i < veclen(child->structDef.fields); i++) {
                 let field = child->structDef.fields[i];
-                field->field.type = resolveTypeRef(semantic, field->field.type);
+                field->field.type = _resolveTypeRef(semantic, field->field.type, seen);
+            }
+            ZType *structType = child->resolved;
+            for (usize i = 0; i < veclen(child->structDef.fields); i++) {
+                let field = child->structDef.fields[i];
+                ZType **szSeen = NULL;
+                if (isInfiniteSize(field->field.type, structType, szSeen)) {
+                    error(semantic->state, field->field.identifier,
+                          "field '%s' embeds struct by value causing infinite size; use a pointer",
+                          field->field.identifier->str);
+                }
             }
             break;
+        }
 
         case NODE_MODULE:
             if (child->module.root) {
@@ -1546,6 +1580,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
 
     registerModule(semantic, root);
     discoverGlobalScope(semantic, root);
+    
     analyze(semantic, root);
     return semantic;
 }

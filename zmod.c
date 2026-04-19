@@ -852,7 +852,7 @@ static void printLineHighlight(ZToken *tok, const char *color) {
 
 static void printLog(ZState *state, ZLog *log) {
 
-    printf("%s", log->filename);
+    printf("  %s", log->filename);
     if (state->debug) {
         printf("[%s:%d]", log->src_file, log->src_line);
     }
@@ -861,7 +861,7 @@ static void printLog(ZState *state, ZLog *log) {
     if (log->token) {
         printf("%zu:%zu: ", log->token->row, log->token->col);
     }
-    printf(COLOR_BOLD "%s%s\033[0m: ", colors[log->level], levels[log->level]);
+    printf(COLOR_BOLD "\n  %s%s\033[0m: ", colors[log->level], levels[log->level]);
     printf("%s\n", log->message);
 
     if (log->token) printLineHighlight(log->token, colors[log->level]);
