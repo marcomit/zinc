@@ -282,6 +282,26 @@ void printType(ZType *type) {
     }
 }
 
+static void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
+    indent(depth);
+
+    if (pattern->type == Z_VAR_IDENT) {
+        printf("%s\n", pattern->ident->str);
+    } else {
+        bool isTuple = pattern->type == Z_VAR_TUPLE;
+        ZVarDestructPattern **list = isTuple ?
+            pattern->tuple :
+            pattern->fields;
+
+        printf("%c\n", isTuple ? '(' : '{');
+        for (usize i = 0; i < veclen(list); i++) {
+            printDestructedVar(list[i], depth + 1);
+        }
+        indent(depth);
+        printf("%c\n", isTuple ? ')' : '}');
+    }
+}
+
 static void printMacroPattern(ZMacroPattern *pattern, u8 depth) {
     indent(depth);
     switch (pattern->kind) {
@@ -354,7 +374,9 @@ void printNode(ZNode *node, u8 depth) {
         return; // Return early to avoid the double newline
 
     case NODE_VAR_DECL:
-        printf("Var: %s Type: ", node->varDecl.ident->identNode.tok->str);
+        printf("\n");
+        printDestructedVar(node->varDecl.pattern, depth);
+        // printf("Var: %s Type: ", node->varDecl.ident->identNode.tok->str);
         printType(node->resolved);
         if (node->varDecl.rvalue) {
             printf("\n");

@@ -48,6 +48,10 @@ typedef struct ZToken {
     bool newlineBefore;
 } ZToken;
 
+typedef struct ZNode ZNode;
+typedef struct ZType ZType;
+typedef struct ZScope ZScope;
+
 typedef enum {
     Z_ERROR,
     Z_WARNING,
@@ -96,6 +100,7 @@ typedef struct {
     /* Not yet implemented */
     bool        verbose;
     u8          optimizationLevel;
+    ZNode       *root;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -142,10 +147,6 @@ typedef enum {
     NODE_SIZEOF,
     NODE_STATIC_ACCESS
 } ZNodeType;
-
-typedef struct ZNode ZNode;
-typedef struct ZType ZType;
-typedef struct ZScope ZScope;
 
 typedef enum ZTypeKind {
     Z_TYPE_PRIMITIVE,
@@ -237,6 +238,39 @@ typedef struct ZMacroVar {
     usize useCount;            // Count how many timee the variable is used in the body
 } ZMacroVar;
 
+enum {
+    Z_VAR_IDENT,
+    Z_VAR_TUPLE,
+    Z_VAR_STRUCT,
+    Z_VAR_PAIR
+};
+
+/* Struct representing the deconstructure of a variable.
+ * A variable can be deconstructured in 2 ways:
+ * 1. A tuple: (first, second, ...) := expression.
+ * 2. A struct: {field1, field2} := expression
+ * and the base case is the identifier.
+ * */
+typedef struct ZVarDestructPattern ZVarDestructPattern;
+struct ZVarDestructPattern {
+    int type;
+    /* The start token of the pattern. */
+    ZToken *tok;
+    union {
+        ZToken *ident;
+        ZVarDestructPattern **tuple;
+
+        /* Array of Z_VAR_PAIR */
+        ZVarDestructPattern **fields;
+
+        /* Z_VAR_PAIR */
+        struct {
+            ZToken *key;
+            ZVarDestructPattern *value;
+        };
+    };
+};
+
 struct ZNode {
     ZNodeType type;
     ZType *resolved;
@@ -273,7 +307,8 @@ struct ZNode {
         } unary;
 
         struct {
-            ZNode   *ident; // It is a NODE_IDENTIFIER
+            ZVarDestructPattern *pattern;
+            // ZNode   *ident; // It is a NODE_IDENTIFIER
             ZNode   *rvalue; // Null if not initialized
         } varDecl;
 
@@ -487,6 +522,11 @@ typedef struct ZParser {
      * Set by condition-parsing sites (if, for, while) to prevent `ident {`
      * from being mistaken for a struct literal instead of a block. */
     bool            noStructLit;
+
+    /* When true, parseType will not consume a trailing '(' as a function-type
+     * suffix. Set in parseVarDefTyped so that `(i32,i32) (first,second) = …`
+     * does not greedily parse the destructure pattern as function args. */
+    bool            noFuncType;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */

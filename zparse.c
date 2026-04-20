@@ -1,4 +1,5 @@
 #include "zinc.h"
+#include "zmem.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -96,10 +97,24 @@ ZType *maketype(ZTypeKind kind) {
     return self;
 }
 
-static ZNode *makenodevar(ZNode *ident, ZType *type, ZNode *expr) {
+static ZVarDestructPattern *makeVarDestructPattern(int type) {
+    ZVarDestructPattern *self = zalloc(ZVarDestructPattern);
+    self->type = type;
+    return self;
+}
+
+static ZVarDestructPattern *makeDestructIdent(ZToken *tok) {
+    ZVarDestructPattern *pattern = makeVarDestructPattern(Z_VAR_IDENT);
+    pattern->tok    =tok;
+    pattern->ident  = tok;
+    return pattern;
+}
+
+static ZNode *makenodevar(ZVarDestructPattern *pattern, ZType *type, ZNode *expr) {
+    if (!pattern) return NULL;
     ZNode *node = makenode(NODE_VAR_DECL);
-    node->tok = ident->identNode.tok;
-    node->varDecl.ident = ident;
+    node->tok = pattern->tok;
+    node->varDecl.pattern = pattern;
     node->varDecl.rvalue = expr;
     node->resolved = type;
     return node;
@@ -741,7 +756,7 @@ ZType *parseType(ZParser *parser) {
 
     base->constant = constant;
 
-    if (check(parser, TOK_LPAREN)) {
+    if (!parser->noFuncType && check(parser, TOK_LPAREN)) {
         return parseTypeFunc(parser, base);
     } else if (check(parser, TOK_LSBRACKET)) {
         // Generic type instantiation like List[int] or Map[str, int]
@@ -811,9 +826,6 @@ ZNode *parseStmt(ZParser *parser) {
 
     ZTokenType t = peek(parser)->type;
 
-    if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
-        return parseVarInferred(parser);
-    }
 
     switch (t) {
     case TOK_IF:        return parseIf      (parser);
@@ -825,11 +837,27 @@ ZNode *parseStmt(ZParser *parser) {
     case TOK_CONTINUE:  return parseContinue(parser);
     case TOK_LBRACKET:  return parseBlock   (parser);
     default: {
-        ZParseFunc f[] = {
-            parseVarDefTyped,
-            parseExpr,
-        };
-        return parseOrGrammar(parser, f, sizeof(f) / sizeof(f[0]));
+        ZParserSnapshot *snap = store(parser);
+
+        pushErrorCheckpoint(parser);
+        ZNode *node = parseVarInferred(parser);
+        if (node) goto ret;
+        rollbackErrors(parser);
+
+        undo(parser, snap);
+        pushErrorCheckpoint(parser);
+        node = parseVarDefTyped(parser);
+        if (node) goto ret;
+        rollbackErrors(parser);
+
+        undo(parser, snap);
+        node = parseExpr(parser);
+
+        if (!node) undo(parser, snap);
+
+ret:
+        commitErrors(parser);
+        return node;
     }
     }
 }
@@ -1197,20 +1225,65 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     return node;
 }
 
-static ZNode *parseVarInferred(ZParser *parser) {
-    ZNode *identNode = NULL;
-    
-    if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_IDENT)) {
-        identNode = getMacroCapturedVar(parser->macroParser.currentMacro,
-                                        consume(parser));
-        if (!identNode) {
-            error(parser->state, peek(parser), "Unknown var");    
+static ZVarDestructPattern *parseDestructVar(ZParser *parser) {
+    guard(canPeek(parser));
+
+    ZVarDestructPattern *cur    = NULL;
+    ZVarDestructPattern **list  = NULL;
+    ZToken *tok                 = consume(parser);
+
+    if (tok->type == TOK_IDENT) {
+        cur = makeVarDestructPattern(Z_VAR_IDENT);
+        cur->ident = tok;
+        cur->tok = tok;
+    } else if (tok->type == TOK_LBRACKET) {
+        ZToken *key = NULL;
+        while (true) {
+            if (!check(parser, TOK_IDENT)) break;
+            key = consume(parser);
+
+            cur = parseDestructVar(parser);
+            if (!parser) {
+                error(parser->state, key, "Failed to deconstruct %s",
+                        stoken(key));
+                return NULL;
+            }
+
+            ZVarDestructPattern *pair = makeVarDestructPattern(Z_VAR_PAIR);
+            pair->key = key;
+            pair->value = cur;
+
+            vecpush(list, pair);
+
+            if (!match(parser, TOK_COMMA)) break;
+            if (check(parser, TOK_RBRACKET)) break;
         }
+        expect(parser, TOK_RBRACKET);
+
+        cur = makeVarDestructPattern(Z_VAR_STRUCT);
+        cur->fields = list;
+    } else if (tok->type == TOK_LPAREN) {
+        while (true) {
+            cur = parseDestructVar(parser);
+            if (!cur) break;
+            vecpush(list, cur);
+            if (!match(parser, TOK_COMMA)) break;
+            if (check(parser, TOK_RPAREN)) break;
+        }
+
+        expect(parser, TOK_RPAREN);
+        cur = makeVarDestructPattern(Z_VAR_TUPLE);
+        cur->tuple = list;
     } else {
-        ZToken *ident = consume(parser);
-        identNode = makenode(NODE_IDENTIFIER);
-        identNode->identNode.tok = ident;
+        error(parser->state, tok, "Cannot deconstruct variable");
+        return NULL;
     }
+
+    return cur;
+}
+
+static ZNode *parseVarInferred(ZParser *parser) {
+    ZVarDestructPattern *pattern = makeDestructIdent(consume(parser));
 
     expect(parser, TOK_ASSIGN);
     ZNode *expr = wrapNode(parser, parseExpr);
@@ -1219,18 +1292,20 @@ static ZNode *parseVarInferred(ZParser *parser) {
         error(parser->state, peek(parser), "Expected expression after ':='");
     }
 
-    return makenodevar(identNode, NULL, expr);
+    return makenodevar(pattern, NULL, expr);
 }
 
 static ZNode *parseVarDefTyped(ZParser *parser) {
     ZToken *start = peek(parser);
+    parser->noFuncType = true;
     ZType *type = parseType(parser);
+    parser->noFuncType = false;
 
     if (!type) {
         error(parser->state, start, "Failed to parse type");
         return NULL;
-    } else if (!check(parser, TOK_IDENT)) {
-        error(parser->state, start, "Expected an identifier");
+    } else if (!check(parser, TOK_IDENT) && !check(parser, TOK_LPAREN) && !check(parser, TOK_LBRACKET)) {
+        error(parser->state, start, "Expected an identifier or destructure pattern");
         return NULL;
     }
     // else if (!start->newlineBefore) {
@@ -1238,9 +1313,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
     //             "Variable declaration must be defined in the same line");
     // }
 
-    ZToken *ident = consume(parser);
-    ZNode *node = makenode(NODE_IDENTIFIER);
-    node->identNode.tok = ident;
+    ZVarDestructPattern *var = parseDestructVar(parser);
     ZNode *expr = NULL;
 
     expect(parser, TOK_EQ);
@@ -1251,7 +1324,8 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
         return NULL;
     }
 
-    return makenodevar(node, type, expr);
+    
+    return makenodevar(var, type, expr);
 }
 
 static ZNode *parseVarDef(ZParser *parser) {
@@ -1339,14 +1413,13 @@ static ZNode *parseStructLit(ZParser *parser) {
     expect(parser, TOK_LBRACKET);
 
     ZNode *structlit = makenode(NODE_STRUCT_LIT);
-    structlit->structlit.ident         = ident;
-    structlit->structlit.generics = generics;
-    structlit->tok                                 = ident;
+    structlit->structlit.ident      = ident;
+    structlit->structlit.generics   = generics;
+    structlit->tok                  = ident;
 
     while (true) {
         if (!check(parser, TOK_IDENT)) break;
-        ZNode *node = makenode(NODE_IDENTIFIER);
-        node->identNode.tok = consume(parser);
+        ZVarDestructPattern *node = makeDestructIdent(consume(parser));
 
         if (!match(parser, TOK_COLON)) {
             error(parser->state,

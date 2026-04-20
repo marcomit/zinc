@@ -227,13 +227,92 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
     }
 }
 
-static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
-    putRawSymbol(semantic,
+static void putVarPattern(
+        ZSemantic *semantic, ZNode *node,
+        ZType *type, ZVarDestructPattern *pattern) {
+    if (!type) return;
+    if (pattern->type == Z_VAR_IDENT) {
+        putRawSymbol(
+            semantic,
             Z_SYM_VAR,
-            node->varDecl.ident->identNode.tok,
-            node->resolved,
+            pattern->ident,
+            type,
             node,
-            isGlobal);
+            false
+        );
+    } else if (pattern->type == Z_VAR_TUPLE) {
+        if (type->kind != Z_TYPE_TUPLE) {
+            error(semantic->state, pattern->tok,
+                    "'%s' doesn't support deconstructuring",
+                    stype(type));
+            return;
+        }
+
+        usize expected  = veclen(type->tuple);
+        usize got       = veclen(pattern->tuple);
+        if (expected != got) {
+            error(semantic->state, pattern->tok,
+                    "Expected %zu, got %zu elements", expected, got);
+            return;
+        }
+
+        for (usize i = 0; i < got; i++) {
+            putVarPattern(semantic,
+                node,
+                type->tuple[i],
+                pattern->tuple[i]
+            );
+        }
+    } else if (pattern->type == Z_VAR_STRUCT) {
+        if (type->kind != Z_TYPE_STRUCT) {
+            error(semantic->state, pattern->tok,
+                    "'%s' doesn't support deconstructuring",
+                    stype(type));
+            return;
+        }
+
+        i32 structIndex = -1;
+
+        usize structLen = veclen(type->strct.fields);
+        for (usize i = 0; i < veclen(pattern->fields); i++) {
+            structIndex = -1;
+            for (usize j = 0; j < structLen && structIndex == -1; j++) {
+                if (tokeneq(
+                        type->strct.fields[j]->field.identifier,
+                        pattern->fields[i]->key
+                    )) {
+                    structIndex = i;
+                }
+            }
+
+            if (structIndex == -1) {
+                error(semantic->state, pattern->fields[i]->key,
+                        "Field '%s' not found for struct '%s'",
+                        pattern->fields[i], stype(type));
+            } else {
+                putVarPattern(semantic,
+                    node,
+                    type->strct.fields[structIndex]->field.type,
+                    pattern->fields[i]->value
+                );
+            }
+        }
+    }
+}
+
+/* Store a node of type NODE_VAR_DECL in the semantic table. */
+static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
+    (void)isGlobal;
+    if (!node->resolved) {
+        error(semantic->state,
+                node->tok,
+                "Cannot register var, got null type");
+    }
+
+    putVarPattern(semantic,
+            node,
+            node->resolved,
+            node->varDecl.pattern);
 }
 
 static void putStruct(ZSemantic *semantic, ZNode *node) {
@@ -883,7 +962,7 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
             promoted = typesCompatible(semantic->state, expectedType, type);
             if (!promoted) {
                 error(semantic->state,
-                    field->varDecl.ident->identNode.tok,
+                    field->tok,
                     "Expected %s, got %s",
                     stype(expectedType),
                     stype(type)
@@ -1212,13 +1291,7 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 /* ================== Statement analysis ================== */
 
 static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
-    ZToken *var = curr->varDecl.ident->identNode.tok;
-    if (resolve(semantic, var)) {
-        error(semantic->state, var,
-                    "Redefinition of variable %s",
-                    stoken(var));
-    }
-
+    (void)isGlobal;
     ZType *rvalueType   = NULL;
     ZType *declaredType = NULL;
 
@@ -1246,12 +1319,12 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
 
     curr->resolved = declaredType;
 
-    ZSymbol *symbol     = makesymbol(Z_SYM_VAR);
-    symbol->name        = var;
-    symbol->type        = declaredType;
-    symbol->node        = curr;
-    symbol->isPublic    = isGlobal;
-    putSymbol(semantic, symbol);
+    putVarPattern(
+        semantic,
+        curr,
+        curr->resolved,
+        curr->varDecl.pattern
+    );
 }
 
 static void analyzeIf(ZSemantic *semantic, ZNode *curr) {

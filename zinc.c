@@ -80,7 +80,7 @@ ZState *loadState(int argc, char **argv) {
 
     argc--; argv++;
 
-    ZState *state = makestate(argv[1]);
+    state = makestate(argv[1]);
 
     int opt;
 
@@ -122,6 +122,10 @@ void handler(int sig) {
     write(STDERR_FILENO, "Error: signal received\n", 23);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
+    if (state && state->debug) {
+        printf(COLOR_BOLD COLOR_RED "Root\n" COLOR_RESET);
+        printNode(state->root, 0);
+    }
     if (state && state->debug) printLogs(state);
     _exit(1);
 }
@@ -177,5 +181,9 @@ int main(int argc, char **argv) {
             " build in %.02fs\n", elapsed);
     }
 
+    if (state && state->debug) {
+        printf(COLOR_BOLD COLOR_RED "Root\n" COLOR_RESET);
+        printNode(state->root, 0);
+    }
     return res;
 }

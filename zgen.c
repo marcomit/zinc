@@ -495,10 +495,6 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
 
     LLVMValueRef val = genExpr(ctx, node->varDecl.rvalue);
 
-    /* If the type does not fit in a register (like an array or a struct)
-     * genExpr stores the value directly. This check is necessary
-     * to avoid store the value twice.
-    */
     /* Skip the store if genExpr already wrote the value in-place (e.g. struct/array
      * literals return the pre-allocated slot pointer — storing it would self-overwrite).
      * For register-sized values, cast to the variable's declared type first. */
@@ -946,12 +942,12 @@ static LLVMValueRef genStructLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef de
 
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *var = fields[i];
-        ZToken *name = var->varDecl.ident->identNode.tok;
+        ZToken *name = var->varDecl.pattern->tok;
         if (!var->varDecl.rvalue) {
             error(ctx->state,
                     var->tok,
                     "Missing rvalue in struct literal for field '%s'",
-                    var->varDecl.ident->identNode.tok);
+                    name);
         }
         LLVMValueRef val = genExpr(ctx, var->varDecl.rvalue);
 
@@ -1499,9 +1495,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->memberAccess.object);
         break;
     case NODE_FOR: {
-        ZNode *forVar = node->forStmt.var;
-        char *name = forVar->varDecl.ident->identNode.tok->str;
-        buildFuncVar(ctx, forVar->varDecl.rvalue, name, forVar->resolved);
+        genFuncVars(ctx, node->forStmt.var);
         genFuncVars(ctx, node->forStmt.block);
         break;
    }
@@ -1516,7 +1510,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         break;
     case NODE_VAR_DECL:
         buildFuncVar(ctx, node->varDecl.rvalue,
-            node->varDecl.ident->identNode.tok->str,
+            label(ctx),
             node->resolved);
         break;
     case NODE_CALL:
