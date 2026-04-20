@@ -182,9 +182,10 @@ struct ZType {
         } strct;
 
         struct {
-            ZType *ret;
-            ZType **args;
-            ZType **generics;
+            ZType   *ret;
+            ZType   **args;
+            ZType   **generics;
+            bool    variadic;
         } func;
 
         struct {
@@ -503,6 +504,7 @@ typedef struct ZSymbol {
     ZNode           *node;
     usize           useCount;
     bool            isPublic;
+    bool            reachable;
 } ZSymbol;
 
 typedef struct ZScope {
@@ -552,7 +554,12 @@ typedef struct ZScopeTable {
 
 typedef struct ZSemantic {
     ZState          *state;
+
+    /* Root node. */
     ZNode           *root;
+
+    /* cached main function node. */
+    ZNode           *main;
     ZSymTable       *table;
     ZScopeTable     **scopes;
     ZType           *currentFuncRet;

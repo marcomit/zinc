@@ -1194,7 +1194,12 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < argc; i++) {
         paramTypes[i] = genType(ctx, node->foreignFunc.args[i]);
     }
-    LLVMTypeRef funcType = LLVMFunctionType(ret, paramTypes, (unsigned)argc, 0);
+    LLVMTypeRef funcType = LLVMFunctionType(
+        ret,
+        paramTypes,
+        (unsigned)argc,
+        node->resolved->func.variadic
+    );
 
     LLVMValueRef func = LLVMAddFunction(
         ctx->mod,

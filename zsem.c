@@ -46,6 +46,7 @@ static ZSymbol *makesymbol(ZSymType kind) {
     ZSymbol *self       = zalloc(ZSymbol);
     self->kind          = kind;
     self->useCount      = 0;
+    self->reachable     = false;
     return self;
 }
 
@@ -214,6 +215,9 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
     } else if (node->funcDef.base) {
         putStaticFunc(semantic, node);
     } else {
+        if (strcmp(node->funcDef.name->str, "main") == 0) {
+            semantic->main = node;
+        }
         putRawSymbol(semantic,
                 Z_SYM_FUNC,
                 node->funcDef.name,
@@ -679,6 +683,7 @@ static ZType *resolveArrSubscript(ZSemantic *, ZNode *);
 static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
     ZNode *callee = curr->call.callee;
     ZNode **args = curr->call.args;
+    bool variadic = false;
 
     for (usize i = 0; i < veclen(args); i++) {
         args[i]->resolved = resolveType(semantic, args[i]);
@@ -711,6 +716,7 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             );
         }
         expectedArgs = sym->type->func.args;
+        variadic = sym->type->func.variadic;
 
         result = resolveTypeRef(semantic, sym->node->funcDef.ret);
         sym->node->funcDef.ret = result;
@@ -750,8 +756,9 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             ZNode *func = staticFuncs[i];
             if (tokeneq(func->funcDef.base->primitive.token, base) &&
                 tokeneq(func->funcDef.name, prop)) {
-                result = func->funcDef.ret;
-                expectedArgs = func->resolved->func.args;
+                result          = func->funcDef.ret;
+                expectedArgs    = func->resolved->func.args;
+                variadic        = func->resolved->func.variadic;
             }
         }
     } else if (callee->type == NODE_MEMBER) {
@@ -776,8 +783,9 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             ZNode *f = funcs->funcDef[i];
             if (tokeneq(f->funcDef.name, prop)) {
                 callee->memberAccess.mangled = f->funcDef.mangled;
-                expectedArgs = f->resolved->func.args;
-                result = resolveTypeRef(semantic, f->funcDef.ret);
+                expectedArgs    = f->resolved->func.args;
+                result          = resolveTypeRef(semantic, f->funcDef.ret);
+                variadic        = f->resolved->func.variadic;
                 break;
             }
         }
@@ -794,19 +802,21 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
                 semantic, calleeType->func.args[i]
             );
         }
-        expectedArgs = calleeType->func.args;
+        expectedArgs    = calleeType->func.args;
+        variadic        = calleeType->func.variadic;
     }
 
     if (!result) return NULL;
 
-    if (veclen(expectedArgs) != veclen(args)) {
+    printf("Variadic: %d\n", variadic);
+    if (!variadic && veclen(expectedArgs) != veclen(args)) {
         error(semantic->state, curr->tok,
                 "Expected %zu arguments, got %zu",
                 veclen(expectedArgs), veclen(args));
         return NULL;
     }
 
-    for (usize i = 0; i < veclen(args); i++) {
+    for (usize i = 0; i < veclen(expectedArgs); i++) {
         /* if they are equal they don't need implicit casting. */
         if (typesEqual(args[i]->resolved, expectedArgs[i])) continue;
 
@@ -1568,6 +1578,61 @@ ZType *makePrimitiveType(ZTokenType type) {
     return self;
 }
 
+// static void iterator(ZNode *root, bool (*iter)(ZNode *)) {
+//     if (!root) return;
+//
+//     bool cut = iter(root);
+//     if (cut) return;
+//
+//     switch (root->type) {
+//     case NODE_BINARY:
+//         iterator(root->binary.left, iter);
+//         iterator(root->binary.right, iter);
+//         break;
+//     case NODE_IF:
+//         iterator(root->ifStmt.cond, iter);
+//         iterator(root->ifStmt.body, iter);
+//         iterator(root->ifStmt.elseBranch, iter);
+//         break;
+//     case NODE_UNARY:
+//         iterator(root->unary.operand, iter);
+//         break;
+//     case NODE_FOR:
+//         iterator(root->forStmt.var, iter);
+//         iterator(root->forStmt.cond, iter);
+//         iterator(root->forStmt.incr, iter);
+//         iterator(root->forStmt.block, iter);
+//         break;
+//     case NODE_WHILE:
+//         iterator(root->whileStmt.cond, iter);
+//         iterator(root->whileStmt.branch, iter);
+//         break;
+//     default:
+//         printf("Node %d not handled as iterator\n", root->type);
+//     }
+// }
+
+
+// static void visitReachableFuncs(ZSemantic *semantic) {
+//     ZNode **funcs = NULL;
+//     if (!semantic->main) {
+//         error(semantic->state, NULL, "missing 'main' declaration");
+//         return;
+//     }
+//     vecpush(funcs, semantic->main);
+//
+//     usize analyzed = 0;
+//
+//     /* used like a queue. */
+//     while (analyzed < veclen(funcs)) {
+//         ZNode *curr = funcs[analyzed];
+//
+//
+//
+//         analyzed++;
+//     }
+// }
+
 ZSemantic *zanalyze(ZState *state, ZNode *root) {
     state->currentPhase = Z_PHASE_SEMANTIC;
     ZSemantic *semantic = makesemantic(state, root);
@@ -1580,6 +1645,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
 
     registerModule(semantic, root);
     discoverGlobalScope(semantic, root);
+    printf("Discovered\n");
     
     analyze(semantic, root);
     return semantic;

@@ -1457,20 +1457,27 @@ static ZNode *parseTypedef(ZParser *parser, bool public) {
 }
 
 static ZNode *parseForeignDecl(ZParser *parser, bool public) {
-    ZToken *start = peek(parser);
+    ZToken *start   = peek(parser);
     expect(parser, TOK_FOREIGN);
 
-    ZType *ret = wrapType(parser, parseType);
+    ZType *ret      = wrapType(parser, parseType);
 
     ensure(check(parser, TOK_IDENT), "Expected an identifier");
-    ZToken *name = consume(parser);
+    ZToken *name    = consume(parser);
 
     expect(parser, TOK_LPAREN);
 
-    ZType **args = NULL;
+    ZType **args    = NULL;
+    ZType *arg     = NULL;
+    bool variadic   = false;
     while (true) {
-        ZType *type = wrapType(parser, parseType);
-        if (type) vecpush(args, type);
+        if (check(parser, TOK_TRIPLE_DOT)) {
+            variadic = true;
+            consume(parser);
+        } else {
+            arg = wrapType(parser, parseType);
+            if (arg) vecpush(args, arg);
+        }
         if (check(parser, TOK_RPAREN)) break;
         if (!match(parser, TOK_COMMA)) break;
     }
@@ -1486,6 +1493,7 @@ static ZNode *parseForeignDecl(ZParser *parser, bool public) {
     ZType *type             = maketype(Z_TYPE_FUNCTION);
     type->func.ret          = ret;
     type->func.args         = args;
+    type->func.variadic     = variadic;
     node->resolved          = type;
     return node;
 }
