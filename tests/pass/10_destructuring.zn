@@ -1,0 +1,43 @@
+foreign u0 printf(*char, ...)
+
+struct Vec {
+    i32 x
+    i32 y
+}
+
+for Vec {
+    Vec new() {
+        return Vec{ x: 10, y: 20 }
+    }
+}
+
+(i32, i32) flatTuple() {
+    return (1, 2)
+}
+
+(*char, i32) labeledTuple() {
+    return ("hello", 42)
+}
+
+((*char, Vec), i32) nested() {
+    return (("ciao", Vec::new()), 99)
+}
+
+i32 main() {
+    (a, b) := flatTuple()
+    printf("%d %d\n", a, b)
+
+    (name, num) := labeledTuple()
+    printf("%s %d\n", name, num)
+
+    {x, y} := Vec::new()
+    printf("%d %d\n", x, y)
+
+    {x: renamed, y: ry} := Vec::new()
+    printf("%d %d\n", renamed, ry)
+
+    ((first, {x: overridden, y: y2}), second) := nested()
+    printf("%s %d %d %d\n", first, overridden, y2, second)
+
+    return 0
+}

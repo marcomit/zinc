@@ -483,8 +483,69 @@ static bool fitsInRegister(LLVMValueRef val) {
         kind == LLVMDoubleTypeKind  );
 }
 
+static void putDestructuredPatternInStack(
+        ZCodegen *ctx, ZType *type,
+        ZVarDestructPattern *pattern, LLVMValueRef ptr) {
+    if (!pattern || !type) return;
+
+    if (pattern->type == Z_VAR_IDENT) {
+        putLLVMValueRef(
+            ctx,
+            pattern->ident->str,
+            ptr
+        );
+    } else if (pattern->type == Z_VAR_STRUCT) {
+        LLVMTypeRef typeRef = genType(ctx, type);
+        for (usize i = 0; i < veclen(pattern->fields); i++) {
+
+            int idx = -1;
+
+            for (usize j = 0; j < veclen(type->strct.fields) && idx == -1; j++) {
+                if (tokeneq(
+                        type->strct.fields[i]->field.identifier,
+                        pattern->fields[i]->key
+                    )) idx = i;
+            }
+
+            if (idx == -1) {
+                error(ctx->state, pattern->fields[i]->key,
+                        "Invalid struct field '%s'",
+                        pattern->fields[i]->key);
+                continue;
+            }
+
+            LLVMValueRef gep = LLVMBuildStructGEP2(
+                ctx->builder, typeRef,
+                ptr, idx, label(ctx)
+            );
+            putDestructuredPatternInStack(
+                ctx,
+                type->strct.fields[i]->field.type,
+                pattern->fields[i]->value,
+                gep
+            );
+        }
+    } else if (pattern->type == Z_VAR_TUPLE) {
+        LLVMTypeRef typeRef = genType(ctx, type);
+        for (usize i = 0; i < veclen(pattern->tuple); i++) {
+            LLVMValueRef gep = LLVMBuildStructGEP2(
+                ctx->builder, typeRef, ptr, i, label(ctx)
+            );
+            putDestructuredPatternInStack(
+                ctx,
+                type->tuple[i],
+                pattern->tuple[i],
+                gep
+            );
+        }
+    }
+}
+
 static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
-    if (!node->varDecl.rvalue) return NULL;
+    if (!node->varDecl.rvalue) {
+        error(ctx->state, node->tok, "Invalid 'genVarDecl' call");
+        return NULL;
+    }
 
     ZLLVMStack *stack = getStackValue(ctx, node->varDecl.rvalue);
     if (!stack) {
@@ -495,10 +556,6 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
 
     LLVMValueRef val = genExpr(ctx, node->varDecl.rvalue);
 
-    /* If the type does not fit in a register (like an array or a struct)
-     * genExpr stores the value directly. This check is necessary
-     * to avoid store the value twice.
-    */
     /* Skip the store if genExpr already wrote the value in-place (e.g. struct/array
      * literals return the pre-allocated slot pointer — storing it would self-overwrite).
      * For register-sized values, cast to the variable's declared type first. */
@@ -507,7 +564,13 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
         LLVMBuildStore(ctx->builder, val, stack->stack);
     }
 
-    putLLVMValueRef(ctx, node->tok->str, stack->stack);
+    putDestructuredPatternInStack(
+        ctx,
+        node->resolved,
+        node->varDecl.pattern,
+        stack->stack
+    );
+
     return stack->stack;
 }
 
@@ -946,12 +1009,12 @@ static LLVMValueRef genStructLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef de
 
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *var = fields[i];
-        ZToken *name = var->varDecl.ident->identNode.tok;
+        ZToken *name = var->varDecl.pattern->tok;
         if (!var->varDecl.rvalue) {
             error(ctx->state,
                     var->tok,
                     "Missing rvalue in struct literal for field '%s'",
-                    var->varDecl.ident->identNode.tok);
+                    name);
         }
         LLVMValueRef val = genExpr(ctx, var->varDecl.rvalue);
 
@@ -1488,6 +1551,9 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         break;
     case NODE_TUPLE_LIT:
         buildFuncVar(ctx, node, label(ctx), NULL);
+        for (usize i = 0; i < veclen(node->tuplelit); i++) {
+            genFuncVars(ctx, node->tuplelit[i]);
+        }
         break;
     case NODE_STRUCT_LIT:
         buildFuncVar(ctx, node, label(ctx), NULL);
@@ -1499,9 +1565,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->memberAccess.object);
         break;
     case NODE_FOR: {
-        ZNode *forVar = node->forStmt.var;
-        char *name = forVar->varDecl.ident->identNode.tok->str;
-        buildFuncVar(ctx, forVar->varDecl.rvalue, name, forVar->resolved);
+        genFuncVars(ctx, node->forStmt.var);
         genFuncVars(ctx, node->forStmt.block);
         break;
    }
@@ -1516,8 +1580,8 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         break;
     case NODE_VAR_DECL:
         buildFuncVar(ctx, node->varDecl.rvalue,
-            node->varDecl.ident->identNode.tok->str,
-            node->resolved);
+            label(ctx),
+            NULL);
         break;
     case NODE_CALL:
         if (!node->resolved) {

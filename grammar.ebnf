@@ -65,10 +65,17 @@ macro_repetition = "$", "(", { macro_pattern_element }, ")", ( "*" | "+" ) ;
 
 (* ============ Variables ============ *)
 
+(* Destructiring variable (does not support aliases for now) *)
+(* Tuple destructuring: (first, second) := expression *)
+(* Struct destructuring: {len, cap} := expression *)
+variable_identifier = identifier 
+                    | "(", variable_identifier, [ ",", variable_identifier ], ")"
+                    | "{", identifier, [ ",", identifier ], "}"
+
 (* Inferred: identifier := expression *)
 (* Typed with optional initializer: type identifier [= expression] *)
 variable_declaration = identifier, ":=", expression
-                     | type, identifier, [ "=", expression ] ;
+                    | type, variable_identifier, [ "=", expression ] ;
 
 (* ============ Interfaces ============ *)
 

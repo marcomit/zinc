@@ -32,12 +32,12 @@ typedef struct {
 typedef struct {
 	const char *keyword;
 	ZTokenType type;
-} KeyboardEntry;
+} KeywordEntry;
 
-/* hashmap with fixed size. 
+/* hashmap with fixed size.
  * The fixed size is not a problem because the entries are limited
  * to the number of symbols (defined in ztok.h). */
-static KeyboardEntry keyboardEntries[HASHMAP_TOK_LEN];
+static KeywordEntry keywordEntries[HASHMAP_TOK_LEN];
 
 ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
 	ZTokenStream *self = zalloc(ZTokenStream);
@@ -57,7 +57,7 @@ static uint32_t hashtoken(const char *buff, size_t len) {
 	return hash;
 }
 
-static KeyboardEntry keywords[] = {
+static KeywordEntry keywords[] = {
 	#define DEF(id, str, _) { str, id },
 
 	#define TOK_FLOWS
@@ -80,21 +80,21 @@ static void initKeywords() {
 		const char *name = keywords[i].keyword;
 		uint32_t hash = hashtoken(name, strlen(name)) & HASHMAP_TOK_MASK;
 
-		while (keyboardEntries[hash].keyword != NULL) {
+		while (keywordEntries[hash].keyword != NULL) {
 			hash = (hash + 1) & HASHMAP_TOK_MASK;
 		}
-		keyboardEntries[hash].keyword = keywords[i].keyword;
-		keyboardEntries[hash].type = keywords[i].type;
+		keywordEntries[hash].keyword = keywords[i].keyword;
+		keywordEntries[hash].type = keywords[i].type;
 	}
 }
 
 ZTokenType findKeyword(const char *ident, size_t len) {
 	uint32_t hash = hashtoken(ident, len) & HASHMAP_TOK_MASK;
 
-	while (keyboardEntries[hash].keyword != NULL) {
-		if (strlen(keyboardEntries[hash].keyword) == len &&
-				memcmp(keyboardEntries[hash].keyword, ident, len) == 0) {
-			return keyboardEntries[hash].type;
+	while (keywordEntries[hash].keyword != NULL) {
+		if (strlen(keywordEntries[hash].keyword) == len &&
+				memcmp(keywordEntries[hash].keyword, ident, len) == 0) {
+			return keywordEntries[hash].type;
 		}
 		hash = (hash + 1) & HASHMAP_TOK_MASK;
 	}
@@ -319,7 +319,7 @@ static void skipMultilineComments(ZLexer *l) {
 		next(l);
 	}
 	if (!*l->current || !*(l->current + 1)) {
-		error(l->state, veclast(l->tokens), "Unterminated multiline comments");
+		error(l->state, veclast(l->tokens), "Unterminated multiline comment");
 	}
 
 	next(l); next(l);
