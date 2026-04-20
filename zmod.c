@@ -825,6 +825,21 @@ static void printLineHighlight(ZToken *tok, const char *color) {
     if (!tok || !tok->start) return;
     char *lineStart = tok->sourceLinePtr;
     
+    char num[32];
+
+    sprintf(num, "%zu", tok->row);
+    usize numlen = strlen(num);
+    
+    u8 padding = 0;
+    if (numlen < 6) {
+        while(6 - numlen >= padding) {
+            putchar(' ');
+            padding++;
+        }
+    } else putchar(' ');
+
+    printf("%s |", num);
+
     while (*lineStart && *lineStart != '\n') {
             putchar(*lineStart);
             lineStart++;
@@ -833,6 +848,9 @@ static void printLineHighlight(ZToken *tok, const char *color) {
     putchar('\n');
 
     
+    padding = numlen < 6 ? 8 : numlen + 1;
+    while (padding-- > 0) putchar(' ');
+    putchar('|');
     printf("%s", color);
     u32 i = 1;
     
