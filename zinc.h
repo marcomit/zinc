@@ -204,7 +204,7 @@ struct ZType {
     };
 
     /* Future implementation:
-     * Contant values for now are not checked in the semantic analyzer.
+     * Constant values for now are not checked in the semantic analyzer.
      * So you can assign a value to a constant variable. */
     bool constant;
 };
@@ -235,7 +235,7 @@ typedef struct ZMacroVar {
     usize startIndex;   // Start index into source token array
     usize endIndex;     // End index (exclusive)
     ZNode *captured;    // The parsed AST node for this captured variable
-    usize useCount;            // Count how many timee the variable is used in the body
+    usize useCount;            // Count how many times the variable is used in the body
 } ZMacroVar;
 
 enum {
@@ -245,8 +245,8 @@ enum {
     Z_VAR_PAIR
 };
 
-/* Struct representing the deconstructure of a variable.
- * A variable can be deconstructured in 2 ways:
+/* Struct representing the destructuring of a variable.
+ * A variable can be destructured in 2 ways:
  * 1. A tuple: (first, second, ...) := expression.
  * 2. A struct: {field1, field2} := expression
  * and the base case is the identifier.
@@ -492,7 +492,7 @@ typedef struct ZTokenStream {
 typedef struct ZMacroParser {
     ZNode             **macros;
 
-    /* Setted when it parses the body of a macro. */
+    /* Set when it parses the body of a macro. */
     ZNode             *currentMacro;
 
 
@@ -573,7 +573,7 @@ typedef struct ZFuncTable {
 } ZFuncTable;
 
 typedef struct ZSymTable {
-    /* Global scope used to store globam symbols. */
+    /* Global scope used to store global symbols. */
     ZScope          *global;
 
     ZScope          *current;

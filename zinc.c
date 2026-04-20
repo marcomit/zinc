@@ -181,9 +181,5 @@ int main(int argc, char **argv) {
             " build in %.02fs\n", elapsed);
     }
 
-    if (state && state->debug) {
-        printf(COLOR_BOLD COLOR_RED "Root\n" COLOR_RESET);
-        printNode(state->root, 0);
-    }
     return res;
 }

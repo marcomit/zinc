@@ -472,7 +472,7 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
 
     ZToken *tok = peek(parser);
 
-    /* Postfix operatore MUST BE on the same line. */
+    /* Postfix operator MUST BE on the same line. */
     if (!tok || tok->newlineBefore) goto cleanup;
 
     switch (tok->type) {
@@ -835,7 +835,6 @@ ZNode *parseStmt(ZParser *parser) {
     case TOK_RETURN:    return parseReturn  (parser);
     case TOK_BREAK:     return parseBreak   (parser);
     case TOK_CONTINUE:  return parseContinue(parser);
-    case TOK_LBRACKET:  return parseBlock   (parser);
     default: {
         ZParserSnapshot *snap = store(parser);
 
@@ -869,7 +868,7 @@ static ZNode *parseBlock(ZParser *parser) {
     ZNode *block = makenode(NODE_BLOCK);
     ZNode *stmt = NULL;
     do {
-        stmt = parseStmt(parser);
+        stmt = wrapNode(parser, parseStmt);
         if (stmt) vecpush(block->block, stmt);
     } while (stmt);
 
@@ -1235,14 +1234,22 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser) {
     if (tok->type == TOK_IDENT) {
         cur = makeVarDestructPattern(Z_VAR_IDENT);
         cur->ident = tok;
-        cur->tok = tok;
     } else if (tok->type == TOK_LBRACKET) {
         ZToken *key = NULL;
         while (true) {
             if (!check(parser, TOK_IDENT)) break;
             key = consume(parser);
 
-            cur = parseDestructVar(parser);
+            if (check(parser, TOK_COMMA) || check(parser, TOK_RBRACKET)) {
+                cur = makeDestructIdent(key);
+            } else if (match(parser, TOK_COLON)) {
+                cur = parseDestructVar(parser);
+            } else {
+                error(parser->state, peek(parser),
+                        "Unexpected token");
+                break;
+            }
+
             if (!parser) {
                 error(parser->state, key, "Failed to deconstruct %s",
                         stoken(key));
@@ -1279,11 +1286,12 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser) {
         return NULL;
     }
 
+    cur->tok = tok;
     return cur;
 }
 
 static ZNode *parseVarInferred(ZParser *parser) {
-    ZVarDestructPattern *pattern = makeDestructIdent(consume(parser));
+    ZVarDestructPattern *pattern = parseDestructVar(parser);
 
     expect(parser, TOK_ASSIGN);
     ZNode *expr = wrapNode(parser, parseExpr);

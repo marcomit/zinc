@@ -1,15 +1,16 @@
-foreign u0 printf(*char)
-foreign i32 putchar(i32)
+foreign u0 printf(*char, ...)
 
 (*char, i32) tuple() {
-    return ("hello", 4)
+    return ("john", 40)
 }
 
 i32 main() {
 
     val := tuple()
 
-    printf(val.0)
+    (name, age) := tuple()
+    
+    printf("%s: %d\n", name, age)
 
     return 0
 }

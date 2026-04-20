@@ -483,8 +483,69 @@ static bool fitsInRegister(LLVMValueRef val) {
         kind == LLVMDoubleTypeKind  );
 }
 
+static void putDestructuredPatternInStack(
+        ZCodegen *ctx, ZType *type,
+        ZVarDestructPattern *pattern, LLVMValueRef ptr) {
+    if (!pattern || !type) return;
+
+    if (pattern->type == Z_VAR_IDENT) {
+        putLLVMValueRef(
+            ctx,
+            pattern->ident->str,
+            ptr
+        );
+    } else if (pattern->type == Z_VAR_STRUCT) {
+        LLVMTypeRef typeRef = genType(ctx, type);
+        for (usize i = 0; i < veclen(pattern->fields); i++) {
+
+            int idx = -1;
+
+            for (usize j = 0; j < veclen(type->strct.fields) && idx == -1; j++) {
+                if (tokeneq(
+                        type->strct.fields[i]->field.identifier,
+                        pattern->fields[i]->key
+                    )) idx = i;
+            }
+
+            if (idx == -1) {
+                error(ctx->state, pattern->fields[i]->key,
+                        "Invalid struct field '%s'",
+                        pattern->fields[i]->key);
+                continue;
+            }
+
+            LLVMValueRef gep = LLVMBuildStructGEP2(
+                ctx->builder, typeRef,
+                ptr, idx, label(ctx)
+            );
+            putDestructuredPatternInStack(
+                ctx,
+                type->strct.fields[i]->field.type,
+                pattern->fields[i]->value,
+                gep
+            );
+        }
+    } else if (pattern->type == Z_VAR_TUPLE) {
+        LLVMTypeRef typeRef = genType(ctx, type);
+        for (usize i = 0; i < veclen(pattern->tuple); i++) {
+            LLVMValueRef gep = LLVMBuildStructGEP2(
+                ctx->builder, typeRef, ptr, i, label(ctx)
+            );
+            putDestructuredPatternInStack(
+                ctx,
+                type->tuple[i],
+                pattern->tuple[i],
+                gep
+            );
+        }
+    }
+}
+
 static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
-    if (!node->varDecl.rvalue) return NULL;
+    if (!node->varDecl.rvalue) {
+        error(ctx->state, node->tok, "Invalid 'genVarDecl' call");
+        return NULL;
+    }
 
     ZLLVMStack *stack = getStackValue(ctx, node->varDecl.rvalue);
     if (!stack) {
@@ -503,7 +564,13 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
         LLVMBuildStore(ctx->builder, val, stack->stack);
     }
 
-    putLLVMValueRef(ctx, node->tok->str, stack->stack);
+    putDestructuredPatternInStack(
+        ctx,
+        node->resolved,
+        node->varDecl.pattern,
+        stack->stack
+    );
+
     return stack->stack;
 }
 
@@ -1484,6 +1551,9 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         break;
     case NODE_TUPLE_LIT:
         buildFuncVar(ctx, node, label(ctx), NULL);
+        for (usize i = 0; i < veclen(node->tuplelit); i++) {
+            genFuncVars(ctx, node->tuplelit[i]);
+        }
         break;
     case NODE_STRUCT_LIT:
         buildFuncVar(ctx, node, label(ctx), NULL);
@@ -1511,7 +1581,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_VAR_DECL:
         buildFuncVar(ctx, node->varDecl.rvalue,
             label(ctx),
-            node->resolved);
+            NULL);
         break;
     case NODE_CALL:
         if (!node->resolved) {

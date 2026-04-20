@@ -243,7 +243,7 @@ static void putVarPattern(
     } else if (pattern->type == Z_VAR_TUPLE) {
         if (type->kind != Z_TYPE_TUPLE) {
             error(semantic->state, pattern->tok,
-                    "'%s' doesn't support deconstructuring",
+                    "'%s' doesn't support destructuring",
                     stype(type));
             return;
         }
@@ -266,7 +266,7 @@ static void putVarPattern(
     } else if (pattern->type == Z_VAR_STRUCT) {
         if (type->kind != Z_TYPE_STRUCT) {
             error(semantic->state, pattern->tok,
-                    "'%s' doesn't support deconstructuring",
+                    "'%s' doesn't support destructuring",
                     stype(type));
             return;
         }
@@ -887,7 +887,6 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
 
     if (!result) return NULL;
 
-    printf("Variadic: %d\n", variadic);
     if (!variadic && veclen(expectedArgs) != veclen(args)) {
         error(semantic->state, curr->tok,
                 "Expected %zu arguments, got %zu",
@@ -1478,6 +1477,7 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
             error(semantic->state, curr->tok, "Invalid expression");
             return;
         }
+        retType     = resolveTypeRef(semantic, retType);
     }
 
     curr->resolved  = retType;
@@ -1507,7 +1507,7 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
                 stype(retType)
             );
         } else {
-            /* Implici casting. */
+            /* Implicit casting. */
             curr->returnStmt.expr = implicitCast(
                 curr->returnStmt.expr, semantic->currentFuncRet
             );
@@ -1718,7 +1718,6 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
 
     registerModule(semantic, root);
     discoverGlobalScope(semantic, root);
-    printf("Discovered\n");
     
     analyze(semantic, root);
     return semantic;
