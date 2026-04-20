@@ -1,0 +1,7 @@
+foreign u0 printf(*char, ...)
+
+i32 main() {
+
+    printf("%s: %d\n", "ciao", 1)
+    return 0
+}
