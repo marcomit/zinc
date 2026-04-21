@@ -23,11 +23,6 @@
         return NULL;                                                            \
     }
 
-#define invalid(parser, ...) {                                                  \
-        error(parser->state, peek(parser), __VA_ARGS__);                        \
-        return NULL;                                                            \
-}
-
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType                            (ZParser *);
@@ -59,7 +54,7 @@ static ZNode *parseEnumDecl                 (ZParser *, bool);
 static ZNode *parseStructDecl               (ZParser *, bool);
 static ZNode *parseForeignDecl              (ZParser *, bool);
 
-static ZToken **parseGenericsDecl           (ZParser *);
+static ZType **parseGenericsDecl            (ZParser *);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 
 static ZParseFunc exprFunc[] = {
@@ -104,19 +99,19 @@ static ZVarDestructPattern *makeVarDestructPattern(int type) {
 }
 
 static ZVarDestructPattern *makeDestructIdent(ZToken *tok) {
-    ZVarDestructPattern *pattern = makeVarDestructPattern(Z_VAR_IDENT);
-    pattern->tok    =tok;
-    pattern->ident  = tok;
+    ZVarDestructPattern *pattern    = makeVarDestructPattern(Z_VAR_IDENT);
+    pattern->tok                    = tok;
+    pattern->ident                  = tok;
     return pattern;
 }
 
 static ZNode *makenodevar(ZVarDestructPattern *pattern, ZType *type, ZNode *expr) {
     if (!pattern) return NULL;
-    ZNode *node = makenode(NODE_VAR_DECL);
-    node->tok = pattern->tok;
-    node->varDecl.pattern = pattern;
-    node->varDecl.rvalue = expr;
-    node->resolved = type;
+    ZNode *node             = makenode(NODE_VAR_DECL);
+    node->tok               = pattern->tok;
+    node->varDecl.pattern   = pattern;
+    node->varDecl.rvalue    = expr;
+    node->resolved          = type;
     return node;
 }
 
@@ -320,11 +315,8 @@ static ZNode *parsePrimary(ZParser *parser) {
     guard(start);
 
     if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_IDENT)) {
-        if (!check(parser, TOK_IDENT)) {
-            invalid(parser, "Expected an identifier after @");
-            error(parser->state, start, "Expected an identifier after @");
-            return NULL;
-        }
+        ensure(check(parser, TOK_IDENT), "Expected an identifier after @");
+        
         ZToken *tok = consume(parser);
         return getMacroCapturedVar(parser->macroParser.currentMacro, tok);
     } else if (match(parser, TOK_LPAREN)) {
@@ -744,28 +736,27 @@ static ZType *parseAtom(ZParser *parser) {
 }
 
 ZType *parseType(ZParser *parser) {
-    bool constant = match(parser, TOK_CONST);
+    ZToken *start   = peek(parser);
+    bool constant   = match(parser, TOK_CONST);
 
-    u8 stars = 0;
+    u8 stars        = 0;
     while (match(parser, TOK_STAR)) stars++;
 
-    ZType *base = wrapType(parser, parseAtom);
+    ZType *base     = wrapType(parser, parseAtom);
     ensure(base, "Failed to parse atom type");
 
     base = applyStarsToType(base, stars);
 
-    base->constant = constant;
+    base->constant  = constant;
 
     if (!parser->noFuncType && check(parser, TOK_LPAREN)) {
-        return parseTypeFunc(parser, base);
+        base        = parseTypeFunc(parser, base);
     } else if (check(parser, TOK_LSBRACKET)) {
         // Generic type instantiation like List[int] or Map[str, int]
         ZType **generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
-        ZType *type = maketype(Z_TYPE_GENERIC);
-        type->generic.name = base->primitive.token;
-        type->generic.args = generics;
-        return type;
+        base->primitive.generics = generics;
     }
+    base->tok = start;
     return base;
 }
 
@@ -773,7 +764,7 @@ static ZNode *parseDefer(ZParser *parser) {
     expect(parser, TOK_DEFER);
     ZNode *expr = parseExpr(parser);
 
-    if (!expr) invalid(parser, "Expected an expression after 'defer' keyword")
+    ensure(expr, "Expected an expression after 'defer' keyword");
 
     ZNode *node = makenode(NODE_DEFER);
     node->deferStmt.expr = expr;
@@ -875,7 +866,8 @@ static ZNode *parseBlock(ZParser *parser) {
     if (!check(parser, TOK_RBRACKET)) {
         error(parser->state, peek(parser), "A statement cannot be parsed");
         while (canPeek(parser) && !check(parser, TOK_RBRACKET)) consume(parser);
-        if (!canPeek(parser)) invalid(parser, "Expected a '}' to close the block")
+
+        ensure(canPeek(parser), "Expected a '}' to close the block");
     }
 
     expect(parser, TOK_RBRACKET);
@@ -968,7 +960,7 @@ static ZNode *parseStructDecl(ZParser *parser, bool public) {
     ensure(check(parser, TOK_IDENT), "Expected an identifier");
 
     ZToken *name = consume(parser);
-    ZToken **generics = NULL;
+    ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
         generics = parseGenericsDecl(parser);
@@ -1144,15 +1136,47 @@ static ZNode *parseLoops(ZParser *parser) {
     return node;
 }
 
-static ZToken **parseGenericsDecl(ZParser *parser) {
-    ZToken **generics = NULL;
+/*
+ *  [K, V]
+ *  [K: Display + Drop]
+ * */
+static ZType **parseGenericsDecl(ZParser *parser) {
+    ZType **generics = NULL;
     
     expect(parser, TOK_LSBRACKET);
 
-    while (!check(parser, TOK_RSBRACKET)) {
-        ensure(check(parser, TOK_IDENT), "Expected an identifier");
-        vecpush(generics, consume(parser));
+    ZType *generic = NULL;
+    while (true) {
+        if (!check(parser, TOK_IDENT)) break;
+
+        ZToken *ident               = consume(parser);
+        generic                     = maketype(Z_TYPE_GENERIC);
+        generic->generic.name       = ident;
+        generic->generic.extensions = NULL;
+
+        if (match(parser, TOK_COLON)) {
+            if (!check(parser, TOK_IDENT)) {
+                error(parser->state, peek(parser), "Expected a facet here");
+                break;
+            }
+            ZType *extension = maketype(Z_TYPE_PRIMITIVE);
+            extension->primitive.token = consume(parser);
+            vecpush(generic->generic.extensions, extension);
+
+            while (match(parser, TOK_PLUS)) {
+                if (!check(parser, TOK_IDENT)) {
+                    error(parser->state, peek(parser), "Expected a facet here");
+                    break;
+                }
+                extension = maketype(Z_TYPE_PRIMITIVE);
+                extension->primitive.token = consume(parser);
+                vecpush(generic->generic.extensions, extension);
+            }
+        }
+
+        vecpush(generics, generic);
         if (!match(parser, TOK_COMMA)) break;
+        if (check(parser, TOK_RBRACKET)) break;
     }
 
     expect(parser, TOK_RSBRACKET);
@@ -1178,7 +1202,7 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     }
 
     ZToken *name    = consume(parser);
-    ZToken **generics = NULL;
+    ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
         generics = parseGenericsDecl(parser);

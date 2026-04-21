@@ -206,16 +206,16 @@ static void _stype(ZType *type, char **buff) {
         }
         vecpush(*buff, ')');
         break;
-    case Z_TYPE_GENERIC:
-        vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
-        vecpush(*buff, '[');
-
-        for (usize i = 0; i < veclen(type->generic.args); i++) {
-            _stype(type->generic.args[i], buff);
-            if (i < veclen(type->generic.args) - 1) vecpush(*buff, ',');
-        }
-        vecpush(*buff, ']');
-        break;
+    // case Z_TYPE_GENERIC:
+    //     vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
+    //     vecpush(*buff, '[');
+    //
+    //     for (usize i = 0; i < veclen(type->generic.args); i++) {
+    //         _stype(type->generic.args[i], buff);
+    //         if (i < veclen(type->generic.args) - 1) vecpush(*buff, ',');
+    //     }
+    //     vecpush(*buff, ']');
+    //     break;
     default:
         break;
     }
@@ -269,12 +269,14 @@ void printType(ZType *type) {
         printf(")");
         break;
     case Z_TYPE_GENERIC:
-        printf("%s[", type->generic.name->str);
-        for (usize i = 0; i < veclen(type->generic.args); i++) {
-            printType(type->generic.args[i]);
-            if (i < veclen(type->generic.args) - 1) printf(", ");
+        printf("%s", type->generic.name->str);
+        if (veclen(type->generic.extensions) > 0) {
+            printf(": ");
         }
-        printf("]");
+        for (usize i = 0; i < veclen(type->generic.extensions); i++) {
+            printType(type->generic.extensions[i]);
+            printf(" ");
+        }
         break;
     default:
         printf("(details not implemented for type %d)", type->kind);
@@ -408,7 +410,7 @@ void printNode(ZNode *node, u8 depth) {
         printf("\n");
         for (usize i = 0; i < veclen(node->funcDef.generics); i++) {
             indent(depth);
-            printToken(node->funcDef.generics[i]);
+            printType(node->funcDef.generics[i]);
             printf("\n");
         }
         printNode(node->funcDef.body, depth);
@@ -456,7 +458,7 @@ void printNode(ZNode *node, u8 depth) {
         if (node->structDef.pub) printf("pub ");
         printf("%s[", node->structDef.ident->str);
         for (usize i = 0; i < veclen(node->structDef.generics); i++) {
-                printToken(node->structDef.generics[i]);
+                printType(node->structDef.generics[i]);
         }
         printf("]\n");
         for (usize i = 0; i < veclen(node->structDef.fields); i++) {
@@ -480,6 +482,8 @@ void printNode(ZNode *node, u8 depth) {
     case NODE_MEMBER: {
         printf("\n");
         printNode(node->memberAccess.object, depth);
+        indent(depth);
+        printToken(node->memberAccess.field);
         break;
     }
     case NODE_TYPEDEF:
@@ -681,8 +685,7 @@ char *readfile(char *filename) {
     FILE *fd = fopen(filename, "r");
     
     if (!fd) {
-        fprintf(stderr, "open(%s)", filename);
-        perror("");
+        perror("Error");
         return NULL;
     }
 

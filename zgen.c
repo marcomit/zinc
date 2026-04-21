@@ -285,7 +285,9 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     }
 
     switch (type->kind) {
-
+    case Z_TYPE_GENERIC:
+        error(ctx->state, type->tok, "Generics not resolved");
+        return NULL;
     case Z_TYPE_PRIMITIVE: {
         const ZToken *name = type->primitive.token;
         switch (name->type) {

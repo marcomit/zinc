@@ -1,0 +1,27 @@
+foreign u0 printf(*char, ...)
+foreign *u8 malloc(u64)
+
+struct Node {
+    i32 val
+}
+
+for Node {
+    *Node new(i32 val) {
+        self := malloc(sizeof Node) as *Node
+        self.val = val
+        return self
+    }
+}
+
+for *Node self {
+    u0 insert(i32 val) {
+        self.val = val
+    }
+}
+
+i32 main() {
+    root := Node::new(0)
+    // root.print()
+
+    return 0
+}
