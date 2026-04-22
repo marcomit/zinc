@@ -5,7 +5,7 @@ enum Foo {
 }
 
 u0 main() {
-    x = Foo::AInteger(42)
+    x := Foo::AInteger(42)
     // y = Foo::ADouble(1337.0)
     // z = Foo::ABool(true)
 }

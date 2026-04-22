@@ -545,6 +545,7 @@ typedef struct ZScope ZScope;
 typedef enum {
     Z_SYM_VAR,
     Z_SYM_FUNC,
+    Z_SYM_ENUM,
     Z_SYM_STRUCT,
     Z_SYM_TYPEDEF,
     Z_SYM_GENERIC

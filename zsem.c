@@ -15,6 +15,7 @@
  * We have a global scope for the entire project,
  * then a child scope for the current file and then a child for blocks like functions, loops etc..
  * */
+#include "base.h"
 #include "zhset.h"
 #include "zinc.h"
 #include "zvec.h"
@@ -361,7 +362,14 @@ static void putStruct(ZSemantic *semantic, ZNode *node) {
 }
 
 static void putEnum(ZSemantic *semantic, ZNode *node) {
-
+    putRawSymbol(
+        semantic,
+        Z_SYM_ENUM,
+        node->structDef.ident,
+        node->resolved,
+        node,
+        node->enumDef.pub
+    );
 }
 
 static void putTypedef(ZSemantic *semantic, ZNode *node) {
@@ -837,39 +845,70 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
         ZSymbol *baseSym = resolve(semantic, base);
         if (!baseSym) {
             error(semantic->state, base, "Base not found");
-        } else if ( baseSym->kind != Z_SYM_STRUCT &&
-                    baseSym->kind != Z_SYM_TYPEDEF) {
+            return NULL;
+        } else if ( baseSym->kind == Z_SYM_STRUCT) {
+            ZNode **staticFuncs = NULL;
+            for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
+                ZFuncTable *table = semantic->table->funcs[i];
+                if (table->base->kind != Z_TYPE_PRIMITIVE) {
+                    continue;
+                }
+                if (!tokeneq(table->base->primitive.token, base)) continue;
+
+                if (!hashset_has(table->seenStaticFuncs, prop->str)) {
+                    error(semantic->state, prop,
+                            "'%s' method does not exist", prop->str);
+                }
+                staticFuncs = table->staticFuncDef;
+            }
+            if (!staticFuncs) {
+                error(semantic->state, prop,
+                        "Static method '%s' not found", prop->str);
+            }
+
+            for (usize i = 0; i < veclen(staticFuncs) && !result; i++) {
+                ZNode *func = staticFuncs[i];
+                if (tokeneq(func->funcDef.base->primitive.token, base) &&
+                    tokeneq(func->funcDef.name, prop)) {
+                    result          = func->funcDef.ret;
+                    expectedArgs    = func->resolved->func.args;
+                    variadic        = func->resolved->func.variadic;
+                }
+            }
+        } else if (baseSym->kind == Z_SYM_ENUM) {
+            ZType **fields  = baseSym->type->enm.fields;
+            ZType *strct    = NULL;
+            for (usize i = 0; i < veclen(fields) && !strct; i++) {
+                if (tokeneq(fields[i]->strct.name, prop)) {
+                    strct = fields[i];
+                }
+            }
+            if (!strct) {
+                error(semantic->state, prop,
+                    "Field '%s' not found for enum '%s'",
+                    prop, base
+                );
+                return NULL;
+            }
+
+            
+            for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+                strct->strct.fields[i]->field.type = resolveTypeRef(
+                    semantic, strct->strct.fields[i]->field.type
+                );
+                vecpush(expectedArgs, strct->strct.fields[i]->field.type);
+            }
+            result = baseSym->type;
+        } else if (baseSym->kind == Z_SYM_TYPEDEF) {
+            error(
+                semantic->state,
+                base,
+                "Static function with type alias as base are not supported yet");
+        } else {
             error(semantic->state, base, "Base should refer to a type");
         }
 
-        ZNode **staticFuncs = NULL;
-        for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
-            ZFuncTable *table = semantic->table->funcs[i];
-            if (table->base->kind != Z_TYPE_PRIMITIVE) {
-                continue;
-            }
-            if (!tokeneq(table->base->primitive.token, base)) continue;
-
-            if (!hashset_has(table->seenStaticFuncs, prop->str)) {
-                error(semantic->state, prop,
-                        "'%s' method does not exist", prop->str);
-            }
-            staticFuncs = table->staticFuncDef;
-        }
-        if (!staticFuncs) {
-            error(semantic->state, prop,
-                    "Static method '%s' not found", prop->str);
-        }
-
-        for (usize i = 0; i < veclen(staticFuncs) && !result; i++) {
-            ZNode *func = staticFuncs[i];
-            if (tokeneq(func->funcDef.base->primitive.token, base) &&
-                tokeneq(func->funcDef.name, prop)) {
-                result          = func->funcDef.ret;
-                expectedArgs    = func->resolved->func.args;
-                variadic        = func->resolved->func.variadic;
-            }
-        }
+        
     } else if (callee->type == NODE_MEMBER) {
         ZType *obj = resolveType(semantic, callee->memberAccess.object);
 
@@ -1602,6 +1641,7 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
         case NODE_FUNC:     putFunc(semantic, child);       break;
         case NODE_STRUCT:   putStruct(semantic, child);     break;
         case NODE_VAR_DECL: putVar(semantic, child, false); break;
+        case NODE_ENUM:     putEnum(semantic, child);       break;
 
         case NODE_TYPEDEF: {
             putTypedef(semantic, child);
