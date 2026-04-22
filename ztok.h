@@ -44,6 +44,8 @@ DEF(TOK_FALSE,      "false",            TOK_FLOWS_MASK | TOK_LITERAL | 0x14)
 DEF(TOK_CAST,       "as",               TOK_FLOWS_MASK | TOK_OVERRIDABLE | 0x15)
 DEF(TOK_SIZEOF,     "sizeof",           TOK_FLOWS_MASK | TOK_OVERRIDABLE | 0x16)
 DEF(TOK_MOD,        "mod",              TOK_FLOWS_MASK | 0x72)
+DEF(TOK_WHERE,      "where",            TOK_FLOWS_MASK | 0x75)
+DEF(TOK_WITH,      "with",              TOK_FLOWS_MASK | 0x76)
 #endif
 
 #ifdef TOK_TYPES

@@ -120,12 +120,12 @@
  * @return New vector pointer or NULL on failure
  */
 #define VEC_REALLOC_IMPL(v, new_capacity_bytes) ({                             \
-	vec_metadata *old_meta = VEC_METADATA(v);                                  \
-	vec_metadata *new_meta = (vec_metadata *)VEC_REALLOC(                      \
-		old_meta,                                                              \
-		sizeof(vec_metadata) + (new_capacity_bytes)                            \
-	);                                                                         \
-	(new_meta ? (void *)(new_meta + 1) : NULL);                                \
+    vec_metadata *old_meta = VEC_METADATA(v);                                  \
+    vec_metadata *new_meta = (vec_metadata *)VEC_REALLOC(                      \
+        old_meta,                                                              \
+        sizeof(vec_metadata) + (new_capacity_bytes)                            \
+    );                                                                         \
+    (new_meta ? (void *)(new_meta + 1) : NULL);                                \
 })
 
 /* ============================================================================
@@ -178,21 +178,21 @@
  * vecpush(vec, 100);
  * @endcode
  */
-#define vecpush(v, i)                                                         \
-do {                                                                          \
-	if (!(v)) {                                                                	\
-		(v) = veccreate(sizeof(*(v)));                                         		\
-	}                                                                          	\
-	if (!(v)) break;                                                           	\
-	if (veclen(v) >= veccap(v)) {                                              	\
-		usize new_cap = veccap(v) << 1;                                        		\
-		void *new_v = VEC_REALLOC_IMPL((v), new_cap * sizeof(*(v)));           		\
-		if (!(new_v)) break;                                                   		\
-		(v) = new_v;                                                           		\
-		vecsetcap((v), new_cap);                                               		\
-	}                                                                          	\
-	(v)[veclen(v)] = (i);                                                      	\
-	vecsetlen((v), veclen(v) + 1);                                             	\
+#define vecpush(v, i)                                                           \
+do {                                                                            \
+    if (!(v)) {                                                                 \
+        (v) = veccreate(sizeof(*(v)));                                          \
+    }                                                                           \
+    if (!(v)) break;                                                            \
+    if (veclen(v) >= veccap(v)) {                                               \
+        usize new_cap = veccap(v) << 1;                                         \
+        void *new_v = VEC_REALLOC_IMPL((v), new_cap * sizeof(*(v)));            \
+        if (!(new_v)) break;                                                    \
+        (v) = new_v;                                                            \
+        vecsetcap((v), new_cap);                                                \
+    }                                                                           \
+    (v)[veclen(v)] = (i);                                                       \
+    vecsetlen((v), veclen(v) + 1);                                              \
 } while (0)
 
 /**
@@ -212,12 +212,12 @@ do {                                                                          \
  * vecfree(vec);  // vec is now NULL
  * @endcode
  */
-#define vecfree(v)                                                          	  \
-do {                                                                       	    \
-	if ((v)) {                                                                 		\
-		VEC_FREE(VEC_METADATA(v));                                             			\
-		(v) = NULL;                                                            			\
-	}                                                                          		\
+#define vecfree(v)                                                              \
+do {                                                                            \
+    if ((v)) {                                                                  \
+        VEC_FREE(VEC_METADATA(v));                                              \
+        (v) = NULL;                                                             \
+    }                                                                           \
 } while (0)
 
 /**
@@ -231,11 +231,11 @@ do {                                                                       	    
  * vecpop(vec);                       // Remove it
  * @endcode
  */
-#define vecpop(v) ({                                                          \
-	if ((v) && veclen(v) > 0) {                                                	\
-			vecsetlen((v), veclen(v) - 1);                                         	\
-	}                                                                          	\
-	(v)[veclen(v)];																															\
+#define vecpop(v) ({                                                            \
+    if ((v) && veclen(v) > 0) {                                                 \
+            vecsetlen((v), veclen(v) - 1);                                      \
+    }                                                                           \
+    (v)[veclen(v)];                                                                                                                            \
 }) 
 
 /**
@@ -272,25 +272,25 @@ do {                                                                       	    
  * vecreserve(vec, 1000);  // Pre-allocate space for 1000 integers
  * @endcode
  */
-#define vecreserve(v, n)                                                       	\
-do {                                                                           	\
-	if (!(v)) {                                                                		\
-		(v) = veccreate(sizeof(*(v)));                                         			\
-	}                                                                          		\
-	if ((v) && veccap(v) < (n)) {                                              		\
-		void *new_v = VEC_REALLOC_IMPL((v), (n) * sizeof(*(v)));               			\
-		if (new_v) {                                                           			\
-			(v) = new_v;                                                       				\
-			vecsetcap((v), (n));                                               				\
-		}                                                                      			\
-	}                                                                          		\
+#define vecreserve(v, n)                                                        \
+do {                                                                            \
+    if (!(v)) {                                                                 \
+        (v) = veccreate(sizeof(*(v)));                                          \
+    }                                                                           \
+    if ((v) && veccap(v) < (n)) {                                               \
+        void *new_v = VEC_REALLOC_IMPL((v), (n) * sizeof(*(v)));                \
+        if (new_v) {                                                            \
+            (v) = new_v;                                                        \
+            vecsetcap((v), (n));                                                \
+        }                                                                       \
+    }                                                                           \
 } while (0)
 
-#define vecunion(v, r, n)																												\
-do {																																						\
-	for (usize i = 0; i < (n); i++) {																							\
-		vecpush(v, r[i]);																														\
-	}																																							\
+#define vecunion(v, r, n)                                                                                                               \
+do {                                                                            \
+    for (usize vecunionIndex = 0; vecunionIndex < (n); vecunionIndex++) {       \
+        vecpush(v, r[vecunionIndex]);                                           \
+    }                                                                                                                                                            \
 } while(0)
 
 /* ============================================================================
@@ -304,8 +304,8 @@ do {																																						\
  * It stores the vector's capacity and current length.
  */
 typedef struct vec_metadata {
-	usize capacity;  /**< Maximum number of elements before reallocation */
-	usize length;    /**< Current number of elements in the vector */
+    usize capacity;  /**< Maximum number of elements before reallocation */
+    usize length;    /**< Current number of elements in the vector */
 } vec_metadata;
 
 /* ============================================================================
@@ -325,17 +325,17 @@ typedef struct vec_metadata {
  * @endcode
  */
 static inline void *veccreate(usize element_size) {
-	usize total_bytes = sizeof(vec_metadata) + (VEC_DEFAULT_SIZE * element_size);
-	vec_metadata *metadata = (vec_metadata *)VEC_ALLOC(total_bytes);
-	
-	if (!metadata) {
-			return NULL;
-	}
-	
-	metadata->capacity = VEC_DEFAULT_SIZE;
-	metadata->length = 0;
-	
-	return (void *)(metadata + 1);
+    usize total_bytes = sizeof(vec_metadata) + (VEC_DEFAULT_SIZE * element_size);
+    vec_metadata *metadata = (vec_metadata *)VEC_ALLOC(total_bytes);
+    
+    if (!metadata) {
+            return NULL;
+    }
+    
+    metadata->capacity = VEC_DEFAULT_SIZE;
+    metadata->length = 0;
+    
+    return (void *)(metadata + 1);
 }
 
 #endif /* ZVEC_H */
