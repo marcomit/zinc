@@ -559,6 +559,23 @@ void printNode(ZNode *node, u8 depth) {
     case NODE_CONTINUE:
         break;
 
+    case NODE_ENUM:
+        printf("%s\n", stoken(node->enumDef.name));
+
+        for (usize i = 0; i < veclen(node->enumDef.fields); i++) {
+            printNode(node->enumDef.fields[i], depth);
+        }
+        break;
+
+    case NODE_ENUM_FIELD:
+        printf("%s\n", stoken(node->enumField.name));
+        for (usize j = 0; j < veclen(node->enumField.captured); j++) {
+            indent(depth);
+            printType(node->enumField.captured[j]);
+            printf("\n");
+        }
+        break;
+
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);

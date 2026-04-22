@@ -157,6 +157,7 @@ typedef enum ZTypeKind {
     Z_TYPE_TUPLE,
     Z_TYPE_GENERIC,        // Instantiated generic type, e.g. List[int]
     Z_TYPE_FACET,
+    Z_TYPE_ENUM,
     Z_TYPE_NONE
 } ZTypeKind;
 
@@ -191,12 +192,20 @@ struct ZType {
         } func;
 
         struct {
-            ZType *base;
-            usize size;
+            ZType   *base;
+            usize   size;
         } array;
 
         /* List of Z_TYPE_FUNCTION */
         ZType **facet;
+
+        struct {
+            ZToken      *name;
+
+            /* Array of Z_TYPE_STRUCT. */
+            ZType       **fields;
+            ZType       **generics;
+        } enm;
 
         ZType **tuple;
 
@@ -393,10 +402,10 @@ struct ZNode {
          * It stores the name of the field (e.g. Square or Circle)
          * and its captured types.
          * */
-        struct {
-            ZToken      *name;
-            ZType       **captured;
-        } enumField;
+         struct {
+             ZToken *name;
+             ZType  **captured;
+         } enumField;
 
         struct {
             ZNode       *object;

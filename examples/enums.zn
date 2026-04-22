@@ -1,0 +1,11 @@
+enum Foo {
+    ABool(u1)
+    AInteger(i32)
+    ADouble(f64)
+}
+
+u0 main() {
+    // x = Foo::AInteger(42)
+    // y = Foo::ADouble(1337.0)
+    // z = Foo::ABool(true)
+}

@@ -914,16 +914,27 @@ static ZNode *parseEnumField(ZParser *parser) {
         }
     }
 
-    ZNode *node = makenode(NODE_ENUM_FIELD);
-
+    ZNode *node                 = makenode(NODE_ENUM_FIELD);
     node->enumField.name        = name;
     node->tok                   = name;
     node->enumField.captured    = types;
 
+    ZType *enm                  = maketype(Z_TYPE_STRUCT);
+    enm->strct.name             = name;
+    enm->strct.fields           = NULL;
+
+    for (usize i = 0; i < veclen(types); i++) {
+        ZNode *field = makenode(NODE_FIELD);
+        field->field.identifier = NULL;
+        field->field.type       = types[i];
+
+        vecpush(enm->strct.fields, field);
+    }
+
+    node->resolved = enm;
     return node;
 }
 
-// TODO: To implement
 static ZNode *parseEnumDecl(ZParser *parser, bool public) {
     ZToken *start = peek(parser);
     expect(parser, TOK_ENUM);

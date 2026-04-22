@@ -203,7 +203,27 @@ char *label(ZCodegen *ctx) {
     return ctx->str;
 }
 
-/* Does not consider alignment. */
+usize typeSize(ZCodegen *, ZType *);
+
+static usize alignFields(ZCodegen *ctx, void **fields) {
+    usize cur = 0;
+    usize res = 0;
+    for (usize i = 0; i < veclen(fields); i++) {
+#ifdef alignFieldMap
+        cur = typeSize(ctx, alignFieldMap(fields[i]));
+#else
+        cur = typeSize(ctx, fields[i]);
+#endif
+        if (cur) res = (res + cur - 1) / cur * cur;
+        res += cur;
+    }
+
+#ifdef alignFieldMap
+#undef alignFieldMap
+#endif
+    return res;
+}
+
 usize typeSize(ZCodegen *ctx, ZType *type) {
     usize res = 0;
     switch (type->kind) {
@@ -234,20 +254,31 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
         return 8; /* function pointer */
 
     case Z_TYPE_STRUCT: {
-        usize cur = 0;
-        for (usize i = 0; i < veclen(type->strct.fields); i++) {
-            cur = typeSize(ctx, type->strct.fields[i]->field.type);
-            if (cur) res = (res + cur - 1) / cur * cur;
-            res += cur;
-        }
+        #define alignFieldMap(x) ((ZNode *)(x))->field.type
+        
+        res = alignFields(ctx, (void **)type->strct.fields);
+
         return res;
     }
 
-    case Z_TYPE_TUPLE:
-        for (usize i = 0; i < veclen(type->tuple); i++) {
-            res += typeSize(ctx, type->tuple[i]);
+    case Z_TYPE_ENUM: {
+        usize max = 0;
+        usize cur = 0;
+        
+        #define alignFieldMap(x) ((ZNode *)(x))->field.type
+        for (usize i = 0; i < veclen(type->enm.fields); i++) {
+            cur = alignFields(ctx, (void **)type->enm.fields[i]);
+
+            if (cur > max) max = cur;
         }
-        return res;
+        if (max == 0) {
+            error(ctx->state, type->tok, "Invalid enum size");
+        }
+        return max + 1;
+    }
+
+    case Z_TYPE_TUPLE:
+        return alignFields(ctx, (void **)type->tuple);
     default: return 0;
     }
 }
@@ -373,6 +404,34 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         return structType;
     }
 
+    /* Enums are generated like tagged unions in c.
+     * They are simpy a struct with an integer also called flag
+     * that represents the active field of the enum
+     * and a buffer with the size of the biggest field.
+     * The buffer is stored like an array of bytes.
+     * Every time i want to get the active field i just lookup the flag
+     * and cast the buffer as the ith field.
+     * */
+    case Z_TYPE_ENUM: {
+        const char *name = type->enm.name->str;
+        LLVMTypeRef cached = getCachedStruct(ctx, name);
+        if (cached) return cached;
+
+        LLVMTypeRef enumType = LLVMStructCreateNamed(ctx->ctx, name);
+        putStructInCache(ctx, (char *)name, enumType);
+
+
+        usize largest = typeSize(ctx, type);
+        LLVMStructSetBody(enumType,
+                (LLVMTypeRef[]){
+            // Flag integer
+            i8Type,
+
+            // Buffer array with the largest field
+            LLVMArrayType(i8Type, largest - 1)
+        }, 2, 0);
+    }
+
     case Z_TYPE_TUPLE: {
         usize len = veclen(type->tuple);
         LLVMTypeRef *elems = znalloc(LLVMTypeRef, len ? len : 1);
@@ -382,6 +441,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         }
         return LLVMStructTypeInContext(ctx->ctx, elems, len, /*packed=*/ 0);
     }
+
 
     case Z_TYPE_NONE:
         /* none literal — represent as i8* null */
@@ -1681,10 +1741,11 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
 static void compile(ZCodegen *ctx, ZNode *root) {
     switch (root->type) {
+    case NODE_ENUM:
+    case NODE_STRUCT:   genType     (ctx, root->resolved);  break;
     case NODE_FOREIGN:  genForeign  (ctx, root);            break;
     case NODE_FUNC:     genFunc     (ctx, root);            break;
-    case NODE_STRUCT:   genType     (ctx, root->resolved);  break;
-    case NODE_MACRO:                                        break;
+    case NODE_MACRO:    /* Doesn't generate anything. */    break;
 
     case NODE_MODULE:
         beginModule(ctx, root);
