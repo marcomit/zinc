@@ -54,7 +54,7 @@ static ZNode *parseEnumDecl                 (ZParser *, bool);
 static ZNode *parseStructDecl               (ZParser *, bool);
 static ZNode *parseForeignDecl              (ZParser *, bool);
 
-static ZType **parseGenericsDecl            (ZParser *);
+static ZType **parseGenericsDecl            (ZParser *, bool);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 
 static ZParseFunc exprFunc[] = {
@@ -963,7 +963,7 @@ static ZNode *parseStructDecl(ZParser *parser, bool public) {
     ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser);
+        generics = parseGenericsDecl(parser, true);
         if (!generics) {
             error(parser->state, peek(parser),
                     "Expected generic parameters after struct name");
@@ -1136,14 +1136,88 @@ static ZNode *parseLoops(ZParser *parser) {
     return node;
 }
 
+/* K[V: Display[T] + Drop]
+ *
+ *
+ * generic_arg =
+ *              identifier |
+ *              identifier ':' generic_decl { '+', generic_decl }
+ *
+ * generic_decl = ident '[' generic_arg, { ',', generic_arg } ']'
+ * */
+static ZType *parseGenericDecl(ZParser *);
+
+static ZType *parseGenericArgument(ZParser *parser) {
+    ensure(check(parser, TOK_IDENT), "Expected an identifier");
+
+    ZType *generic = maketype(Z_TYPE_GENERIC);
+    generic->generic.name = consume(parser);
+
+    generic->generic.extensions = NULL;
+
+    if (match(parser, TOK_COLON)) {
+        ZType *arg = parseGenericDecl(parser);
+        if (!arg) {
+            error(parser->state, peek(parser), "Unexpected token");
+            return NULL;
+        }
+
+        vecpush(generic->generic.extensions, arg);
+
+        if (!match(parser, TOK_PLUS)) return generic;
+
+        while (true) {
+            arg = parseGenericDecl(parser);
+            if (!arg) break;
+            vecpush(generic->generic.extensions, arg);
+
+            if (!match(parser, TOK_PLUS)) break;
+        }
+    }
+
+    return generic;
+}
+
+static ZType *parseGenericDecl(ZParser *parser) {
+    ensure(check(parser, TOK_IDENT), "Expected an identifier");
+
+    ZType *generic              = maketype(Z_TYPE_GENERIC);
+    generic->generic.name       = consume(parser);
+    generic->generic.extensions = NULL;
+
+    if (match(parser, TOK_LBRACKET)) {
+        ZType *argument = parseGenericArgument(parser);
+
+        if (!argument) {
+            error(parser->state, peek(parser),
+                    "Expected at least one generic argument");
+        }
+        vecpush(generic->generic.extensions, argument);
+
+        while (true) {
+            if (!match(parser, TOK_COMMA)) break;
+            if (!check(parser, TOK_IDENT)) break;
+
+            argument = parseGenericArgument(parser);
+            if (!argument) break;
+            vecpush(generic->generic.extensions, argument);
+        }
+        expect(parser, TOK_RBRACKET);
+    }
+    return generic;
+}
+
+
 /*
  *  [K, V]
  *  [K: Display + Drop]
  * */
-static ZType **parseGenericsDecl(ZParser *parser) {
+static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
     ZType **generics = NULL;
     
-    expect(parser, TOK_LSBRACKET);
+    if (brackets) {
+        expect(parser, TOK_LSBRACKET);
+    }
 
     ZType *generic = NULL;
     while (true) {
@@ -1179,7 +1253,10 @@ static ZType **parseGenericsDecl(ZParser *parser) {
         if (check(parser, TOK_RBRACKET)) break;
     }
 
-    expect(parser, TOK_RSBRACKET);
+
+    if (brackets) {
+        expect(parser, TOK_RSBRACKET);
+    }
 
     return generics;
 }
@@ -1205,7 +1282,7 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
     ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser);
+        generics = parseGenericsDecl(parser, true);
         if (!generics) {
             error(parser->state, peek(parser),
                     "Expected generic type parameters after function name");
@@ -1840,6 +1917,35 @@ static ZNode *parseFuncBlock(ZParser *parser) {
     ZToken *rec = NULL;
     if (check(parser, TOK_IDENT)) rec = consume(parser);
 
+    /* Declare facets this block must implement. */
+    ZType **facets = NULL;
+    if (match(parser, TOK_WITH)) {
+        ZType *type = wrapType(parser, parseGenericDecl);
+        if (!type) {
+            error(parser->state, peek(parser),
+                    "Unespected token");
+            return NULL;
+        }
+
+        vecpush(facets, type);
+
+        while (match(parser, TOK_PLUS)) {
+            type = wrapType(parser, parseGenericDecl);
+            if (!type) break;
+            vecpush(facets, type);
+        }
+    }
+
+    /* Declare generics that every function in this block inherit. */
+    ZType **generics = NULL;
+    if (match(parser, TOK_WHERE)) {
+        generics = parseGenericsDecl(parser, false);
+
+        if (!generics) {
+            error(parser->state, peek(parser), "Generics failed to parse");
+        }
+    }
+
     expect(parser, TOK_LBRACKET);
 
     ZNode *func = NULL;
@@ -1866,6 +1972,8 @@ static ZNode *parseFuncBlock(ZParser *parser) {
     expect(parser, TOK_RBRACKET);
 
     usize len = veclen(block->block);
+
+    if (len == 0) return block;
 
     /* For static mangling we key on the primitive type name (matching what the
      * call-site parser emits for `Type::method`). Strip pointer levels to get
@@ -1895,6 +2003,9 @@ static ZNode *parseFuncBlock(ZParser *parser) {
                 NULL
             });
             block->block[i]->funcDef.base = type;
+
+            vecunion(block->block[i]->funcDef.generics,
+                    generics, veclen(generics));
         }
     }
 

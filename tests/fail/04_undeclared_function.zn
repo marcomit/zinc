@@ -19,9 +19,15 @@ for *Node self {
     }
 }
 
+for Hashmap[K, V] self
+    with Display + Drop + Comparable
+    where K: Hash, V {
+    // u0 p() {}
+}
+
 i32 main() {
     root := Node::new(0)
-    // root.print()
+    root.print()
 
     return 0
 }
