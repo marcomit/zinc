@@ -156,6 +156,7 @@ typedef enum ZTypeKind {
     Z_TYPE_FUNCTION,
     Z_TYPE_TUPLE,
     Z_TYPE_GENERIC,        // Instantiated generic type, e.g. List[int]
+    Z_TYPE_ENUM,
     Z_TYPE_NONE
 } ZTypeKind;
 
@@ -190,16 +191,24 @@ struct ZType {
         } func;
 
         struct {
-            ZType *base;
-            usize size;
+            ZType   *base;
+            usize   size;
         } array;
+
+        struct {
+            ZToken      *name;
+
+            /* Array of Z_TYPE_STRUCT. */
+            ZType       **fields;
+            ZType       **generics;
+        } enm;
 
         ZType **tuple;
 
         // For GENERIC instantiation (e.g. List[int], Map[str, int])
         struct {
-            ZToken *name;        // The generic type name (e.g. "List")
-            ZType **args;        // The type arguments (e.g. [int])
+            ZToken  *name;        // The generic type name (e.g. "List")
+            ZType   **args;       // The type arguments (e.g. [int])
         } generic;
     };
 
@@ -210,13 +219,13 @@ struct ZType {
 };
 
 typedef enum {
-    Z_MACRO_KEY,         // Captured keyword
-    Z_MACRO_EXPR,     // Captured expression
-    Z_MACRO_IDENT,     // Captured identifier
-    Z_MACRO_TYPE,     // Captured type
+    Z_MACRO_KEY,        // Captured keyword
+    Z_MACRO_EXPR,       // Captured expression
+    Z_MACRO_IDENT,      // Captured identifier
+    Z_MACRO_TYPE,       // Captured type
     Z_MACRO_ZM,         // Zero or more
     Z_MACRO_OM,         // One or more
-    Z_MACRO_SEQ            // Sequence
+    Z_MACRO_SEQ         // Sequence
 } ZMacroType;
 
 typedef struct ZMacroPattern {
@@ -392,10 +401,10 @@ struct ZNode {
          * It stores the name of the field (e.g. Square or Circle)
          * and its captured types.
          * */
-        struct {
-            ZToken      *name;
-            ZType       **captured;
-        } enumField;
+         struct {
+             ZToken *name;
+             ZType  **captured;
+         } enumField;
 
         struct {
             ZNode       *object;

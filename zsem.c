@@ -1595,6 +1595,34 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
     }
 }
 
+static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
+    ZType **seen = NULL;
+    ZNode **fields = structDef->structDef.fields;
+    usize len = veclen(fields);
+
+    for (usize i = 0; i < len; i++) {
+        let field = fields[i];
+        field->field.type = _resolveTypeRef(semantic, field->field.type, seen);
+    }
+
+    ZType *structType = structDef->resolved;
+
+    for (usize i = 0; i < len; i++) {
+        let field = fields[i];
+        ZType **szSeen = NULL;
+
+        if (isInfiniteSize(field->field.type, structType, szSeen)) {
+            error(semantic->state, field->field.identifier,
+                  "field '%s' embeds struct by value causing infinite size; use a pointer",
+                  field->field.identifier->str);
+        }
+    }
+}
+
+static void analyzeEnum(ZSemantic *semantic, ZNode *enumDef) {
+    warning(semantic->state, enumDef->tok, "Enum semantic not analyzed");
+}
+
 /* ================== Main analysis pass ================== */
 
 static void analyze(ZSemantic *semantic, ZNode *root) {
@@ -1606,26 +1634,9 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
         case NODE_FOREIGN:  analyzeForeign(semantic, child);    break;
         case NODE_FUNC:     analyzeFunc(semantic, child);       break;
         case NODE_VAR_DECL: analyzeVar(semantic, child, true);  break;
-        case NODE_MACRO:                                        break;
-
-        case NODE_STRUCT: {
-            ZType **seen = NULL;
-            for (usize i = 0; i < veclen(child->structDef.fields); i++) {
-                let field = child->structDef.fields[i];
-                field->field.type = _resolveTypeRef(semantic, field->field.type, seen);
-            }
-            ZType *structType = child->resolved;
-            for (usize i = 0; i < veclen(child->structDef.fields); i++) {
-                let field = child->structDef.fields[i];
-                ZType **szSeen = NULL;
-                if (isInfiniteSize(field->field.type, structType, szSeen)) {
-                    error(semantic->state, field->field.identifier,
-                          "field '%s' embeds struct by value causing infinite size; use a pointer",
-                          field->field.identifier->str);
-                }
-            }
-            break;
-        }
+        case NODE_STRUCT:   analyzeStruct(semantic, child);     break;
+        case NODE_ENUM:     analyzeEnum(semantic, child);       break;
+        case NODE_MACRO:    /* does't require any validation*/  break;
 
         case NODE_MODULE:
             if (child->module.root) {
