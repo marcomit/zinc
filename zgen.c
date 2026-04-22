@@ -205,24 +205,22 @@ char *label(ZCodegen *ctx) {
 
 usize typeSize(ZCodegen *, ZType *);
 
-static usize alignFields(ZCodegen *ctx, void **fields) {
+static usize alignFields(ZCodegen *ctx, void **fields, ZType *(*iter)(void *)) {
     usize cur = 0;
     usize res = 0;
     for (usize i = 0; i < veclen(fields); i++) {
-#ifdef alignFieldMap
-        cur = typeSize(ctx, alignFieldMap(fields[i]));
-#else
-        cur = typeSize(ctx, fields[i]);
-#endif
+        cur = typeSize(ctx, iter(fields[i]));
         if (cur) res = (res + cur - 1) / cur * cur;
         res += cur;
     }
 
-#ifdef alignFieldMap
-#undef alignFieldMap
-#endif
     return res;
 }
+
+static inline ZType *alignStructFieldIter(void *item) {
+    return ((ZNode *)item)->field.type;
+}
+static inline ZType *alignTupleFieldIter(void *item) { return (ZType *)item; }
 
 usize typeSize(ZCodegen *ctx, ZType *type) {
     usize res = 0;
@@ -254,21 +252,22 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
         return 8; /* function pointer */
 
     case Z_TYPE_STRUCT: {
-        #define alignFieldMap(x) ((ZNode *)(x))->field.type
-        
-        res = alignFields(ctx, (void **)type->strct.fields);
+        res = alignFields(
+            ctx,
+            (void **)type->strct.fields,
+            alignStructFieldIter
+        );
 
         return res;
     }
 
+    // FIXME: the latest +1 means the flag size but it does not consider the alignment
     case Z_TYPE_ENUM: {
         usize max = 0;
         usize cur = 0;
         
-        #define alignFieldMap(x) ((ZNode *)(x))->field.type
         for (usize i = 0; i < veclen(type->enm.fields); i++) {
-            cur = alignFields(ctx, (void **)type->enm.fields[i]);
-
+            cur = typeSize(ctx, type->enm.fields[i]);
             if (cur > max) max = cur;
         }
         if (max == 0) {
@@ -278,7 +277,11 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
     }
 
     case Z_TYPE_TUPLE:
-        return alignFields(ctx, (void **)type->tuple);
+        return alignFields(
+            ctx,
+            (void **)type->tuple,
+            alignTupleFieldIter
+        );
     default: return 0;
     }
 }
@@ -420,6 +423,9 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         LLVMTypeRef enumType = LLVMStructCreateNamed(ctx->ctx, name);
         putStructInCache(ctx, (char *)name, enumType);
 
+        for (usize i = 0; i < veclen(type->enm.fields); i++) {
+            genType(ctx, type->enm.fields[i]);
+        }
 
         usize largest = typeSize(ctx, type);
         LLVMStructSetBody(enumType,
@@ -430,6 +436,8 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
             // Buffer array with the largest field
             LLVMArrayType(i8Type, largest - 1)
         }, 2, 0);
+
+        return enumType;
     }
 
     case Z_TYPE_TUPLE: {

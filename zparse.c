@@ -946,6 +946,11 @@ static ZNode *parseEnumDecl(ZParser *parser, bool public) {
     }
     ZToken *name = consume(parser);
 
+    ZType **generics = NULL;
+    if (check(parser, TOK_LSBRACKET)) {
+        generics = parseGenericsDecl(parser, true);
+    }
+
     ZNode **fields = parseGenericList(parser,
             TOK_LBRACKET, TOK_RBRACKET,
             parseEnumField, false);
@@ -955,12 +960,22 @@ static ZNode *parseEnumDecl(ZParser *parser, bool public) {
         return NULL;
     }
 
-    ZNode *node = makenode(NODE_ENUM);
-
+    ZNode *node             = makenode(NODE_ENUM);
     node->enumDef.name      = name;
     node->enumDef.pub       = public;
     node->enumDef.fields    = fields;
     node->tok               = node->enumDef.name;
+
+    ZType *type             = maketype(Z_TYPE_ENUM);
+    type->enm.name          = name;
+    type->enm.generics      = generics;
+    type->enm.fields        = NULL;
+
+    for (usize i = 0; i < veclen(fields); i++) {
+        vecpush(type->enm.fields, fields[i]->resolved);
+    }
+
+    node->resolved          = type;
     
     return node;
 }

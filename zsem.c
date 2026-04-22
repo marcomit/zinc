@@ -360,6 +360,10 @@ static void putStruct(ZSemantic *semantic, ZNode *node) {
             node->structDef.pub);
 }
 
+static void putEnum(ZSemantic *semantic, ZNode *node) {
+
+}
+
 static void putTypedef(ZSemantic *semantic, ZNode *node) {
     putRawSymbol(semantic,
             Z_SYM_TYPEDEF,

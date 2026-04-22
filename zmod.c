@@ -198,6 +198,10 @@ static void _stype(ZType *type, char **buff) {
         _stype(type->array.base, buff);
         break;
     }
+    case Z_TYPE_ENUM:
+        vecunion(*buff, "enum ", 5);
+        vecunion(*buff, type->enm.name->str, strlen(type->enm.name->str));
+        break;
     case Z_TYPE_TUPLE:
         vecpush(*buff, '(');
         for (usize i = 0; i < veclen(type->tuple); i++) {
