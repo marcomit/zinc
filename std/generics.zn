@@ -1,0 +1,11 @@
+T identity[T](T item) {
+    return item
+}
+
+i32 main() {
+    identity(12 as i32)
+    identity(12 as f32)
+    identity("ciao")
+
+    return 0
+}

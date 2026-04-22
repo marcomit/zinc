@@ -42,10 +42,6 @@ static ZType *copytype(ZType *type) {
 		case Z_TYPE_TUPLE:
 			copy->tuple = copytypevec(type->tuple);
 			break;
-		case Z_TYPE_GENERIC:
-			copy->generic.name = type->generic.name;
-			copy->generic.args = copytypevec(type->generic.args);
-			break;
 		default: break;
 	}
 	return copy;
@@ -97,8 +93,8 @@ static ZMacroVar *findCapturedVar(ZNode *macro, ZToken *name) {
 }
 
 static bool matchMacroPattern(ZParser *parser,
-																ZNode *macro,
-																ZMacroPattern *pattern) {
+                                ZNode *macro,
+                                ZMacroPattern *pattern) {
 	ZNode *node = NULL;
 	ZType *type = NULL;
 	ZMacroVar *macrovar = NULL;

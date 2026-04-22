@@ -122,32 +122,28 @@ void handler(int sig) {
     write(STDERR_FILENO, "Error: signal received\n", 23);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
-    if (state && state->debug) {
-        printf(COLOR_BOLD COLOR_RED "Root\n" COLOR_RESET);
-        printNode(state->root, 0);
-    }
     if (state && state->debug) printLogs(state);
+    allocator.close();
     _exit(1);
 }
 
 int pipeline(ZState *state) {
     ZToken **tokens = ztokenize(state);
+    if (!tokens) return 1;
 
-    if (state->debug) printTokens(tokens);
-
-    if (!canAdvance(state)) return 1;
+    if (!canAdvance(state)) return 2;
 
     ZNode *root = zparse(state, tokens);
 
-    if (!canAdvance(state)) return 2;
+    if (!canAdvance(state)) return 3;
     ZSemantic *semantic = zanalyze(state, root);
 
     if (state->debug) printNode(root, 0);
 
-    if (!canAdvance(state)) return 3;
+    if (!canAdvance(state)) return 4;
     zcompile(state, root, state->output, semantic);
 
-    if (!canAdvance(state)) return 4;
+    if (!canAdvance(state)) return 5;
 
     return 0;
 }

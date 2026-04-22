@@ -69,7 +69,7 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
     self->table             = makesymtable();
     self->scopes            = NULL;
     self->seen              = NULL;
-    
+    self->funcQueue         = NULL;
     return self;
 }
 
@@ -96,7 +96,7 @@ static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
 
 }
 
-static void putRawSymbol(ZSemantic *semantic,
+static ZSymbol *makeRawSymbol(
                         ZSymType kind,
                         ZToken *name,
                         ZType *type,
@@ -108,8 +108,25 @@ static void putRawSymbol(ZSemantic *semantic,
     symbol->type        = type;
     symbol->node        = node;
     symbol->isPublic    = isGlobal;
+    symbol->generics    = NULL;
 
-    putSymbol(semantic, symbol);
+    return symbol;
+}
+
+static void putRawSymbol(ZSemantic *semantic,
+                        ZSymType kind,
+                        ZToken *name,
+                        ZType *type,
+                        ZNode *node,
+                        bool isGlobal) {
+    putSymbol(semantic,
+        makeRawSymbol(
+            kind,
+            name,
+            type,
+            node,
+            isGlobal
+        ));
 }
 
 static ZFuncTable *makefunctable(ZType *base) {
@@ -215,15 +232,17 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
     } else if (node->funcDef.base) {
         putStaticFunc(semantic, node);
     } else {
-        if (strcmp(node->funcDef.name->str, "main") == 0) {
-            semantic->main = node;
-        }
-        putRawSymbol(semantic,
+        ZSymbol *f = makeRawSymbol(
                 Z_SYM_FUNC,
                 node->funcDef.name,
                 node->resolved,
                 node,
                 node->funcDef.pub);
+
+        if (strcmp(node->funcDef.name->str, "main") == 0) {
+            semantic->main = f;
+        }
+        putSymbol(semantic, f);
     }
 }
 
@@ -313,6 +332,17 @@ static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
             node,
             node->resolved,
             node->varDecl.pattern);
+}
+
+static void putGeneric(ZSemantic *semantic, ZType *type) {
+    putRawSymbol(
+        semantic,
+        Z_SYM_GENERIC,
+        type->generic.name,
+        type,
+        NULL,
+        false
+    );
 }
 
 static void putStruct(ZSemantic *semantic, ZNode *node) {
@@ -589,13 +619,9 @@ bool typesEqual(ZType *a, ZType *b) {
             if (!typesEqual(a->tuple[i], b->tuple[i])) return false;
         return true;
     }
-    case Z_TYPE_GENERIC: {
-        if (strcmp(a->generic.name->str, b->generic.name->str) != 0) return false;
-        if (veclen(a->generic.args) != veclen(b->generic.args)) return false;
-        for (usize i = 0; i < veclen(a->generic.args); i++)
-            if (!typesEqual(a->generic.args[i], b->generic.args[i])) return false;
+    case Z_TYPE_GENERIC:
+        if (!tokeneq(a->generic.name, b->generic.name)) return false;
         return true;
-    }
     default:
         return false;
     }
@@ -895,20 +921,26 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
     }
 
     for (usize i = 0; i < veclen(expectedArgs); i++) {
+        ZType *expected = expectedArgs[i];
+        /* If the argument is a generic skip the validation*/
+        if (expected && expected->kind == Z_TYPE_GENERIC) {
+            continue;
+        }
+
         /* if they are equal they don't need implicit casting. */
-        if (typesEqual(args[i]->resolved, expectedArgs[i])) continue;
+        if (typesEqual(args[i]->resolved, expected)) continue;
 
         ZType *promoted = typesCompatible(
-            semantic->state, args[i]->resolved, expectedArgs[i]);
+            semantic->state, args[i]->resolved, expected);
 
         if (!promoted) {
             error(semantic->state, args[i]->tok,
                 "Expected %s, got %s",
                 stype(args[i]->resolved),
-                stype(expectedArgs[i])
+                stype(expected)
             );
         }
-        curr->call.args[i] = implicitCast(args[i], expectedArgs[i]);
+        curr->call.args[i] = implicitCast(args[i], expected);
     }
 
     return result;
@@ -1060,8 +1092,7 @@ static ZType *resolveArrayLiteral(ZSemantic *semantic, ZNode *curr) {
             arrType = typesCompatible(semantic->state, arrType, fieldType);
 
             if (!arrType) {
-                ZToken *tok = NULL;
-                if (fieldType) tok = fieldType->tok;
+                ZToken *tok = fieldType ? fieldType->tok : NULL;
                 error(semantic->state, tok,
                              "Array literals should have the same type");
             }
@@ -1405,9 +1436,13 @@ static void analyzeForeign(ZSemantic *semantic, ZNode *curr) {
 }
 
 static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
+
+    for (usize i = 0; i < veclen(curr->funcDef.generics); i++) {
+        putGeneric(semantic, curr->funcDef.generics[i]);
+    }
+
     beginScope(semantic, curr);
     curr->funcDef.body->scope = semantic->table->current;
-
     if (curr->funcDef.base) {
         ZType *res = resolveTypeRef(semantic, curr->funcDef.base);
         if (!res) {
@@ -1436,11 +1471,12 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
     for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
         ZNode  *arg     = curr->funcDef.args[i];
         ZType  *argType = resolveTypeRef(semantic, arg->field.type);
-        arg->field.type = argType;
 
         if (!argType) {
-            error(semantic->state, curr->funcDef.name, "Unknown type");
+            error(semantic->state, curr->funcDef.name, "Unknown type resolved");
         }
+
+        arg->field.type = argType;
         putRawSymbol(semantic,
                 Z_SYM_VAR,
                 arg->field.identifier,
@@ -1645,66 +1681,30 @@ static void analyze(ZSemantic *semantic, ZNode *root) {
     }
 }
 
-ZType *makePrimitiveType(ZTokenType type) {
+static ZType *makePrimitiveType(ZTokenType type) {
     ZType *self = maketype(Z_TYPE_PRIMITIVE);
     self->primitive.token = maketoken(type, NULL);
     return self;
+} 
+
+static void visitReachableFuncs(ZSemantic *semantic) {
+    if (!semantic->main) {
+        error(semantic->state, NULL, "missing 'main' declaration");
+        return;
+    }
+
+    if (semantic->funcQueue) {
+        vecsetlen(semantic->funcQueue, 0);
+    }
+
+    vecpush(semantic->funcQueue, semantic->main);
+
+    usize analyzed = 0;
+
+    while (analyzed < veclen(semantic->funcQueue)) {
+        ZSymbol *sym = semantic->funcQueue[analyzed++];
+    }
 }
-
-// static void iterator(ZNode *root, bool (*iter)(ZNode *)) {
-//     if (!root) return;
-//
-//     bool cut = iter(root);
-//     if (cut) return;
-//
-//     switch (root->type) {
-//     case NODE_BINARY:
-//         iterator(root->binary.left, iter);
-//         iterator(root->binary.right, iter);
-//         break;
-//     case NODE_IF:
-//         iterator(root->ifStmt.cond, iter);
-//         iterator(root->ifStmt.body, iter);
-//         iterator(root->ifStmt.elseBranch, iter);
-//         break;
-//     case NODE_UNARY:
-//         iterator(root->unary.operand, iter);
-//         break;
-//     case NODE_FOR:
-//         iterator(root->forStmt.var, iter);
-//         iterator(root->forStmt.cond, iter);
-//         iterator(root->forStmt.incr, iter);
-//         iterator(root->forStmt.block, iter);
-//         break;
-//     case NODE_WHILE:
-//         iterator(root->whileStmt.cond, iter);
-//         iterator(root->whileStmt.branch, iter);
-//         break;
-//     default:
-//         printf("Node %d not handled as iterator\n", root->type);
-//     }
-// }
-
-
-// static void visitReachableFuncs(ZSemantic *semantic) {
-//     ZNode **funcs = NULL;
-//     if (!semantic->main) {
-//         error(semantic->state, NULL, "missing 'main' declaration");
-//         return;
-//     }
-//     vecpush(funcs, semantic->main);
-//
-//     usize analyzed = 0;
-//
-//     /* used like a queue. */
-//     while (analyzed < veclen(funcs)) {
-//         ZNode *curr = funcs[analyzed];
-//
-//
-//
-//         analyzed++;
-//     }
-// }
 
 ZSemantic *zanalyze(ZState *state, ZNode *root) {
     state->currentPhase = Z_PHASE_SEMANTIC;
@@ -1720,5 +1720,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     discoverGlobalScope(semantic, root);
     
     analyze(semantic, root);
+
+    visitReachableFuncs(semantic);
     return semantic;
 }

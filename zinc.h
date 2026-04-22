@@ -156,14 +156,15 @@ typedef enum ZTypeKind {
     Z_TYPE_FUNCTION,
     Z_TYPE_TUPLE,
     Z_TYPE_GENERIC,        // Instantiated generic type, e.g. List[int]
+    Z_TYPE_FACET,
     Z_TYPE_NONE
 } ZTypeKind;
 
 struct ZType {
     ZTypeKind kind;
+    ZToken *tok;
 
     union {
-        ZToken *tok;
         // For PRIMITIVE (e.g. void or int)
         struct {
             ZToken *token;
@@ -194,12 +195,18 @@ struct ZType {
             usize size;
         } array;
 
+        /* List of Z_TYPE_FUNCTION */
+        ZType **facet;
+
         ZType **tuple;
 
-        // For GENERIC instantiation (e.g. List[int], Map[str, int])
         struct {
-            ZToken *name;        // The generic type name (e.g. "List")
-            ZType **args;        // The type arguments (e.g. [int])
+            ZToken *name;
+
+            /* A generic can extend a facets:
+             * T: Display + Drop 
+             * */
+            ZType **extensions;
         } generic;
     };
 
@@ -210,13 +217,13 @@ struct ZType {
 };
 
 typedef enum {
-    Z_MACRO_KEY,         // Captured keyword
-    Z_MACRO_EXPR,     // Captured expression
-    Z_MACRO_IDENT,     // Captured identifier
-    Z_MACRO_TYPE,     // Captured type
+    Z_MACRO_KEY,        // Captured keyword
+    Z_MACRO_EXPR,       // Captured expression
+    Z_MACRO_IDENT,      // Captured identifier
+    Z_MACRO_TYPE,       // Captured type
     Z_MACRO_ZM,         // Zero or more
     Z_MACRO_OM,         // One or more
-    Z_MACRO_SEQ            // Sequence
+    Z_MACRO_SEQ         // Sequence
 } ZMacroType;
 
 typedef struct ZMacroPattern {
@@ -235,7 +242,7 @@ typedef struct ZMacroVar {
     usize startIndex;   // Start index into source token array
     usize endIndex;     // End index (exclusive)
     ZNode *captured;    // The parsed AST node for this captured variable
-    usize useCount;            // Count how many times the variable is used in the body
+    usize useCount;     // Count how many times the variable is used in the body
 } ZMacroVar;
 
 enum {
@@ -272,27 +279,27 @@ struct ZVarDestructPattern {
 };
 
 struct ZNode {
-    ZNodeType type;
-    ZType *resolved;
-    ZToken *tok;
+    ZNodeType       type;
+    ZType           *resolved;
+    ZToken          *tok;
     union {
         // Can be used for both if and ternary operator
         struct {
-            ZNode *cond;
-            ZNode *body;
-            ZNode *elseBranch;
-        } ifStmt;
-
-        struct {
-            ZNode *cond;
-            ZNode *branch;
+            ZNode   *cond;
+            ZNode   *body;
+            ZNode   *elseBranch;
+        } ifStmt;   
+                    
+        struct {    
+            ZNode   *cond;
+            ZNode   *branch;
         } whileStmt;
 
         struct {
-            ZNode *var;
-            ZNode *cond;
-            ZNode *incr;
-            ZNode *block;
+            ZNode   *var;
+            ZNode   *cond;
+            ZNode   *incr;
+            ZNode   *block;
         } forStmt;
 
         struct {
@@ -341,34 +348,28 @@ struct ZNode {
             /* NODE_FIELD */
             ZNode   *receiver;
 
-            ZToken  **generics;
+            ZType   **generics;
             bool    pub;
         } funcDef;
 
         struct {
-            ZType     *ret;
-            ZToken     *tok;
-            ZType     **args;
-            bool       pub;
+            ZType   *ret;
+            ZToken  *tok;
+            ZType   **args;
+            bool    pub;
         } foreignFunc;
 
         struct {
-            ZNode     *callee;
-            ZNode     ** args;
+            ZNode   *callee;
+            ZNode   ** args;
         } call;
 
         struct {
-            ZToken     *ident;
-            ZNode     **fields;
-            ZToken     **generics;
-            bool pub;
-        } structDef;
-
-        struct {
-            ZToken     *ident;
+            ZToken  *ident;
             ZNode   **fields;
+            ZType   **generics;
             bool    pub;
-        } unionDef;
+        } structDef;
 
         /* Enums are the combination of a union with an integer
          * that indicates which field is 'active'.
@@ -530,11 +531,14 @@ typedef struct ZParser {
 } ZParser;
 
 /* ================== Semantic analysis    ================== */
+typedef struct ZScope ZScope;
+
 typedef enum {
     Z_SYM_VAR,
     Z_SYM_FUNC,
     Z_SYM_STRUCT,
-    Z_SYM_TYPEDEF
+    Z_SYM_TYPEDEF,
+    Z_SYM_GENERIC
 } ZSymType;
 
 typedef struct ZSymbol {
@@ -542,18 +546,28 @@ typedef struct ZSymbol {
     ZToken          *name;
     ZType           *type;
     ZNode           *node;
+
+    /* All types that resovled a generic.
+     * Example:
+     * Hashmap[K, V]
+     * Every time in the code appear a Hashmap called with two generics
+     * it saves these two type in the array.
+     * So it is the list of all types that must be generated
+     * */ 
+    ZType           ***generics;
+
     usize           useCount;
     bool            isPublic;
     bool            reachable;
 } ZSymbol;
 
-typedef struct ZScope {
+struct ZScope {
     ZSymbol         **symbols;
-    struct ZScope   *parent;
+    ZScope   *parent;
     ZNode           *node;
     u32             depth;
     hashset_t       seen;
-} ZScope;
+};
 
 /* Contains a type with a list of functions that accept
  * that type as a receiver. */
@@ -599,7 +613,7 @@ typedef struct ZSemantic {
     ZNode           *root;
 
     /* cached main function node. */
-    ZNode           *main;
+    ZSymbol         *main;
     ZSymTable       *table;
     ZScopeTable     **scopes;
     ZType           *currentFuncRet;
@@ -608,6 +622,9 @@ typedef struct ZSemantic {
 
     /* Set of seen symbols (by name) */
     hashset_t       seen;    
+
+    /* Queue used in the second phase */
+    ZSymbol         **funcQueue;
 } ZSemantic;
 
 /* Lexer */

@@ -6,14 +6,17 @@ pub struct Allocator {
     u64 bytes
 }
 
-pub *u8 alloc(u64 size) Allocator self {
-    return malloc(size)
-}
+for Allocator self {
+    pub *u8 alloc(u64 size) {
+        return malloc(size)
+    }
 
-pub *u8 realloc(*u8 ptr, u64 size) Allocator self {
-    return realloc(ptr, size)
-}
+    pub *u8 realloc(*u8 ptr, u64 size) {
+        return realloc(ptr, size)
+    }
 
-pub u0 free(*u8 ptr) Allocator self {
-    free(ptr)
+    pub u0 free(*u8 ptr) {
+        free(ptr)
+    }
+
 }
