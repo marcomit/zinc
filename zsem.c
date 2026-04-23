@@ -870,9 +870,10 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
                 ZNode *func = staticFuncs[i];
                 if (tokeneq(func->funcDef.base->primitive.token, base) &&
                     tokeneq(func->funcDef.name, prop)) {
-                    result          = func->funcDef.ret;
-                    expectedArgs    = func->resolved->func.args;
-                    variadic        = func->resolved->func.variadic;
+                    result              = func->funcDef.ret;
+                    expectedArgs        = func->resolved->func.args;
+                    variadic            = func->resolved->func.variadic;
+                    callee->resolved    = func->resolved;
                 }
             }
         } else if (baseSym->kind == Z_SYM_ENUM) {
@@ -886,18 +887,19 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             if (!strct) {
                 error(semantic->state, prop,
                     "Field '%s' not found for enum '%s'",
-                    prop, base
+                    prop->str, base->str
                 );
                 return NULL;
             }
 
-            
-            for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+            /* Skip the first argument (always the flag). */
+            for (usize i = 1; i < veclen(strct->strct.fields); i++) {
                 strct->strct.fields[i]->field.type = resolveTypeRef(
                     semantic, strct->strct.fields[i]->field.type
                 );
                 vecpush(expectedArgs, strct->strct.fields[i]->field.type);
             }
+            callee->resolved = baseSym->type;
             result = baseSym->type;
         } else if (baseSym->kind == Z_SYM_TYPEDEF) {
             error(
@@ -1700,7 +1702,31 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
 }
 
 static void analyzeEnum(ZSemantic *semantic, ZNode *enumDef) {
-    warning(semantic->state, enumDef->tok, "Enum semantic not analyzed");
+    if (!enumDef->resolved) {
+        error(semantic->state, enumDef->tok, "Expected a resolved type");
+        return;
+    }
+
+    ZSymbol *sym = resolve(semantic, enumDef->enumDef.name);
+    if (!sym) {
+        error(semantic->state, enumDef->enumDef.name, "Enum not found");
+        return;
+    }
+
+    if (sym->type->kind != Z_TYPE_ENUM) {
+        error(semantic->state, enumDef->enumDef.name, "Type is not an enum");
+        return;
+    }
+
+    ZType *enm = sym->type;
+    ZType **fields = enm->enm.fields;
+    for (usize i = 0; i < veclen(fields); i++) {
+        ZNode **enumField = fields[i]->strct.fields;
+
+        for (usize j = 0; j < veclen(enumField); j++) {
+            printNode(enumField[i], 0);
+        }
+    }
 }
 
 /* ================== Main analysis pass ================== */

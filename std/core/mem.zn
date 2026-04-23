@@ -1,0 +1,19 @@
+foreign *u8 malloc(u64)
+foreign *u8 realloc(*u8, u64)
+foreign u0 free(*u8)
+
+pub struct Allocator {
+    u64 bytes
+}
+
+for Allocator {
+    pub Allocator new() {
+        return Allocator{ bytes: 0 }
+    }
+}
+
+for Allocator self {
+    pub *u8 alloc(u64 size) { return malloc(size) }
+    pub *u8 realloc(*u8 ptr, u64 size) { return realloc(ptr, size) }
+    pub u0 free(*u8 ptr) { free(ptr) }
+}

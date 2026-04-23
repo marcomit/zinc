@@ -923,10 +923,21 @@ static ZNode *parseEnumField(ZParser *parser) {
     enm->strct.name             = name;
     enm->strct.fields           = NULL;
 
+    /* Prepend the flag type. */
+    ZNode *field                = makenode(NODE_FIELD);
+    field->field.identifier     = NULL;
+
+    ZType *flag                 = maketype(Z_TYPE_PRIMITIVE);
+    flag->primitive.token       = maketoken(TOK_U8, NULL);
+    field->field.type           = flag;
+
+    vecpush(enm->strct.fields, field);
+
+    // vecpush(enm->strct.fields, );
     for (usize i = 0; i < veclen(types); i++) {
-        ZNode *field = makenode(NODE_FIELD);
+        field                   = makenode(NODE_FIELD);
         field->field.identifier = NULL;
-        field->field.type       = types[i];
+        field->field.type       = types[i];    
 
         vecpush(enm->strct.fields, field);
     }

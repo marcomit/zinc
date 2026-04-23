@@ -197,7 +197,7 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
 
 char *label(ZCodegen *ctx) {
     vecsetlen(ctx->str, 0);
-    sprintf(ctx->str, "zn%zx", ctx->count);
+    sprintf(ctx->str, "zn%.3zx", ctx->count);
 
     ctx->count++;
     return ctx->str;
@@ -644,13 +644,66 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
     return stack->stack;
 }
 
+static i32 enumIndexField(ZType *enumType, ZToken *field) {
+    for (usize i = 0; i < veclen(enumType->enm.fields); i++) {
+        if (tokeneq(enumType->enm.fields[i]->strct.name, field)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static LLVMValueRef genEnumDecl(ZCodegen *ctx, ZNode *node) {
+    ZLLVMStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        error(ctx->state, node->tok, "Missing stack value");
+        return NULL;
+    }
+
+    i32 index = enumIndexField(
+        node->resolved,
+        node->call.callee->staticAccess.prop
+    );
+
+    if (index == -1) {
+        error(ctx->state, node->staticAccess.prop, "Field not found");
+        return NULL;
+    }
+
+    LLVMTypeRef enumType = genType(ctx, node->resolved);
+    LLVMTypeRef fieldType = genType(ctx, node->resolved->enm.fields[index]);
+
+    LLVMBuildStore(
+        ctx->builder,
+        LLVMConstInt(i8Type, (u32)index, false),
+        stack->stack
+    );
+
+    ZNode **args = node->call.args;
+    for (usize i = 0; i < veclen(args); i++) {
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
+            ctx->builder, fieldType, stack->stack, i + 1, label(ctx));
+
+        LLVMBuildStore(
+            ctx->builder,
+            genExpr(ctx, args[i]),
+            fieldPtr
+        );
+
+    }
+
+    return LLVMBuildLoad2(
+        ctx->builder,
+        enumType,
+        stack->stack, label(ctx));
+}
+
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef func;
     LLVMValueRef *args = NULL;
     ZNode *callee = node->call.callee;
 
-    bool isRecFunc = callee->type == NODE_MEMBER;
-    if (isRecFunc) {
+    if (callee->type == NODE_MEMBER) {
         if (!callee->memberAccess.mangled) {
             error(ctx->state, callee->memberAccess.object->tok,
                     "Mangling name not found");
@@ -667,6 +720,8 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         LLVMValueRef self = genExpr(ctx, callee->memberAccess.object);
         vecpush(args, self);
 
+    } else if (callee->resolved->kind == Z_TYPE_ENUM) {
+        return genEnumDecl(ctx, node);
     } else {
         func = genExpr(ctx, callee);
     }
@@ -1215,6 +1270,11 @@ static LLVMValueRef genSubscript(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
+    if (!node || !node->resolved || node->resolved->kind != Z_TYPE_FUNCTION) {
+        error(ctx->state, node->tok, "Invalid genStaticAccess");
+        return NULL;
+    }
+
     char *mangled = node->staticAccess.mangled;
 
     if (!mangled) {
@@ -1580,12 +1640,64 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     }
 }
 
+static void addFuncVar(ZCodegen *ctx,
+        LLVMValueRef stack, LLVMTypeRef type, ZNode *node) {
+    ZLLVMStack *item = zalloc(ZLLVMStack);
+    *item = (ZLLVMStack){ .stack = stack, .type = type, .node = node };
+    vecpush(ctx->scope->stackAlloca, item);
+}
+
+/* Saves the pointer for nested struct literals to avoi creating
+ * another stack allocation.
+ * Example:
+ * MyStruct{
+ *   field: OtherStruct{ ...fields }
+ * }
+ *
+ * In this case the stack allocation has the size of MyStruct.
+ * For the nested struct (OtherStruct) It uses just a pointer
+ * to the previous stack allocation.
+ * */
+static void buildNestedFuncVar(
+    ZCodegen *ctx, ZNode *node, LLVMValueRef parent, LLVMTypeRef allocaType) {
+    if (node->type == NODE_STRUCT_LIT) {
+        ZNode **fields      = node->structlit.fields;
+
+        for (usize i = 0; i < veclen(fields); i++) {
+            ZNode *val      = fields[i]->varDecl.rvalue;
+            ZToken *name    = fields[i]->varDecl.pattern->tok;
+            ZType *type     = val->resolved;
+            int index       = typeIndex(
+                node->resolved,
+                name->str
+            );
+
+            if (index == -1) {
+                error(ctx->state, name, "Field not found");
+            }
+
+            LLVMValueRef ptr = LLVMBuildStructGEP2(
+                ctx->builder,
+                allocaType,
+                parent,
+                index,
+                label(ctx)
+            );
+
+            LLVMTypeRef typeRef = genType(ctx, type);
+
+            addFuncVar(ctx, ptr, typeRef, val);
+            buildNestedFuncVar(ctx, val, ptr, typeRef);
+        }
+    }
+}
+
 /* Stores the node in a list of stack allocation such that in the second pass
  * the expression knows where it should be stored.
  * NOTE: this method stores always the expression that requires the stack allocation.
  * So for variable declaration always store the rvalue node and not the variable node.
  * */
-static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name, ZType *typeOverride) {
+static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
     if (!node) {
         error(ctx->state, NULL, "'buildFuncVar' called with a null node");
         return;
@@ -1595,14 +1707,11 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, const char *name, ZType *ty
         return;
     }
 
-    ZType *allocaType = typeOverride ? typeOverride : node->resolved;
-    LLVMTypeRef type = genType(ctx, allocaType);
-    LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, name);
+    LLVMTypeRef type = genType(ctx, node->resolved);
+    LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx));
+    addFuncVar(ctx, val, type, node);
 
-    ZLLVMStack *item = zalloc(ZLLVMStack);
-    *item = (ZLLVMStack){ .stack = val, .type = type, .node = node };
-
-    vecpush(ctx->scope->stackAlloca, item);
+    buildNestedFuncVar(ctx, node, val, type);
 }
 
 /* All variables of the function body are allocated at the start of the block.
@@ -1620,13 +1729,13 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->returnStmt.expr);
         break;
     case NODE_TUPLE_LIT:
-        buildFuncVar(ctx, node, label(ctx), NULL);
+        buildFuncVar(ctx, node);
         for (usize i = 0; i < veclen(node->tuplelit); i++) {
             genFuncVars(ctx, node->tuplelit[i]);
         }
         break;
     case NODE_STRUCT_LIT:
-        buildFuncVar(ctx, node, label(ctx), NULL);
+        buildFuncVar(ctx, node);
         break;
     case NODE_CAST:
         genFuncVars(ctx, node->castExpr.expr);
@@ -1649,20 +1758,21 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->ifStmt.elseBranch);
         break;
     case NODE_VAR_DECL:
-        buildFuncVar(ctx, node->varDecl.rvalue,
-            label(ctx),
-            NULL);
+        buildFuncVar(ctx, node->varDecl.rvalue);
+        // genFuncVars(ctx, node->varDecl.rvalue);
         break;
     case NODE_CALL:
         if (!node->resolved) {
             error(ctx->state, node->tok, "Unresolved type");
         }
         if (!typesPrimitive(node->resolved)) {
-            buildFuncVar(ctx, node, label(ctx), NULL);
+            buildFuncVar(ctx, node);
         }
+        printf("Gen argus %zu\n", veclen(node->call.args));
         for (usize i = 0; i < veclen(node->call.args); i++) {
+            printf("Build argument %s\n", node->call.args[i]->tok->str);
             if (!typesPrimitive(node->call.args[i]->resolved)) {
-                buildFuncVar(ctx, node->call.args[i], label(ctx), NULL);
+                buildFuncVar(ctx, node->call.args[i]);
             }
         }
         break;
@@ -1676,7 +1786,9 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
             genFuncVars(ctx, node->block[i]);
         }
         break;
-    default: break;
+    default:
+        printf("Unhandled node %d\n", node->type);
+        break;
     }
 }
 

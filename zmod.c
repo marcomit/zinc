@@ -282,6 +282,9 @@ void printType(ZType *type) {
             printf(" ");
         }
         break;
+    case Z_TYPE_ENUM:
+        printf("enum %s\n", type->enm.name->str);
+        break;
     default:
         printf("(details not implemented for type %d)", type->kind);
         break;
@@ -382,8 +385,6 @@ void printNode(ZNode *node, u8 depth) {
     case NODE_VAR_DECL:
         printf("\n");
         printDestructedVar(node->varDecl.pattern, depth);
-        // printf("Var: %s Type: ", node->varDecl.ident->identNode.tok->str);
-        printType(node->resolved);
         if (node->varDecl.rvalue) {
             printf("\n");
             printNode(node->varDecl.rvalue, depth);

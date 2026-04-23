@@ -1,0 +1,8 @@
+use <core::mem>
+
+
+u0 main() {
+    heap := Allocator{ bytes: 0 }
+    Allocator::new()
+    heap.alloc(1024)
+}
