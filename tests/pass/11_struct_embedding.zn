@@ -1,0 +1,17 @@
+struct Vec {
+    f32 x
+    f32 y
+}
+
+struct Player {
+    ...Vec
+    i32 health
+}
+
+u0 main() {
+    val := Player {
+        x: 10,
+        y: 10,
+        health: 10
+    }
+}

@@ -14,10 +14,11 @@ static char *nodeLabels[] = {
     "BLOCK",        "IF",           "WHILE",        "FOR",          "RETURN",
     "VAR_DECL",     "BINARY",       "UNARY",        "CALL",         "FUNC",
     "LITERAL",      "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
-    "MODULE",       "FIELD",        "TYPEDEF",      "FOREIGN",      "DEFER",
-    "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",   "MACRO",
-    "GOTO",         "LABEL",        "TYPE",         "ENUM",         "BREAK",
-    "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATIC_ACCESS"
+    "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
+    "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
+    "MACRO",        "GOTO",         "LABEL",        "TYPE",         "ENUM",
+    "BREAK",        "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
+    "STATIC_ACCESS"
 };
 
 static char *levels[] = {
@@ -459,6 +460,13 @@ void printNode(ZNode *node, u8 depth) {
         printf("\n");
         printNode(node->forStmt.block, depth);
         break;
+    case NODE_EMBED_FIELD:
+        if (node->resolved) printf("%s\n", stype(node->resolved));
+        break;
+    case NODE_FIELD:
+        if (node->resolved) printf("%s: ", stype(node->resolved));
+        if (node->field.identifier) printf("%s\n" , node->field.identifier->str);
+        break;
     case NODE_STRUCT:
         if (node->structDef.pub) printf("pub ");
         printf("%s[", node->structDef.ident->str);
@@ -467,10 +475,7 @@ void printNode(ZNode *node, u8 depth) {
         }
         printf("]\n");
         for (usize i = 0; i < veclen(node->structDef.fields); i++) {
-            ZNode *field = node->structDef.fields[i];
-            indent(depth);
-            printType(field->field.type);
-            printf(" %s\n", field->field.identifier->str);
+            printNode(node->structDef.fields[i], depth);
         }
         break;
     case NODE_UNARY:

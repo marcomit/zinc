@@ -892,10 +892,29 @@ static ZNode *parseField(ZParser *parser) {
     if (check(parser, TOK_LPAREN)) {
     }
 
-    ZNode *node = makenode(NODE_FIELD);
-    node->field.type = type;
-    node->field.identifier = ident;
+    ZNode *node             = makenode(NODE_FIELD);
+    node->field.type        = type;
+    node->field.identifier  = ident;
+    node->resolved          = type;
     return node;
+}
+
+static ZNode *parseStructField(ZParser *parser) {
+    guard(canPeek(parser));
+
+    if (match(parser, TOK_TRIPLE_DOT)) {
+        if (!check(parser, TOK_IDENT)) {
+            error(parser->state, peek(parser), "Expected a struct here");
+            return NULL;
+        }
+        ZNode *node             = makenode(NODE_EMBED_FIELD);
+        ZType *type             = maketype(Z_TYPE_PRIMITIVE);
+        type->primitive.token   = consume(parser);
+        node->resolved          = type;
+        return node;
+    } else {
+        return parseField(parser);
+    }
 }
 
 static ZNode *parseEnumField(ZParser *parser) {
@@ -933,7 +952,6 @@ static ZNode *parseEnumField(ZParser *parser) {
 
     vecpush(enm->strct.fields, field);
 
-    // vecpush(enm->strct.fields, );
     for (usize i = 0; i < veclen(types); i++) {
         field                   = makenode(NODE_FIELD);
         field->field.identifier = NULL;
@@ -1009,22 +1027,12 @@ static ZNode *parseStructDecl(ZParser *parser, bool public) {
 
     ZNode **fields = parseGenericList(parser,
             TOK_LBRACKET, TOK_RBRACKET,
-            parseField, false);
+            parseStructField, false);
 
     if (veclen(fields) < 1) {
         error(parser->state, start, "Expected at least one field");
         return NULL;
     }
-
-    hashset_t seen = NULL;
-    for (usize i = 0; i < veclen(fields); i++) {
-        ZToken *ti = fields[i]->field.identifier;
-        if (!hashset_insert(&seen, ti->str)) {
-            error(parser->state, ti,
-                    "Field '%s' already declared", ti->str);
-        }
-    }
-    hashset_free(&seen);
 
     ZNode *node                 = makenode(NODE_STRUCT);
     node->structDef.fields      = fields;

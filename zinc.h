@@ -128,6 +128,7 @@ typedef enum {
     NODE_MEMBER,
     NODE_MODULE,
     NODE_FIELD,
+    NODE_EMBED_FIELD,
     NODE_TYPEDEF,
     NODE_FOREIGN,
     NODE_DEFER,

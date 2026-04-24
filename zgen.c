@@ -394,17 +394,18 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         putStructInCache(ctx, (char *)name, structType);
 
         ZNode **fields = type->strct.fields;
-        usize nfields = veclen(fields);
-        LLVMTypeRef *ftypes = znalloc(LLVMTypeRef, nfields ? nfields : 1);
-        for (usize i = 0; i < nfields; i++) {
+        LLVMTypeRef *ftypes = NULL;
+        for (usize i = 0; i < veclen(fields); i++) {
+            if (fields[i]->type == NODE_EMBED_FIELD) continue;
             if (!fields[i]->field.type) {
                 error(ctx->state, type->strct.name, "Type not found");
                 return NULL;
             }
-            ftypes[i] = genType(ctx, fields[i]->field.type);
-            if (!ftypes[i]) return NULL;
+            LLVMTypeRef ref = genType(ctx, fields[i]->field.type);
+            if (!ref) return NULL;
+            vecpush(ftypes, ref);
         }
-        LLVMStructSetBody(structType, ftypes, (unsigned)nfields, /*packed=*/0);
+        LLVMStructSetBody(structType, ftypes, veclen(ftypes), /*packed=*/0);
         return structType;
     }
 
@@ -1620,16 +1621,16 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     if (!stmt) return;
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
-    case NODE_VAR_DECL: genVarDecl  (ctx, stmt);    break;
+    case NODE_IF:       genIf       (ctx, stmt);    break;
+    case NODE_FOR:      genFor      (ctx, stmt);    break;
     case NODE_RETURN:   genRet      (ctx, stmt);    break;
     case NODE_CALL:     genCall     (ctx, stmt);    break;
-    case NODE_IF:       genIf       (ctx, stmt);    break;
     case NODE_BLOCK:    genBlock    (ctx, stmt);    break;
     case NODE_WHILE:    genWhile    (ctx, stmt);    break;
-    case NODE_FOR:      genFor      (ctx, stmt);    break;
     case NODE_BREAK:    genBreak    (ctx, stmt);    break;
-    case NODE_CONTINUE: genContinue (ctx, stmt);    break;
     case NODE_DEFER:    genDefer    (ctx, stmt);    break;
+    case NODE_VAR_DECL: genVarDecl  (ctx, stmt);    break;
+    case NODE_CONTINUE: genContinue (ctx, stmt);    break;
     default: {
         LLVMValueRef compiled = genExpr(ctx, stmt);
         if (compiled) return;
@@ -1674,7 +1675,9 @@ static void buildNestedFuncVar(
             );
 
             if (index == -1) {
+                printf("Field not found\n");
                 error(ctx->state, name, "Field not found");
+                continue;
             }
 
             LLVMValueRef ptr = LLVMBuildStructGEP2(

@@ -1034,23 +1034,32 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
         ZType *promoted;
 
         field->resolved = type;
-        for (usize j = 0; j < structLen; j++) {
-            if (!tokeneq(structFields[j]->field.identifier, field->tok)) continue;
-            expectedType = resolveTypeRef(semantic, structFields[j]->field.type);
-            structFields[j]->field.type = expectedType;
-            promoted = typesCompatible(semantic->state, expectedType, type);
-            if (!promoted) {
-                error(semantic->state,
-                    field->tok,
-                    "Expected %s, got %s",
-                    stype(expectedType),
-                    stype(type)
-                );
-            } else {
-            }
+        ZNode *structField = NULL;
+        for (usize j = 0; j < structLen && !structField; j++)
+            if (tokeneq(structFields[j]->field.identifier, field->tok))
+                structField = structFields[j];
 
-            break;
+        if (!structField) {
+            error(semantic->state, field->tok,
+                "Field '%s' not found for struct '%s'",
+                field->tok->str, structSym->name->str
+            );
+            return NULL;
         }
+        expectedType = resolveTypeRef(semantic, structField->field.type);
+        structField->field.type = expectedType;
+        promoted = typesCompatible(semantic->state, expectedType, type);
+        if (!promoted) {
+            error(semantic->state,
+                field->tok,
+                "Expected %s, got %s",
+                stype(expectedType),
+                stype(type)
+            );
+        } else {
+        }
+
+        break;
     }
     ZSymbol *resolved = resolve(semantic, curr->structlit.ident);
 
@@ -1686,7 +1695,9 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
     usize len = veclen(fields);
 
     for (usize i = 0; i < len; i++) {
-        let field = fields[i];
+        ZNode *field = fields[i];
+
+        if (field->type == NODE_EMBED_FIELD) continue;
         field->field.type = _resolveTypeRef(semantic, field->field.type, seen);
     }
 
