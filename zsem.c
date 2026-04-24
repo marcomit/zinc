@@ -718,13 +718,16 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
     switch (type->kind) {
     case Z_TYPE_STRUCT:
         if (type == root) return true;
+
         for (usize i = 0; i < veclen(seen); i++)
-            if (seen[i] == type) return false;
+            if (typesEqual(seen[i], type)) return false;
+
         vecpush(seen, type);
         for (usize i = 0; i < veclen(type->strct.fields); i++)
             if (isInfiniteSize(type->strct.fields[i]->field.type, root, seen))
                 return true;
         return false;
+
     case Z_TYPE_POINTER:
         return false;
     case Z_TYPE_ARRAY:
@@ -1720,11 +1723,20 @@ static void analyzeEnum(ZSemantic *semantic, ZNode *enumDef) {
 
     ZType *enm = sym->type;
     ZType **fields = enm->enm.fields;
+    hashset_t seen = NULL;
+
     for (usize i = 0; i < veclen(fields); i++) {
+        if (!hashset_insert(&seen, fields[i]->strct.name->str)) {
+            error(semantic->state, fields[i]->strct.name,
+                "This field already declared in the same enum");
+        }
         ZNode **enumField = fields[i]->strct.fields;
 
         for (usize j = 0; j < veclen(enumField); j++) {
-            printNode(enumField[i], 0);
+            if (!enumField[j] || 
+                !enumField[j]->field.type) continue; 
+            ZType *resolved = resolveTypeRef(semantic, enumField[j]->field.type);
+            enumField[j]->field.type = resolved;
         }
     }
 }

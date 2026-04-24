@@ -241,7 +241,8 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
         case TOK_U64:
         case TOK_F64:   return 8;
         default:
-            error(ctx->state, type->tok, "Unknown type");
+            error(ctx->state, type->tok,
+                "Unknown type (zsem didn't resolve this type)");
             return 0;
         }
     case Z_TYPE_POINTER:

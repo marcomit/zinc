@@ -1,32 +1,11 @@
-struct Nested {
-    i32 val
-    Point p
+enum Json {
+    None
+    Bool(u1)
+    Num(f64)
+    String(*char)
+    List(Json) // List(Vec[Json])
 }
-
-struct Point {
-    f32 x
-    f32 y
-}
-
-enum Foo {
-    ABool(u1)
-    AInteger(i32)
-    ADouble(f64)
-    AStruct(Nested)
-}
-
 
 u0 main() {
-//    x := Foo::AInteger(42)
-//    y := Foo::ADouble(1337.0)
-//    z := Foo::ABool(true)
-//
-//    t := Foo::AStruct(Nested{
-//        val: 10,
-//        p: Point{ x: 10, y: 10 }
-//    })
-    val := Nested {
-        val: 10,
-        p: Point { x: 10, y: 10 }
-    }
+    json := Json::None()
 }
