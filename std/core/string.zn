@@ -1,12 +1,12 @@
-use <core::mem>
-pub foreign u0    printf(*char)
-pub foreign i32   putchar(i32)
-pub foreign u64   strlen(*char)
-pub foreign i32   strcmp(*char, *char)
-pub foreign i32   strncmp(*char, *char, u64)
-pub foreign *u8   strcpy(*u8, *char)
-pub foreign *u8   strcat(*u8, *char)
-pub foreign *char strstr(*char, *char)
+pub foreign u0      printf(*char)
+pub foreign i32     putchar(i32)
+pub foreign u64     strlen(*char)
+pub foreign i32     strcmp(*char, *char)
+pub foreign i32     strncmp(*char, *char, u64)
+pub foreign *u8     strcpy(*u8, *char)
+pub foreign *u8     strcat(*u8, *char)
+pub foreign *char   strstr(*char, *char)
+pub foreign *u8     malloc(u64)
 
 pub struct String {
     *char data

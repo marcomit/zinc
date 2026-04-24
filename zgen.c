@@ -1769,9 +1769,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         if (!typesPrimitive(node->resolved)) {
             buildFuncVar(ctx, node);
         }
-        printf("Gen argus %zu\n", veclen(node->call.args));
         for (usize i = 0; i < veclen(node->call.args); i++) {
-            printf("Build argument %s\n", node->call.args[i]->tok->str);
             if (!typesPrimitive(node->call.args[i]->resolved)) {
                 buildFuncVar(ctx, node->call.args[i]);
             }
@@ -1788,7 +1786,6 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         }
         break;
     default:
-        printf("Unhandled node %d\n", node->type);
         break;
     }
 }
