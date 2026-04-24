@@ -62,7 +62,7 @@ typedef struct {
 
     ZLLVMScope      *scope;
 
-    /* Struct type cache — parallel arrays keyed by name */
+    /* Struct type cache - parallel arrays keyed by name */
     char            **structNames;
     LLVMTypeRef     *structTypes;
 
@@ -155,7 +155,7 @@ static void initNativeTypes(ZCodegen *ctx) {
 
 static void beginModule(ZCodegen *ctx, ZNode *node) {
     /* Save the current LLVM module so endModule can restore it.
-       For the root module ctx->mod is NULL — create the one module
+       For the root module ctx->mod is NULL - create the one module
        that the whole compilation shares.  Imported modules reuse it. */
     LLVMModuleRef prev = ctx->mod;
     if (!ctx->mod) {
@@ -454,7 +454,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 
 
     case Z_TYPE_NONE:
-        /* none literal — represent as i8* null */
+        /* none literal - represent as i8* null */
         return LLVMPointerType(i8Type, 0);
 
     default:
@@ -518,8 +518,8 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
         error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
         return NULL;
     }
-    /* Local variables are stored as allocas — load to get the value.
-       Functions are stored directly — return as-is. */
+    /* Local variables are stored as allocas - load to get the value.
+       Functions are stored directly - return as-is. */
     if (LLVMGetValueKind(val) == LLVMInstructionValueKind) {
         LLVMTypeRef type = genType(ctx, node->resolved);
         return LLVMBuildLoad2(ctx->builder, type, val, node->tok->str);
@@ -629,7 +629,7 @@ static LLVMValueRef genVarDecl(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef val = genExpr(ctx, node->varDecl.rvalue);
 
     /* Skip the store if genExpr already wrote the value in-place (e.g. struct/array
-     * literals return the pre-allocated slot pointer — storing it would self-overwrite).
+     * literals return the pre-allocated slot pointer - storing it would self-overwrite).
      * For register-sized values, cast to the variable's declared type first. */
     if (val && val != stack->stack && (!node->resolved || fitsInRegister(val))) {
         val = castValue(ctx, val, node->varDecl.rvalue->resolved, node->resolved);
@@ -1012,7 +1012,7 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
     if (!val || !from || !to) return val;
     if (typesEqual(from, to)) return val;
 
-    /* none (null pointer) is compatible with any pointer — val is already ptr null */
+    /* none (null pointer) is compatible with any pointer - val is already ptr null */
     if (from->kind == Z_TYPE_NONE && to->kind == Z_TYPE_POINTER)
         return val;
 
@@ -1094,7 +1094,7 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
     ZType *from = node->castExpr.expr->resolved;
     ZType *to   = node->castExpr.toType;
 
-    /* Array-literal cast: [n]T as []U — write each element directly into
+    /* Array-literal cast: [n]T as []U - write each element directly into
      * the pre-allocated slot with per-element casting.
      * genArrayLit can't be used here because the stack slot is keyed on
      * this cast node, not on the inner array-literal node. */
@@ -1246,7 +1246,7 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
             return NULL;
         }
         /* A call returning a struct comes back as an aggregate value,
-           not a pointer — store it directly. */
+           not a pointer - store it directly. */
         if (LLVMGetTypeKind(LLVMTypeOf(val)) == LLVMPointerTypeKind &&
             node->resolved->array.base->kind == Z_TYPE_STRUCT) {
             val = LLVMBuildLoad2(ctx->builder, elemType, val, label(ctx));

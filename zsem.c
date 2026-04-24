@@ -728,6 +728,19 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
                 return true;
         return false;
 
+    case Z_TYPE_ENUM:
+        if (type == root) return true;
+
+        for (usize i = 0; i < veclen(seen); i++)
+            if (typesEqual(seen[i], type)) return false;
+
+        vecpush(seen, type);
+
+        for (usize i = 0; i < veclen(type->enm.fields); i++) {
+            if (isInfiniteSize(type->enm.fields[i], root, seen)) return true;
+        }
+        return false;
+
     case Z_TYPE_POINTER:
         return false;
     case Z_TYPE_ARRAY:
@@ -763,8 +776,11 @@ static ZType *_resolveTypeRef(ZSemantic *semantic, ZType *type, ZType **seen) {
         return type;
     case Z_TYPE_FUNCTION:
         type->func.ret = _resolveTypeRef(semantic, type->func.ret, seen);
-        for (usize i = 0; i < veclen(type->func.args); i++)
-            type->func.args[i] = _resolveTypeRef(semantic, type->func.args[i], seen);
+        for (usize i = 0; i < veclen(type->func.args); i++) {
+            type->func.args[i] = _resolveTypeRef(semantic,
+                type->func.args[i],
+                seen);
+        }
         return type;
     case Z_TYPE_TUPLE:
         for (usize i = 0; i < veclen(type->tuple); i++)
@@ -826,10 +842,11 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
         if (sym->node->type == NODE_FUNC) {
             callee->identNode.mangled = sym->node->funcDef.mangled;
         }
-        /* sym->type is the raw parsed return type — resolve it so that named
-     * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
-     * result is used downstream (e.g. for member access on return value). */
 
+        /* sym->type is the raw parsed return type - resolve it so that named
+         * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
+         * result is used downstream (e.g. for member access on return value).
+         * */
         for (usize i = 0; i < veclen(sym->type->func.args); i++) {
             sym->type->func.args[i] = resolveTypeRef(
                 semantic, sym->type->func.args[i]
@@ -1746,8 +1763,18 @@ static void analyzeEnum(ZSemantic *semantic, ZNode *enumDef) {
         for (usize j = 0; j < veclen(enumField); j++) {
             if (!enumField[j] || 
                 !enumField[j]->field.type) continue; 
+            ZType **szSeen = NULL;
             ZType *resolved = resolveTypeRef(semantic, enumField[j]->field.type);
-            enumField[j]->field.type = resolved;
+            if (!resolved) continue;
+            if (isInfiniteSize(resolved, enm, szSeen)) {
+                error(semantic->state,
+                    enumField[j]->field.type->tok,
+                    "field '%s' embeds enum by value causing infinite size; use a pointer",
+                    enumField[j]->field.type->tok->str);
+            } else {
+                enumField[j]->field.type = resolved;
+                enumField[j]->resolved = resolved;
+            }
         }
     }
 }

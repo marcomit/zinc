@@ -1,3 +1,5 @@
+foreign u0 printf(*char, ...)
+
 enum Json {
     None
     Bool(u1)
@@ -7,5 +9,5 @@ enum Json {
 }
 
 u0 main() {
-    json := Json::None()
+    printf("hi")
 }
