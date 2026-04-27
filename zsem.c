@@ -19,7 +19,18 @@
 #include "zhset.h"
 #include "zinc.h"
 #include "zvec.h"
+#include "zarena.h"
+
+#include <stdatomic.h>
 #include <stdbool.h>
+
+typedef struct {
+    ZSemantic   *semantic;
+    arena_t     *arena;
+    ZType       *currentFuncRet;
+    ZNode       *currentFunc;
+    u16         loopDepth;
+} ZThreadSem;
 
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
@@ -40,6 +51,18 @@ static ZScope *makescope(ZScope *parent, ZNode *node) {
     self->node          = node;
     self->symbols       = NULL;
     self->seen          = NULL;
+    return self;
+}
+
+static ZThreadSem *makethreadsem(ZSemantic *semantic) {
+    ZThreadSem *self        = zalloc(ZThreadSem);
+
+    self->arena             = createArena();
+    self->currentFunc       = NULL;
+    self->currentFuncRet    = NULL;
+    self->loopDepth         = 0;
+    self->semantic          = semantic;
+
     return self;
 }
 
@@ -71,6 +94,7 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
     self->scopes            = NULL;
     self->seen              = NULL;
     self->funcQueue         = NULL;
+    atomic_init(&self->funcIndex, 0);
     return self;
 }
 
@@ -249,6 +273,7 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
         }
         putSymbol(semantic, f);
     }
+    vecpush(semantic->funcQueue, node);
 }
 
 ZNode *getStructField(ZSemantic *semantic, ZType *strct, ZToken *field) {
@@ -1864,25 +1889,6 @@ static ZType *makePrimitiveType(ZTokenType type) {
     return self;
 } 
 
-static void visitReachableFuncs(ZSemantic *semantic) {
-    if (!semantic->main) {
-        error(semantic->state, NULL, "missing 'main' declaration");
-        return;
-    }
-
-    if (semantic->funcQueue) {
-        vecsetlen(semantic->funcQueue, 0);
-    }
-
-    vecpush(semantic->funcQueue, semantic->main);
-
-    usize analyzed = 0;
-
-    while (analyzed < veclen(semantic->funcQueue)) {
-        ZSymbol *sym = semantic->funcQueue[analyzed++];
-    }
-}
-
 ZSemantic *zanalyze(ZState *state, ZNode *root) {
     state->currentPhase = Z_PHASE_SEMANTIC;
     ZSemantic *semantic = makesemantic(state, root);
@@ -1898,6 +1904,5 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     
     analyze(semantic, root);
 
-    visitReachableFuncs(semantic);
     return semantic;
 }

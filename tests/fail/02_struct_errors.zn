@@ -4,12 +4,8 @@ struct Greeter {
     f32 p
 }
 
-u0 Greeter::say() {
-    printf("Hi\n")
-}
-
-u0 Greeter::say() {
-    printf("duplicate\n")
+for Greeter {
+    u0 say() { printf("Hi\n") }
 }
 
 i32 main() {

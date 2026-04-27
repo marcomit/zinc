@@ -5,6 +5,7 @@
 #include "zvec.h"
 #include "zhset.h"
 #include "zmem.h"
+#include <stdatomic.h>
 
 #ifdef _WIN32
 static char sep = '\\';
@@ -627,15 +628,9 @@ typedef struct ZSemantic {
     ZSymbol         *main;
     ZSymTable       *table;
     ZScopeTable     **scopes;
-    ZType           *currentFuncRet;
-    ZNode           *currentFunc;
-    u16             loopDepth;
 
     /* Set of seen symbols (by name) */
     hashset_t       seen;    
-
-    /* Queue used in the second phase */
-    ZSymbol         **funcQueue;
 } ZSemantic;
 
 /* Lexer */
