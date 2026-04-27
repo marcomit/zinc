@@ -313,6 +313,24 @@ static void putStructInCache(ZCodegen *ctx, char *name, LLVMTypeRef strct) {
     vecpush(ctx->structTypes, strct);
 }
 
+// static void genStructType(ZCodegen *ctx, ZType *strct, LLVMTypeRef *fields) {
+//     if (!strct) return;
+//     if (strct->kind != Z_TYPE_STRUCT) {
+//         vecpush(fields, genType(ctx, strct));
+//         return;
+//     }
+//
+//     for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+//         ZNode *field = strct->strct.fields[i];
+//
+//         if (field->type == NODE_EMBED_FIELD) {
+//             genStructType(ctx, field->resolved, fields);
+//         } else if (field->type == NODE_FIELD) {
+//             vecpush(fields, genType(ctx, field->field.type));
+//         }
+//     }
+// }
+
 static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     if (!type) {
         error(ctx->state, NULL, "Invalid 'genType' call");
@@ -347,7 +365,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
                         "unknown primitive type '%s'",
                         name->str);
             return NULL;
-         }
+        }
         }
     }
 
@@ -396,7 +414,6 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         ZNode **fields = type->strct.fields;
         LLVMTypeRef *ftypes = NULL;
         for (usize i = 0; i < veclen(fields); i++) {
-            if (fields[i]->type == NODE_EMBED_FIELD) continue;
             if (!fields[i]->field.type) {
                 error(ctx->state, type->strct.name, "Type not found");
                 return NULL;
@@ -1127,12 +1144,13 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
 
 /* dest: optional pre-allocated slot to write into (e.g. an array element GEP).
    If NULL, a fresh alloca is emitted. Returns the destination pointer. */
-static LLVMValueRef genStructLitInto(ZCodegen *ctx, ZNode *node, LLVMValueRef dest) {
-    LLVMTypeRef structType = genType(ctx, node->resolved);
-
-    LLVMValueRef ptr = dest ? dest : LLVMBuildAlloca(ctx->builder, structType, label(ctx));
-
-    ZNode **fields = node->structlit.fields;
+static LLVMValueRef genStructLitInto(
+        ZCodegen *ctx, ZNode *node, LLVMValueRef dest) {
+    LLVMTypeRef structType  = genType(ctx, node->resolved);
+    LLVMValueRef ptr        = dest ? dest :
+                                LLVMBuildAlloca(
+                                        ctx->builder, structType, label(ctx));
+    ZNode **fields          = node->structlit.fields;
 
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *var = fields[i];
@@ -1420,7 +1438,7 @@ static void genRetChainDefer(ZCodegen *ctx) {
 }
 
 static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
-    if (!ret->returnStmt.expr) {
+    if (!ret->returnStmt.expr || isVoid(ret->resolved)) {
         genRetChainDefer(ctx);
         return LLVMBuildRetVoid(ctx->builder);
     }

@@ -465,7 +465,7 @@ void printNode(ZNode *node, u8 depth) {
         break;
     case NODE_FIELD:
         if (node->resolved) printf("%s: ", stype(node->resolved));
-        if (node->field.identifier) printf("%s\n" , node->field.identifier->str);
+        if (node->field.identifier) printf("%s" , node->field.identifier->str);
         break;
     case NODE_STRUCT:
         if (node->structDef.pub) printf("pub ");

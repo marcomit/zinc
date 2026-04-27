@@ -2,17 +2,14 @@ foreign u0 printf(*char)
 
 u0 greet() {
     printf("greet\n")
-    return
 }
 
 u0 say_bye() {
     printf("bye\n")
-    return
 }
 
 u0 print_msg(*char msg) {
     printf(msg)
-    return
 }
 
 i32 add(i32 a, i32 b) {

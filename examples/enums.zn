@@ -5,9 +5,9 @@ enum Json {
     Bool(u1)
     Num(f64)
     String(*char)
-    List(Json) // List(Vec[Json])
+    List(*Json) // List(Vec[Json])
 }
 
 u0 main() {
-    printf("hi")
+    
 }

@@ -1,4 +1,4 @@
-pub foreign u0      printf(*char)
+pub foreign u0      printf(*char, ...)
 pub foreign i32     putchar(i32)
 pub foreign u64     strlen(*char)
 pub foreign i32     strcmp(*char, *char)
@@ -14,9 +14,7 @@ pub struct String {
 }
 
 for String {
-    pub String from(*char s) {
-        return String { data: s, len: strlen(s) }
-    }
+    pub String from(*char s) -> String { data: s, len: strlen(s) }
 
     pub String withCapacity(u64 cap) {
         *char buf = malloc(cap + 1)
@@ -37,30 +35,17 @@ for String {
 }
 
 for String self {
-    pub u64 len() {
-        return self.len
-    }
+    pub u64 len() -> self.len
 
-    pub u1 isEmpty() {
-        return self.len == 0
-    }
+    pub u1 isEmpty() -> self.len == 0
 
-    pub u0 print() {
-        printf(self.data)
-    }
+    pub u0 print() -> printf(self.data)
 
-    pub u0 println() {
-        printf(self.data)
-        putchar(10)
-    }
+    pub u0 println() -> printf("%s\n", self.data)
 
-    pub u1 eq(*char other) {
-        return strcmp(self.data, other) == 0
-    }
+    pub u1 eq(*char other) -> strcmp(self.data, other) == 0
 
-    pub u1 neq(*char other) {
-        return strcmp(self.data, other) != 0
-    }
+    pub u1 neq(*char other) -> strcmp(self.data, other) != 0
 
     pub u1 startsWith(*char prefix) {
         u64 plen = strlen(prefix)
@@ -73,9 +58,7 @@ for String self {
 
     pub u1 contains(*char other) {
         *char found = strstr(self.data, other)
-        if not found {
-            return false
-        }
+        if not found { return false }
         return true
     }
 
@@ -103,3 +86,5 @@ for String self {
         }
     }
 }
+
+u0 main() -> printf("ok\n")

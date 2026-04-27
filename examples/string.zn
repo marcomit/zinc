@@ -1,5 +1,5 @@
-use <mem>
-use <strings>
+use <core::mem>
+use <core::string>
 
 i32 main() {
 

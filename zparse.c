@@ -134,6 +134,7 @@ static ZToken *peekAhead(ZParser *parser, usize next) {
 }
 
 ZToken *peek(ZParser *parser) {
+    if (!canPeek(parser)) return NULL;
     while (parser->source && parser->source->current >= parser->source->end) {
         parser->source = parser->source->prev;
     }
@@ -468,10 +469,10 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     if (!tok || tok->newlineBefore) goto cleanup;
 
     switch (tok->type) {
-    case TOK_LSBRACKET: res = parseArrSubscript(parser, previous);  break;
-    case TOK_LPAREN:    res = parseFuncCall(parser, previous);      break;
-    case TOK_CAST:      res = parseCast(parser, previous);          break;
-    case TOK_DOT:       res = parseMemberAccess(parser, previous);  break;
+    case TOK_DOT:       res = parseMemberAccess (parser, previous); break;
+    case TOK_CAST:      res = parseCast         (parser, previous); break;
+    case TOK_LPAREN:    res = parseFuncCall     (parser, previous); break;
+    case TOK_LSBRACKET: res = parseArrSubscript (parser, previous); break;
     default:            break;
     }
 
@@ -1075,6 +1076,11 @@ static ZNode *parseReturn(ZParser *parser) {
     return ret;
 }
 
+[[__maybe_unused__]]
+static ZNode *parseIfExpr([[__maybe_unused__]] ZParser *parser) {
+    return NULL;
+}
+
 static ZNode *parseIf(ZParser *parser) {
     ZToken *start = peek(parser);
     expect(parser, TOK_IF);
@@ -1339,7 +1345,21 @@ static ZNode *parseFuncDecl(ZParser *parser, bool public) {
         parseField,
         true);
 
-    ZNode *body = wrapNode(parser, parseBlock);
+    ZNode *body = NULL;
+
+    if (match(parser, TOK_ARROW)) {
+        ZNode *expr = wrapNode(parser, parseExpr);
+        if (expr) {
+            ZNode *ret = makenode(NODE_RETURN);
+            ret->returnStmt.expr = expr;
+            body = makenode(NODE_BLOCK);
+            vecpush(body->block, ret);
+        }
+    } else if (check(parser, TOK_LBRACKET)) {
+        body = wrapNode(parser, parseBlock);
+    } else {
+        error(parser->state, peek(parser), "Unexpected token");
+    }
 
     if (!body) {
         error(parser->state, peek(parser),
