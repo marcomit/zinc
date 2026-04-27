@@ -242,6 +242,10 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
 
         if (strcmp(node->funcDef.name->str, "main") == 0) {
             semantic->main = f;
+            if (node->funcDef.ret && isVoid(node->funcDef.ret)) {
+                error(semantic->state, node->funcDef.name,
+                      "'main' must return i32");
+            }
         }
         putSymbol(semantic, f);
     }
@@ -309,20 +313,27 @@ static void putVarPattern(
         }
 
         for (usize i = 0; i < veclen(pattern->fields); i++) {
-            ZNode *structField = getStructField(semantic, type, pattern->fields[i]->tok);
+            ZNode *structField = getStructField(semantic, type, pattern->fields[i]->key);
 
             if (!structField) {
-                error(semantic->state, pattern->fields[i]->tok,
+                error(semantic->state, pattern->fields[i]->key,
                     "Field '%s' not found in %s",
-                    pattern->fields[i]->tok->str,
+                    pattern->fields[i]->key->str,
                     stype(type)
                 );
-            }   
-            putVarPattern(semantic,
-                node,
-                structField->field.type,
-                pattern->fields[i]->value
-            );
+            } else if (!pattern->fields[i]->value) {
+                /* Shorthand {x} — bind to the field name itself. */
+                putRawSymbol(semantic, Z_SYM_VAR,
+                    pattern->fields[i]->key,
+                    structField->resolved,
+                    node, false);
+            } else {
+                putVarPattern(semantic,
+                    node,
+                    structField->resolved,
+                    pattern->fields[i]->value
+                );
+            }
         }
     }
 }
@@ -1065,14 +1076,11 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
         return NULL;
     }
 
-    ZNode **structFields = structSym->type->strct.fields;
-    usize structLen = veclen(structFields);
-
-    if (veclen(curr->structlit.fields) < structLen) {
+    if (veclen(curr->structlit.fields) == 0) {
         warning(semantic->state, curr->tok, "Some fields not initialized");
     }
 
-    for (usize i = 0; i < structLen; i++) {
+    for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
         ZNode *field = curr->structlit.fields[i];
         ZType *type = resolveType(semantic, field->varDecl.rvalue);
         ZType *expectedType;

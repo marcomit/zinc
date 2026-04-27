@@ -287,16 +287,51 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
     }
 }
 
-/* Returns the index of the field for a struct.
- * Returns -1 if it does not exist. */
-static i32 typeIndex(ZType *strct, char *fieldName) {
+static usize countFlatFields(ZType *strct) {
+    usize count = 0;
     for (usize i = 0; i < veclen(strct->strct.fields); i++) {
         ZNode *field = strct->strct.fields[i];
-        if (strcmp(field->field.identifier->str, fieldName) == 0) {
-            return i;
+        if (field->type == NODE_EMBED_FIELD)
+            count += countFlatFields(field->resolved);
+        else
+            count++;
+    }
+    return count;
+}
+
+/* Returns the index of the field for a struct.
+ * Returns -1 if it does not exist. */
+static i32 getStructIndex(ZType *strct, char *fieldName) {
+    usize flatOffset = 0;
+    for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+        ZNode *field = strct->strct.fields[i];
+        if (field->type == NODE_EMBED_FIELD) {
+            i32 found = getStructIndex(field->resolved, fieldName);
+            if (found != -1) return (i32)flatOffset + found;
+            flatOffset += countFlatFields(field->resolved);
+        } else if (field->type == NODE_FIELD) {
+            if (strcmp(field->field.identifier->str, fieldName) == 0) {
+                return (i32)flatOffset;
+            }
+            flatOffset++;
         }
     }
     return -1;
+}
+
+static ZNode *getStructField(ZType *strct, char *fieldName) {
+    for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+        ZNode *field = strct->strct.fields[i];
+        if (field->type == NODE_EMBED_FIELD) {
+            ZNode *found = getStructField(field->resolved, fieldName);
+            if (found) return found;
+        } else if (field->type == NODE_FIELD) {
+            if (strcmp(field->field.identifier->str, fieldName) == 0) {
+                return field;
+            }
+        }
+    }
+    return NULL;
 }
 
 static LLVMTypeRef getCachedStruct(ZCodegen *ctx, const char *name) {
@@ -313,7 +348,7 @@ static void putStructInCache(ZCodegen *ctx, char *name, LLVMTypeRef strct) {
     vecpush(ctx->structTypes, strct);
 }
 
-static void genStructType(ZCodegen *ctx, ZType *strct, LLVMTypeRef *fields) {
+static void genStructType(ZCodegen *ctx, ZType *strct, LLVMTypeRef **fields) {
     if (!strct) return;
     if (strct->kind != Z_TYPE_STRUCT) {
         error(ctx->state, strct->tok, "Invalid embedded type");
@@ -326,7 +361,7 @@ static void genStructType(ZCodegen *ctx, ZType *strct, LLVMTypeRef *fields) {
         if (field->type == NODE_EMBED_FIELD) {
             genStructType(ctx, field->resolved, fields);
         } else if (field->type == NODE_FIELD) {
-            vecpush(fields, genType(ctx, field->field.type));
+            vecpush(*fields, genType(ctx, field->field.type));
         }
     }
 }
@@ -412,7 +447,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         putStructInCache(ctx, (char *)name, structType);
 
         LLVMTypeRef *ftypes = NULL;
-        genStructType(ctx, type, ftypes);
+        genStructType(ctx, type, &ftypes);
         LLVMStructSetBody(structType, ftypes, veclen(ftypes), /*packed=*/0);
         return structType;
     }
@@ -820,7 +855,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
             baseType = baseType->base;
 
         if (baseType->kind == Z_TYPE_STRUCT) {
-            index = typeIndex(baseType, tok->str);
+            index = getStructIndex(baseType, tok->str);
         } else if (baseType->kind == Z_TYPE_TUPLE) {
             index = tok->integer;
         }
@@ -1154,14 +1189,15 @@ static LLVMValueRef genStructLitInto(
         }
         LLVMValueRef val = genExpr(ctx, var->varDecl.rvalue);
 
-        i32 index = typeIndex(node->resolved, name->str);
+        i32 index = getStructIndex(node->resolved, name->str);
+        ZNode *field = getStructField(node->resolved, name->str);
 
-        if (index == -1) {
+        if (!field) {
             error(ctx->state, name, "Unknown field '%s'", name->str);
             continue;
         }
 
-        ZType *fieldType = node->resolved->strct.fields[index]->field.type;
+        ZType *fieldType = field->field.type;
         val = castValue(ctx, val, var->varDecl.rvalue->resolved, fieldType);
 
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
@@ -1430,6 +1466,7 @@ static void genRetChainDefer(ZCodegen *ctx) {
 
 static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     if (!ret->returnStmt.expr || isVoid(ret->resolved)) {
+        if (ret->returnStmt.expr) genExpr(ctx, ret->returnStmt.expr);
         genRetChainDefer(ctx);
         return LLVMBuildRetVoid(ctx->builder);
     }
@@ -1678,7 +1715,7 @@ static void buildNestedFuncVar(
             ZNode *val      = fields[i]->varDecl.rvalue;
             ZToken *name    = fields[i]->varDecl.pattern->tok;
             ZType *type     = val->resolved;
-            int index       = typeIndex(
+            i32 index       = getStructIndex(
                 node->resolved,
                 name->str
             );
@@ -1720,9 +1757,7 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
         return;
     }
 
-    printf("Gen type %s\n", stype(node->resolved));
     LLVMTypeRef type = genType(ctx, node->resolved);
-    printf("Generated\n");
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx));
     addFuncVar(ctx, val, type, node);
 
@@ -1773,8 +1808,6 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->ifStmt.elseBranch);
         break;
     case NODE_VAR_DECL:
-        printf("Pr");
-        printNode(node->varDecl.rvalue, 4);
         buildFuncVar(ctx, node->varDecl.rvalue);
         break;
     case NODE_CALL:
@@ -1861,9 +1894,14 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     genChainDefer(ctx, ctx->scope->parent);
 
-    /* Add implicit ret void only if the block has no terminator yet. */
+    /* Add implicit return only if the block has no terminator yet. */
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMBuildRetVoid(ctx->builder);
+        LLVMTypeRef funcType = LLVMGlobalGetValueType(ctx->currentFunc);
+        LLVMTypeRef retType  = LLVMGetReturnType(funcType);
+        if (LLVMGetTypeKind(retType) == LLVMVoidTypeKind)
+            LLVMBuildRetVoid(ctx->builder);
+        else
+            LLVMBuildRet(ctx->builder, LLVMConstNull(retType));
     }
     endScope(ctx);
 

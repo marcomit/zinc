@@ -8,10 +8,11 @@ struct Player {
     i32 health
 }
 
-u0 main() {
+i32 main() {
     val := Player {
         x: 10,
         y: 10,
         health: 10
     }
+    return 0
 }

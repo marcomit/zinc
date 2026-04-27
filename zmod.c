@@ -297,6 +297,9 @@ static void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
 
     if (pattern->type == Z_VAR_IDENT) {
         printf("%s\n", pattern->ident->str);
+    } else if (pattern->type == Z_VAR_PAIR) {
+        printf("%s:\n", pattern->key->str);
+        printDestructedVar(pattern->value, depth + 1);
     } else {
         bool isTuple = pattern->type == Z_VAR_TUPLE;
         ZVarDestructPattern **list = isTuple ?
