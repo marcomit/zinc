@@ -247,6 +247,23 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
     }
 }
 
+ZNode *getStructField(ZSemantic *semantic, ZType *strct, ZToken *field) {
+    if (!strct) return NULL;
+    strct = resolveTypeRef(semantic, strct);
+    for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+        ZNode *structField = strct->strct.fields[i];
+        if (structField->type == NODE_EMBED_FIELD) {
+            ZNode *res = getStructField(semantic, structField->resolved, field);
+            if (res) return res;
+        } else if (structField->type == NODE_FIELD) {
+            if (tokeneq(structField->field.identifier, field)) {
+                return structField;
+            }
+        }
+    }
+    return NULL;
+}
+
 static void putVarPattern(
         ZSemantic *semantic, ZNode *node,
         ZType *type, ZVarDestructPattern *pattern) {
@@ -291,31 +308,21 @@ static void putVarPattern(
             return;
         }
 
-        i32 structIndex = -1;
-
-        usize structLen = veclen(type->strct.fields);
         for (usize i = 0; i < veclen(pattern->fields); i++) {
-            structIndex = -1;
-            for (usize j = 0; j < structLen && structIndex == -1; j++) {
-                if (tokeneq(
-                        type->strct.fields[j]->field.identifier,
-                        pattern->fields[i]->key
-                    )) {
-                    structIndex = i;
-                }
-            }
+            ZNode *structField = getStructField(semantic, type, pattern->fields[i]->tok);
 
-            if (structIndex == -1) {
-                error(semantic->state, pattern->fields[i]->key,
-                        "Field '%s' not found for struct '%s'",
-                        pattern->fields[i], stype(type));
-            } else {
-                putVarPattern(semantic,
-                    node,
-                    type->strct.fields[structIndex]->field.type,
-                    pattern->fields[i]->value
+            if (!structField) {
+                error(semantic->state, pattern->fields[i]->tok,
+                    "Field '%s' not found in %s",
+                    pattern->fields[i]->tok->str,
+                    stype(type)
                 );
-            }
+            }   
+            putVarPattern(semantic,
+                node,
+                structField->field.type,
+                pattern->fields[i]->value
+            );
         }
     }
 }
@@ -1078,18 +1085,12 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
         }
 
         field->resolved = type;
-        ZNode *structField = NULL;
-
-        for (usize j = 0; j < structLen && !structField; j++) {
-            if (structFields[j]->type == NODE_EMBED_FIELD) continue;
-            if (tokeneq(structFields[j]->field.identifier, field->tok))
-                structField = structFields[j];
-        }
+        ZNode *structField = getStructField(semantic, structSym->type, field->tok);
 
         if (!structField) {
             error(semantic->state, field->tok,
                 "Field '%s' not found for struct '%s'",
-                field->tok->str, structSym->name->str
+                field->tok->str, stype(structSym->type)
             );
             return NULL;
         }
@@ -1746,8 +1747,13 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
     for (usize i = 0; i < len; i++) {
         ZNode *field = fields[i];
 
-        if (field->type == NODE_EMBED_FIELD) continue;
-        field->field.type = _resolveTypeRef(semantic, field->field.type, seen);
+        if (field->type == NODE_EMBED_FIELD) {
+            field->resolved = _resolveTypeRef(semantic, field->resolved, seen);
+        } else if (field->type == NODE_FIELD) {
+            field->field.type = _resolveTypeRef(semantic, field->field.type, seen);
+        } else {
+            error(semantic->state, structDef->tok, "Invalid field type");
+        }
     }
 
     ZType *structType = structDef->resolved;
