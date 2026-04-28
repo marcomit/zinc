@@ -93,8 +93,6 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
     self->table             = makesymtable();
     self->scopes            = NULL;
     self->seen              = NULL;
-    self->funcQueue         = NULL;
-    atomic_init(&self->funcIndex, 0);
     return self;
 }
 
@@ -273,7 +271,6 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
         }
         putSymbol(semantic, f);
     }
-    vecpush(semantic->funcQueue, node);
 }
 
 ZNode *getStructField(ZSemantic *semantic, ZType *strct, ZToken *field) {
@@ -805,7 +802,7 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
     }
 }
 
-static ZType *_resolveTypeRef(ZSemantic *semantic, ZType *type, ZType **seen) {
+static ZType *_resolveTypeRef(ZSemantic *semantic, ZType *type, ZType ***seen) {
     if (!type) return NULL;
 
     switch (type->kind) {
@@ -861,7 +858,7 @@ static ZType *_resolveTypeRef(ZSemantic *semantic, ZType *type, ZType **seen) {
 static ZType *resolveTypeRef(ZSemantic *semantic, ZType *type) {
     if (!type) return NULL;
     ZType **seen = NULL;
-    return _resolveTypeRef(semantic, type, seen);
+    return _resolveTypeRef(semantic, type, &seen);
 }
 
 static ZType *resolveMemberAccess(ZSemantic *, ZNode *);
@@ -895,6 +892,54 @@ static ZType *resolveFuncTable(ZSemantic *semantic,
         }
     }
     return NULL;
+}
+
+static ZNode *resolveFuncCallEmbedded(ZSemantic *semantic,
+    ZNode *curr, ZType *obj, ZToken *prop) {
+    ZFuncTable **table = semantic->table->funcs;
+
+    ZNode *ptr = NULL;
+    if (obj && obj->kind == Z_TYPE_STRUCT) {
+        for (usize i = 0; i < veclen(obj->strct.fields); i++) {
+            ZNode *field = obj->strct.fields[i];
+            if (field->type != NODE_EMBED_FIELD) continue;
+            if (ptr) {
+                error(semantic->state, prop,
+                    "Function conflict with type '%s'",
+                    stype(ptr->resolved)
+                );
+            } else {
+                ptr = resolveFuncCallEmbedded(
+                    semantic, curr, field->resolved, prop);
+            }
+        }
+    }
+
+    ZFuncTable *funcs = NULL;
+    for (usize i = 0; i < veclen(table) && !funcs; i++) {
+        ZType *base = resolveTypeRef(semantic, table[i]->base);
+        if (typesEqual(base, obj)) funcs = table[i];
+    }
+
+    if (funcs) {
+        for (usize i = 0; i < veclen(funcs->funcDef); i++) {
+            ZNode *f = funcs->funcDef[i];
+            if (tokeneq(f->funcDef.name, prop)) {
+                if (ptr) {
+                    error(semantic->state, prop,
+                        "Function conflict with type '%s'",
+                        stype(ptr->resolved)
+                    );
+                }
+                ptr = f;
+            }
+        }
+    }
+
+    if (ptr) {
+        curr->memberAccess.mangled = ptr->funcDef.mangled;
+    }
+    return ptr;
 }
 
 static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
@@ -1000,28 +1045,17 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
 
         ZToken *prop = callee->memberAccess.field;
 
-        ZFuncTable **table = semantic->table->funcs;
-
-        ZFuncTable *funcs = NULL;
-        for (usize i = 0; i < veclen(table) && !funcs; i++) {
-            ZType *base = resolveTypeRef(semantic, table[i]->base);
-            if (typesEqual(base, obj)) funcs = table[i];
-        }
-
-        if (!funcs) {
-            error(semantic->state, curr->tok, "Receiver function not registered");
-            return NULL;
-        }
-
-        for (usize i = 0; i < veclen(funcs->funcDef); i++) {
-            ZNode *f = funcs->funcDef[i];
-            if (tokeneq(f->funcDef.name, prop)) {
-                callee->memberAccess.mangled = f->funcDef.mangled;
-                expectedArgs    = f->resolved->func.args;
-                result          = resolveTypeRef(semantic, f->funcDef.ret);
-                variadic        = f->resolved->func.variadic;
-                break;
-            }
+        ZNode *resolved = resolveFuncCallEmbedded(semantic, callee, obj, prop);
+        if (!resolved) {
+            error(semantic->state, prop,
+                "Unknown function '%s' for type '%s'",
+                prop->str,
+                stype(obj)
+            );
+        } else {
+            expectedArgs    = resolved->resolved->func.args;
+            result          = resolveTypeRef(semantic, resolved->funcDef.ret);
+            variadic        = resolved->resolved->func.variadic;
         }
     } else {
         /* Expression call: resolve callee type and extract return type. */
@@ -1399,12 +1433,10 @@ static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
     }
     
     if (base->kind == Z_TYPE_STRUCT) {
-        ZNode **fields = base->strct.fields;
-        for (usize i = 0; i < veclen(fields); i++) {
-            if (tokeneq(fields[i]->field.identifier, field))
-                return resolveTypeRef(semantic, fields[i]->field.type);
+        ZNode *structField = getStructField(semantic, base, field);
+        if (structField) {
+            return structField->resolved;
         }
-
         error(semantic->state, field,
               "Member '%s' not found in struct", field->str);
         return NULL;
@@ -1772,6 +1804,25 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
     }
 }
 
+static void checkEmbedFieldConflicts(ZSemantic *semantic, ZType *strct, hashset_t *seen, ZToken *embedTok) {
+    if (!strct || strct->kind != Z_TYPE_STRUCT) return;
+    ZNode **fields = strct->strct.fields;
+    for (usize i = 0; i < veclen(fields); i++) {
+        ZNode *field = fields[i];
+        if (field->type == NODE_EMBED_FIELD) {
+            ZType *nested = field->resolved;
+            if (nested && nested->kind == Z_TYPE_STRUCT)
+                checkEmbedFieldConflicts(semantic, nested, seen, embedTok);
+        } else if (field->type == NODE_FIELD) {
+            if (!hashset_insert(seen, field->field.identifier->str)) {
+                error(semantic->state, embedTok,
+                    "field '%s' conflicts with embedded struct '%s'",
+                    field->field.identifier->str, stype(strct));
+            }
+        }
+    }
+}
+
 static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
     ZType **seen = NULL;
     ZNode **fields = structDef->structDef.fields;
@@ -1781,9 +1832,11 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
         ZNode *field = fields[i];
 
         if (field->type == NODE_EMBED_FIELD) {
-            field->resolved = _resolveTypeRef(semantic, field->resolved, seen);
+            if (!field->tok && field->resolved && field->resolved->kind == Z_TYPE_PRIMITIVE)
+                field->tok = field->resolved->primitive.token;
+            field->resolved = _resolveTypeRef(semantic, field->resolved, &seen);
         } else if (field->type == NODE_FIELD) {
-            field->field.type = _resolveTypeRef(semantic, field->field.type, seen);
+            field->field.type = _resolveTypeRef(semantic, field->field.type, &seen);
         } else {
             error(semantic->state, structDef->tok, "Invalid field type");
         }
@@ -1800,6 +1853,24 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
                   "field '%s' embeds struct by value causing infinite size; use a pointer",
                   field->field.identifier->str);
         }
+    }
+
+    hashset_t fieldSeen = NULL;
+    for (usize i = 0; i < len; i++) {
+        ZNode *field = fields[i];
+        if (field->type == NODE_FIELD) {
+            if (!hashset_insert(&fieldSeen, field->field.identifier->str)) {
+                error(semantic->state, field->field.identifier,
+                    "field '%s' already declared", field->field.identifier->str);
+            }
+        }
+    }
+    for (usize i = 0; i < len; i++) {
+        ZNode *field = fields[i];
+        if (field->type != NODE_EMBED_FIELD) continue;
+        ZType *embedded = field->resolved;
+        if (!embedded || embedded->kind != Z_TYPE_STRUCT) continue;
+        checkEmbedFieldConflicts(semantic, embedded, &fieldSeen, field->tok);
     }
 }
 

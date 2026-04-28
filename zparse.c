@@ -427,8 +427,9 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
     ZToken *member = consume(parser);
     ZNode *node = makenode(NODE_MEMBER);
 
-    node->memberAccess.field = member;
-    node->memberAccess.object = previous;
+    node->memberAccess.field    = member;
+    node->memberAccess.object   = previous;
+    node->memberAccess.path     = NULL;
     node->tok = previous->tok;
     return node;
 }

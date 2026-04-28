@@ -492,6 +492,9 @@ void printNode(ZNode *node, u8 depth) {
         break;
     
     case NODE_MEMBER: {
+        for (usize i = 0; i < veclen(node->memberAccess.path); i++) {
+            printf("%d ", node->memberAccess.path[i]);
+        }
         printf("\n");
         printNode(node->memberAccess.object, depth);
         indent(depth);

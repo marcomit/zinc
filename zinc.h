@@ -413,6 +413,7 @@ struct ZNode {
             ZNode       *object;
             ZToken      *field;
             char        *mangled;
+            u32         *path;
         } memberAccess;
 
         struct {
@@ -631,6 +632,10 @@ typedef struct ZSemantic {
 
     /* Set of seen symbols (by name) */
     hashset_t       seen;    
+
+    ZType           *currentFuncRet;
+    ZNode           *currentFunc;
+    u32             loopDepth;
 } ZSemantic;
 
 /* Lexer */

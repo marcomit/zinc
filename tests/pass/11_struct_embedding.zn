@@ -1,18 +1,75 @@
-struct Vec {
+foreign u0 printf(*char, ...)
+
+struct Position {
     f32 x
     f32 y
+    f32 z
 }
 
-struct Player {
-    ...Vec
+struct Velocity {
+    f32 vx
+    f32 vy
+    f32 vz
+}
+
+struct Acceleration {
+    f32 ax
+    f32 ay
+    f32 az
+}
+
+struct Metadata {
+    u32 flags
+    *char name
+}
+
+struct Stats {
     i32 health
+    i32 stamina
+}
+
+// Flatten-safe composition
+struct Player {
+    ...Position
+    ...Velocity
+    ...Acceleration
+    ...Metadata
+    ...Stats
+}
+
+for Player self {
+    u0 update() {
+        self.vx = self.vx + self.ax
+        self.vy = self.vy + self.ay
+        self.vz = self.vz + self.az
+
+        self.x = self.x + self.vx
+        self.y = self.y + self.vy
+        self.z = self.z + self.vz
+    }
+
+    u0 print() {
+        printf("%s\n", self.name)
+        printf("Pos: %g %g %g\n", self.x, self.y, self.z)
+        printf("Vel: %g %g %g\n", self.vx, self.vy, self.vz)
+        printf("HP: %d\n", self.health)
+    }
 }
 
 i32 main() {
-    val := Player {
-        x: 10,
-        y: 10,
-        health: 10
+    p := Player {
+        name: "Hero",
+
+        x: 0, y: 0, z: 0,
+        vx: 1, vy: 0, vz: 0,
+        ax: 0.1, ay: 0.2, az: 0,
+
+        health: 100,
+        stamina: 50
     }
+
+    p.update()
+    p.print()
+
     return 0
 }
