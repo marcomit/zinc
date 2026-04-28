@@ -1,21 +1,21 @@
 foreign u0 printf(*char, ...)
 
 struct Position {
-    f32 x
-    f32 y
-    f32 z
+    i32 x
+    i32 y
+    i32 z
 }
 
 struct Velocity {
-    f32 vx
-    f32 vy
-    f32 vz
+    i32 vx
+    i32 vy
+    i32 vz
 }
 
 struct Acceleration {
-    f32 ax
-    f32 ay
-    f32 az
+    i32 ax
+    i32 ay
+    i32 az
 }
 
 struct Metadata {
@@ -50,8 +50,8 @@ for Player self {
 
     u0 print() {
         printf("%s\n", self.name)
-        printf("Pos: %g %g %g\n", self.x, self.y, self.z)
-        printf("Vel: %g %g %g\n", self.vx, self.vy, self.vz)
+        printf("Pos: %d %d %d\n", self.x, self.y, self.z)
+        printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)
         printf("HP: %d\n", self.health)
     }
 }
