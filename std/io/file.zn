@@ -1,0 +1,56 @@
+use <mem>
+
+foreign i32 open(*char, i32, ...)
+
+pub struct File {
+    *char path
+    i32 descriptor
+    i32 mode
+}
+
+for File {
+    *File new(Allocator allocator, *char path, i32 mode) {
+        *File f = allocator.alloc(sizeof File)
+        f.path = path
+        f.mode = mode
+        f.descriptor = -1
+        return f
+    }
+}
+
+for *File self {
+    pub i32 open(i32 flags) {
+        d := open(f.path, f.mode)
+
+        if d == -1 { return -1 }
+        self.descriptor = d
+    }
+
+    pub i32 close() {
+        if self.d != -1 {
+            close(self.d)
+        }
+    }
+
+    pub u64 write(*u8 buf, u64 nbytes) {
+        if self.d == -1 { return 0 }
+        return write(self.d, buf, nbytes)
+    }
+
+    pub u64 writeStr(*char ch) {
+        if self.d == -1 { return 0 }
+        return write(self.d, ch, strlen(ch))
+    }
+
+    pub u64 read(*u8 buf, u64 nbytes) {
+        if self.d == -1 { return 0 }
+        return read(self.d, buf, nbytes)
+    }
+}
+
+u0 main() {
+    f := File::new("./file.zn", 0)
+
+    buf := malloc(sizeof 1024)
+    f.read(buf, 1024)
+}

@@ -1,5 +1,6 @@
 #include "zmem.h"
 #include "zvec.h"
+#include "zarena.h"
 
 #include <stdlib.h>
 
@@ -7,24 +8,6 @@
 #define ARENA_ALIGN(size) (((size) + (ARENA_ALIGNMENT - 1)) & ~(ARENA_ALIGNMENT - 1))
 
 #define ARENA_PAGE_SIZE MiB(2)
-
-typedef struct ArenaBucket {
-    usize len;
-    usize size;
-    struct ArenaBucket *next;
-} ArenaBucket;
-
-typedef struct ArenaScope {
-    ArenaBucket *bucket;
-    usize pos;
-} ArenaScope;
-
-typedef struct arena_t {
-    ArenaBucket *head;
-    ArenaBucket *tail;
-
-    ArenaScope **scopes;
-} arena_t;
 
 static ArenaBucket *createArenaBucket(usize requested) {
     usize actual = requested > ARENA_PAGE_SIZE ? requested : ARENA_PAGE_SIZE;
@@ -36,7 +19,7 @@ static ArenaBucket *createArenaBucket(usize requested) {
     return self;
 }
 
-static arena_t *createArena() {
+arena_t *createArena() {
     arena_t *self = malloc(sizeof(arena_t));
     self->head = createArenaBucket(0);
     self->tail = self->head;
@@ -46,12 +29,12 @@ static arena_t *createArena() {
 
 static void freeArenaBucket(ArenaBucket *arena, bool recursive) {
     if (!arena) return;
-    printf("BUCKET ALLOCATION: %zu\n", arena->len);
+    // printf("BUCKET ALLOCATION: %zu\n", arena->len);
     if (recursive) freeArenaBucket(arena->next, recursive);
     free(arena);
 }
 
-static void *arenaAlloc(arena_t *arena, usize size) {
+void *arenaAlloc(arena_t *arena, usize size) {
     size = ARENA_ALIGN(size);
 
     if (arena->tail->len + size <= arena->tail->size) {
@@ -67,7 +50,7 @@ static void *arenaAlloc(arena_t *arena, usize size) {
     return arena->tail + 1;
 }
 
-static void arenaFree(arena_t *arena) {
+void arenaFree(arena_t *arena) {
     freeArenaBucket(arena->head, true);
     arena->head = NULL;
     arena->tail = NULL;
@@ -85,14 +68,14 @@ static void *arealloc(void *ptr, usize size) {
     return aalloc(size);
 }
 
-static void arenaScope(arena_t *arena) {
+void arenaScope(arena_t *arena) {
     ArenaScope *scope = malloc(sizeof(ArenaScope));
     scope->bucket = arena->tail;
     scope->pos = arena->tail->len;
     vecpush(arena->scopes, scope);
 }
 
-static void arenaEndScope(arena_t *arena) {
+void arenaEndScope(arena_t *arena) {
     if (vecempty(arena->scopes)) return;
 
     ArenaScope *scope = vecpop(arena->scopes);

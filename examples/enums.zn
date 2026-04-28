@@ -1,0 +1,13 @@
+foreign u0 printf(*char, ...)
+
+enum Json {
+    None
+    Bool(u1)
+    Num(f64)
+    String(*char)
+    List(*Json) // List(Vec[Json])
+}
+
+u0 main() {
+    
+}

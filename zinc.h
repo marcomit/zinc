@@ -5,6 +5,7 @@
 #include "zvec.h"
 #include "zhset.h"
 #include "zmem.h"
+#include <stdatomic.h>
 
 #ifdef _WIN32
 static char sep = '\\';
@@ -128,6 +129,7 @@ typedef enum {
     NODE_MEMBER,
     NODE_MODULE,
     NODE_FIELD,
+    NODE_EMBED_FIELD,
     NODE_TYPEDEF,
     NODE_FOREIGN,
     NODE_DEFER,
@@ -157,6 +159,7 @@ typedef enum ZTypeKind {
     Z_TYPE_TUPLE,
     Z_TYPE_GENERIC,        // Instantiated generic type, e.g. List[int]
     Z_TYPE_FACET,
+    Z_TYPE_ENUM,
     Z_TYPE_NONE
 } ZTypeKind;
 
@@ -191,12 +194,20 @@ struct ZType {
         } func;
 
         struct {
-            ZType *base;
-            usize size;
+            ZType   *base;
+            usize   size;
         } array;
 
         /* List of Z_TYPE_FUNCTION */
         ZType **facet;
+
+        struct {
+            ZToken      *name;
+
+            /* Array of Z_TYPE_STRUCT. */
+            ZType       **fields;
+            ZType       **generics;
+        } enm;
 
         ZType **tuple;
 
@@ -393,15 +404,16 @@ struct ZNode {
          * It stores the name of the field (e.g. Square or Circle)
          * and its captured types.
          * */
-        struct {
-            ZToken      *name;
-            ZType       **captured;
-        } enumField;
+         struct {
+             ZToken *name;
+             ZType  **captured;
+         } enumField;
 
         struct {
             ZNode       *object;
             ZToken      *field;
             char        *mangled;
+            u32         *path;
         } memberAccess;
 
         struct {
@@ -536,6 +548,7 @@ typedef struct ZScope ZScope;
 typedef enum {
     Z_SYM_VAR,
     Z_SYM_FUNC,
+    Z_SYM_ENUM,
     Z_SYM_STRUCT,
     Z_SYM_TYPEDEF,
     Z_SYM_GENERIC
@@ -616,15 +629,13 @@ typedef struct ZSemantic {
     ZSymbol         *main;
     ZSymTable       *table;
     ZScopeTable     **scopes;
-    ZType           *currentFuncRet;
-    ZNode           *currentFunc;
-    u16             loopDepth;
 
     /* Set of seen symbols (by name) */
     hashset_t       seen;    
 
-    /* Queue used in the second phase */
-    ZSymbol         **funcQueue;
+    ZType           *currentFuncRet;
+    ZNode           *currentFunc;
+    u32             loopDepth;
 } ZSemantic;
 
 /* Lexer */

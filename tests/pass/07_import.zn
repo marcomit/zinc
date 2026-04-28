@@ -1,4 +1,5 @@
-use <strings>
+use <core::string>
+foreign u0 printf(*char, ...)
 
 i32 main() {
     hello := String::from("Ciao")
