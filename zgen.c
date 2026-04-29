@@ -199,7 +199,8 @@ char *label(ZCodegen *ctx, ZToken *tok) {
     memset(ctx->str, 0, veclen(ctx->str));
     vecsetlen(ctx->str, 0);
     if (ctx->state->debug && tok) {
-        vecunion(ctx->str, tok->str, strlen(tok->str));
+        char *str = stoken(tok);
+        vecunion(ctx->str, str, strlen(str));
     } else {
         sprintf(ctx->str, "zn%.3zx", ctx->count);
 

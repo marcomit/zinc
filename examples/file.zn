@@ -1,35 +1,30 @@
-foreign u0 printf(*char)
-foreign *u8 malloc(u64)
-foreign i32 open(*char, i32)
-foreign i32 read(i32, *u8, u64)
-foreign i32 close(i32)
+use <core::mem>
+use <io::file>
 
-struct File {
-    i32 descriptor
-}
+foreign u0 printf(*char, ...)
 
-*char File::read(*char path, i32 flag) {
-    d := open(path, flag)
-
-    if d == -1 { return none }
-
-    *char buf = malloc(2048)
-
-    if not buf {
-        printf("Noooo")
+i32 main(i32 argc, []*char argv) {
+    if argc != 2 {
+        printf("Usage: %s <filename>\n", argv[0])
+        return 1
     }
-
-    read(d, buf, 2047)
-
-    return buf
-}
-
-i32 main() {
-    buf := File::read("ztok.h", 0)
+    heap := Allocator::new()
     
-    if not buf { return 1 }
+    f := File::new(&heap, argv[1], 0)
 
-    printf(buf)
+    if f.open(0) == -1 {
+        return 1
+    }
+    defer f.close()
+
+    content := f.readAll()
+    if not content {
+        printf("Error reading file\n")
+        return 1
+    }
+    defer (&heap).free(content)
+
+    printf(content)
 
     return 0
 }

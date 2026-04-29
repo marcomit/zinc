@@ -1,0 +1,320 @@
+use <io::file>
+use <core::mem>
+
+foreign u0 printf(*char, ...)
+foreign i32 putchar(i32)
+// foreign i32 strlen(*char)
+
+struct Token {
+    i32 kind
+    i32 end
+}
+
+u1 isAlpha(i32 c) {
+    if c >= 65 and c <= 90  { return true }
+    if c >= 97 and c <= 122 { return true }
+    if c == 95 { return true }
+    return false
+}
+
+u1 isDigit(i32 c) {
+    if c >= 48 { if c <= 57 { return true } }
+    return false
+}
+
+u1 isAlnum(i32 c) {
+    if isAlpha(c) { return true }
+    return isDigit(c)
+}
+
+u1 isSpace(i32 c) {
+    if c == 32 { return true }
+    if c == 9  { return true }
+    if c == 10 { return true }
+    if c == 13 { return true }
+    return false
+}
+
+// Compare src[start..end) against null-terminated kw
+u1 matchKw(*char src, i32 start, i32 end, *char kw) {
+    i32 slen = end - start
+    for i32 i = 0; i < slen; i = i + 1 {
+        if kw[i] as i32 == 0   { return false }
+        if src[start + i] as i32 != kw[i] as i32 { return false }
+    }
+    i32 last = kw[slen] as i32
+    return last == 0
+}
+
+// 1=IDENT  50=KEYWORD  51=TYPE
+i32 identKind(*char src, i32 start, i32 end) {
+    if matchKw(src, start, end, "if")       { return 50 }
+    if matchKw(src, start, end, "else")     { return 50 }
+    if matchKw(src, start, end, "for")      { return 50 }
+    if matchKw(src, start, end, "return")   { return 50 }
+    if matchKw(src, start, end, "struct")   { return 50 }
+    if matchKw(src, start, end, "enum")     { return 50 }
+    if matchKw(src, start, end, "foreign")  { return 50 }
+    if matchKw(src, start, end, "defer")    { return 50 }
+    if matchKw(src, start, end, "match")    { return 50 }
+    if matchKw(src, start, end, "break")    { return 50 }
+    if matchKw(src, start, end, "continue") { return 50 }
+    if matchKw(src, start, end, "true")     { return 50 }
+    if matchKw(src, start, end, "false")    { return 50 }
+    if matchKw(src, start, end, "none")     { return 50 }
+    if matchKw(src, start, end, "pub")      { return 50 }
+    if matchKw(src, start, end, "u0")       { return 51 }
+    if matchKw(src, start, end, "u1")       { return 51 }
+    if matchKw(src, start, end, "i8")       { return 51 }
+    if matchKw(src, start, end, "i16")      { return 51 }
+    if matchKw(src, start, end, "i32")      { return 51 }
+    if matchKw(src, start, end, "i64")      { return 51 }
+    if matchKw(src, start, end, "u8")       { return 51 }
+    if matchKw(src, start, end, "u16")      { return 51 }
+    if matchKw(src, start, end, "u32")      { return 51 }
+    if matchKw(src, start, end, "u64")      { return 51 }
+    if matchKw(src, start, end, "f32")      { return 51 }
+    if matchKw(src, start, end, "f64")      { return 51 }
+    if matchKw(src, start, end, "char")     { return 51 }
+    return 1
+}
+
+i32 skip(*char src, i32 pos, i32 len) {
+    changed := true
+    for changed {
+        changed = false
+        for pos < len {
+            if isSpace(src[pos] as i32) {
+                pos = pos + 1
+                changed = true
+            } else {
+                break
+            }
+        }
+        if pos + 1 < len {
+            if src[pos] as i32 == 47 {
+                if src[pos + 1] as i32 == 47 {
+                    for pos < len {
+                        if src[pos] as i32 == 10 { break }
+                        pos = pos + 1
+                    }
+                    changed = true
+                }
+            }
+        }
+    }
+    return pos
+}
+
+Token scanIdent(*char src, i32 pos, i32 len) {
+    i32 start = pos
+    pos = pos + 1
+    for pos < len {
+        if isAlnum(src[pos] as i32) { pos = pos + 1 } else { break }
+    }
+    i32 kind = identKind(src, start, pos)
+    return Token { kind: kind, end: pos }
+}
+
+Token scanNumber(*char src, i32 pos, i32 len) {
+    pos = pos + 1
+    for pos < len {
+        if isDigit(src[pos] as i32) { pos = pos + 1 } else { break }
+    }
+    if pos < len {
+        if src[pos] as i32 == 46 {
+            if pos + 1 < len {
+                if isDigit(src[pos + 1] as i32) {
+                    pos = pos + 1
+                    for pos < len {
+                        if isDigit(src[pos] as i32) { pos = pos + 1 } else { break }
+                    }
+                    return Token { kind: 3, end: pos }
+                }
+            }
+        }
+    }
+    return Token { kind: 2, end: pos }
+}
+
+Token scanString(*char src, i32 pos, i32 len) {
+    pos = pos + 1
+    for pos < len {
+        i32 c = src[pos] as i32
+        if c == 34 { break }
+        if c == 92 { pos = pos + 1 }
+        pos = pos + 1
+    }
+    if pos < len { pos = pos + 1 }
+    return Token { kind: 4, end: pos }
+}
+
+Token nextToken(*char src, i32 pos, i32 len) {
+    i32 c = src[pos] as i32
+
+    if isAlpha(c) { return scanIdent(src, pos, len) }
+    if isDigit(c) { return scanNumber(src, pos, len) }
+    if c == 34    { return scanString(src, pos, len) }
+
+    if c == 43 { return Token { kind: 10, end: pos + 1 } }
+    if c == 45 {
+        if pos + 1 < len {
+            if src[pos + 1] as i32 == 62 { return Token { kind: 39, end: pos + 2 } }
+        }
+        return Token { kind: 11, end: pos + 1 }
+    }
+    if c == 42 { return Token { kind: 12, end: pos + 1 } }
+    if c == 47 { return Token { kind: 13, end: pos + 1 } }
+    if c == 61 {
+        if pos + 1 < len {
+            if src[pos + 1] as i32 == 61 { return Token { kind: 15, end: pos + 2 } }
+        }
+        return Token { kind: 14, end: pos + 1 }
+    }
+    if c == 33 {
+        if pos + 1 < len {
+            if src[pos + 1] as i32 == 61 { return Token { kind: 16, end: pos + 2 } }
+        }
+        return Token { kind: 23, end: pos + 1 }
+    }
+    if c == 60 {
+        if pos + 1 < len {
+            if src[pos + 1] as i32 == 61 { return Token { kind: 18, end: pos + 2 } }
+        }
+        return Token { kind: 17, end: pos + 1 }
+    }
+    if c == 62 {
+        if pos + 1 < len {
+            if src[pos + 1] as i32 == 61 { return Token { kind: 20, end: pos + 2 } }
+        }
+        return Token { kind: 19, end: pos + 1 }
+    }
+    if c == 38 {
+        if pos + 1 < len {
+            if src[pos + 1] as i32 == 38 { return Token { kind: 21, end: pos + 2 } }
+        }
+        return Token { kind: 24, end: pos + 1 }
+    }
+    if c == 124 {
+        if pos + 1 < len {
+            if src[pos + 1] as i32 == 124 { return Token { kind: 22, end: pos + 2 } }
+        }
+        return Token { kind: 99, end: pos + 1 }
+    }
+    if c == 40  { return Token { kind: 30, end: pos + 1 } }
+    if c == 41  { return Token { kind: 31, end: pos + 1 } }
+    if c == 123 { return Token { kind: 32, end: pos + 1 } }
+    if c == 125 { return Token { kind: 33, end: pos + 1 } }
+    if c == 91  { return Token { kind: 34, end: pos + 1 } }
+    if c == 93  { return Token { kind: 35, end: pos + 1 } }
+    if c == 58 {
+        if pos + 1 < len {
+            i32 nc = src[pos + 1] as i32
+            if nc == 58 { return Token { kind: 37, end: pos + 2 } }
+            if nc == 61 { return Token { kind: 38, end: pos + 2 } }
+        }
+        return Token { kind: 36, end: pos + 1 }
+    }
+    if c == 44 { return Token { kind: 40, end: pos + 1 } }
+    if c == 46 {
+        if pos + 2 < len {
+            if src[pos + 1] as i32 == 46 {
+                if src[pos + 2] as i32 == 46 { return Token { kind: 42, end: pos + 3 } }
+            }
+        }
+        return Token { kind: 41, end: pos + 1 }
+    }
+    if c == 59 { return Token { kind: 43, end: pos + 1 } }
+
+    return Token { kind: 99, end: pos + 1 }
+}
+
+u0 printKind(i32 kind) {
+    if kind == 1  { printf("IDENT  ") }
+    if kind == 2  { printf("INT    ") }
+    if kind == 3  { printf("FLOAT  ") }
+    if kind == 4  { printf("STR    ") }
+    if kind == 50 { printf("KW     ") }
+    if kind == 51 { printf("TYPE   ") }
+    if kind == 10 { printf("PLUS   ") }
+    if kind == 11 { printf("MINUS  ") }
+    if kind == 12 { printf("STAR   ") }
+    if kind == 13 { printf("SLASH  ") }
+    if kind == 14 { printf("EQ     ") }
+    if kind == 15 { printf("EQEQ   ") }
+    if kind == 16 { printf("NEQ    ") }
+    if kind == 17 { printf("LT     ") }
+    if kind == 18 { printf("LTEQ   ") }
+    if kind == 19 { printf("GT     ") }
+    if kind == 20 { printf("GTEQ   ") }
+    if kind == 21 { printf("AND    ") }
+    if kind == 22 { printf("OR     ") }
+    if kind == 23 { printf("BANG   ") }
+    if kind == 24 { printf("AMP    ") }
+    if kind == 30 { printf("(      ") }
+    if kind == 31 { printf(")      ") }
+    if kind == 32 { printf("{      ") }
+    if kind == 33 { printf("}      ") }
+    if kind == 34 { printf("[      ") }
+    if kind == 35 { printf("]      ") }
+    if kind == 36 { printf("COLON  ") }
+    if kind == 37 { printf("DCOLON ") }
+    if kind == 38 { printf("ASSIGN ") }
+    if kind == 39 { printf("ARROW  ") }
+    if kind == 40 { printf("COMMA  ") }
+    if kind == 41 { printf("DOT    ") }
+    if kind == 42 { printf("TDOT   ") }
+    if kind == 43 { printf("SEMI   ") }
+    if kind == 99 { printf("?      ") }
+}
+
+u0 printSlice(*char src, i32 from, i32 to) {
+    for i32 i = from; i < to; i = i + 1 {
+        putchar(src[i] as i32)
+    }
+}
+
+i32 main(i32 argc, []*char argv) {
+    if argc < 2 {
+        printf("\Usage: %s <filename>\n", argv[0])
+        return 1
+    }
+    heap := Allocator::new()
+
+    file := File::new(&heap, argv[1], 0)
+
+    if file.open(0) == -1 {
+        printf("Unable to open file %s\n", argv[1])
+        return 1
+    }
+    defer file.close()
+
+
+    src := file.readAll()
+    if not src {
+        printf("Error reading file\n")
+        return 1
+    }
+    defer (&heap).free(src)
+    printf("Source file:\n", src)
+
+    i32 len = strlen(src)
+    i32 pos = 0
+
+    for pos < len {
+        pos = skip(src, pos, len)
+        if pos >= len { break }
+
+        i32 start = pos
+        Token tok = nextToken(src, pos, len)
+
+        printKind(tok.kind)
+        printf("`")
+        printSlice(src, start, tok.end)
+        printf("`\n")
+
+        pos = tok.end
+    }
+
+    return 0
+}

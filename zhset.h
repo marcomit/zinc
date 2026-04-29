@@ -59,10 +59,10 @@
  * Configuration
  * ============================================================================ */
 
-#define HASHSET_ALLOC   malloc
-#define HASHSET_FREE    free
-#define HASHSET_DEFAULT_CAP 16
-#define HASHSET_MAX_LOAD 70 /* percent */
+#define HASHSET_ALLOC       malloc
+#define HASHSET_FREE        free
+#define HASHSET_DEFAULT_CAP 64
+#define HASHSET_MAX_LOAD    70 /* percent */
 
 /* ============================================================================
  * Internals

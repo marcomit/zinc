@@ -862,8 +862,8 @@ static char *resolvePath(ZState *state, char *filename) {
 
 bool visit(ZState *state, char *filename) {
     filename = resolvePath(state, filename);
-    for (usize i = 0; i < veclen(state->pathFiles); i++) {
-        if (strcmp(state->pathFiles[i], filename) == 0) return false;
+    for (usize i = 0; i < veclen(state->visitedFiles); i++) {
+        if (strcmp(state->visitedFiles[i], filename) == 0) return false;
     }
 
     printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", filename);

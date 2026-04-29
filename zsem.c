@@ -54,14 +54,14 @@ static ZScope *makescope(ZScope *parent, ZNode *node) {
     return self;
 }
 
-static ZThreadSem *makethreadsem(ZSemantic *semantic) {
+static ZThreadSem *makethreadsem(ZSemantic *ctx) {
     ZThreadSem *self        = zalloc(ZThreadSem);
 
     self->arena             = createArena();
     self->currentFunc       = NULL;
     self->currentFuncRet    = NULL;
     self->loopDepth         = 0;
-    self->semantic          = semantic;
+    self->semantic          = ctx;
 
     return self;
 }
@@ -97,10 +97,10 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
 }
 
 
-static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
-    ZScope *scope = semantic->table->current;
+static void putSymbol(ZSemantic *ctx, ZSymbol *symbol) {
+    ZScope *scope = ctx->table->current;
 
-    if (symbol->isPublic) scope = semantic->table->global;
+    if (symbol->isPublic) scope = ctx->table->global;
 
     if (!hashset_insert(&scope->seen, symbol->name->str)) {
         /* Duplicate pub foreign declarations are valid: multiple modules
@@ -110,7 +110,7 @@ static void putSymbol(ZSemantic *semantic, ZSymbol *symbol) {
                 symbol->node && symbol->node->type == NODE_FOREIGN) {
             return;
         }
-        error(semantic->state, symbol->name,
+        error(ctx->state, symbol->name,
                 "'%s' already defined in the same scope",
                 symbol->name->str);
     } else {
@@ -136,13 +136,13 @@ static ZSymbol *makeRawSymbol(
     return symbol;
 }
 
-static void putRawSymbol(ZSemantic *semantic,
+static void putRawSymbol(ZSemantic *ctx,
                         ZSymType kind,
                         ZToken *name,
                         ZType *type,
                         ZNode *node,
                         bool isGlobal) {
-    putSymbol(semantic,
+    putSymbol(ctx,
         makeRawSymbol(
             kind,
             name,
@@ -162,18 +162,18 @@ static ZFuncTable *makefunctable(ZType *base) {
     return func;
 }
 
-static ZFuncTable *addfunctable(ZSemantic *semantic, ZType *base) {
+static ZFuncTable *addfunctable(ZSemantic *ctx, ZType *base) {
     ZFuncTable *table = makefunctable(base);
-    vecpush(semantic->table->funcs, table);
+    vecpush(ctx->table->funcs, table);
     return table;
 }
 
-static void addStaticFunc(ZSemantic *semantic, ZNode *func) {
+static void addStaticFunc(ZSemantic *ctx, ZNode *func) {
     ZType *base = func->funcDef.base;
 
     ZFuncTable *cur = NULL;
-    for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
-        ZFuncTable *table = semantic->table->funcs[i];
+    for (usize i = 0; i < veclen(ctx->table->funcs); i++) {
+        ZFuncTable *table = ctx->table->funcs[i];
 
         if (typesEqual(table->base, base)) {
             cur = table;
@@ -182,11 +182,11 @@ static void addStaticFunc(ZSemantic *semantic, ZNode *func) {
     }
 
     if (!cur) {
-        cur = addfunctable(semantic, base);
+        cur = addfunctable(ctx, base);
     }
     char *name = func->funcDef.name->str;
     if (!hashset_insert(&cur->seenStaticFuncs, name)) {
-        error(semantic->state, func->tok,
+        error(ctx->state, func->tok,
                 "Duplicate static function '%s'", name);
         return;
     }
@@ -195,18 +195,18 @@ static void addStaticFunc(ZSemantic *semantic, ZNode *func) {
     vecpush(cur->staticFuncDef, func);
 }
 
-static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
+static void putReceiverFunc(ZSemantic *ctx, ZNode *node) {
     if (!node->funcDef.receiver) {
-        error(semantic->state, node->tok, "receiver must be setted");
+        error(ctx->state, node->tok, "receiver must be setted");
         return;
     } else if (node->funcDef.base) {
-        error(semantic->state, node->tok,
+        error(ctx->state, node->tok,
                 "receiver functions cannot have a base");
         return;
     }
 
     ZNode *receiver         = node->funcDef.receiver;
-    ZFuncTable **funcs      = semantic->table->funcs;
+    ZFuncTable **funcs      = ctx->table->funcs;
     ZFuncTable *table       = NULL;
     for (usize i = 0; i < veclen(funcs) && !table; i++) {
         if (typesEqual(funcs[i]->base, receiver->field.type)) {
@@ -216,44 +216,44 @@ static void putReceiverFunc(ZSemantic *semantic, ZNode *node) {
 
     if (!table) {
         table = makefunctable(receiver->field.type);
-        vecpush(semantic->table->funcs, table);
+        vecpush(ctx->table->funcs, table);
     }
 
     vecpush(table->funcDef, node);
 }
 
-static void putStaticFunc(ZSemantic *semantic, ZNode *node) {
+static void putStaticFunc(ZSemantic *ctx, ZNode *node) {
     ZType *baseType = node->funcDef.base;
     
     if (baseType->kind != Z_TYPE_PRIMITIVE) {
-        error(semantic->state, node->tok,
+        error(ctx->state, node->tok,
                 "Static function must be attached to a primitive type");
     }
     ZToken *base = baseType->primitive.token;
     if (!base) {
-        error(semantic->state,
+        error(ctx->state,
                 node->tok,
                 "Invalid 'putStaticFunc' call, base is not setted");
         return;
     } else if (node->funcDef.receiver) {
-        error(semantic->state,
+        error(ctx->state,
                 node->tok,
                 "Invalid 'putStaticFunc' call, receiver cannot be setted");
     }
 
-    addStaticFunc(semantic, node);
+    addStaticFunc(ctx, node);
 }
 
-static void putFunc(ZSemantic *semantic, ZNode *node) {
+static void putFunc(ZSemantic *ctx, ZNode *node) {
     if (node->funcDef.receiver) {
         if (node->funcDef.base) {
-            error(semantic->state, node->tok,
+            error(ctx->state, node->tok,
                     "A static function cannot accept any receiver");
         }
 
-        putReceiverFunc(semantic, node);
+        putReceiverFunc(ctx, node);
     } else if (node->funcDef.base) {
-        putStaticFunc(semantic, node);
+        putStaticFunc(ctx, node);
     } else {
         ZSymbol *f = makeRawSymbol(
                 Z_SYM_FUNC,
@@ -263,23 +263,23 @@ static void putFunc(ZSemantic *semantic, ZNode *node) {
                 node->funcDef.pub);
 
         if (strcmp(node->funcDef.name->str, "main") == 0) {
-            semantic->main = f;
+            ctx->main = f;
             if (node->funcDef.ret && isVoid(node->funcDef.ret)) {
-                error(semantic->state, node->funcDef.name,
+                error(ctx->state, node->funcDef.name,
                       "'main' must return i32");
             }
         }
-        putSymbol(semantic, f);
+        putSymbol(ctx, f);
     }
 }
 
-ZNode *getStructField(ZSemantic *semantic, ZType *strct, ZToken *field) {
+ZNode *getStructField(ZSemantic *ctx, ZType *strct, ZToken *field) {
     if (!strct) return NULL;
-    strct = resolveTypeRef(semantic, strct);
+    strct = resolveTypeRef(ctx, strct);
     for (usize i = 0; i < veclen(strct->strct.fields); i++) {
         ZNode *structField = strct->strct.fields[i];
         if (structField->type == NODE_EMBED_FIELD) {
-            ZNode *res = getStructField(semantic, structField->resolved, field);
+            ZNode *res = getStructField(ctx, structField->resolved, field);
             if (res) return res;
         } else if (structField->type == NODE_FIELD) {
             if (tokeneq(structField->field.identifier, field)) {
@@ -291,12 +291,12 @@ ZNode *getStructField(ZSemantic *semantic, ZType *strct, ZToken *field) {
 }
 
 static void putVarPattern(
-        ZSemantic *semantic, ZNode *node,
+        ZSemantic *ctx, ZNode *node,
         ZType *type, ZVarDestructPattern *pattern) {
     if (!type) return;
     if (pattern->type == Z_VAR_IDENT) {
         putRawSymbol(
-            semantic,
+            ctx,
             Z_SYM_VAR,
             pattern->ident,
             type,
@@ -305,7 +305,7 @@ static void putVarPattern(
         );
     } else if (pattern->type == Z_VAR_TUPLE) {
         if (type->kind != Z_TYPE_TUPLE) {
-            error(semantic->state, pattern->tok,
+            error(ctx->state, pattern->tok,
                     "'%s' doesn't support destructuring",
                     stype(type));
             return;
@@ -314,13 +314,13 @@ static void putVarPattern(
         usize expected  = veclen(type->tuple);
         usize got       = veclen(pattern->tuple);
         if (expected != got) {
-            error(semantic->state, pattern->tok,
+            error(ctx->state, pattern->tok,
                     "Expected %zu, got %zu elements", expected, got);
             return;
         }
 
         for (usize i = 0; i < got; i++) {
-            putVarPattern(semantic,
+            putVarPattern(ctx,
                 node,
                 type->tuple[i],
                 pattern->tuple[i]
@@ -328,29 +328,29 @@ static void putVarPattern(
         }
     } else if (pattern->type == Z_VAR_STRUCT) {
         if (type->kind != Z_TYPE_STRUCT) {
-            error(semantic->state, pattern->tok,
+            error(ctx->state, pattern->tok,
                     "'%s' doesn't support destructuring",
                     stype(type));
             return;
         }
 
         for (usize i = 0; i < veclen(pattern->fields); i++) {
-            ZNode *structField = getStructField(semantic, type, pattern->fields[i]->key);
+            ZNode *structField = getStructField(ctx, type, pattern->fields[i]->key);
 
             if (!structField) {
-                error(semantic->state, pattern->fields[i]->key,
+                error(ctx->state, pattern->fields[i]->key,
                     "Field '%s' not found in %s",
                     pattern->fields[i]->key->str,
                     stype(type)
                 );
             } else if (!pattern->fields[i]->value) {
                 /* Shorthand {x} — bind to the field name itself. */
-                putRawSymbol(semantic, Z_SYM_VAR,
+                putRawSymbol(ctx, Z_SYM_VAR,
                     pattern->fields[i]->key,
                     structField->resolved,
                     node, false);
             } else {
-                putVarPattern(semantic,
+                putVarPattern(ctx,
                     node,
                     structField->resolved,
                     pattern->fields[i]->value
@@ -360,24 +360,24 @@ static void putVarPattern(
     }
 }
 
-/* Store a node of type NODE_VAR_DECL in the semantic table. */
-static void putVar(ZSemantic *semantic, ZNode *node, bool isGlobal) {
+/* Store a node of type NODE_VAR_DECL in the ctx table. */
+static void putVar(ZSemantic *ctx, ZNode *node, bool isGlobal) {
     (void)isGlobal;
     if (!node->resolved) {
-        error(semantic->state,
+        error(ctx->state,
                 node->tok,
                 "Cannot register var, got null type");
     }
 
-    putVarPattern(semantic,
+    putVarPattern(ctx,
             node,
             node->resolved,
             node->varDecl.pattern);
 }
 
-static void putGeneric(ZSemantic *semantic, ZType *type) {
+static void putGeneric(ZSemantic *ctx, ZType *type) {
     putRawSymbol(
-        semantic,
+        ctx,
         Z_SYM_GENERIC,
         type->generic.name,
         type,
@@ -386,7 +386,7 @@ static void putGeneric(ZSemantic *semantic, ZType *type) {
     );
 }
 
-static void putStruct(ZSemantic *semantic, ZNode *node) {
+static void putStruct(ZSemantic *ctx, ZNode *node) {
     ZType *type             = maketype(Z_TYPE_STRUCT);
     type->strct.name        = node->structDef.ident;
     type->strct.fields      = node->structDef.fields;
@@ -394,7 +394,7 @@ static void putStruct(ZSemantic *semantic, ZNode *node) {
     type->tok               = node->tok;
     node->resolved          = type;
 
-    putRawSymbol(semantic,
+    putRawSymbol(ctx,
             Z_SYM_STRUCT,
             node->structDef.ident,
             type,
@@ -402,19 +402,19 @@ static void putStruct(ZSemantic *semantic, ZNode *node) {
             node->structDef.pub);
 }
 
-static void putEnum(ZSemantic *semantic, ZNode *node) {
+static void putEnum(ZSemantic *ctx, ZNode *node) {
     putRawSymbol(
-        semantic,
+        ctx,
         Z_SYM_ENUM,
-        node->structDef.ident,
+        node->enumDef.name,
         node->resolved,
         node,
         node->enumDef.pub
     );
 }
 
-static void putTypedef(ZSemantic *semantic, ZNode *node) {
-    putRawSymbol(semantic,
+static void putTypedef(ZSemantic *ctx, ZNode *node) {
+    putRawSymbol(ctx,
             Z_SYM_TYPEDEF,
             node->typeDef.alias,
             node->typeDef.type,
@@ -422,84 +422,84 @@ static void putTypedef(ZSemantic *semantic, ZNode *node) {
             node->typeDef.pub);
 }
 
-static void registerModule(ZSemantic *semantic, ZNode *module) {
+static void registerModule(ZSemantic *ctx, ZNode *module) {
     ZScope *scope = NULL;
-    for (usize i = 0; i < veclen(semantic->scopes); i++) {
-        if (semantic->scopes[i]->module == module) {
-            scope = semantic->scopes[i]->scope;
+    for (usize i = 0; i < veclen(ctx->scopes); i++) {
+        if (ctx->scopes[i]->module == module) {
+            scope = ctx->scopes[i]->scope;
             goto setScope;
         }
     }
 
     ZScopeTable *table = zalloc(ZScopeTable);
     table->module = module;
-    table->scope = makescope(semantic->table->global, module);
+    table->scope = makescope(ctx->table->global, module);
 
-    vecpush(semantic->scopes, table);
+    vecpush(ctx->scopes, table);
     scope = table->scope;
 
 setScope:
-    semantic->table->module = semantic->table->current;
-    semantic->table->current = scope;
+    ctx->table->module = ctx->table->current;
+    ctx->table->current = scope;
 }
 
-static void warnUnused(ZSemantic *semantic, ZSymbol *symbol) {
+static void warnUnused(ZSemantic *ctx, ZSymbol *symbol) {
     switch (symbol->kind) {
     case Z_SYM_FUNC:
-        if (semantic->state->unusedFunc) break;
-        warning(semantic->state,
+        if (ctx->state->unusedFunc) break;
+        warning(ctx->state,
                 symbol->name,
                 "Unused function '%s'",
                 symbol->name->str);
         break;
     case Z_SYM_STRUCT:
-        if (semantic->state->unusedStruct) break;
-        warning(semantic->state,
+        if (ctx->state->unusedStruct) break;
+        warning(ctx->state,
                 symbol->name,
                 "Unused struct '%s'",
                 symbol->name->str);
         break;
     case Z_SYM_VAR:
-        if (semantic->state->unusedVar) break;
-        warning(semantic->state,
+        if (ctx->state->unusedVar) break;
+        warning(ctx->state,
                 symbol->name,
                 "Unused variable '%s'",
                 symbol->name->str);
         break;
     default:
-        warning(semantic->state, symbol->name, "Unused a generic symbol");
+        warning(ctx->state, symbol->name, "Unused a generic symbol");
         break;
     }
 }
 
-static void checkUnusedSymbols(ZSemantic *semantic) {
-    ZScope *scope = semantic->table->current;
+static void checkUnusedSymbols(ZSemantic *ctx) {
+    ZScope *scope = ctx->table->current;
     for (usize i = 0; i < veclen(scope->symbols); i++) {
         let symbol = scope->symbols[i];
         if (symbol->useCount == 0) {
-            warnUnused(semantic, symbol);
+            warnUnused(ctx, symbol);
         }
     }
 }
 
-static void endModule(ZSemantic *semantic) {
-    if (!semantic || !semantic->table || !semantic->table->module) return;
-    checkUnusedSymbols(semantic);
-    semantic->table->current = semantic->table->module;
+static void endModule(ZSemantic *ctx) {
+    if (!ctx || !ctx->table || !ctx->table->module) return;
+    checkUnusedSymbols(ctx);
+    ctx->table->current = ctx->table->module;
 }
 
-static void beginScope(ZSemantic *semantic, ZNode *curr) {
-    ZScope *scope               = makescope(semantic->table->current, curr);
-    semantic->table->current    = scope;
+static void beginScope(ZSemantic *ctx, ZNode *curr) {
+    ZScope *scope               = makescope(ctx->table->current, curr);
+    ctx->table->current    = scope;
 }
 
-static void endScope(ZSemantic *semantic) {
-    if (!semantic->table->current || !semantic->table->current->parent) {
-        error(semantic->state, NULL, "Called endScope at the highest level");
+static void endScope(ZSemantic *ctx) {
+    if (!ctx->table->current || !ctx->table->current->parent) {
+        error(ctx->state, NULL, "Called endScope at the highest level");
         return;
     }
-    checkUnusedSymbols(semantic);
-    semantic->table->current = semantic->table->current->parent;
+    checkUnusedSymbols(ctx);
+    ctx->table->current = ctx->table->current->parent;
 }
 
 /* ================== Type arithmetic ================== */
@@ -532,8 +532,8 @@ static ZTokenType toSigned(u8 rank) {
     }
 }
 
-static bool isComparable(ZSemantic *semantic, ZType *type) {
-    type = resolveTypeRef(semantic, type);
+static bool isComparable(ZSemantic *ctx, ZType *type) {
+    type = resolveTypeRef(ctx, type);
     if (!type) return false;
 
     if (type->kind == Z_TYPE_FUNCTION       ||
@@ -643,7 +643,7 @@ bool typesPrimitive(ZType *t) {
 }
 
 /* Note: this function works only for non-aliased types.
- * Aliases are resolved through the semantic table.
+ * Aliases are resolved through the ctx table.
  *
  * */
 bool typesEqual(ZType *a, ZType *b) {
@@ -697,8 +697,8 @@ ZNode *implicitCast(ZNode *node, ZType *type) {
 }
 
 /* ================== Symbol lookup ================== */
-ZSymbol *resolve(ZSemantic *semantic, ZToken *ident) {
-    ZScope *curr = semantic->table->current;
+ZSymbol *resolve(ZSemantic *ctx, ZToken *ident) {
+    ZScope *curr = ctx->table->current;
     while (curr) {
         for (usize i = 0; i < veclen(curr->symbols); i++) {
             if (tokeneq(curr->symbols[i]->name, ident)) {
@@ -802,37 +802,37 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
     }
 }
 
-static ZType *_resolveTypeRef(ZSemantic *semantic, ZType *type, ZType ***seen) {
+static ZType *_resolveTypeRef(ZSemantic *ctx, ZType *type, ZType ***seen) {
     if (!type) return NULL;
 
     switch (type->kind) {
     case Z_TYPE_PRIMITIVE: {
         if (type->primitive.token->type != TOK_IDENT) return type;
-        ZSymbol *sym = resolve(semantic, type->primitive.token);
+        ZSymbol *sym = resolve(ctx, type->primitive.token);
         if (!sym) {
-            error(semantic->state, type->primitive.token,
+            error(ctx->state, type->primitive.token,
                   "Unknown type '%s'", type->primitive.token->str);
             return NULL;
         }
         return sym->type;
     }
     case Z_TYPE_POINTER:
-        type->base = _resolveTypeRef(semantic, type->base, seen);
+        type->base = _resolveTypeRef(ctx, type->base, seen);
         return type;
     case Z_TYPE_ARRAY:
-        type->array.base = _resolveTypeRef(semantic, type->array.base, seen);
+        type->array.base = _resolveTypeRef(ctx, type->array.base, seen);
         return type;
     case Z_TYPE_FUNCTION:
-        type->func.ret = _resolveTypeRef(semantic, type->func.ret, seen);
+        type->func.ret = _resolveTypeRef(ctx, type->func.ret, seen);
         for (usize i = 0; i < veclen(type->func.args); i++) {
-            type->func.args[i] = _resolveTypeRef(semantic,
+            type->func.args[i] = _resolveTypeRef(ctx,
                 type->func.args[i],
                 seen);
         }
         return type;
     case Z_TYPE_TUPLE:
         for (usize i = 0; i < veclen(type->tuple); i++)
-            type->tuple[i] = _resolveTypeRef(semantic, type->tuple[i], seen);
+            type->tuple[i] = _resolveTypeRef(ctx, type->tuple[i], seen);
         return type;
     default: return type;
     }
@@ -855,20 +855,20 @@ static ZType *_resolveTypeRef(ZSemantic *semantic, ZType *type, ZType ***seen) {
  * To handle it properly the function have to early return
  * if the current type is already visited.
  */
-static ZType *resolveTypeRef(ZSemantic *semantic, ZType *type) {
+static ZType *resolveTypeRef(ZSemantic *ctx, ZType *type) {
     if (!type) return NULL;
     ZType **seen = NULL;
-    return _resolveTypeRef(semantic, type, &seen);
+    return _resolveTypeRef(ctx, type, &seen);
 }
 
 static ZType *resolveMemberAccess(ZSemantic *, ZNode *);
 static ZType *resolveArrSubscript(ZSemantic *, ZNode *);
 
-static ZType *resolveFuncTable(ZSemantic *semantic,
+static ZType *resolveFuncTable(ZSemantic *ctx,
     ZToken *base, ZToken *prop) {
     ZNode **staticFuncs = NULL;
-    for (usize i = 0; i < veclen(semantic->table->funcs); i++) {
-        ZFuncTable *table = semantic->table->funcs[i];
+    for (usize i = 0; i < veclen(ctx->table->funcs); i++) {
+        ZFuncTable *table = ctx->table->funcs[i];
         if (table->base->kind != Z_TYPE_PRIMITIVE) {
             continue;
         }
@@ -880,23 +880,37 @@ static ZType *resolveFuncTable(ZSemantic *semantic,
         staticFuncs = table->staticFuncDef;
     }
     if (!staticFuncs) {
-        error(semantic->state, prop,
+        error(ctx->state, prop,
                 "Static method '%s' not found", prop->str);
     }
 
-    for (usize i = 0; i < veclen(staticFuncs); i++) {
+    ZType *res = NULL;
+    for (usize i = 0; i < veclen(staticFuncs) && !res; i++) {
         ZNode *func = staticFuncs[i];
         if (tokeneq(func->funcDef.base->primitive.token, base) &&
             tokeneq(func->funcDef.name, prop)) {
-            return func->resolved;
+            res = func->resolved;
         }
     }
-    return NULL;
+
+    if (res) {
+        for (usize i = 0; i < veclen(res->func.args); i++) {
+            ZType *resolved = resolveTypeRef(ctx, res->func.args[i]);
+            if (!resolved) {
+                error(ctx->state, res->func.args[i]->tok,
+                    "Unresolved type");
+            } else {
+                res->func.args[i] = resolved;
+            }
+        }
+    }
+
+    return res;
 }
 
-static ZNode *resolveFuncCallEmbedded(ZSemantic *semantic,
+static ZNode *resolveFuncCallEmbedded(ZSemantic *ctx,
     ZNode *curr, ZType *obj, ZToken *prop) {
-    ZFuncTable **table = semantic->table->funcs;
+    ZFuncTable **table = ctx->table->funcs;
 
     ZNode *ptr = NULL;
     if (obj && obj->kind == Z_TYPE_STRUCT) {
@@ -904,20 +918,20 @@ static ZNode *resolveFuncCallEmbedded(ZSemantic *semantic,
             ZNode *field = obj->strct.fields[i];
             if (field->type != NODE_EMBED_FIELD) continue;
             if (ptr) {
-                error(semantic->state, prop,
+                error(ctx->state, prop,
                     "Function conflict with type '%s'",
                     stype(ptr->resolved)
                 );
             } else {
                 ptr = resolveFuncCallEmbedded(
-                    semantic, curr, field->resolved, prop);
+                    ctx, curr, field->resolved, prop);
             }
         }
     }
 
     ZFuncTable *funcs = NULL;
     for (usize i = 0; i < veclen(table) && !funcs; i++) {
-        ZType *base = resolveTypeRef(semantic, table[i]->base);
+        ZType *base = resolveTypeRef(ctx, table[i]->base);
         if (typesEqual(base, obj)) funcs = table[i];
     }
 
@@ -926,7 +940,7 @@ static ZNode *resolveFuncCallEmbedded(ZSemantic *semantic,
             ZNode *f = funcs->funcDef[i];
             if (tokeneq(f->funcDef.name, prop)) {
                 if (ptr) {
-                    error(semantic->state, prop,
+                    error(ctx->state, prop,
                         "Function conflict with type '%s'",
                         stype(ptr->resolved)
                     );
@@ -942,26 +956,26 @@ static ZNode *resolveFuncCallEmbedded(ZSemantic *semantic,
     return ptr;
 }
 
-static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
+static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
     ZNode *callee = curr->call.callee;
     ZNode **args = curr->call.args;
     bool variadic = false;
 
     for (usize i = 0; i < veclen(args); i++) {
-        args[i]->resolved = resolveType(semantic, args[i]);
+        args[i]->resolved = resolveType(ctx, args[i]);
     }
 
     ZType *result = NULL;
     ZType **expectedArgs = NULL;
     if (callee->type == NODE_IDENTIFIER) {
-        ZSymbol *sym = resolve(semantic, callee->identNode.tok);
+        ZSymbol *sym = resolve(ctx, callee->identNode.tok);
         if (!sym) {
-            error(semantic->state, callee->identNode.tok,
+            error(ctx->state, callee->identNode.tok,
                   "Undefined function '%s'", callee->identNode.tok->str);
             return NULL;
         }
         if (sym->kind != Z_SYM_FUNC) {
-            error(semantic->state, callee->identNode.tok,
+            error(ctx->state, callee->identNode.tok,
                   "'%s' is not callable", callee->identNode.tok->str);
             return NULL;
         }
@@ -975,26 +989,26 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
          * */
         for (usize i = 0; i < veclen(sym->type->func.args); i++) {
             sym->type->func.args[i] = resolveTypeRef(
-                semantic, sym->type->func.args[i]
+                ctx, sym->type->func.args[i]
             );
         }
         expectedArgs = sym->type->func.args;
         variadic = sym->type->func.variadic;
 
-        result = resolveTypeRef(semantic, sym->node->funcDef.ret);
+        result = resolveTypeRef(ctx, sym->node->funcDef.ret);
         sym->node->funcDef.ret = result;
 
         callee->resolved = result;
     } else if (callee->type == NODE_STATIC_ACCESS) {
         ZToken *base = callee->staticAccess.base;
         ZToken *prop = callee->staticAccess.prop;
-        ZSymbol *baseSym = resolve(semantic, base);
+        ZSymbol *baseSym = resolve(ctx, base);
         if (!baseSym) {
-            error(semantic->state, base, "Base not found");
+            error(ctx->state, base, "Base not found");
             return NULL;
         }
 
-        ZType *staticMethod = resolveFuncTable(semantic, base, prop);
+        ZType *staticMethod = resolveFuncTable(ctx, base, prop);
 
         if (staticMethod) {
             result              = staticMethod->func.ret;
@@ -1002,7 +1016,7 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             variadic            = staticMethod->func.variadic;
             callee->resolved    = staticMethod;
         } else if (baseSym->kind == Z_SYM_STRUCT) {
-            error(semantic->state, prop,
+            error(ctx->state, prop,
                 "Static method '%s' not found", prop->str);
         } else if (baseSym->kind == Z_SYM_ENUM) {
             ZType **fields  = baseSym->type->enm.fields;
@@ -1014,7 +1028,7 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             }
 
             if (!strct) {
-                error(semantic->state, prop,
+                error(ctx->state, prop,
                     "Field '%s' not found for enum '%s'",
                     prop->str, base->str
                 );
@@ -1024,7 +1038,7 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             /* Skip the first argument (always the flag). */
             for (usize i = 1; i < veclen(strct->strct.fields); i++) {
                 strct->strct.fields[i]->field.type = resolveTypeRef(
-                    semantic, strct->strct.fields[i]->field.type
+                    ctx, strct->strct.fields[i]->field.type
                 );
                 vecpush(expectedArgs, strct->strct.fields[i]->field.type);
             }
@@ -1032,42 +1046,42 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
             result = baseSym->type;
         } else if (baseSym->kind == Z_SYM_TYPEDEF) {
             error(
-                semantic->state,
+                ctx->state,
                 base,
                 "Static function with type alias as base are not supported yet");
         } else {
-            error(semantic->state, base, "Base should refer to a type");
+            error(ctx->state, base, "Base should refer to a type");
         }
 
         
     } else if (callee->type == NODE_MEMBER) {
-        ZType *obj = resolveType(semantic, callee->memberAccess.object);
+        ZType *obj = resolveType(ctx, callee->memberAccess.object);
 
         ZToken *prop = callee->memberAccess.field;
 
-        ZNode *resolved = resolveFuncCallEmbedded(semantic, callee, obj, prop);
+        ZNode *resolved = resolveFuncCallEmbedded(ctx, callee, obj, prop);
         if (!resolved) {
-            error(semantic->state, prop,
+            error(ctx->state, prop,
                 "Unknown function '%s' for type '%s'",
                 prop->str,
                 stype(obj)
             );
         } else {
             expectedArgs    = resolved->resolved->func.args;
-            result          = resolveTypeRef(semantic, resolved->funcDef.ret);
+            result          = resolveTypeRef(ctx, resolved->funcDef.ret);
             variadic        = resolved->resolved->func.variadic;
         }
     } else {
         /* Expression call: resolve callee type and extract return type. */
-        ZType *calleeType = resolveType(semantic, callee);
+        ZType *calleeType = resolveType(ctx, callee);
         if (calleeType && calleeType->kind == Z_TYPE_FUNCTION) {
-            result = resolveTypeRef(semantic, calleeType->func.ret);
+            result = resolveTypeRef(ctx, calleeType->func.ret);
             calleeType->func.ret = result;
         }
 
         for (usize i = 0; i < veclen(calleeType->func.args); i++) {
             calleeType->func.args[i] = resolveTypeRef(
-                semantic, calleeType->func.args[i]
+                ctx, calleeType->func.args[i]
             );
         }
         expectedArgs    = calleeType->func.args;
@@ -1077,7 +1091,7 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
     if (!result) return NULL;
 
     if (!variadic && veclen(expectedArgs) != veclen(args)) {
-        error(semantic->state, curr->tok,
+        error(ctx->state, curr->tok,
                 "Expected %zu arguments, got %zu",
                 veclen(expectedArgs), veclen(args));
         return NULL;
@@ -1094,10 +1108,10 @@ static ZType *resolveFuncCall(ZSemantic *semantic, ZNode *curr) {
         if (typesEqual(args[i]->resolved, expected)) continue;
 
         ZType *promoted = typesCompatible(
-            semantic->state, args[i]->resolved, expected);
+            ctx->state, args[i]->resolved, expected);
 
         if (!promoted) {
-            error(semantic->state, args[i]->tok,
+            error(ctx->state, args[i]->tok,
                 "Expected %s, got %s",
                 stype(args[i]->resolved),
                 stype(expected)
@@ -1121,51 +1135,51 @@ static bool isLvalue(ZNode *node) {
     }
 }
 
-static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
-    ZSymbol *structSym = resolve(semantic, curr->structlit.ident);
+static ZType *resolveStructLit(ZSemantic *ctx, ZNode *curr) {
+    ZSymbol *structSym = resolve(ctx, curr->structlit.ident);
 
     if (!structSym) {
-        error(semantic->state, curr->tok,
+        error(ctx->state, curr->tok,
                 "struct '%s' not found", curr->tok->str);
         return NULL;
     }
     if (structSym->kind != Z_SYM_STRUCT) {
-        error(semantic->state, structSym->name,
+        error(ctx->state, structSym->name,
                     "'%s' is not a struct", stoken(structSym->name));
         return NULL;
     }
 
     if (veclen(curr->structlit.fields) == 0) {
-        warning(semantic->state, curr->tok, "Some fields not initialized");
+        warning(ctx->state, curr->tok, "Some fields not initialized");
     }
 
     for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
         ZNode *field = curr->structlit.fields[i];
-        ZType *type = resolveType(semantic, field->varDecl.rvalue);
+        ZType *type = resolveType(ctx, field->varDecl.rvalue);
         ZType *expectedType;
         ZType *promoted;
 
         if (!type) {
-            error(semantic->state, field->varDecl.rvalue->tok,
+            error(ctx->state, field->varDecl.rvalue->tok,
                 "Unresolved type");
             continue;
         }
 
         field->resolved = type;
-        ZNode *structField = getStructField(semantic, structSym->type, field->tok);
+        ZNode *structField = getStructField(ctx, structSym->type, field->tok);
 
         if (!structField) {
-            error(semantic->state, field->tok,
+            error(ctx->state, field->tok,
                 "Field '%s' not found for struct '%s'",
                 field->tok->str, stype(structSym->type)
             );
             return NULL;
         }
-        expectedType = resolveTypeRef(semantic, structField->field.type);
+        expectedType = resolveTypeRef(ctx, structField->field.type);
         structField->field.type = expectedType;
-        promoted = typesCompatible(semantic->state, expectedType, type);
+        promoted = typesCompatible(ctx->state, expectedType, type);
         if (!promoted) {
-            error(semantic->state,
+            error(ctx->state,
                 field->tok,
                 "Expected %s, got %s",
                 stype(expectedType),
@@ -1173,14 +1187,14 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
             );
         }
     }
-    ZSymbol *resolved = resolve(semantic, curr->structlit.ident);
+    ZSymbol *resolved = resolve(ctx, curr->structlit.ident);
 
     if (!resolved) {
-        error(semantic->state, curr->structlit.ident,
+        error(ctx->state, curr->structlit.ident,
                 "Unknown struct literal");
     } else {
         if (resolved->kind != Z_SYM_STRUCT) {
-            error(semantic->state, curr->structlit.ident,
+            error(ctx->state, curr->structlit.ident,
                     "This is not a struct literal");
         }
         return resolved->type;
@@ -1188,11 +1202,11 @@ static ZType *resolveStructLit(ZSemantic *semantic, ZNode *curr) {
     return NULL;
 }
 
-static ZType* resolveIdentifier(ZSemantic *semantic, ZNode *node) {
+static ZType* resolveIdentifier(ZSemantic *ctx, ZNode *node) {
     ZToken *tok = node->identNode.tok;
-    ZSymbol *sym = resolve(semantic, tok);
+    ZSymbol *sym = resolve(ctx, tok);
     if (!sym) {
-        error(semantic->state, tok,
+        error(ctx->state, tok,
               "Undefined identifier '%s'", tok->str);
         return NULL;
     }
@@ -1202,17 +1216,17 @@ static ZType* resolveIdentifier(ZSemantic *semantic, ZNode *node) {
     return sym->type;
 }
 
-static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
+static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
     ZTokenType op       = curr->binary.op->type;
-    ZType     *left     = resolveType(semantic, curr->binary.left);
-    ZType     *right    = resolveType(semantic, curr->binary.right);
+    ZType     *left     = resolveType(ctx, curr->binary.left);
+    ZType     *right    = resolveType(ctx, curr->binary.right);
 
 
     /* Auto promotion rules should be handled by typesCompatible. */
-    ZType *promoted     = typesCompatible(semantic->state, left, right);
+    ZType *promoted     = typesCompatible(ctx->state, left, right);
 
     if (!promoted) {
-        error(semantic->state,
+        error(ctx->state,
             curr->binary.op,
             "Incompatible type '%s' with '%s'",
             stype(left),
@@ -1223,7 +1237,7 @@ static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
     if (op == TOK_EQ) {
         /* Assignment yields the type of the left-hand side. */
         if (!isLvalue(curr->binary.left)) {
-            error(semantic->state, curr->binary.left->tok,
+            error(ctx->state, curr->binary.left->tok,
                     "is not a valid lvalue");
         }
         return left;
@@ -1248,22 +1262,22 @@ static ZType *resolveBinary(ZSemantic *semantic, ZNode *curr) {
     return promoted;
 }
 
-static ZType *resolveArrayLiteral(ZSemantic *semantic, ZNode *curr) {
+static ZType *resolveArrayLiteral(ZSemantic *ctx, ZNode *curr) {
     ZType *arrType = NULL;
     usize len = veclen(curr->arraylit);
 
     for (usize i = 0; i < len; i++) {
         ZNode *field = curr->arraylit[i];
-        ZType *fieldType = resolveType(semantic, field);
+        ZType *fieldType = resolveType(ctx, field);
 
         if (!arrType) {
             arrType = fieldType;
         } else {
-            arrType = typesCompatible(semantic->state, arrType, fieldType);
+            arrType = typesCompatible(ctx->state, arrType, fieldType);
 
             if (!arrType) {
                 ZToken *tok = fieldType ? fieldType->tok : NULL;
-                error(semantic->state, tok,
+                error(ctx->state, tok,
                              "Array literals should have the same type");
             }
         }
@@ -1277,15 +1291,15 @@ static ZType *resolveArrayLiteral(ZSemantic *semantic, ZNode *curr) {
     return result;
 }
 
-static ZType *resolveTupleLiteral(ZSemantic *semantic, ZNode *node) {
+static ZType *resolveTupleLiteral(ZSemantic *ctx, ZNode *node) {
     ZType **types = NULL;
     ZType *fieldType = NULL;
 
     ZNode **fields = node->tuplelit;
     for (usize i = 0; i < veclen(fields); i++) {
-        fieldType = resolveType(semantic, fields[i]);
+        fieldType = resolveType(ctx, fields[i]);
         if (!fieldType) {
-            error(semantic->state, fields[i]->tok,
+            error(ctx->state, fields[i]->tok,
                     "Unresolved type of tuple");
         } else {
             vecpush(types, fieldType);
@@ -1298,8 +1312,8 @@ static ZType *resolveTupleLiteral(ZSemantic *semantic, ZNode *node) {
     return result;
 }
 
-static ZType *resolveArrayInit(ZSemantic *semantic, ZNode *node) {
-    node->arrayinit = resolveTypeRef(semantic, node->arrayinit);
+static ZType *resolveArrayInit(ZSemantic *ctx, ZNode *node) {
+    node->arrayinit = resolveTypeRef(ctx, node->arrayinit);
     node->resolved = node->arrayinit;
     return node->arrayinit;
 }
@@ -1308,30 +1322,30 @@ static ZType *resolveArrayInit(ZSemantic *semantic, ZNode *node) {
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
  */
-ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
+ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
     if (!curr)           return NULL;
     if (curr->resolved)  return curr->resolved;
 
     ZType *result = NULL;
 
     switch (curr->type) {
-    case NODE_CALL:         result = resolveFuncCall    (semantic, curr);   break;
+    case NODE_CALL:         result = resolveFuncCall    (ctx, curr);   break;
     case NODE_LITERAL:      result = resolveLiteralType (curr);             break;
-    case NODE_MEMBER:       result = resolveMemberAccess(semantic, curr);   break;
-    case NODE_SUBSCRIPT:    result = resolveArrSubscript(semantic, curr);   break;
-    case NODE_STRUCT_LIT:   result = resolveStructLit   (semantic, curr);   break;
-    case NODE_IDENTIFIER:   result = resolveIdentifier  (semantic, curr);   break;
-    case NODE_ARRAY_LIT:    result = resolveArrayLiteral(semantic, curr);   break;
-    case NODE_TUPLE_LIT:    result = resolveTupleLiteral(semantic, curr);   break;
-    case NODE_BINARY:       result = resolveBinary      (semantic, curr);   break;
-    case NODE_ARRAY_INIT:   result = resolveArrayInit   (semantic, curr);   break;
+    case NODE_MEMBER:       result = resolveMemberAccess(ctx, curr);   break;
+    case NODE_SUBSCRIPT:    result = resolveArrSubscript(ctx, curr);   break;
+    case NODE_STRUCT_LIT:   result = resolveStructLit   (ctx, curr);   break;
+    case NODE_IDENTIFIER:   result = resolveIdentifier  (ctx, curr);   break;
+    case NODE_ARRAY_LIT:    result = resolveArrayLiteral(ctx, curr);   break;
+    case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr);   break;
+    case NODE_BINARY:       result = resolveBinary      (ctx, curr);   break;
+    case NODE_ARRAY_INIT:   result = resolveArrayInit   (ctx, curr);   break;
 
     case NODE_UNARY: {
-        ZType     *operand = resolveType(semantic, curr->unary.operand);
+        ZType     *operand = resolveType(ctx, curr->unary.operand);
         ZTokenType op      = curr->unary.operat->type;
 
         if (!operand) {
-            error(semantic->state, curr->tok, "Unresolved type");
+            error(ctx->state, curr->tok, "Unresolved type");
             return NULL;
         }
 
@@ -1346,7 +1360,7 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 
         case TOK_STAR:
             if (operand->kind != Z_TYPE_POINTER) {
-                error(semantic->state, curr->unary.operat,
+                error(ctx->state, curr->unary.operat,
                     "Cannot dereference a non-pointer type"
                 );
             }
@@ -1365,16 +1379,16 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
         if (curr->resolved) {
-            result = resolveTypeRef(semantic, curr->resolved);
+            result = resolveTypeRef(ctx, curr->resolved);
         } else if (curr->varDecl.rvalue) {
-            result = resolveType(semantic, curr->varDecl.rvalue);
+            result = resolveType(ctx, curr->varDecl.rvalue);
         }
         break;
 
     case NODE_CAST: {
         /* Resolve the inner expression type (for side-effects / validation). */
-        ZType *expr = resolveType(semantic, curr->castExpr.expr);
-        result = resolveTypeRef(semantic, curr->castExpr.toType);
+        ZType *expr = resolveType(ctx, curr->castExpr.expr);
+        result = resolveTypeRef(ctx, curr->castExpr.toType);
 
         if (expr && expr->kind == Z_TYPE_ARRAY &&
             result->kind == Z_TYPE_ARRAY) {
@@ -1387,7 +1401,7 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
 
     case NODE_SIZEOF: {
         /* sizeof yields u64. */
-        curr->sizeofExpr.type = resolveTypeRef(semantic, curr->sizeofExpr.type);
+        curr->sizeofExpr.type = resolveTypeRef(ctx, curr->sizeofExpr.type);
         result = maketype(Z_TYPE_PRIMITIVE);
         result->primitive.token = maketoken(TOK_U64, "u64");
         result->tok             = curr->tok;
@@ -1395,18 +1409,18 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
     }
 
     case NODE_BREAK:
-        if (semantic->loopDepth == 0) {
-            error(semantic->state, curr->tok, "break must be inside a loop");
+        if (ctx->loopDepth == 0) {
+            error(ctx->state, curr->tok, "break must be inside a loop");
         }
         break;
     case NODE_CONTINUE:
-        if (semantic->loopDepth == 0) {
-            error(semantic->state, curr->tok, "continue must be inside a loop");
+        if (ctx->loopDepth == 0) {
+            error(ctx->state, curr->tok, "continue must be inside a loop");
         }
         break;
 
     default:
-        warning(semantic->state, curr->tok,
+        warning(ctx->state, curr->tok,
                 "Trying to resolve the type of node's type %d", curr->type);
         break;
     }
@@ -1415,10 +1429,10 @@ ZType *resolveType(ZSemantic *semantic, ZNode *curr) {
     return result;
 }
 
-static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
-    ZType *objType = resolveType(semantic, curr->memberAccess.object);
+static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
+    ZType *objType = resolveType(ctx, curr->memberAccess.object);
     if (!objType) {
-        error(semantic->state, curr->tok,
+        error(ctx->state, curr->tok,
               "Cannot resolve object type in member access");
         return NULL;
     }
@@ -1427,43 +1441,43 @@ static ZType *resolveMemberAccess(ZSemantic *semantic, ZNode *curr) {
     ZToken *field = curr->memberAccess.field;
 
     if (!base) {
-        error(semantic->state, curr->tok,
+        error(ctx->state, curr->tok,
               "Base type not found");
         return NULL;
     }
     
     if (base->kind == Z_TYPE_STRUCT) {
-        ZNode *structField = getStructField(semantic, base, field);
+        ZNode *structField = getStructField(ctx, base, field);
         if (structField) {
             return structField->resolved;
         }
-        error(semantic->state, field,
+        error(ctx->state, field,
               "Member '%s' not found in struct", field->str);
         return NULL;
     } else if (base->kind == Z_TYPE_TUPLE) {
         usize len = veclen(base->tuple);
 
         if (field->type != TOK_INT_LIT) {
-            error(semantic->state, field, "Expected integer literal");
+            error(ctx->state, field, "Expected integer literal");
             return NULL;
         }
 
         if (field->integer < 0 || field->integer >= (i64)len) {
-            error(semantic->state, field,
+            error(ctx->state, field,
                     "Integer literal out of range for tuple indexing");
         }
 
         return base->tuple[field->integer];
     } else {
-        error(semantic->state, curr->tok,
+        error(ctx->state, curr->tok,
                 "Expected a struct or tuple for '.' access");
         return NULL;
     }
 }
 
-static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
-    ZType *arrType      = resolveType(semantic, curr->subscript.arr);
-    ZType *indexType    = resolveType(semantic, curr->subscript.index);
+static ZType *resolveArrSubscript(ZSemantic *ctx, ZNode *curr) {
+    ZType *arrType      = resolveType(ctx, curr->subscript.arr);
+    ZType *indexType    = resolveType(ctx, curr->subscript.index);
 
     /* Type not resolved */
     if (!arrType) return NULL;
@@ -1471,14 +1485,14 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 
     if (arrType->kind != Z_TYPE_ARRAY &&
         arrType->kind != Z_TYPE_POINTER) {
-        error(semantic->state, curr->tok,
+        error(ctx->state, curr->tok,
               "Expected an array type for subscript");
         return NULL;
     }
 
     if (!indexType || indexType->kind != Z_TYPE_PRIMITIVE ||
         !isInteger(indexType->primitive.token->type)) {
-        error(semantic->state, curr->tok,
+        error(ctx->state, curr->tok,
               "Array index must be an integer");
         return NULL;
     }
@@ -1491,22 +1505,22 @@ static ZType *resolveArrSubscript(ZSemantic *semantic, ZNode *curr) {
 
 /* ================== Statement analysis ================== */
 
-static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
+static void analyzeVar(ZSemantic *ctx, ZNode *curr, bool isGlobal) {
     (void)isGlobal;
     ZType *rvalueType   = NULL;
     ZType *declaredType = NULL;
 
     if (curr->varDecl.rvalue) {
-        rvalueType = resolveType(semantic, curr->varDecl.rvalue);
-        rvalueType = resolveTypeRef(semantic, rvalueType);
+        rvalueType = resolveType(ctx, curr->varDecl.rvalue);
+        rvalueType = resolveTypeRef(ctx, rvalueType);
     }
 
     if (curr->resolved) {
-        declaredType = resolveTypeRef(semantic, curr->resolved);
+        declaredType = resolveTypeRef(ctx, curr->resolved);
         curr->resolved = declaredType;
         if (rvalueType &&
-            !typesCompatible(semantic->state, declaredType, rvalueType)) {
-            error(semantic->state, curr->tok,
+            !typesCompatible(ctx->state, declaredType, rvalueType)) {
+            error(ctx->state, curr->tok,
                 "Type mismatch: lvalue has type '%s' and rvalue has type '%s'",
                 stype(declaredType),
                 stype(rvalueType)
@@ -1521,20 +1535,20 @@ static void analyzeVar(ZSemantic *semantic, ZNode *curr, bool isGlobal) {
     curr->resolved = declaredType;
 
     putVarPattern(
-        semantic,
+        ctx,
         curr,
         curr->resolved,
         curr->varDecl.pattern
     );
 }
 
-static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
-    ZType *cond = resolveType(semantic, curr->ifStmt.cond);
+static void analyzeIf(ZSemantic *ctx, ZNode *curr) {
+    ZType *cond = resolveType(ctx, curr->ifStmt.cond);
     
     if (!cond) {
-        error(semantic->state, curr->ifStmt.cond->tok, "Unknown type condition");
-    } else if (!isComparable(semantic, cond)) {
-        error(semantic->state,
+        error(ctx->state, curr->ifStmt.cond->tok, "Unknown type condition");
+    } else if (!isComparable(ctx, cond)) {
+        error(ctx->state,
             curr->ifStmt.cond->tok,
             "%s cannot be used as a condition",
             stype(cond)
@@ -1543,81 +1557,81 @@ static void analyzeIf(ZSemantic *semantic, ZNode *curr) {
 
     curr->ifStmt.cond = implicitCast(curr->ifStmt.cond, u1Type);
 
-    analyzeBlock(semantic, curr->ifStmt.body, true);
+    analyzeBlock(ctx, curr->ifStmt.body, true);
 
     if (curr->ifStmt.elseBranch) {
         ZNode *el = curr->ifStmt.elseBranch;
         if (el->type == NODE_IF)
-            analyzeIf(semantic, el);
+            analyzeIf(ctx, el);
         else
-            analyzeBlock(semantic, el, true);
+            analyzeBlock(ctx, el, true);
     }
 }
 
-static void analyzeWhile(ZSemantic *semantic, ZNode *curr) {
-    ZType *cond = resolveType(semantic, curr->whileStmt.cond);
+static void analyzeWhile(ZSemantic *ctx, ZNode *curr) {
+    ZType *cond = resolveType(ctx, curr->whileStmt.cond);
 
-    if (!isComparable(semantic, cond)) {
-        error(semantic->state, curr->whileStmt.cond->tok,
+    if (!isComparable(ctx, cond)) {
+        error(ctx->state, curr->whileStmt.cond->tok,
                 "Is not a comparable value");
     }
 
     curr->whileStmt.cond = implicitCast(curr->whileStmt.cond, u1Type);
 
-    semantic->loopDepth++;
-    analyzeBlock(semantic, curr->whileStmt.branch, true);
-    semantic->loopDepth--;
+    ctx->loopDepth++;
+    analyzeBlock(ctx, curr->whileStmt.branch, true);
+    ctx->loopDepth--;
 }
 
-static void analyzeFor(ZSemantic *semantic, ZNode *curr) {
-    beginScope(semantic, curr);
+static void analyzeFor(ZSemantic *ctx, ZNode *curr) {
+    beginScope(ctx, curr);
     let f = curr->forStmt;
-    analyzeVar(semantic, f.var, false);
+    analyzeVar(ctx, f.var, false);
 
-    ZType *cond = resolveType(semantic, f.cond);
+    ZType *cond = resolveType(ctx, f.cond);
     curr->forStmt.cond->resolved = cond;
 
-    if (!isComparable(semantic, cond)) {
-        error(semantic->state, f.cond->tok, "Is not a comparable value");
+    if (!isComparable(ctx, cond)) {
+        error(ctx->state, f.cond->tok, "Is not a comparable value");
     }
 
     curr->forStmt.cond = implicitCast(curr->forStmt.cond, u1Type);
 
-    resolveType(semantic, f.incr);
+    resolveType(ctx, f.incr);
 
-    semantic->loopDepth++;
-    analyzeBlock(semantic, curr->forStmt.block, false);
-    semantic->loopDepth--;
+    ctx->loopDepth++;
+    analyzeBlock(ctx, curr->forStmt.block, false);
+    ctx->loopDepth--;
 
-    endScope(semantic);
+    endScope(ctx);
 }
 
-static void analyzeForeign(ZSemantic *semantic, ZNode *curr) {
-    if (!resolveTypeRef(semantic, curr->foreignFunc.ret)) {
-        error(semantic->state, curr->tok, "Unknown type");
+static void analyzeForeign(ZSemantic *ctx, ZNode *curr) {
+    if (!resolveTypeRef(ctx, curr->foreignFunc.ret)) {
+        error(ctx->state, curr->tok, "Unknown type");
     }
     for (usize i = 0; i < veclen(curr->foreignFunc.args); i++) {
         ZType *arg = curr->foreignFunc.args[i];
-        ZType *t = resolveTypeRef(semantic, arg);
+        ZType *t = resolveTypeRef(ctx, arg);
         curr->foreignFunc.args[i] = t;
         if (!t) {
-            error(semantic->state, arg->tok, "Unknown type");
+            error(ctx->state, arg->tok, "Unknown type");
         }
     }
 }
 
-static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
+static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
 
     for (usize i = 0; i < veclen(curr->funcDef.generics); i++) {
-        putGeneric(semantic, curr->funcDef.generics[i]);
+        putGeneric(ctx, curr->funcDef.generics[i]);
     }
 
-    beginScope(semantic, curr);
-    curr->funcDef.body->scope = semantic->table->current;
+    beginScope(ctx, curr);
+    curr->funcDef.body->scope = ctx->table->current;
     if (curr->funcDef.base) {
-        ZType *res = resolveTypeRef(semantic, curr->funcDef.base);
+        ZType *res = resolveTypeRef(ctx, curr->funcDef.base);
         if (!res) {
-            error(semantic->state,
+            error(ctx->state,
                     curr->funcDef.base->primitive.token,
                     "'%s' is not a valid identifier",
                     curr->funcDef.base->primitive.token->str);
@@ -1627,7 +1641,7 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
 
     if (curr->funcDef.receiver) {
         ZNode *receiver = curr->funcDef.receiver;
-        ZType *recType  = resolveTypeRef(semantic, receiver->field.type);
+        ZType *recType  = resolveTypeRef(ctx, receiver->field.type);
         curr->funcDef.receiver->resolved = recType;
         receiver->field.type = recType;
 
@@ -1636,19 +1650,28 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
         sym->type       = recType;
         sym->node       = curr->funcDef.receiver;
         sym->isPublic   = false;
-        putSymbol(semantic, sym);
+        putSymbol(ctx, sym);
     }
 
     for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
         ZNode  *arg     = curr->funcDef.args[i];
-        ZType  *argType = resolveTypeRef(semantic, arg->field.type);
+        ZType  *argType = resolveTypeRef(ctx, arg->field.type);
 
         if (!argType) {
-            error(semantic->state, curr->funcDef.name, "Unknown type resolved");
+            error(ctx->state, curr->funcDef.name, "Unknown type resolved");
+        }
+
+        /* Unsized array parameters (e.g. []*char) decay to a pointer to
+           their element type, matching C's array-to-pointer decay rule. */
+        if (argType && argType->kind == Z_TYPE_ARRAY && argType->array.size == 0) {
+            ZType *ptr  = maketype(Z_TYPE_POINTER);
+            ptr->base   = argType->array.base;
+            ptr->tok    = argType->tok;
+            argType     = ptr;
         }
 
         arg->field.type = argType;
-        putRawSymbol(semantic,
+        putRawSymbol(ctx,
                 Z_SYM_VAR,
                 arg->field.identifier,
                 argType,
@@ -1656,18 +1679,18 @@ static void analyzeFunc(ZSemantic *semantic, ZNode *curr) {
                 false);
     }
 
-    ZType *savedRet             = semantic->currentFuncRet;
-    ZNode *savedFunc            = semantic->currentFunc;
+    ZType *savedRet             = ctx->currentFuncRet;
+    ZNode *savedFunc            = ctx->currentFunc;
 
-    semantic->currentFuncRet    = resolveTypeRef(semantic, curr->funcDef.ret);
-    semantic->currentFunc       = curr;
+    ctx->currentFuncRet    = resolveTypeRef(ctx, curr->funcDef.ret);
+    ctx->currentFunc       = curr;
 
-    analyzeBlock(semantic, curr->funcDef.body, false);
+    analyzeBlock(ctx, curr->funcDef.body, false);
 
-    semantic->currentFuncRet    = savedRet;
-    semantic->currentFunc       = savedFunc;
+    ctx->currentFuncRet    = savedRet;
+    ctx->currentFunc       = savedFunc;
     
-    endScope(semantic);
+    endScope(ctx);
 }
 
 static bool isType(ZType *type, ZTokenType tok) {
@@ -1675,49 +1698,49 @@ static bool isType(ZType *type, ZTokenType tok) {
     return type->primitive.token->type == tok;
 }
 
-static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
+static void analyzeReturn(ZSemantic *ctx, ZNode *curr) {
     ZType *retType  = NULL;
     ZType *promoted = NULL;
     if (curr->returnStmt.expr) {
-        retType     = resolveType(semantic, curr->returnStmt.expr);
+        retType     = resolveType(ctx, curr->returnStmt.expr);
         if (!retType) {
-            error(semantic->state, curr->tok, "Invalid expression");
+            error(ctx->state, curr->tok, "Invalid expression");
             return;
         }
-        retType     = resolveTypeRef(semantic, retType);
+        retType     = resolveTypeRef(ctx, retType);
     }
 
     curr->resolved  = retType;
 
-    if (!semantic->currentFuncRet) return;
+    if (!ctx->currentFuncRet) return;
 
     bool isVoidRet  = isVoid(retType);
-    bool isVoidFunc = isType(semantic->currentFuncRet, TOK_VOID);
+    bool isVoidFunc = isType(ctx->currentFuncRet, TOK_VOID);
 
     if (isVoidFunc && !isVoidRet) {
-        error(semantic->state, semantic->currentFunc->tok,
+        error(ctx->state, ctx->currentFunc->tok,
               "Unexpected return value in void function '%s'",
               stype(retType));
         return;
     } else if (!isVoidFunc && isVoidRet) {
-        error(semantic->state, semantic->currentFunc->tok,
+        error(ctx->state, ctx->currentFunc->tok,
               "Expected a return value");
         return;
     } else if (!isVoidFunc && !isVoidRet) {
         promoted = typesCompatible(
-            semantic->state, retType, semantic->currentFuncRet
+            ctx->state, retType, ctx->currentFuncRet
         );
 
         if (!promoted) {
-            error(semantic->state, curr->tok,
+            error(ctx->state, curr->tok,
                 "Expected type %s, got %s",
-                stype(semantic->currentFuncRet),
+                stype(ctx->currentFuncRet),
                 stype(retType)
             );
         } else {
             /* Implicit casting. */
             curr->returnStmt.expr = implicitCast(
-                curr->returnStmt.expr, semantic->currentFuncRet
+                curr->returnStmt.expr, ctx->currentFuncRet
             );
         }
     }
@@ -1725,21 +1748,21 @@ static void analyzeReturn(ZSemantic *semantic, ZNode *curr) {
     
 }
 
-static void analyzeStmt(ZSemantic *semantic, ZNode *curr) {
+static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     switch (curr->type) {
-    case NODE_VAR_DECL: analyzeVar(semantic, curr, false);              break;
-    case NODE_IF:       analyzeIf(semantic, curr);                      break;
-    case NODE_WHILE:    analyzeWhile(semantic, curr);                   break;
-    case NODE_FOR:      analyzeFor(semantic, curr);                     break;
-    case NODE_BLOCK:    analyzeBlock(semantic, curr, false);            break;
-    case NODE_DEFER:    resolveType(semantic, curr->deferStmt.expr);    break;
-    case NODE_RETURN:   analyzeReturn(semantic, curr);                  break;
-    default:            resolveType(semantic, curr);                    break;
+    case NODE_VAR_DECL: analyzeVar(ctx, curr, false);              break;
+    case NODE_IF:       analyzeIf(ctx, curr);                      break;
+    case NODE_WHILE:    analyzeWhile(ctx, curr);                   break;
+    case NODE_FOR:      analyzeFor(ctx, curr);                     break;
+    case NODE_BLOCK:    analyzeBlock(ctx, curr, false);            break;
+    case NODE_DEFER:    resolveType(ctx, curr->deferStmt.expr);    break;
+    case NODE_RETURN:   analyzeReturn(ctx, curr);                  break;
+    default:            resolveType(ctx, curr);                    break;
     }
 }
 
-static void analyzeBlock(ZSemantic *semantic, ZNode *block, bool scoped) {
-    if (scoped) beginScope(semantic, block);
+static void analyzeBlock(ZSemantic *ctx, ZNode *block, bool scoped) {
+    if (scoped) beginScope(ctx, block);
 
     ZNode **stmts = block->block;
     usize len = veclen(stmts);
@@ -1748,32 +1771,32 @@ static void analyzeBlock(ZSemantic *semantic, ZNode *block, bool scoped) {
             (stmts[i]->type == NODE_BREAK ||
             stmts[i]->type == NODE_CONTINUE ||
             stmts[i]->type == NODE_RETURN)) {
-            error(semantic->state, stmts[i+1]->tok, "Unreachable code");
+            error(ctx->state, stmts[i+1]->tok, "Unreachable code");
 
             vecsetlen(block->block, i);
 
             break;
         }
-        analyzeStmt(semantic, stmts[i]);
+        analyzeStmt(ctx, stmts[i]);
     }
 
-    if (scoped) endScope(semantic);
+    if (scoped) endScope(ctx);
 }
 
 /* ================== Global scope discovery ================== */
 
-static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
+static void discoverGlobalScope(ZSemantic *ctx, ZNode *root) {
     for (usize i = 0; i < veclen(root->module.root); i++) {
         ZNode *child = root->module.root[i];
 
         switch (child->type) {
-        case NODE_FUNC:     putFunc(semantic, child);       break;
-        case NODE_STRUCT:   putStruct(semantic, child);     break;
-        case NODE_VAR_DECL: putVar(semantic, child, false); break;
-        case NODE_ENUM:     putEnum(semantic, child);       break;
+        case NODE_FUNC:     putFunc(ctx, child);       break;
+        case NODE_STRUCT:   putStruct(ctx, child);     break;
+        case NODE_VAR_DECL: putVar(ctx, child, false); break;
+        case NODE_ENUM:     putEnum(ctx, child);       break;
 
         case NODE_TYPEDEF: {
-            putTypedef(semantic, child);
+            putTypedef(ctx, child);
             break;
         }
 
@@ -1787,15 +1810,15 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
             symbol->node      = child;
             symbol->type      = child->resolved;
             symbol->isPublic  = child->foreignFunc.pub;
-            putSymbol(semantic, symbol);
+            putSymbol(ctx, symbol);
             break;
         }
 
         case NODE_MODULE:
             if (child->module.root) {
-                registerModule(semantic, child);
-                discoverGlobalScope(semantic, child);
-                endModule(semantic);
+                registerModule(ctx, child);
+                discoverGlobalScope(ctx, child);
+                endModule(ctx);
             }
             break;
 
@@ -1804,7 +1827,7 @@ static void discoverGlobalScope(ZSemantic *semantic, ZNode *root) {
     }
 }
 
-static void checkEmbedFieldConflicts(ZSemantic *semantic, ZType *strct, hashset_t *seen, ZToken *embedTok) {
+static void checkEmbedFieldConflicts(ZSemantic *ctx, ZType *strct, hashset_t *seen, ZToken *embedTok) {
     if (!strct || strct->kind != Z_TYPE_STRUCT) return;
     ZNode **fields = strct->strct.fields;
     for (usize i = 0; i < veclen(fields); i++) {
@@ -1812,10 +1835,10 @@ static void checkEmbedFieldConflicts(ZSemantic *semantic, ZType *strct, hashset_
         if (field->type == NODE_EMBED_FIELD) {
             ZType *nested = field->resolved;
             if (nested && nested->kind == Z_TYPE_STRUCT)
-                checkEmbedFieldConflicts(semantic, nested, seen, embedTok);
+                checkEmbedFieldConflicts(ctx, nested, seen, embedTok);
         } else if (field->type == NODE_FIELD) {
             if (!hashset_insert(seen, field->field.identifier->str)) {
-                error(semantic->state, embedTok,
+                error(ctx->state, embedTok,
                     "field '%s' conflicts with embedded struct '%s'",
                     field->field.identifier->str, stype(strct));
             }
@@ -1823,7 +1846,7 @@ static void checkEmbedFieldConflicts(ZSemantic *semantic, ZType *strct, hashset_
     }
 }
 
-static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
+static void analyzeStruct(ZSemantic *ctx, ZNode *structDef) {
     ZType **seen = NULL;
     ZNode **fields = structDef->structDef.fields;
     usize len = veclen(fields);
@@ -1834,11 +1857,11 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
         if (field->type == NODE_EMBED_FIELD) {
             if (!field->tok && field->resolved && field->resolved->kind == Z_TYPE_PRIMITIVE)
                 field->tok = field->resolved->primitive.token;
-            field->resolved = _resolveTypeRef(semantic, field->resolved, &seen);
+            field->resolved = _resolveTypeRef(ctx, field->resolved, &seen);
         } else if (field->type == NODE_FIELD) {
-            field->field.type = _resolveTypeRef(semantic, field->field.type, &seen);
+            field->field.type = _resolveTypeRef(ctx, field->field.type, &seen);
         } else {
-            error(semantic->state, structDef->tok, "Invalid field type");
+            error(ctx->state, structDef->tok, "Invalid field type");
         }
     }
 
@@ -1849,7 +1872,7 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
         ZType **szSeen = NULL;
 
         if (isInfiniteSize(field->field.type, structType, szSeen)) {
-            error(semantic->state, field->field.identifier,
+            error(ctx->state, field->field.identifier,
                   "field '%s' embeds struct by value causing infinite size; use a pointer",
                   field->field.identifier->str);
         }
@@ -1860,7 +1883,7 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
         ZNode *field = fields[i];
         if (field->type == NODE_FIELD) {
             if (!hashset_insert(&fieldSeen, field->field.identifier->str)) {
-                error(semantic->state, field->field.identifier,
+                error(ctx->state, field->field.identifier,
                     "field '%s' already declared", field->field.identifier->str);
             }
         }
@@ -1870,24 +1893,24 @@ static void analyzeStruct(ZSemantic *semantic, ZNode *structDef) {
         if (field->type != NODE_EMBED_FIELD) continue;
         ZType *embedded = field->resolved;
         if (!embedded || embedded->kind != Z_TYPE_STRUCT) continue;
-        checkEmbedFieldConflicts(semantic, embedded, &fieldSeen, field->tok);
+        checkEmbedFieldConflicts(ctx, embedded, &fieldSeen, field->tok);
     }
 }
 
-static void analyzeEnum(ZSemantic *semantic, ZNode *enumDef) {
+static void analyzeEnum(ZSemantic *ctx, ZNode *enumDef) {
     if (!enumDef->resolved) {
-        error(semantic->state, enumDef->tok, "Expected a resolved type");
+        error(ctx->state, enumDef->tok, "Expected a resolved type");
         return;
     }
 
-    ZSymbol *sym = resolve(semantic, enumDef->enumDef.name);
+    ZSymbol *sym = resolve(ctx, enumDef->enumDef.name);
     if (!sym) {
-        error(semantic->state, enumDef->enumDef.name, "Enum not found");
+        error(ctx->state, enumDef->enumDef.name, "Enum not found");
         return;
     }
 
     if (sym->type->kind != Z_TYPE_ENUM) {
-        error(semantic->state, enumDef->enumDef.name, "Type is not an enum");
+        error(ctx->state, enumDef->enumDef.name, "Type is not an enum");
         return;
     }
 
@@ -1897,7 +1920,7 @@ static void analyzeEnum(ZSemantic *semantic, ZNode *enumDef) {
 
     for (usize i = 0; i < veclen(fields); i++) {
         if (!hashset_insert(&seen, fields[i]->strct.name->str)) {
-            error(semantic->state, fields[i]->strct.name,
+            error(ctx->state, fields[i]->strct.name,
                 "This field already declared in the same enum");
         }
         ZNode **enumField = fields[i]->strct.fields;
@@ -1906,10 +1929,10 @@ static void analyzeEnum(ZSemantic *semantic, ZNode *enumDef) {
             if (!enumField[j] || 
                 !enumField[j]->field.type) continue; 
             ZType **szSeen = NULL;
-            ZType *resolved = resolveTypeRef(semantic, enumField[j]->field.type);
+            ZType *resolved = resolveTypeRef(ctx, enumField[j]->field.type);
             if (!resolved) continue;
             if (isInfiniteSize(resolved, enm, szSeen)) {
-                error(semantic->state,
+                error(ctx->state,
                     enumField[j]->field.type->tok,
                     "field '%s' embeds enum by value causing infinite size; use a pointer",
                     enumField[j]->field.type->tok->str);
@@ -1923,30 +1946,30 @@ static void analyzeEnum(ZSemantic *semantic, ZNode *enumDef) {
 
 /* ================== Main analysis pass ================== */
 
-static void analyze(ZSemantic *semantic, ZNode *root) {
-    root->module.scope = semantic->table->current;
+static void analyze(ZSemantic *ctx, ZNode *root) {
+    root->module.scope = ctx->table->current;
     for (usize i = 0; i < veclen(root->module.root); i++) {
         ZNode *child = root->module.root[i];
 
         switch (child->type) {
-        case NODE_FOREIGN:  analyzeForeign(semantic, child);    break;
-        case NODE_FUNC:     analyzeFunc(semantic, child);       break;
-        case NODE_VAR_DECL: analyzeVar(semantic, child, true);  break;
-        case NODE_STRUCT:   analyzeStruct(semantic, child);     break;
-        case NODE_ENUM:     analyzeEnum(semantic, child);       break;
+        case NODE_FOREIGN:  analyzeForeign(ctx, child);    break;
+        case NODE_FUNC:     analyzeFunc(ctx, child);       break;
+        case NODE_VAR_DECL: analyzeVar(ctx, child, true);  break;
+        case NODE_STRUCT:   analyzeStruct(ctx, child);     break;
+        case NODE_ENUM:     analyzeEnum(ctx, child);       break;
         case NODE_MACRO:    /* does't require any validation*/  break;
 
         case NODE_MODULE:
             if (child->module.root) {
-                registerModule(semantic, child);
-                analyze(semantic, child);
-                endModule(semantic);
+                registerModule(ctx, child);
+                analyze(ctx, child);
+                endModule(ctx);
             }
             break;
 
 
         default: 
-            warning(semantic->state, root->tok,
+            warning(ctx->state, root->tok,
                     "node '%zu' not yet analyzed",
                     root->type);
             break;
@@ -1962,7 +1985,7 @@ static ZType *makePrimitiveType(ZTokenType type) {
 
 ZSemantic *zanalyze(ZState *state, ZNode *root) {
     state->currentPhase = Z_PHASE_SEMANTIC;
-    ZSemantic *semantic = makesemantic(state, root);
+    ZSemantic *ctx = makesemantic(state, root);
 
     if (!none)      none    = maketype(Z_TYPE_NONE);
     if (!ztrue)     ztrue   = makePrimitiveType(TOK_TRUE);
@@ -1970,10 +1993,10 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     if (!zvoid)     zvoid   = makePrimitiveType(TOK_VOID);
     if (!u1Type)    u1Type  = makePrimitiveType(TOK_BOOL);
 
-    registerModule(semantic, root);
-    discoverGlobalScope(semantic, root);
+    registerModule(ctx, root);
+    discoverGlobalScope(ctx, root);
     
-    analyze(semantic, root);
+    analyze(ctx, root);
 
-    return semantic;
+    return ctx;
 }
