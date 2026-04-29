@@ -1080,7 +1080,9 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
          * codegen can inject self for method calls. */
         ZType *calleeType = resolveType(ctx, callee);
         if (!calleeType || calleeType->kind != Z_TYPE_FUNCTION) {
-            error(ctx->state, callee->tok, "Expression is not callable");
+            error(ctx->state, callee->tok,
+                "type '%s' is not callable",
+                stype(calleeType));
             return NULL;
         }
         result = resolveTypeRef(ctx, calleeType->func.ret);
@@ -1335,16 +1337,16 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
     ZType *result = NULL;
 
     switch (curr->type) {
-    case NODE_CALL:         result = resolveFuncCall    (ctx, curr);   break;
-    case NODE_LITERAL:      result = resolveLiteralType (curr);             break;
-    case NODE_MEMBER:       result = resolveMemberAccess(ctx, curr);   break;
-    case NODE_SUBSCRIPT:    result = resolveArrSubscript(ctx, curr);   break;
-    case NODE_STRUCT_LIT:   result = resolveStructLit   (ctx, curr);   break;
-    case NODE_IDENTIFIER:   result = resolveIdentifier  (ctx, curr);   break;
-    case NODE_ARRAY_LIT:    result = resolveArrayLiteral(ctx, curr);   break;
-    case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr);   break;
-    case NODE_BINARY:       result = resolveBinary      (ctx, curr);   break;
-    case NODE_ARRAY_INIT:   result = resolveArrayInit   (ctx, curr);   break;
+    case NODE_CALL:         result = resolveFuncCall    (ctx, curr);    break;
+    case NODE_LITERAL:      result = resolveLiteralType (curr);         break;
+    case NODE_MEMBER:       result = resolveMemberAccess(ctx, curr);    break;
+    case NODE_SUBSCRIPT:    result = resolveArrSubscript(ctx, curr);    break;
+    case NODE_STRUCT_LIT:   result = resolveStructLit   (ctx, curr);    break;
+    case NODE_IDENTIFIER:   result = resolveIdentifier  (ctx, curr);    break;
+    case NODE_ARRAY_LIT:    result = resolveArrayLiteral(ctx, curr);    break;
+    case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr);    break;
+    case NODE_BINARY:       result = resolveBinary      (ctx, curr);    break;
+    case NODE_ARRAY_INIT:   result = resolveArrayInit   (ctx, curr);    break;
 
     case NODE_UNARY: {
         ZType     *operand = resolveType(ctx, curr->unary.operand);
@@ -1457,12 +1459,12 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
         if (structField) {
             return structField->field.type;
         }
-        ZNode *method = resolveFuncCallEmbedded(ctx, curr, base, field);
+        ZNode *method = resolveFuncCallEmbedded(ctx, curr, objType, field);
         if (method) {
             return method->resolved;
         }
         error(ctx->state, field,
-              "Member '%s' not found in struct", field->str);
+              "Member '%s' not found in '%s'", field->str, stype(base));
         return NULL;
     } else if (base->kind == Z_TYPE_TUPLE) {
         usize len = veclen(base->tuple);

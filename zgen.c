@@ -597,7 +597,8 @@ static bool fitsInRegister(LLVMValueRef val) {
         kind == LLVMPointerTypeKind || 
         kind == LLVMIntegerTypeKind ||
         kind == LLVMFloatTypeKind   ||
-        kind == LLVMDoubleTypeKind  );
+        kind == LLVMDoubleTypeKind  ||
+        kind == LLVMFunctionTypeKind);
 }
 
 static void putDestructuredPatternInStack(
@@ -775,6 +776,9 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
      * type from the semantic info instead. mangled == NULL means indirect. */
     LLVMTypeRef funcType;
     if (callee->type == NODE_MEMBER && !callee->memberAccess.mangled) {
+        funcType = genType(ctx, callee->resolved);
+    } else if (LLVMGetValueKind(func) != LLVMFunctionValueKind) {
+        /* Indirect call through a function pointer variable. */
         funcType = genType(ctx, callee->resolved);
     } else {
         funcType = LLVMGlobalGetValueType(func);
@@ -1459,7 +1463,10 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
 
     LLVMTypeRef *paramTypes = znalloc(LLVMTypeRef, argc ? argc : 1);
     for (usize i = 0; i < argc; i++) {
-        paramTypes[i] = genType(ctx, node->foreignFunc.args[i]);
+        ZType *at = node->foreignFunc.args[i];
+        paramTypes[i] = genType(ctx, at);
+        if (at->kind == Z_TYPE_FUNCTION)
+            paramTypes[i] = LLVMPointerType(paramTypes[i], 0);
     }
     LLVMTypeRef funcType = LLVMFunctionType(
         ret,
@@ -1786,6 +1793,9 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
         return;
     }
 
+    /* Function types are passed as pointers and fit in a register — no alloca needed. */
+    if (node->resolved->kind == Z_TYPE_FUNCTION) return;
+
     LLVMTypeRef type = genType(ctx, node->resolved);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
     addFuncVar(ctx, val, type, node);
@@ -1884,7 +1894,10 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     }
 
     for (usize i = 0; i < veclen(f->funcDef.args); i++) {
-        LLVMTypeRef arg = genType(ctx, f->funcDef.args[i]->field.type);
+        ZType *at = f->funcDef.args[i]->field.type;
+        LLVMTypeRef arg = genType(ctx, at);
+        if (at->kind == Z_TYPE_FUNCTION)
+            arg = LLVMPointerType(arg, 0);
         vecpush(args, arg);
     }
 
@@ -1909,10 +1922,20 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     usize paramOffset = f->funcDef.receiver ? 1 : 0;
     for (usize i = 0; i < veclen(f->funcDef.args); i++) {
         char *name = f->funcDef.args[i]->field.identifier->str;
-        LLVMTypeRef paramType = genType(ctx, f->funcDef.args[i]->field.type);
+        ZType *argType = f->funcDef.args[i]->field.type;
+        LLVMTypeRef paramType = NULL;
+        LLVMValueRef slot = NULL;
+        paramType = genType(ctx, argType);
+        if (argType->kind == Z_TYPE_FUNCTION) {
+            paramType = LLVMPointerType(
+                LLVMInt8TypeInContext(ctx->ctx), 0
+            );
+            slot = LLVMGetParam(func, i + paramOffset);
+        } else {
+            slot = LLVMBuildAlloca(ctx->builder, paramType, name);
+            LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
+        }
 
-        LLVMValueRef slot = LLVMBuildAlloca(ctx->builder, paramType, name);
-        LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
 
         putLLVMValueRef(ctx, name, slot);
     }

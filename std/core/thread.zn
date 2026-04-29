@@ -1,0 +1,34 @@
+use <core::mem>
+
+foreign i32 pthread_create(*u8, *u8, *u8(*u8), *u8)
+foreign i32 pthread_join(*u64, **u8)
+foreign u0 printf(*char, ...)
+foreign u0 perror(*char)
+
+pub struct Thread {
+    *Allocator allocator
+    *u8 pthread
+    *u8(*u8) worker
+}
+
+for Thread {
+    *Thread new(*Allocator allocator, *u8(*u8) worker) {
+        *Thread self = allocator.alloc(sizeof Thread)
+    
+        self.allocator = allocator
+        self.pthread = allocator.alloc(sizeof u64)
+        self.worker = worker
+
+        return self
+    }
+}
+
+for *Thread self {
+    pub i32 start(*u8 argument) {
+        return pthread_create(self.pthread, none, self.worker, argument)
+    }
+
+    pub i32 join() {
+        return pthread_join(self.pthread, none)
+    }
+}
