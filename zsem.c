@@ -24,6 +24,17 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 
+/* The semantic analyzer has 2 phases.
+ * 1. Analyze only the declarations such that every
+ *  module knows the other declarations and they don't need
+ *  to write to other modules.
+ * 2. Creates a thread's pool where each thread analyze N functions.
+ *  So when a function is analyzed it doesn't need to wrinte in the global scope
+ *  because it is already writte in the phase 1.
+ *  To to the second phase The semantic analyzer needs a shared context (ZSemantic)
+ *  and a thread local context (the struct below) to make sure every function
+ *  has its own thread-safe state.
+ * */
 typedef struct {
     ZSemantic   *semantic;
     arena_t     *arena;
@@ -668,7 +679,14 @@ bool typesEqual(ZType *a, ZType *b) {
     case Z_TYPE_STRUCT:
         return a == b;
     case Z_TYPE_FUNCTION:
-        return a == b;
+        if (!typesEqual(a->func.ret, b->func.ret)) return false;
+        if (veclen(a->func.args) != veclen(b->func.args)) return false;
+        if (veclen(a->func.generics) != veclen(b->func.generics)) return false;
+
+        for (usize i = 0; i < veclen(a->func.args); i++) {
+            if (!typesEqual(a->func.args[i], b->func.args[i])) return false;
+        }
+        return true;
     case Z_TYPE_ENUM:
         return a == b;
     case Z_TYPE_TUPLE: {
@@ -1054,38 +1072,26 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
         }
 
         
-    } else if (callee->type == NODE_MEMBER) {
-        ZType *obj = resolveType(ctx, callee->memberAccess.object);
-
-        ZToken *prop = callee->memberAccess.field;
-
-        ZNode *resolved = resolveFuncCallEmbedded(ctx, callee, obj, prop);
-        if (!resolved) {
-            error(ctx->state, prop,
-                "Unknown function '%s' for type '%s'",
-                prop->str,
-                stype(obj)
-            );
-        } else {
-            expectedArgs    = resolved->resolved->func.args;
-            result          = resolveTypeRef(ctx, resolved->funcDef.ret);
-            variadic        = resolved->resolved->func.variadic;
-        }
     } else {
-        /* Expression call: resolve callee type and extract return type. */
+        /* Expression call (includes NODE_MEMBER, subscripts, etc.):
+         * resolveType handles all callee forms uniformly. For NODE_MEMBER,
+         * resolveMemberAccess now covers both struct fields and receiver
+         * methods, setting memberAccess.mangled as a side-effect so that
+         * codegen can inject self for method calls. */
         ZType *calleeType = resolveType(ctx, callee);
-        if (calleeType && calleeType->kind == Z_TYPE_FUNCTION) {
-            result = resolveTypeRef(ctx, calleeType->func.ret);
-            calleeType->func.ret = result;
+        if (!calleeType || calleeType->kind != Z_TYPE_FUNCTION) {
+            error(ctx->state, callee->tok, "Expression is not callable");
+            return NULL;
         }
-
+        result = resolveTypeRef(ctx, calleeType->func.ret);
+        calleeType->func.ret = result;
         for (usize i = 0; i < veclen(calleeType->func.args); i++) {
             calleeType->func.args[i] = resolveTypeRef(
                 ctx, calleeType->func.args[i]
             );
         }
-        expectedArgs    = calleeType->func.args;
-        variadic        = calleeType->func.variadic;
+        expectedArgs = calleeType->func.args;
+        variadic     = calleeType->func.variadic;
     }
 
     if (!result) return NULL;
@@ -1449,7 +1455,11 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
     if (base->kind == Z_TYPE_STRUCT) {
         ZNode *structField = getStructField(ctx, base, field);
         if (structField) {
-            return structField->resolved;
+            return structField->field.type;
+        }
+        ZNode *method = resolveFuncCallEmbedded(ctx, curr, base, field);
+        if (method) {
+            return method->resolved;
         }
         error(ctx->state, field,
               "Member '%s' not found in struct", field->str);
@@ -1613,9 +1623,10 @@ static void analyzeForeign(ZSemantic *ctx, ZNode *curr) {
     for (usize i = 0; i < veclen(curr->foreignFunc.args); i++) {
         ZType *arg = curr->foreignFunc.args[i];
         ZType *t = resolveTypeRef(ctx, arg);
-        curr->foreignFunc.args[i] = t;
         if (!t) {
             error(ctx->state, arg->tok, "Unknown type");
+        } else {
+            curr->foreignFunc.args[i] = t;
         }
     }
 }

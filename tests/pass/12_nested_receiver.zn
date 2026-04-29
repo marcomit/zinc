@@ -1,0 +1,58 @@
+foreign i32 putchar(i32)
+
+struct Inner {
+    i32 value
+    i32(i32) add
+}
+
+struct Outer {
+    Inner a
+    Inner b
+}
+
+for Inner self {
+    i32 get() {
+        return self.value
+    }
+    i32 add(i32 n) {
+        return self.value + n
+    }
+}
+
+for Outer self {
+    i32 sum() {
+        return self.a.get() + self.b.get()
+    }
+    i32 addToA(i32 n) {
+        return self.a.add(n)
+    }
+}
+
+i32 addInner(i32 val) -> val
+
+i32 main() {
+    
+    Inner x = Inner { value: 3, add: addInner }
+    Inner y = Inner { value: 4 }
+    Outer o = Outer { a: x, b: y }
+
+    putchar(48 + x.get())
+    putchar(10)
+
+    putchar(48 + o.a.get())
+    putchar(10)
+
+    putchar(48 + o.b.get())
+    putchar(10)
+
+    putchar(48 + o.a.add(2))
+    putchar(10)
+
+    putchar(48 + o.sum())
+    putchar(10)
+
+    putchar(48 + o.addToA(1))
+    putchar(10)
+
+    return 0
+}

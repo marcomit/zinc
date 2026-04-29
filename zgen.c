@@ -253,8 +253,13 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
         }
     case Z_TYPE_POINTER:
         return 8; /* 64-bit pointer */
-    case Z_TYPE_ARRAY:
-        return typeSize(ctx, type->array.base) * type->array.size;
+    case Z_TYPE_ARRAY: {
+        res = 8 + 8;
+        if (type->array.size == 0) {
+
+        }
+       return typeSize(ctx, type->array.base) * type->array.size;
+    }
     case Z_TYPE_FUNCTION:
         return 8; /* function pointer */
 
@@ -403,7 +408,10 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     case Z_TYPE_ARRAY: {
         LLVMTypeRef base = genType(ctx, type->array.base);
         if (!base) return NULL;
-        return LLVMArrayType(base, (unsigned)type->array.size);
+        LLVMTypeRef descriptorFields[] = {
+            i64Type, LLVMPointerType(base, 0)
+        };
+        return LLVMStructTypeInContext(ctx->ctx, descriptorFields, 2, 0);
     }
 
     case Z_TYPE_FUNCTION: {
@@ -433,7 +441,12 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         LLVMTypeRef ftypes[nfields];
 
         for (usize i = 0; i < veclen(type->strct.fields); i++) {
-            LLVMTypeRef field = genType(ctx, type->strct.fields[i]->resolved);
+            ZType *ft = type->strct.fields[i]->resolved;
+            LLVMTypeRef field = genType(ctx, ft);
+            /* Function types cannot be embedded directly in a struct — store
+             * as a function pointer instead. */
+            if (ft && ft->kind == Z_TYPE_FUNCTION)
+                field = LLVMPointerType(field, 0);
             ftypes[i] = field;
         }
 
@@ -737,13 +750,8 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef *args = NULL;
     ZNode *callee = node->call.callee;
 
-    if (callee->type == NODE_MEMBER) {
-        if (!callee->memberAccess.mangled) {
-            error(ctx->state, callee->memberAccess.object->tok,
-                    "Mangling name not found");
-            return NULL;
-        }
-
+    if (callee->type == NODE_MEMBER && callee->memberAccess.mangled) {
+        /* Receiver method call: look up the global function and inject self. */
         func = getLLVMValueRef(ctx, callee->memberAccess.mangled);
 
         if (!func) error(ctx->state,
@@ -751,17 +759,26 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
                     "Receiver function '%s' not found",
                     callee->memberAccess.mangled);
 
-        // Prepend 'self' as the first argument
         LLVMValueRef self = genExpr(ctx, callee->memberAccess.object);
-
         vecpush(args, self);
 
     } else if (callee->resolved->kind == Z_TYPE_ENUM) {
         return genEnumDecl(ctx, node);
     } else {
+        /* Expression call: covers identifiers, static access, subscripts, and
+         * function-pointer fields (NODE_MEMBER without mangled). */
         func = genExpr(ctx, callee);
     }
-    LLVMTypeRef funcType = LLVMGlobalGetValueType(func);
+
+    /* For indirect calls (locally-loaded function pointers) the LLVM value is
+     * not a global, so LLVMGlobalGetValueType is invalid. Derive the function
+     * type from the semantic info instead. mangled == NULL means indirect. */
+    LLVMTypeRef funcType;
+    if (callee->type == NODE_MEMBER && !callee->memberAccess.mangled) {
+        funcType = genType(ctx, callee->resolved);
+    } else {
+        funcType = LLVMGlobalGetValueType(func);
+    }
 
 
     for (usize i = 0; i < veclen(node->call.args); i++) {
@@ -1384,10 +1401,14 @@ static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
 
     ptr = genStructGEPChain(ctx, baseType, ptr, path);
     LLVMTypeRef fieldType = genType(ctx, node->resolved);
-    
+    /* A function-type field is stored as a function pointer in the struct,
+     * so the load must use the pointer type, not the bare function type. */
+    if (node->resolved && node->resolved->kind == Z_TYPE_FUNCTION)
+        fieldType = LLVMPointerType(fieldType, 0);
+
     return LLVMBuildLoad2(
         ctx->builder,   fieldType,
-        ptr,            label(ctx, node->tok) 
+        ptr,            label(ctx, node->tok)
     );
 }
 
