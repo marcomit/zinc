@@ -961,6 +961,17 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     }
 }
 
+static bool typeIsUnsigned(ZType *type) {
+    if (!type || type->kind != Z_TYPE_PRIMITIVE) return false;
+    return (bool)(type->primitive.token->type & TOK_UNSIGNED);
+}
+
+static ZType *nodeEffectiveType(ZNode *node) {
+    if (!node) return NULL;
+    if (node->type == NODE_CAST) return node->castExpr.toType;
+    return node->resolved;
+}
+
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     if (root->binary.op->type == TOK_EQ) {
         LLVMValueRef ptr = genLvalue(ctx, root->binary.left);
@@ -1016,7 +1027,8 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
                      LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
 
 
-    bool bothUnsigned = true;
+    bool bothUnsigned = typeIsUnsigned(nodeEffectiveType(root->binary.left)) &&
+                        typeIsUnsigned(nodeEffectiveType(root->binary.right));
 
     char *l = label(ctx, root->tok);
 
@@ -1035,13 +1047,16 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealONE, left, right, l);
         default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
         }
-    } else if (bothUnsigned) {
-
     }
 
 
     let div = bothUnsigned ? LLVMBuildUDiv : LLVMBuildSDiv;
     let mod = bothUnsigned ? LLVMBuildURem : LLVMBuildSRem;
+
+    let lt  = bothUnsigned ? LLVMIntULT : LLVMIntSLT;
+    let gt  = bothUnsigned ? LLVMIntUGT : LLVMIntSGT;
+    let lte = bothUnsigned ? LLVMIntULE : LLVMIntSLE;
+    let gte = bothUnsigned ? LLVMIntUGE : LLVMIntSGE;
 
     switch (op) {
     case TOK_PLUS:  return LLVMBuildAdd (ctx->builder, left, right, l);
@@ -1049,10 +1064,10 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     case TOK_STAR:  return LLVMBuildMul (ctx->builder, left, right, l);
     case TOK_DIV:   return div          (ctx->builder, left, right, l);
     case TOK_MOD:   return mod          (ctx->builder, left, right, l);
-    case TOK_LT:    return LLVMBuildICmp(ctx->builder, LLVMIntSLT, left, right, l);
-    case TOK_GT:    return LLVMBuildICmp(ctx->builder, LLVMIntSGT, left, right, l);
-    case TOK_LTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSLE, left, right, l);
-    case TOK_GTE:   return LLVMBuildICmp(ctx->builder, LLVMIntSGE, left, right, l);
+    case TOK_LT:    return LLVMBuildICmp(ctx->builder, lt,  left, right, l);
+    case TOK_GT:    return LLVMBuildICmp(ctx->builder, gt,  left, right, l);
+    case TOK_LTE:   return LLVMBuildICmp(ctx->builder, lte, left, right, l);
+    case TOK_GTE:   return LLVMBuildICmp(ctx->builder, gte, left, right, l);
     case TOK_EQEQ:  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, l);
     case TOK_NOTEQ: return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, l);
 
@@ -1131,9 +1146,10 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
     }
 
     char *l = label(ctx, NULL);
-    unsigned toBits = LLVMGetIntTypeWidth(toType);
+    unsigned toBits = LLVMGetTypeKind(toType) == LLVMIntegerTypeKind
+        ? LLVMGetIntTypeWidth(toType) : 0;
 
-    if (LLVMGetTypeKind(toType) == LLVMIntegerTypeKind && toBits == 1) {
+    if (toBits == 1) {
         LLVMValueRef zero;
         if (fromIsPtr) {
             zero = LLVMConstNull(LLVMTypeOf(val));
@@ -2114,9 +2130,6 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
 
     const char *outname = output ? output : "a.out";
     printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", output);
-    vecpush(state->extraArgs, "-L/opt/homebrew/lib");
-    vecpush(state->extraArgs, "-lraylib");
-    vecpush(state->extraArgs, "-lm");
 
     int ret = zinc_lld_link(objfile, outname,
             (const char**)state->extraArgs, veclen(state->extraArgs));

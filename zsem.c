@@ -592,13 +592,7 @@ ZType *typesCompatible(ZState *state, ZType *a, ZType *b) {
     u8 rb = typeRank(tb);
 
     if (isFloat(ta) || isFloat(tb)) {
-        u8 minRank = min(ra, rb);
-        if (minRank <= 2)
-            return ra > rb ? a : b;
-        ZType *promoted             = maketype(Z_TYPE_PRIMITIVE);
-        promoted->primitive.token   = maketoken(TOK_F64, NULL);
-        promoted->tok               = a->tok;
-        return promoted;
+        return ra > rb ? a : b;
     }
 
     if ((isSigned(ta) && isSigned(tb)) ||
@@ -1248,6 +1242,7 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
             error(ctx->state, curr->binary.left->tok,
                     "is not a valid lvalue");
         }
+        curr->binary.right = implicitCast(curr->binary.right, left);
         return left;
     }
 
@@ -1379,6 +1374,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
         case TOK_SNOT:
             curr->unary.operand = implicitCast(curr->unary.operand, u1Type);
             result = u1Type;
+            break;
         default: result = operand; break;
         }
         break;

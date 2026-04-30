@@ -36,20 +36,21 @@ i32 main() {
     screenWidth  := 800
     screenHeight := 450
 
-    InitWindow(screenWidth, screenHeight, "Pong")
-    SetTargetFPS(60)
+    InitWindow(screenWidth, screenHeight, "Raylib Simple Pong")
 
     ballPosition := Vector2 { x: 400.0, y: 225.0 }
-    ballSpeed    := Vector2 { x: 30.0, y: 30.0  }
+    ballSpeed    := Vector2 { x: 300.0, y: 300.0 }
     ballRadius   := 10.0
 
     paddle      := Rectangle { x: 770.0, y: 175.0, width: 20.0, height: 100.0 }
-    paddleSpeed := 40.0
+    paddleSpeed := 400.0
 
     black  := Color { r: 0,   g: 0,   b: 0,   a: 255 }
     white  := Color { r: 255, g: 255, b: 255, a: 255 }
     maroon := Color { r: 190, g: 33,  b: 55,  a: 255 }
     gray   := Color { r: 130, g: 130, b: 130, a: 255 }
+
+    SetTargetFPS(60)
 
     for not WindowShouldClose() {
         dt := GetFrameTime()
@@ -57,7 +58,10 @@ i32 main() {
         ballPosition.x = ballPosition.x + ballSpeed.x * dt
         ballPosition.y = ballPosition.y + ballSpeed.y * dt
 
-        if ballPosition.y >= screenHeight - ballRadius or ballPosition.y <= ballRadius {
+        if ballPosition.y <= ballRadius and ballSpeed.y < 0.0 {
+            ballSpeed.y = ballSpeed.y * -1.0
+        }
+        if ballPosition.y >= screenHeight - ballRadius and ballSpeed.y > 0.0 {
             ballSpeed.y = ballSpeed.y * -1.0
         }
 
@@ -66,11 +70,17 @@ i32 main() {
             ballPosition.y = 225.0
         }
 
-        if IsKeyDown(265) and paddle.y > 0.0 {
+        if IsKeyDown(265) {
             paddle.y = paddle.y - paddleSpeed * dt
+            if paddle.y < 0.0 {
+                paddle.y = 0.0
+            }
         }
-        if IsKeyDown(264) and paddle.y < screenHeight - paddle.height {
+        if IsKeyDown(264) {
             paddle.y = paddle.y + paddleSpeed * dt
+            if paddle.y > screenHeight - paddle.height {
+                paddle.y = screenHeight - paddle.height
+            }
         }
 
         if CheckCollisionCircleRec(ballPosition, ballRadius, paddle) {
