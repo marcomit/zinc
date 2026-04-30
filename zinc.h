@@ -289,6 +289,12 @@ struct ZVarDestructPattern {
     };
 };
 
+typedef struct ZAnnotation ZAnnotation;
+struct ZAnnotation {
+    ZToken *name;
+    ZAnnotation **args;
+};
+
 struct ZNode {
     ZNodeType       type;
     ZType           *resolved;
@@ -360,6 +366,9 @@ struct ZNode {
             ZNode   *receiver;
 
             ZType   **generics;
+
+            ZAnnotation **annotations;
+
             bool    pub;
         } funcDef;
 
@@ -376,10 +385,11 @@ struct ZNode {
         } call;
 
         struct {
-            ZToken  *ident;
-            ZNode   **fields;
-            ZType   **generics;
-            bool    pub;
+            ZToken      *ident;
+            ZNode       **fields;
+            ZType       **generics;
+            ZAnnotation **annotations;
+            bool        pub;
         } structDef;
 
         /* Enums are the combination of a union with an integer
@@ -392,12 +402,11 @@ struct ZNode {
          * */
         struct {
             /* The name of the enum. */
-            ZToken  *name;
-
+            ZToken      *name;
             /* Fields are a list of enumField. */
-            ZNode   **fields;
-
-            bool    pub;
+            ZNode       **fields;
+            ZAnnotation **annotations;
+            bool        pub;
         } enumDef;
 
         /* Representation of an enum's field.

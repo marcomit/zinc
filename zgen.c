@@ -1379,7 +1379,6 @@ static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef ptr = rawType->kind == Z_TYPE_POINTER
         ? genExpr  (ctx, obj)
         : genLvalue(ctx, obj);
-    LLVMTypeRef objType = genType(ctx, baseType);
 
     ZToken *field = node->memberAccess.field;
 
