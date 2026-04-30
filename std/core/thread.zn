@@ -1,13 +1,18 @@
 use <core::mem>
 
-foreign i32 pthread_create(*u8, *u8, *u8(*u8), *u8)
+foreign i32 pthread_create(*u64, *u8, *u8(*u8), *u8)
 foreign i32 pthread_join(*u64, **u8)
+foreign i32 pthread_mutex_init(*u64, *u8)
+foreign i32 pthread_mutex_lock(*u64)
+foreign i32 pthread_mutex_unlock(*u64)
+foreign i32 pthread_mutex_destroy(*u64)
+foreign i32 usleep(u64)
 foreign u0 printf(*char, ...)
 foreign u0 perror(*char)
 
 pub struct Thread {
     *Allocator allocator
-    *u8 pthread
+    *u64 pthread
     *u8(*u8) worker
 }
 
@@ -21,14 +26,62 @@ for Thread {
 
         return self
     }
+
+    i32 sleep(u64 millis) -> usleep(millis)
 }
 
 for *Thread self {
     pub i32 start(*u8 argument) {
-        return pthread_create(self.pthread, none, self.worker, argument)
+        return pthread_create(
+            self.pthread,
+            none,
+            self.worker,
+            argument
+        )
     }
 
     pub i32 join() {
         return pthread_join(self.pthread, none)
+    }
+
+    pub u0 destroy() {
+        self.allocator.free(self.pthread)
+        self.allocator.free(self)
+    }
+}
+
+pub struct Mutex {
+    *Allocator allocator
+    *u64 pthread   // pthread_mutex_t
+}
+
+for Mutex {
+    pub *Mutex new(*Allocator allocator) {
+        *Mutex self = allocator.alloc(sizeof Mutex)
+        self.allocator = allocator
+
+        self.pthread = allocator.alloc(sizeof u64)
+
+        if (pthread_mutex_init(self.pthread, none) != 0) {
+            perror("mutex init failed")
+        }
+
+        return self
+    }
+}
+
+for *Mutex self {
+    pub i32 lock() {
+        return pthread_mutex_lock(self.pthread)
+    }
+
+    pub i32 unlock() {
+        return pthread_mutex_unlock(self.pthread)
+    }
+
+    pub u0 destroy() {
+        pthread_mutex_destroy(self.pthread)
+        self.allocator.free(self.pthread)
+        self.allocator.free(self)
     }
 }

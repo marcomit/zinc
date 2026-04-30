@@ -729,6 +729,7 @@ ZState *makestate(char *filename) {
     self->visitedFiles          = NULL;
     self->skipLLVMValidation    = false;
     self->optimizationLevel     = 0;
+    self->extraArgs             = NULL;
 
     return self;
 }
@@ -858,12 +859,13 @@ static char *resolvePath(ZState *state, char *filename) {
     if (!state->filename) return filename;
     if (filename[0] == sep) return filename;
 
-
+    
     char path[256] = { 0 };
     strncpy(path, state->filename, 256);
 
     char *dir = dirname(path);
     char *out = NULL;
+    printf("Dir: %s\n", dir);
 
     while (*dir) {
         vecpush(out, *dir);
@@ -877,6 +879,7 @@ static char *resolvePath(ZState *state, char *filename) {
     }
 
     vecpush(out, '\0');
+    printf("Out %s\n", out);
     return out;
 }
 

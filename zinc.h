@@ -102,6 +102,9 @@ typedef struct {
     bool        verbose;
     u8          optimizationLevel;
     ZNode       *root;
+
+    /* Extra arguments should be passed in the linker. */
+    char        **extraArgs;
 } ZState;
 
 // FIXME: use these masks in the enum

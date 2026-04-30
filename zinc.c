@@ -76,16 +76,19 @@ static struct option long_options[] = {
 ZState *loadState(int argc, char **argv) {
     if (argc < 2) { usage(argv[0]); return NULL; }
 
-    char *filename = argv[1];
-
     argc--; argv++;
-
-    state = makestate(argv[1]);
+    char *filename = argv[0];
+    printf("Makestate: %s\n", argv[0]);
+    state = makestate(argv[0]);
 
     int opt;
 
-    while (( opt = getopt_long(argc, argv, "dvo:", long_options, NULL) ) != -1) {
+    while (( opt = getopt_long(argc, argv, "dvo:l:L:", long_options, NULL) ) != -1) {
         switch (opt) {
+        case 'L':
+        case 'l':
+            printf("%s\n", optarg);
+            break;
         case 'o':                       SET_ARG(state->output,              "Output file");             break;
         case 'd':                       SET_FLAG(state->debug,              "Debug mode");              break;
         case 'v':                       SET_FLAG(state->verbose,            "Verbose");                 break;
@@ -107,6 +110,7 @@ ZState *loadState(int argc, char **argv) {
         state->output = base;
     }
 
+    printf("Visit %s\n", filename);
     visit(state, filename);
 
     return state;

@@ -1,0 +1,53 @@
+foreign u0 InitWindow(i32, i32, *char)
+foreign u0 CloseWindow()
+foreign u0 SetTargetFPS(i32)
+foreign u1 WindowShouldClose()
+foreign u0 BeginDrawing()
+foreign u0 EndDrawing()
+foreign u0 printf(*char, ...)
+foreign u0 DrawText(*char, i32, i32, i32, Color)
+foreign u0 DrawCircle(i32, i32, i32, Color)
+foreign u0 DrawRectangleLines(i32, i32, i32, i32, Color)
+foreign u0 ClearBackground(Color)
+
+struct Color {
+    u8 r
+    u8 g
+    u8 b
+    u8 alpha
+}
+
+for Color {
+    Color new(u8 r, u8 g, u8 b, u8 alpha) {
+        return Color {
+            r: r,
+            g: g,
+            b: b,
+            alpha: alpha
+        }
+    }
+}
+
+i32 main() {
+
+    InitWindow(1200, 800, "Ciccio")
+    SetTargetFPS(60)
+
+    black := Color::new(0, 0, 0, 255)
+    white := Color::new(255, 255, 255, 255)
+
+    for not WindowShouldClose() {
+        BeginDrawing()
+        ClearBackground(white)
+
+        DrawText("Raylib works!", 270, 220, 40, white)
+        DrawCircle(400, 350, 50, white)
+        DrawRectangleLines(300, 420, 200, 40, white)
+
+        EndDrawing()
+    }
+
+    CloseWindow()
+
+    return 0
+}

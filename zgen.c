@@ -2063,7 +2063,12 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
 
     const char *outname = output ? output : "a.out";
     printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", output);
-    int ret = zinc_lld_link(objfile, outname);
+    vecpush(state->extraArgs, "-L/opt/homebrew/lib");
+    vecpush(state->extraArgs, "-lraylib");
+    vecpush(state->extraArgs, "-lm");
+
+    int ret = zinc_lld_link(objfile, outname,
+            (const char**)state->extraArgs, veclen(state->extraArgs));
     if (ret != 0) {
         error(state, NULL, "Linker failed with code %d", ret);
     }

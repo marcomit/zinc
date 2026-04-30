@@ -5,7 +5,9 @@
 extern "C" {
 #endif
 
-int zinc_lld_link(const char *objfile, const char *outfile);
+int zinc_lld_link(
+        const char *objfile,        const char *outfile,
+        const char **extra_args,    int extra_args_count);
 
 #ifdef __cplusplus
 }
