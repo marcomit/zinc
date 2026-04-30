@@ -1478,6 +1478,27 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+/* A Homogeneous Float Aggregate (HFA) is a struct with 1-4 fields all of the
+ * same float type (f32 or f64).  HFAs are passed in SIMD/FP registers on both
+ * AArch64 and x86-64, so they must NOT be repacked as integers. */
+static bool isHFA(ZType *type) {
+    if (type->kind != Z_TYPE_STRUCT) return false;
+    usize n = veclen(type->strct.fields);
+    if (n == 0 || n > 4) return false;
+
+    ZType *first = type->strct.fields[0]->resolved;
+    if (!first || first->kind != Z_TYPE_PRIMITIVE) return false;
+    ZTokenType ft = first->primitive.token->type;
+    if (ft != TOK_F32 && ft != TOK_F64) return false;
+
+    for (usize i = 1; i < n; i++) {
+        ZType *f = type->strct.fields[i]->resolved;
+        if (!f || f->kind != Z_TYPE_PRIMITIVE) return false;
+        if (f->primitive.token->type != ft) return false;
+    }
+    return true;
+}
+
 static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
     LLVMTypeRef ret = genType(ctx, node->foreignFunc.ret);
     usize argc = veclen(node->foreignFunc.args);
@@ -1488,11 +1509,10 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
         paramTypes[i] = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION) {
             paramTypes[i] = LLVMPointerType(paramTypes[i], 0);
-        } else if (at->kind == Z_TYPE_STRUCT) {
+        } else if (at->kind == Z_TYPE_STRUCT && !isHFA(at)) {
             /* C ABI on all supported targets (x86-64, AArch64) passes small
-             * structs as a packed integer of the same size, not as individual
-             * field registers.  Declare the param as i32/i64 so the call site
-             * generates the correct single-register load. */
+             * non-HFA structs as a packed integer of the same size.  HFAs use
+             * SIMD/FP registers and LLVM handles them correctly as-is. */
             usize sz = typeSize(ctx, at);
             if      (sz <= 4) paramTypes[i] = i32Type;
             else if (sz <= 8) paramTypes[i] = i64Type;
