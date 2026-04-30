@@ -65,17 +65,17 @@ static ZScope *makescope(ZScope *parent, ZNode *node) {
     return self;
 }
 
-static ZThreadSem *makethreadsem(ZSemantic *ctx) {
-    ZThreadSem *self        = zalloc(ZThreadSem);
-
-    self->arena             = createArena();
-    self->currentFunc       = NULL;
-    self->currentFuncRet    = NULL;
-    self->loopDepth         = 0;
-    self->semantic          = ctx;
-
-    return self;
-}
+// static ZThreadSem *makethreadsem(ZSemantic *ctx) {
+//     ZThreadSem *self        = zalloc(ZThreadSem);
+//
+//     self->arena             = createArena();
+//     self->currentFunc       = NULL;
+//     self->currentFuncRet    = NULL;
+//     self->loopDepth         = 0;
+//     self->semantic          = ctx;
+//
+//     return self;
+// }
 
 static ZSymbol *makesymbol(ZSymType kind) {
     ZSymbol *self       = zalloc(ZSymbol);
@@ -1634,7 +1634,12 @@ static void analyzeForeign(ZSemantic *ctx, ZNode *curr) {
 }
 
 static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
-
+    if (veclen(curr->funcDef.annotations) > 0) {
+        warning(ctx->state,
+            curr->funcDef.annotations[0]->name,
+            "Annotations are not supported"
+        );
+    }
     for (usize i = 0; i < veclen(curr->funcDef.generics); i++) {
         putGeneric(ctx, curr->funcDef.generics[i]);
     }

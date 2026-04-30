@@ -356,6 +356,20 @@ static void printMacroPattern(ZMacroPattern *pattern, u8 depth) {
     }
 }
 
+static void printAnnotation(ZAnnotation *annotation) {
+    if (!annotation) return;
+    printf("%s", annotation->name->str);
+    if (veclen(annotation->args) > 0) {
+        printf("(");
+        usize len = veclen(annotation->args);
+        for (usize i = 0; i < len; i++) {
+            printAnnotation(annotation->args[i]);
+            if (i != len - 1) printf(", ");
+        }
+        printf(")");
+    }
+}
+
 void printNode(ZNode *node, u8 depth) {
     if (node == NULL) {
         printf("unknown");
@@ -421,6 +435,12 @@ void printNode(ZNode *node, u8 depth) {
             printType(node->funcDef.generics[i]);
             printf("\n");
         }
+        indent(depth);
+        for (usize i = 0; i < veclen(node->funcDef.annotations); i++) {
+            printAnnotation(node->funcDef.annotations[i]);
+            printf(" ");
+        }
+        printf("\n");
         printNode(node->funcDef.body, depth);
         return;
 
