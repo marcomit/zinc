@@ -40,9 +40,9 @@ i32 main() {
         BeginDrawing()
         ClearBackground(white)
 
-        DrawText("Raylib works!", 270, 220, 40, white)
-        DrawCircle(400, 350, 50, white)
-        DrawRectangleLines(300, 420, 200, 40, white)
+        DrawText("Raylib works!", 270, 220, 40, black)
+        DrawCircle(400, 350, 50, black)
+        DrawRectangleLines(300, 420, 200, 40, black)
 
         EndDrawing()
     }

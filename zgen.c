@@ -785,8 +785,30 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     }
 
 
+    usize fixedParamCount = LLVMCountParamTypes(funcType);
+    LLVMTypeRef *fixedParamTypes = fixedParamCount > 0
+        ? znalloc(LLVMTypeRef, fixedParamCount) : NULL;
+    if (fixedParamTypes)
+        LLVMGetParamTypes(funcType, fixedParamTypes);
+
     for (usize i = 0; i < veclen(node->call.args); i++) {
         LLVMValueRef arg = genExpr(ctx, node->call.args[i]);
+
+        /* ABI adaptation: foreign functions declare small struct params as
+         * i32/i64 (packed integer).  If the Zinc-side arg is a struct,
+         * store it to a temp slot and reload as the packed integer so the
+         * backend emits a single-register load instead of per-field loads. */
+        if (fixedParamTypes && i < fixedParamCount) {
+            LLVMTypeRef expected = fixedParamTypes[i];
+            LLVMTypeRef actual   = LLVMTypeOf(arg);
+            if (LLVMGetTypeKind(actual)   == LLVMStructTypeKind &&
+                LLVMGetTypeKind(expected) == LLVMIntegerTypeKind) {
+                LLVMValueRef tmp = LLVMBuildAlloca(ctx->builder, actual, "");
+                LLVMBuildStore(ctx->builder, arg, tmp);
+                arg = LLVMBuildLoad2(ctx->builder, expected, tmp, "");
+            }
+        }
+
         vecpush(args, arg);
     }
 
@@ -1464,8 +1486,17 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < argc; i++) {
         ZType *at = node->foreignFunc.args[i];
         paramTypes[i] = genType(ctx, at);
-        if (at->kind == Z_TYPE_FUNCTION)
+        if (at->kind == Z_TYPE_FUNCTION) {
             paramTypes[i] = LLVMPointerType(paramTypes[i], 0);
+        } else if (at->kind == Z_TYPE_STRUCT) {
+            /* C ABI on all supported targets (x86-64, AArch64) passes small
+             * structs as a packed integer of the same size, not as individual
+             * field registers.  Declare the param as i32/i64 so the call site
+             * generates the correct single-register load. */
+            usize sz = typeSize(ctx, at);
+            if      (sz <= 4) paramTypes[i] = i32Type;
+            else if (sz <= 8) paramTypes[i] = i64Type;
+        }
     }
     LLVMTypeRef funcType = LLVMFunctionType(
         ret,

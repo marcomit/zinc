@@ -78,7 +78,6 @@ ZState *loadState(int argc, char **argv) {
 
     argc--; argv++;
     char *filename = argv[0];
-    printf("Makestate: %s\n", argv[0]);
     state = makestate(argv[0]);
 
     int opt;
@@ -110,7 +109,6 @@ ZState *loadState(int argc, char **argv) {
         state->output = base;
     }
 
-    printf("Visit %s\n", filename);
     visit(state, filename);
 
     return state;

@@ -713,7 +713,7 @@ ZState *makestate(char *filename) {
                                 
     self->output                = NULL;
     self->currentPhase          = Z_PHASE_LEXICAL;
-    self->filename              = filename;
+    self->filename              = NULL;
     self->logs                  = NULL;
     self->verbose               = false;
     self->pathFiles             = NULL;
@@ -865,7 +865,6 @@ static char *resolvePath(ZState *state, char *filename) {
 
     char *dir = dirname(path);
     char *out = NULL;
-    printf("Dir: %s\n", dir);
 
     while (*dir) {
         vecpush(out, *dir);
@@ -879,7 +878,6 @@ static char *resolvePath(ZState *state, char *filename) {
     }
 
     vecpush(out, '\0');
-    printf("Out %s\n", out);
     return out;
 }
 
