@@ -17,7 +17,13 @@ typedef struct ZLLVMSymbol {
 } ZLLVMSymbol;
 
 typedef struct {
+    /* The variable stored in the stack. */
     LLVMValueRef    stack;
+
+    /* the data stored in the stack.
+     * It differs from the stack field only for prefixed types like arrays.
+     * */
+    LLVMValueRef    elem;
     LLVMTypeRef     type;
     ZNode           *node;
 } ZLLVMStack;
@@ -1789,9 +1795,18 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
 }
 
 static void addFuncVar(ZCodegen *ctx,
-        LLVMValueRef stack, LLVMTypeRef type, ZNode *node) {
-    ZLLVMStack *item = zalloc(ZLLVMStack);
-    *item = (ZLLVMStack){ .stack = stack, .type = type, .node = node };
+    LLVMValueRef stack,
+    LLVMValueRef elem,
+    LLVMTypeRef type,
+    ZNode *node) {
+
+    ZLLVMStack *item    = zalloc(ZLLVMStack);
+    *item = (ZLLVMStack){
+        .stack          = stack,
+        .elem           = elem,
+        .type           = type,
+        .node           = node,
+    };
     vecpush(ctx->scope->stackAlloca, item);
 }
 
@@ -1838,7 +1853,7 @@ static void buildNestedFuncVar(
 
             LLVMTypeRef typeRef = genType(ctx, type);
 
-            addFuncVar(ctx, ptr, typeRef, val);
+            addFuncVar(ctx, ptr, NULL, typeRef, val);
             buildNestedFuncVar(ctx, val, ptr);
         }
     }
@@ -1864,7 +1879,7 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
 
     LLVMTypeRef type = genType(ctx, node->resolved);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
-    addFuncVar(ctx, val, type, node);
+    addFuncVar(ctx, val, NULL, type, node);
 
     buildNestedFuncVar(ctx, node, val);
 }
@@ -2029,13 +2044,21 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     return func;
 }
 
+static void compile(ZCodegen *, ZNode *);
+static void genNamespace(ZCodegen *ctx, ZNode *node) {
+    for (usize i = 0; i < veclen(node->block); i++) {
+        compile(ctx, node->block[i]);
+    }
+}
+
 static void compile(ZCodegen *ctx, ZNode *root) {
     switch (root->type) {
     case NODE_ENUM:
-    case NODE_STRUCT:   genType     (ctx, root->resolved);  break;
-    case NODE_FOREIGN:  genForeign  (ctx, root);            break;
-    case NODE_FUNC:     genFunc     (ctx, root);            break;
-    case NODE_MACRO:    /* Doesn't generate anything. */    break;
+    case NODE_STRUCT:       genType     (ctx, root->resolved);  break;
+    case NODE_FOREIGN:      genForeign  (ctx, root);            break;
+    case NODE_FUNC:         genFunc     (ctx, root);            break;
+    case NODE_NAMESPACE:    genNamespace(ctx, root);            break;
+    case NODE_MACRO:        /* Doesn't generate anything. */    break;
 
     case NODE_MODULE:
         beginModule(ctx, root);

@@ -1748,46 +1748,112 @@ static ZNode *parseTypedef(ZParser *parser, bool public) {
     return node;
 }
 
-static ZNode *parseForeignDecl(ZParser *parser, bool public) {
-    ZToken *start   = peek(parser);
-    expect(parser, TOK_FOREIGN);
-
+static ZType *parseFuncType(ZParser *parser) {
     ZType *ret      = wrapType(parser, parseType);
-
+    guard(ret);
     ensure(check(parser, TOK_IDENT), "Expected an identifier");
     ZToken *name    = consume(parser);
 
     expect(parser, TOK_LPAREN);
 
     ZType **args    = NULL;
-    ZType *arg     = NULL;
+    ZType *arg      = NULL;
     bool variadic   = false;
-    while (true) {
+
+    do {
         if (check(parser, TOK_TRIPLE_DOT)) {
             variadic = true;
             consume(parser);
+            break;
         } else {
             arg = wrapType(parser, parseType);
             if (arg) vecpush(args, arg);
         }
-        if (check(parser, TOK_RPAREN)) break;
-        if (!match(parser, TOK_COMMA)) break;
-    }
+    } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
 
     expect(parser, TOK_RPAREN);
 
+    ZType *func         = maketype(Z_TYPE_FUNCTION);
+    func->func.ret      = ret;
+    func->func.args     = args;
+    func->func.generics = NULL;
+    func->func.variadic = variadic;
+    func->tok           = name;
+
+    return func;
+}
+
+static ZNode *parseForeignBlock(ZParser *parser) {
+    ZToken *start   = peek(parser);
+    expect(parser, TOK_FOREIGN);
+    ZToken *lib     = peek(parser);
+    expect(parser, TOK_IDENT);
+
+    expect(parser, TOK_LBRACKET);
+
+    ZType **funcs   = NULL;
+    ZType *func     = NULL;
+    bool public     = false;
+    while (!check(parser, TOK_RBRACKET)) {
+        start = peek(parser);
+        func = parseFuncType(parser);
+        if (!func) {
+            error(parser->state, start, "Error parsing function");
+            return NULL;
+        }
+        vecpush(funcs, func);
+    }
+    expect(parser, TOK_RBRACKET);
+
+    ZNode *namespace    = makenode(NODE_NAMESPACE);
+    namespace->tok      = lib;
+    namespace->block    = NULL;
+    ZNode *node         = NULL;
+    for (usize i = 0; i < veclen(funcs); i++) {
+        func = funcs[i];
+        node                    = makenode(NODE_FOREIGN);
+        node->foreignFunc.ret   = func->func.ret;
+        node->foreignFunc.tok   = func->tok;
+        node->foreignFunc.args  = func->func.args;
+        node->foreignFunc.pub   = public;
+        node->tok               = start;
+        node->resolved          = func;
+
+        vecpush(namespace->block, node);
+    }
+    return namespace;
+}
+
+static ZNode *parseForeignInlineDecl(ZParser *parser, bool public) {
+    ZToken *start = peek(parser);
+    expect(parser, TOK_FOREIGN);
+
+    ZType *func = parseFuncType(parser);
+
+    guard(func);
+
     ZNode *node = makenode(NODE_FOREIGN);
-    node->foreignFunc.ret   = ret;
-    node->foreignFunc.tok   = name;
-    node->foreignFunc.args  = args;
+    node->foreignFunc.ret   = func->func.ret;
+    node->foreignFunc.tok   = func->tok;
+    node->foreignFunc.args  = func->func.args;
     node->foreignFunc.pub   = public;
     node->tok               = start;
-    ZType *type             = maketype(Z_TYPE_FUNCTION);
-    type->func.ret          = ret;
-    type->func.args         = args;
-    type->func.variadic     = variadic;
-    node->resolved          = type;
+    node->resolved          = func;
     return node;
+}
+
+static ZNode *parseForeignDecl(ZParser *parser, bool public) {
+    ensure(check(parser, TOK_FOREIGN), "Expected 'foreign' keyword");
+    if (checkAhead(parser, TOK_IDENT, 1) &&
+        checkAhead(parser, TOK_LBRACKET, 2)) {
+        if (public) {
+            error(parser->state, peek(parser),
+                "Foreign block doesn't support 'pub' keyword");
+        }
+        return parseForeignBlock(parser);
+    } else {
+        return parseForeignInlineDecl(parser, public);
+    }
 }
 
 
