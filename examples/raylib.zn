@@ -1,17 +1,19 @@
-foreign u0 InitWindow(i32, i32, *char)
-foreign u0 CloseWindow()
-foreign u0 SetTargetFPS(i32)
-foreign u1 WindowShouldClose()
-foreign u0 BeginDrawing()
-foreign u0 EndDrawing()
-foreign f32 GetFrameTime()
-foreign u1 IsKeyDown(i32)
-foreign u1 CheckCollisionCircleRec(Vector2, f32, Rectangle)
-foreign u0 ClearBackground(Color)
-foreign u0 DrawCircleV(Vector2, f32, Color)
-foreign u0 DrawRectangleRec(Rectangle, Color)
-foreign u0 DrawFPS(i32, i32)
-foreign u0 DrawText(*char, i32, i32, i32, Color)
+foreign raylib {
+    u0 InitWindow(i32, i32, *char)
+    u0 CloseWindow()
+    u0 SetTargetFPS(i32)
+    u1 WindowShouldClose()
+    u0 BeginDrawing()
+    u0 EndDrawing()
+    f32 GetFrameTime()
+    u1 IsKeyDown(i32)
+    u1 CheckCollisionCircleRec(Vector2, f32, Rectangle)
+    u0 ClearBackground(Color)
+    u0 DrawCircleV(Vector2, f32, Color)
+    u0 DrawRectangleRec(Rectangle, Color)
+    u0 DrawFPS(i32, i32)
+    u0 DrawText(*char, i32, i32, i32, Color)
+}
 
 struct Vector2 {
     f32 x
@@ -36,7 +38,7 @@ i32 main() {
     screenWidth  := 800
     screenHeight := 450
 
-    InitWindow(screenWidth, screenHeight, "Raylib Simple Pong")
+    raylib::InitWindow(screenWidth, screenHeight, "Raylib Simple Pong")
 
     ballPosition := Vector2 { x: 400.0, y: 225.0 }
     ballSpeed    := Vector2 { x: 300.0, y: 300.0 }
@@ -50,10 +52,10 @@ i32 main() {
     maroon := Color { r: 190, g: 33,  b: 55,  a: 255 }
     gray   := Color { r: 130, g: 130, b: 130, a: 255 }
 
-    SetTargetFPS(60)
+    raylib::SetTargetFPS(60)
 
-    for not WindowShouldClose() {
-        dt := GetFrameTime()
+    for not raylib::WindowShouldClose() {
+        dt := raylib::GetFrameTime()
 
         ballPosition.x = ballPosition.x + ballSpeed.x * dt
         ballPosition.y = ballPosition.y + ballSpeed.y * dt
@@ -65,39 +67,36 @@ i32 main() {
             ballSpeed.y = ballSpeed.y * -1.0
         }
 
-        if ballPosition.x >= screenWidth or ballPosition.x <= 0.0 {
-            ballPosition.x = 400.0
-            ballPosition.y = 225.0
+        if ballPosition.x >= screenWidth or ballPosition.x - ballRadius <= 0.0 {
+            ballSpeed.x = ballSpeed.x * -1.0005
         }
 
-        if IsKeyDown(265) {
+        if raylib::IsKeyDown(265) {
             paddle.y = paddle.y - paddleSpeed * dt
             if paddle.y < 0.0 {
                 paddle.y = 0.0
             }
         }
-        if IsKeyDown(264) {
+        if raylib::IsKeyDown(264) {
             paddle.y = paddle.y + paddleSpeed * dt
             if paddle.y > screenHeight - paddle.height {
                 paddle.y = screenHeight - paddle.height
             }
         }
 
-        if CheckCollisionCircleRec(ballPosition, ballRadius, paddle) {
-            if ballSpeed.x > 0.0 {
-                ballSpeed.x = ballSpeed.x * -1.1
-            }
+        if raylib::CheckCollisionCircleRec(ballPosition, ballRadius, paddle) {
+            ballSpeed.x = ballSpeed.x * -1.0005
         }
 
-        BeginDrawing()
-        ClearBackground(black)
-        DrawCircleV(ballPosition, ballRadius, maroon)
-        DrawRectangleRec(paddle, white)
-        DrawFPS(10, 10)
-        DrawText("Use UP/DOWN Arrows", 10, 40, 20, gray)
-        EndDrawing()
+        raylib::BeginDrawing()
+        raylib::ClearBackground(black)
+        raylib::DrawCircleV(ballPosition, ballRadius, maroon)
+        raylib::DrawRectangleRec(paddle, white)
+        raylib::DrawFPS(10, 10)
+        raylib::DrawText("Use UP/DOWN Arrows", 10, 40, 20, gray)
+        raylib::EndDrawing()
     }
 
-    CloseWindow()
+    raylib::CloseWindow()
     return 0
 }

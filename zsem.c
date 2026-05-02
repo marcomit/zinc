@@ -43,6 +43,7 @@ typedef struct {
     u16         loopDepth;
 } ZThreadSem;
 
+static void analyze(ZSemantic *, ZNode *);
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
 static ZType *resolveTypeRef(ZSemantic *, ZType *);
@@ -426,11 +427,22 @@ static void putEnum(ZSemantic *ctx, ZNode *node) {
 
 static void putTypedef(ZSemantic *ctx, ZNode *node) {
     putRawSymbol(ctx,
-            Z_SYM_TYPEDEF,
-            node->typeDef.alias,
-            node->typeDef.type,
-            node,
-            node->typeDef.pub);
+        Z_SYM_TYPEDEF,
+        node->typeDef.alias,
+        node->typeDef.type,
+        node,
+        node->typeDef.pub
+    );
+}
+
+static void putNamespace(ZSemantic *ctx, ZNode *node) {
+    putRawSymbol(ctx,
+        Z_SYM_NAMESPACE,
+        node->tok,
+        node->resolved,
+        node,
+        false
+    );
 }
 
 static void registerModule(ZSemantic *ctx, ZNode *module) {
@@ -891,10 +903,7 @@ static ZType *resolveFuncTable(ZSemantic *ctx,
         }
         staticFuncs = table->staticFuncDef;
     }
-    if (!staticFuncs) {
-        error(ctx->state, prop,
-                "Static method '%s' not found", prop->str);
-    }
+    if (!staticFuncs) return NULL;
 
     ZType *res = NULL;
     for (usize i = 0; i < veclen(staticFuncs) && !res; i++) {
@@ -1061,6 +1070,38 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                 ctx->state,
                 base,
                 "Static function with type alias as base are not supported yet");
+        } else if (baseSym->kind == Z_SYM_NAMESPACE) {
+            ZType *resolved = NULL;
+            for (usize i = 0; i < veclen(baseSym->node->block); i++) {
+                ZNode *child = baseSym->node->block[i];
+                if (child->type == NODE_FOREIGN && tokeneq(child->foreignFunc.tok, prop)) {
+                    resolved = child->resolved;
+                    break;
+                }
+            }
+            if (!resolved) {
+                error(ctx->state, prop,
+                    "'%s' not found in the namespace '%s'",
+                    prop->str, base->str
+                );
+            } else {
+                for (usize i = 0; i < veclen(resolved->func.args); i++) {
+                    resolved->func.args[i] = resolveTypeRef(
+                        ctx,
+                        resolved->func.args[i]
+                    );
+                }
+                resolved->func.ret = resolveTypeRef(
+                    ctx, resolved->func.ret
+                );
+                expectedArgs           = resolved->func.args;
+                result                 = resolved->func.ret;
+                callee->resolved       = resolved;
+                /* genStaticAccess looks up by mangled name, but genForeign
+                 * registers foreign functions under their plain C name. */
+                callee->staticAccess.mangled = prop->str;
+            }
+
         } else {
             error(ctx->state, base, "Base should refer to a type");
         }
@@ -1804,10 +1845,11 @@ static void discoverGlobalScope(ZSemantic *ctx, ZNode *root) {
         ZNode *child = root->module.root[i];
 
         switch (child->type) {
-        case NODE_FUNC:     putFunc(ctx, child);       break;
-        case NODE_STRUCT:   putStruct(ctx, child);     break;
-        case NODE_VAR_DECL: putVar(ctx, child, false); break;
-        case NODE_ENUM:     putEnum(ctx, child);       break;
+        case NODE_FUNC:         putFunc(ctx, child);        break;
+        case NODE_STRUCT:       putStruct(ctx, child);      break;
+        case NODE_VAR_DECL:     putVar(ctx, child, false);  break;
+        case NODE_ENUM:         putEnum(ctx, child);        break;
+        case NODE_NAMESPACE:    putNamespace(ctx, child);   break;
 
         case NODE_TYPEDEF: {
             putTypedef(ctx, child);
@@ -1958,6 +2000,17 @@ static void analyzeEnum(ZSemantic *ctx, ZNode *enumDef) {
     }
 }
 
+static void analyzeNamespace(ZSemantic *ctx, ZNode *node) {
+    for (usize i = 0; i < veclen(node->block); i++) {
+        ZNode *child = node->block[i];
+        if (child->type == NODE_FOREIGN) {
+            analyzeForeign(ctx, child);
+        } else if (child->type == NODE_NAMESPACE) {
+            analyzeNamespace(ctx, child);
+        }
+    }
+}
+
 /* ================== Main analysis pass ================== */
 
 static void analyze(ZSemantic *ctx, ZNode *root) {
@@ -1966,11 +2019,12 @@ static void analyze(ZSemantic *ctx, ZNode *root) {
         ZNode *child = root->module.root[i];
 
         switch (child->type) {
-        case NODE_FOREIGN:  analyzeForeign(ctx, child);    break;
-        case NODE_FUNC:     analyzeFunc(ctx, child);       break;
-        case NODE_VAR_DECL: analyzeVar(ctx, child, true);  break;
-        case NODE_STRUCT:   analyzeStruct(ctx, child);     break;
-        case NODE_ENUM:     analyzeEnum(ctx, child);       break;
+        case NODE_FOREIGN:      analyzeForeign(ctx, child);     break;
+        case NODE_FUNC:         analyzeFunc(ctx, child);        break;
+        case NODE_VAR_DECL:     analyzeVar(ctx, child, true);   break;
+        case NODE_STRUCT:       analyzeStruct(ctx, child);      break;
+        case NODE_ENUM:         analyzeEnum(ctx, child);        break;
+        case NODE_NAMESPACE:    analyzeNamespace(ctx, child);   break;
         case NODE_MACRO:    /* does't require any validation*/  break;
 
         case NODE_MODULE:
@@ -1980,7 +2034,6 @@ static void analyze(ZSemantic *ctx, ZNode *root) {
                 endModule(ctx);
             }
             break;
-
 
         default: 
             warning(ctx->state, root->tok,

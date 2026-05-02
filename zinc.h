@@ -150,7 +150,8 @@ typedef enum {
     NODE_ENUM_FIELD,
     NODE_CAST,
     NODE_SIZEOF,
-    NODE_STATIC_ACCESS
+    NODE_STATIC_ACCESS,
+    NODE_NAMESPACE
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -163,7 +164,8 @@ typedef enum ZTypeKind {
     Z_TYPE_GENERIC,        // Instantiated generic type, e.g. List[int]
     Z_TYPE_FACET,
     Z_TYPE_ENUM,
-    Z_TYPE_NONE
+    Z_TYPE_NONE,
+    Z_TYPE_NAMESPACE
 } ZTypeKind;
 
 struct ZType {
@@ -563,7 +565,8 @@ typedef enum {
     Z_SYM_ENUM,
     Z_SYM_STRUCT,
     Z_SYM_TYPEDEF,
-    Z_SYM_GENERIC
+    Z_SYM_GENERIC,
+    Z_SYM_NAMESPACE
 } ZSymType;
 
 typedef struct ZSymbol {
@@ -588,7 +591,7 @@ typedef struct ZSymbol {
 
 struct ZScope {
     ZSymbol         **symbols;
-    ZScope   *parent;
+    ZScope          *parent;
     ZNode           *node;
     u32             depth;
     hashset_t       seen;
@@ -692,7 +695,7 @@ bool typesPrimitive(ZType *);
 ZType *typesCompatible(ZState *, ZType *, ZType *);
 
 /* ================== Zinc state ================== */
-ZState *makestate(char *);
+ZState *makestate();
 
 char *readfile(char *);
 

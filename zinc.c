@@ -77,7 +77,7 @@ ZState *loadState(int argc, char **argv) {
     if (argc < 2) { usage(argv[0]); return NULL; }
 
     char *filename = argv[1];
-    state = makestate(argv[1]);
+    state = makestate();
 
     int opt;
     optind = 2;

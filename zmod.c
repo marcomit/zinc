@@ -18,7 +18,7 @@ static char *nodeLabels[] = {
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "GOTO",         "LABEL",        "TYPE",         "ENUM",
     "BREAK",        "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
-    "STATIC_ACCESS"
+    "STATICACCESS", "NAMESPACE"
 };
 
 static char *levels[] = {
@@ -611,6 +611,11 @@ void printNode(ZNode *node, u8 depth) {
         }
         break;
 
+    case NODE_NAMESPACE:
+        printf("%s\n", node->tok->str);
+        for (usize i = 0; i < veclen(node->block); i++) {
+            printNode(node->block[i], depth);
+        }
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
@@ -708,7 +713,7 @@ void printScope(ZScope *scope) {
     printScope(scope->parent);
 }
 
-ZState *makestate(char *filename) {
+ZState *makestate() {
     ZState *self                = zalloc(ZState);
                                 
     self->output                = NULL;
