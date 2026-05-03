@@ -21,6 +21,7 @@
 #include "zvec.h"
 #include "zarena.h"
 
+#include <math.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 
@@ -1133,6 +1134,10 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
     if (!result) return NULL;
 
     if (!variadic && veclen(expectedArgs) != veclen(args)) {
+        if (!curr->tok) {
+            warning(ctx->state, NULL,
+                "Node %d does not have tok\n", curr->type);
+        }
         error(ctx->state, curr->tok,
                 "Expected %zu arguments, got %zu",
                 veclen(expectedArgs), veclen(args));

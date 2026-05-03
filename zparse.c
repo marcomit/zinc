@@ -430,11 +430,12 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
     node->memberAccess.field    = member;
     node->memberAccess.object   = previous;
     node->memberAccess.path     = NULL;
-    node->tok = previous->tok;
+    node->tok = member;
     return node;
 }
 
 static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_LPAREN);
     ZNode **args = parseArgs(parser);
     expect(parser, TOK_RPAREN);
@@ -443,6 +444,12 @@ static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
     node->call.args = args;
     node->call.callee = previous;
     node->tok = previous->tok;
+
+    if (!previous) {
+        warning(parser->state, start, "Previous does not exist\n");
+    } else if (!previous->tok) {
+        warning(parser->state, start, "Node %d does not have tok\n", previous->type);
+    }
     return node;
 }
 
