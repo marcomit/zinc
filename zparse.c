@@ -1761,10 +1761,9 @@ static ZType *parseFuncType(ZParser *parser) {
     bool variadic   = false;
 
     do {
-        if (check(parser, TOK_TRIPLE_DOT)) {
+        if (match(parser, TOK_TRIPLE_DOT)) {
             variadic = true;
-            consume(parser);
-            break;
+            // break;
         } else {
             arg = wrapType(parser, parseType);
             if (arg) vecpush(args, arg);

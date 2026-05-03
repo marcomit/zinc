@@ -14,5 +14,7 @@ i32 main() {
 
     hello.println()
 
+    concat.println()
+
     return 0
 }

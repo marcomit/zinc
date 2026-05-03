@@ -1094,9 +1094,10 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                 resolved->func.ret = resolveTypeRef(
                     ctx, resolved->func.ret
                 );
-                expectedArgs           = resolved->func.args;
-                result                 = resolved->func.ret;
-                callee->resolved       = resolved;
+                expectedArgs            = resolved->func.args;
+                result                  = resolved->func.ret;
+                callee->resolved        = resolved;
+                variadic                = resolved->func.variadic;
                 /* genStaticAccess looks up by mangled name, but genForeign
                  * registers foreign functions under their plain C name. */
                 callee->staticAccess.mangled = prop->str;
@@ -1105,8 +1106,6 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
         } else {
             error(ctx->state, base, "Base should refer to a type");
         }
-
-        
     } else {
         /* Expression call (includes NODE_MEMBER, subscripts, etc.):
          * resolveType handles all callee forms uniformly. For NODE_MEMBER,
