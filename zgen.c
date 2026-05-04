@@ -1356,6 +1356,8 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
     LLVMTypeRef elemType = genType(ctx, node->resolved->array.base);
     LLVMTypeRef ptrType = LLVMPointerType(elemType, 0);
 
+
+
     for (usize i = 0; i < veclen(node->arraylit); i++) {
         LLVMValueRef indices[] = {
             LLVMConstInt(i32Type, 0, false),
@@ -1381,7 +1383,25 @@ static LLVMValueRef genArrayLit(ZCodegen *ctx, ZNode *node) {
         }
         LLVMBuildStore(ctx->builder, val, gep);
     }
-    return stack->elem;
+
+    LLVMValueRef lenField = LLVMBuildStructGEP2(
+        ctx->builder, stack->stackType, stack->stack, 0, "len");
+    LLVMBuildStore(
+        ctx->builder, LLVMConstInt(i64Type, veclen(node->arraylit), false),
+        lenField
+    );
+
+    LLVMValueRef indices[] = {
+        LLVMConstInt(i32Type, 0, false),
+        LLVMConstInt(i32Type, 0, false)
+    };
+    LLVMValueRef dataPtr = LLVMBuildGEP2(
+        ctx->builder, stack->elemType, stack->elem, indices, 2, "ptr"
+    );
+    LLVMValueRef dataField = LLVMBuildStructGEP2(
+        ctx->builder, stack->stackType, stack->stack, 1, "ptr");
+    LLVMBuildStore(ctx->builder, dataPtr, dataField);
+    return stack->stack;
 }
 
 static LLVMValueRef genSubscript(ZCodegen *ctx, ZNode *node) {
@@ -1392,13 +1412,6 @@ static LLVMValueRef genSubscript(ZCodegen *ctx, ZNode *node) {
         arrType->array.base :
         arrType->base;
     LLVMTypeRef elemType = genType(ctx, baseType);
-
-    if (arrType->kind == Z_TYPE_ARRAY) {
-        base = LLVMBuildStructGEP2(
-            ctx->builder, elemType,
-            base, 1, label(ctx, node->tok)
-        );
-    }
 
     return LLVMBuildLoad2(
         ctx->builder,   elemType,
@@ -1428,9 +1441,23 @@ static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
-
     ZNode *obj = node->memberAccess.object;
+    ZToken *field = node->memberAccess.field;
     ZType *rawType = obj->resolved;
+
+    if (rawType->kind == Z_TYPE_ARRAY && strcmp(field->str, "len") == 0) {
+        LLVMValueRef ptr = genLvalue(ctx, obj);
+        ptr = LLVMBuildStructGEP2(
+            ctx->builder, genType(ctx, obj->resolved),
+            ptr, 0, label(ctx, obj->tok)
+        );
+        return LLVMBuildLoad2(
+            ctx->builder,
+            genType(ctx, node->resolved),
+            ptr,
+            label(ctx, field)
+        );
+    }
 
     ZType *baseType = rawType;
     while (baseType && baseType->kind == Z_TYPE_POINTER)
@@ -1439,8 +1466,6 @@ static LLVMValueRef genMemberAccess(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef ptr = rawType->kind == Z_TYPE_POINTER
         ? genExpr  (ctx, obj)
         : genLvalue(ctx, obj);
-
-    ZToken *field = node->memberAccess.field;
 
     u32 *path = NULL;
     if (baseType->kind == Z_TYPE_STRUCT) {

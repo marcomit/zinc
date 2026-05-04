@@ -2,7 +2,7 @@ use <core::mem>
 
 
 u0 main() {
-    heap := Allocator{ bytes: 0 }
+    heap := Allocator::heap()
     Allocator::new()
     heap.alloc(1024)
 }
