@@ -1,4 +1,6 @@
-foreign i32 putchar(i32)
+foreign c {
+    u0 printf(*char, ...)
+}
 
 struct Inner {
     i32 value
@@ -11,12 +13,8 @@ struct Outer {
 }
 
 for Inner self {
-    i32 get() {
-        return self.value
-    }
-    i32 add(i32 n) {
-        return self.value + n
-    }
+    i32 get() -> self.value
+    i32 add(i32 n) -> self.value + n
 }
 
 for Outer self {
@@ -28,6 +26,10 @@ for Outer self {
     }
 }
 
+for i32 self {
+    u0 print() -> c::printf("%d\n", self)
+}
+
 i32 addInner(i32 val) -> val
 
 i32 main() {
@@ -36,23 +38,15 @@ i32 main() {
     Inner y = Inner { value: 4 }
     Outer o = Outer { a: x, b: y }
 
-    putchar(48 + x.get())
-    putchar(10)
+    x.get().print()
+    o.a.get().print()
+    o.b.get().print()
+    o.a.add(2).print()
 
-    putchar(48 + o.a.get())
-    putchar(10)
 
-    putchar(48 + o.b.get())
-    putchar(10)
+    o.sum().print()
 
-    putchar(48 + o.a.add(2))
-    putchar(10)
-
-    putchar(48 + o.sum())
-    putchar(10)
-
-    putchar(48 + o.addToA(1))
-    putchar(10)
+    o.addToA(1).print()
 
     return 0
 }

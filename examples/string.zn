@@ -3,9 +3,7 @@ use <core::string>
 
 i32 main() {
 
-    heap := Allocator{ bytes: 0}
-
-
+    heap := Allocator{ bytes: 0 }
     hello := String::from("hello")
 
     cap := String::withCapacity(64)

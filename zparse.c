@@ -9,6 +9,8 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#define arrlen(arr) (sizeof(arr) / sizeof((arr)[0]))
+
 #define ensure(c, msg) do {                                                     \
     if (!(c)) {                                                                 \
         return NULL;                                                            \
@@ -58,8 +60,6 @@ static ZType **parseGenericsDecl            (ZParser *, bool);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 
 static ZParseFunc exprFunc[] = {
-    // parseStructLit,
-    // parseArrayLit,
     parseBinary,
     parseTupleLit,
 };
@@ -233,7 +233,6 @@ static ZNode *wrapNode(ZParser *parser, ZParseFunc parse) {
     ZNode *res = parse(parser);
 
     if (!res) {
-        // Consumed parser->tokenIndex - tokIndex
         undo(parser, saved);
         rollbackErrors(parser);
     } else {
@@ -245,12 +244,10 @@ static ZNode *wrapNode(ZParser *parser, ZParseFunc parse) {
 static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
     ZParserSnapshot *saved = store(parser);
 
-    pushErrorCheckpoint(parser);
     ZType *res = parse(parser);
 
     if (!res) {
         undo(parser, saved);
-        rollbackErrors(parser);
     } else {
         commitErrors(parser);
     }
@@ -386,6 +383,20 @@ static ZNode *parsePrimary(ZParser *parser) {
     return NULL;
 }
 
+static ZNode *parseSlice(ZParser *parser, ZNode *previous) {
+    expect(parser, TOK_LSBRACKET);
+    ZNode *start    = wrapNode(parser, parseExpr);
+    expect(parser, TOK_COLON);
+    ZNode *end      = wrapNode(parser, parseExpr);
+    expect(parser, TOK_RSBRACKET);
+
+    ZNode *node     = makenode(NODE_SLICE);
+    node->slice.base    = previous;
+    node->slice.start   = start;
+    node->slice.end     = end;
+    return node;
+}
+
 static ZNode *parseArrSubscript(ZParser *parser, ZNode *previous) {
     expect(parser, TOK_LSBRACKET);
     ZNode *index = wrapNode(parser, parseExpr);
@@ -466,9 +477,32 @@ static ZNode *parseCast(ZParser *parser, ZNode *previous) {
     return node;
 }
 
-static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
-    usize saved = parser->source->current;
+static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
+    ZParserSnapshot *snap = store(parser);
     pushErrorCheckpoint(parser);
+    ZNode *res = parseArrSubscript(parser, previous);
+    if (res) {
+        commitErrors(parser);
+        return res;
+    }
+    rollbackErrors(parser);
+    undo(parser, snap);
+    snap = store(parser);
+
+    res = parseSlice(parser, previous);
+    if (!res) {
+        error(parser->state, peek(parser), "is not a slice");
+        rollbackErrors(parser);
+        return NULL;
+    }
+    commitErrors(parser);
+    printf("Slice parsed\n");
+    printNode(res, 0);
+    return res;
+}
+
+static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
+    ZParserSnapshot *snap = store(parser);
     ZNode *res = NULL;
 
     ZToken *tok = peek(parser);
@@ -480,8 +514,8 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     case TOK_DOT:       res = parseMemberAccess (parser, previous); break;
     case TOK_CAST:      res = parseCast         (parser, previous); break;
     case TOK_LPAREN:    res = parseFuncCall     (parser, previous); break;
-    case TOK_LSBRACKET: res = parseArrSubscript (parser, previous); break;
-    default:            break;
+    case TOK_LSBRACKET: res = parseSquareBracket(parser, previous); break;
+    default:            return NULL;
     }
 
     if (res) {
@@ -489,8 +523,7 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
         return res;
     }
     cleanup:
-        rollbackErrors(parser);
-        parser->source->current = saved;
+        undo(parser, snap);
 
     return res;
 }
@@ -521,7 +554,7 @@ static ZNode *parseUnary(ZParser *parser) {
 
     ZTokenType valids[] = {
         TOK_PLUS,   TOK_MINUS,  TOK_NOT,
-        TOK_SNOT,   TOK_STAR,   TOK_REF
+        TOK_STAR,   TOK_REF
     };
 
     usize len = sizeof(valids) / sizeof(valids[0]);
@@ -541,7 +574,6 @@ static ZNode *parseUnary(ZParser *parser) {
     return node;
 }
 
-#define arrlen(arr) (sizeof(arr) / sizeof((arr)[0]))
 static ZNode *parseFactor(ZParser *parser) {
     ZTokenType valids[] = {TOK_STAR, TOK_DIV, TOK_MOD};
     return parseGenericBinary(parser,
@@ -579,7 +611,7 @@ static ZNode *parseEquality(ZParser *parser) {
 }
 
 static ZNode *parseLogicalAnd(ZParser *parser) {
-    ZTokenType valids[] = {TOK_AND, TOK_SAND};
+    ZTokenType valids[] = {TOK_AND};
     return parseGenericBinary(parser,
             parseEquality,
             parseEquality,
@@ -588,7 +620,7 @@ static ZNode *parseLogicalAnd(ZParser *parser) {
 }
 
 static ZNode *parseLogicalOr(ZParser *parser) {
-    ZTokenType valids[] = {TOK_OR, TOK_SOR};
+    ZTokenType valids[] = {TOK_OR};
     return parseGenericBinary(parser,
             parseLogicalAnd,
             parseLogicalAnd,
@@ -858,6 +890,24 @@ ret:
         commitErrors(parser);
         return node;
     }
+    }
+}
+
+static ZNode *parseBlockOrInline(ZParser *parser) {
+    if (match(parser, TOK_ARROW)) {
+        ZNode *expr = parseExpr(parser);
+        if (!expr) {
+            error(parser->state, peek(parser), "Invalid expression");
+            return NULL;
+        }
+        ZNode *body = makenode(NODE_BLOCK);
+        vecpush(body->block, expr);
+        return body;
+    } else if (check(parser, TOK_LBRACKET)) {
+        return parseBlock(parser);
+    } else {
+        error(parser->state, peek(parser), "Unexpected token");
+        return NULL;
     }
 }
 
@@ -1142,10 +1192,10 @@ static ZNode *parseIf(ZParser *parser) {
     guard(cond);
 
     ZParseFunc elseBranch[] = {
-        parseIf, parseBlock
+        parseIf, parseBlockOrInline
     };
 
-    ZNode *body = parseBlock(parser);
+    ZNode *body = parseBlockOrInline(parser);
 
     guard(body);
 
@@ -1181,7 +1231,7 @@ static ZNode *parseFor(ZParser *parser) {
     ZNode *incr = parseExpr(parser);
 
     ensure(incr, "Expected an expression");
-    ZNode *block = parseBlock(parser);
+    ZNode *block = parseBlockOrInline(parser);
 
     ensure(block, "Expected a block");
 
@@ -1204,7 +1254,7 @@ static ZNode *parseWhile(ZParser *parser) {
         error(parser->state, peek(parser),
                 "Expected condition expression after 'while'");
     }
-    ZNode *body = wrapNode(parser, parseBlock);
+    ZNode *body = wrapNode(parser, parseBlockOrInline);
 
     ZNode *node = makenode(NODE_WHILE);
     node->whileStmt.branch  = body;
@@ -1790,6 +1840,10 @@ static ZType *parseFuncType(ZParser *parser) {
 }
 
 static ZNode *parseForeignBlock(ZParser *parser) {
+    // ZToken *start = peek(parser);
+    // ZToken *lib = start;
+    // expect(parser, TOK_IDENT);
+    // expect(parser, TOK_DOUBLE_COLON);
     ZToken *start   = peek(parser);
     expect(parser, TOK_FOREIGN);
     ZToken *lib     = peek(parser);
@@ -1797,26 +1851,20 @@ static ZNode *parseForeignBlock(ZParser *parser) {
 
     expect(parser, TOK_LBRACKET);
 
-    ZType **funcs   = NULL;
-    ZType *func     = NULL;
-    bool public     = false;
+    ZType *func         = NULL;
+    bool public         = false;
+    ZNode *namespace    = makenode(NODE_NAMESPACE);
+    namespace->tok      = lib;
+    namespace->block    = NULL;
+    ZNode *node         = NULL;
     while (!check(parser, TOK_RBRACKET)) {
         start = peek(parser);
+        public = match(parser, TOK_PUB);
         func = parseFuncType(parser);
         if (!func) {
             error(parser->state, start, "Error parsing function");
             return NULL;
         }
-        vecpush(funcs, func);
-    }
-    expect(parser, TOK_RBRACKET);
-
-    ZNode *namespace    = makenode(NODE_NAMESPACE);
-    namespace->tok      = lib;
-    namespace->block    = NULL;
-    ZNode *node         = NULL;
-    for (usize i = 0; i < veclen(funcs); i++) {
-        func = funcs[i];
         node                    = makenode(NODE_FOREIGN);
         node->foreignFunc.ret   = func->func.ret;
         node->foreignFunc.tok   = func->tok;
@@ -1827,6 +1875,8 @@ static ZNode *parseForeignBlock(ZParser *parser) {
 
         vecpush(namespace->block, node);
     }
+    expect(parser, TOK_RBRACKET);
+
     return namespace;
 }
 

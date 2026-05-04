@@ -988,9 +988,8 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 
     ZTokenType op = root->binary.op->type;
     /* Logical operator. */
-    if (op == TOK_AND || op == TOK_SAND ||
-        op == TOK_OR  || op == TOK_SOR) {
-        bool is_and = (op == TOK_AND || op == TOK_SAND);
+    if (op == TOK_AND || op == TOK_OR) {
+        bool is_and = op == TOK_AND;
 
         LLVMValueRef lv = genExpr(ctx, root->binary.left);
         if (!lv) return NULL;
@@ -1112,7 +1111,6 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
         LLVMTypeRef base = genType(ctx, node->resolved);
         return LLVMBuildLoad2(ctx->builder, base, arg, l);
     }
-    case TOK_SNOT:
     case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
     case TOK_REF:   return genLvalue(ctx, node->unary.operand);
     default:

@@ -151,7 +151,8 @@ typedef enum {
     NODE_CAST,
     NODE_SIZEOF,
     NODE_STATIC_ACCESS,
-    NODE_NAMESPACE
+    NODE_NAMESPACE,
+    NODE_SLICE
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -448,6 +449,12 @@ struct ZNode {
             ZNode       *arr;
             ZNode       *index;
         } subscript;
+
+        struct {
+            ZNode       *start;
+            ZNode       *end;
+            ZNode       *base;
+        } slice;
 
         ZNode           **tuplelit;
 
