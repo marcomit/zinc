@@ -12,7 +12,7 @@ pub struct Allocator {
 }
 
 for Allocator {
-    pub Allocator new() {
+    pub Allocator heap() {
         return Allocator{
             bytes: 0,
             alloc: c::malloc,

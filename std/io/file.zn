@@ -99,7 +99,7 @@ for *File self {
         return buf as *char
     }
 
-    pub u0 destroy(Allocator allocator) {
+    pub u0 destroy() {
         if self.descriptor != -1 {
             close(self.descriptor)
         }

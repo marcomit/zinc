@@ -243,11 +243,12 @@ static ZNode *wrapNode(ZParser *parser, ZParseFunc parse) {
 
 static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
     ZParserSnapshot *saved = store(parser);
-
+    pushErrorCheckpoint(parser);
     ZType *res = parse(parser);
 
     if (!res) {
         undo(parser, saved);
+        rollbackErrors(parser);
     } else {
         commitErrors(parser);
     }

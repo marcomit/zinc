@@ -357,7 +357,7 @@ static void putVarPattern(
                     stype(type)
                 );
             } else if (!pattern->fields[i]->value) {
-                /* Shorthand {x} — bind to the field name itself. */
+                /* Shorthand {x} - bind to the field name itself. */
                 putRawSymbol(ctx, Z_SYM_VAR,
                     pattern->fields[i]->key,
                     structField->resolved,
@@ -506,9 +506,9 @@ static void checkUnusedSymbols(ZSemantic *ctx) {
     }
 }
 
-static void endModule(ZSemantic *ctx) {
+static void endModule(ZSemantic *ctx, bool checkSymbols) {
     if (!ctx || !ctx->table || !ctx->table->module) return;
-    checkUnusedSymbols(ctx);
+    if (checkSymbols) checkUnusedSymbols(ctx);
     ctx->table->current = ctx->table->module;
 }
 
@@ -915,18 +915,17 @@ static ZType *resolveStaticFuncTable(ZSemantic *ctx,
         }
     }
 
-    if (res) {
-        for (usize i = 0; i < veclen(res->func.args); i++) {
-            ZType *resolved = resolveTypeRef(ctx, res->func.args[i]);
-            if (!resolved) {
-                error(ctx->state, res->func.args[i]->tok,
-                    "Unresolved type");
-            } else {
-                res->func.args[i] = resolved;
-            }
+    if (!res) return NULL;
+
+    for (usize i = 0; i < veclen(res->func.args); i++) {
+        ZType *resolved = resolveTypeRef(ctx, res->func.args[i]);
+        if (!resolved) {
+            error(ctx->state, res->func.args[i]->tok,
+                "Unresolved type");
+        } else {
+            res->func.args[i] = resolved;
         }
     }
-
     return res;
 }
 
@@ -1014,15 +1013,32 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                 ctx, sym->type->func.args[i]
             );
         }
-        expectedArgs = sym->type->func.args;
-        variadic = sym->type->func.variadic;
-
-        result = resolveTypeRef(ctx, sym->node->funcDef.ret);
-        sym->node->funcDef.ret = result;
-
-        callee->resolved = result;
+        result                  = resolveTypeRef(ctx, sym->node->funcDef.ret);
+        expectedArgs            = sym->type->func.args;
+        sym->node->funcDef.ret  = result;
+        variadic                = sym->type->func.variadic;
+        callee->resolved        = result;
     } else if (callee->type == NODE_STATIC_ACCESS) {
-
+        ZType *resolved = resolveType(ctx, callee);
+        if (!resolved) {
+            error(ctx->state, callee->tok, "Unresolved type");
+            return NULL;
+        } else if (resolved->kind != Z_TYPE_FUNCTION) {
+            error(ctx->state, callee->tok,
+                "Expected function type, got %s",
+                stype(resolved)
+            );
+            return NULL;
+        }
+        for (usize i = 0; i < veclen(resolved->func.args); i++) {
+            resolved->func.args[i] = resolveTypeRef(
+                ctx, resolved->func.args[i]
+            );
+        }
+        result              = resolveTypeRef(ctx, resolved->func.ret);
+        expectedArgs        = resolved->func.args;
+        variadic            = resolved->func.variadic;
+        callee->resolved    = resolved;
     } else {
         /* Expression call (includes NODE_MEMBER, subscripts, etc.):
          * resolveType handles all callee forms uniformly. For NODE_MEMBER,
@@ -1055,7 +1071,7 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                 "Node %d does not have tok\n", curr->type);
         }
         error(ctx->state, curr->tok,
-                "Expected %zu arguments, got %zu",
+                "Expected %zu argument(s), got %zu",
                 veclen(expectedArgs), veclen(args));
         return NULL;
     }
@@ -1389,7 +1405,6 @@ static ZType *resolveStaticAccess(ZSemantic *ctx, ZNode *curr) {
             curr->staticAccess.mangled = prop->str;
             return resolved;
         }
-
     } else {
         error(ctx->state, base, "Base should refer to a type");
         return NULL;
@@ -1520,6 +1535,10 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
     } else {
         ZNode *resolved = resolveFuncCallEmbedded(ctx, curr, objType, field);
         if (!resolved) {
+            printf("base: %s, field: %s\n", stype(objType), field->str);
+            if (objType->kind == Z_TYPE_ARRAY && strcmp(field->str, "len") == 0) {
+                return u64Type;
+            }
             error(ctx->state, curr->tok,
                     "Expected a struct or tuple for '.' access");
             return NULL;
@@ -1718,16 +1737,17 @@ static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
 
         if (!argType) {
             error(ctx->state, curr->funcDef.name, "Unknown type resolved");
+            continue;
         }
 
         /* Unsized array parameters (e.g. []*char) decay to a pointer to
            their element type, matching C's array-to-pointer decay rule. */
-        if (argType && argType->kind == Z_TYPE_ARRAY && argType->array.size == 0) {
-            ZType *ptr  = maketype(Z_TYPE_POINTER);
-            ptr->base   = argType->array.base;
-            ptr->tok    = argType->tok;
-            argType     = ptr;
-        }
+        // if (argType && argType->kind == Z_TYPE_ARRAY && argType->array.size == 0) {
+        //     ZType *ptr  = maketype(Z_TYPE_POINTER);
+        //     ptr->base   = argType->array.base;
+        //     ptr->tok    = argType->tok;
+        //     argType     = ptr;
+        // }
 
         arg->field.type = argType;
         putRawSymbol(ctx,
@@ -1878,7 +1898,7 @@ static void discoverGlobalScope(ZSemantic *ctx, ZNode *root) {
             if (child->module.root) {
                 registerModule(ctx, child);
                 discoverGlobalScope(ctx, child);
-                endModule(ctx);
+                endModule(ctx, false);
             }
             break;
 
@@ -2035,7 +2055,7 @@ static void analyze(ZSemantic *ctx, ZNode *root) {
             if (child->module.root) {
                 registerModule(ctx, child);
                 analyze(ctx, child);
-                endModule(ctx);
+                endModule(ctx, true);
             }
             break;
 
