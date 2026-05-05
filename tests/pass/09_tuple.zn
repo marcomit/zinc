@@ -1,4 +1,6 @@
-foreign u0 printf(*char, ...)
+foreign c {
+    u0 printf(*char, ...)
+}
 
 (*char, i32) tuple() {
     return ("john", 40)
@@ -10,7 +12,7 @@ i32 main() {
 
     (name, age) := tuple()
     
-    printf("%s: %d\n", name, age)
+    c::printf("%s: %d\n", name, age)
 
     return 0
 }

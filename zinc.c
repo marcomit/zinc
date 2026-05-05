@@ -77,15 +77,29 @@ ZState *loadState(int argc, char **argv) {
     if (argc < 2) { usage(argv[0]); return NULL; }
 
     char *filename = argv[1];
-
-    argc--; argv++;
-
-    state = makestate(argv[1]);
+    state = makestate();
 
     int opt;
+    optind = 2;
 
-    while (( opt = getopt_long(argc, argv, "dvo:", long_options, NULL) ) != -1) {
+    while (( opt = getopt_long(argc, argv, "dvo:l:L:", long_options, NULL) ) != -1) {
         switch (opt) {
+        case 'L': {
+            usize len = 3 + strlen(optarg);
+            char *lib = znalloc(char, len);
+            sprintf(lib, "-L%s", optarg);
+            lib[len-1] = '\0';
+            vecpush(state->extraArgs, lib);
+            break;
+        }
+        case 'l': {
+            usize len = 3 + strlen(optarg);
+            char *lib = znalloc(char, len);
+            sprintf(lib, "-l%s", optarg);
+            lib[len-1] = '\0';
+            vecpush(state->extraArgs, lib);
+            break;
+        }
         case 'o':                       SET_ARG(state->output,              "Output file");             break;
         case 'd':                       SET_FLAG(state->debug,              "Debug mode");              break;
         case 'v':                       SET_FLAG(state->verbose,            "Verbose");                 break;

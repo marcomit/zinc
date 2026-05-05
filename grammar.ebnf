@@ -82,7 +82,7 @@ variable_declaration = identifier, ":=", expression
 (* Interface declaration: interface Shape { f32 area() } *)
 interface_declaration = [ "pub" ], "interface", identifier, "{", { interface_method }, "}" ;
 
-(* Method signature only — no body, no receiver *)
+(* Method signature only - no body, no receiver *)
 interface_method = type, identifier, "(", [ parameter_list ], ")" ;
 
 (* List of interfaces a type implements: (Shape, Debug) *)
@@ -117,12 +117,12 @@ basic_type = "char"
            | "i8" | "i16" | "i32" | "i64"
            | "f32" | "f64" ;
 
-(* Pointer type: *T, **T — handled by { "*" } prefix in type rule *)
+(* Pointer type: *T, **T - handled by { "*" } prefix in type rule *)
 
 (* Array type: [i32] or [u8; 16] (sized) *)
 array_type = "[", [ integer_constant ], "]", type;
 
-(* Tuple type: (i32, bool) — requires at least 2 types *)
+(* Tuple type: (i32, bool) - requires at least 2 types *)
 tuple_type = "(", type, ",", type, { ",", type }, ")" ;
 
 (* Function type suffix: i32(i32, i32) *)
@@ -221,7 +221,7 @@ struct_field_list = struct_field_init, { ",", struct_field_init } ;
 
 struct_field_init = identifier, ":", expression ;
 
-(* Tuple literal: (a, b) — requires at least 2 elements *)
+(* Tuple literal: (a, b) - requires at least 2 elements *)
 tuple_literal = "(", expression, ",", expression, { ",", expression }, ")" ;
 
 (* ============ Lexical Elements ============ *)

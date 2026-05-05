@@ -332,8 +332,8 @@ These can then be called like normal Zinc functions.
 
 Zinc macros use pattern matching to expand to arbitrary code at compile time. Patterns use:
 
-- `$name` — captures an expression or statement block
-- `@name` — captures an identifier (introduces a new variable)
+- `$name` - captures an expression or statement block
+- `@name` - captures an identifier (introduces a new variable)
 - Literal keywords for fixed tokens
 
 ```zinc
@@ -474,11 +474,11 @@ range Range(i64 start, i64 end) {
 
 Supporting components:
 
-- **`zmod.c`** — handles `use` imports, multi-file compilation, debug printing
-- **`zmacro.c`** — expands macro invocations before/during parsing using pattern matching
-- **`zmem.c`** — arena allocator; scoped cleanup with `startScope()` / `endScope()`
-- **`zvec.h`** — header-only generic dynamic array used throughout the compiler
-- **`zhset.h`** — header-only string hashset for duplicate detection in symbol tables
+- **`zmod.c`** - handles `use` imports, multi-file compilation, debug printing
+- **`zmacro.c`** - expands macro invocations before/during parsing using pattern matching
+- **`zmem.c`** - arena allocator; scoped cleanup with `startScope()` / `endScope()`
+- **`zvec.h`** - header-only generic dynamic array used throughout the compiler
+- **`zhset.h`** - header-only string hashset for duplicate detection in symbol tables
 
 ---
 

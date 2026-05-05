@@ -1,4 +1,6 @@
-foreign u0 printf(*char, ...)
+foreign c {
+    u0 printf(*char, ...)
+}
 
 struct Vec {
     i32 x
@@ -25,19 +27,19 @@ for Vec {
 
 i32 main() {
     (a, b) := flatTuple()
-    printf("%d %d\n", a, b)
+    c::printf("%d %d\n", a, b)
 
     (name, num) := labeledTuple()
-    printf("%s %d\n", name, num)
+    c::printf("%s %d\n", name, num)
 
     {x, y} := Vec::new()
-    printf("%d %d\n", x, y)
+    c::printf("%d %d\n", x, y)
 
     {x: renamed, y: ry} := Vec::new()
-    printf("%d %d\n", renamed, ry)
+    c::printf("%d %d\n", renamed, ry)
 
     ((first, {x: overridden, y: y2}), second) := nested()
-    printf("%s %d %d %d\n", first, overridden, y2, second)
+    c::printf("%s %d %d %d\n", first, overridden, y2, second)
 
     return 0
 }

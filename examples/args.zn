@@ -1,0 +1,21 @@
+foreign u0 printf(*char, ...)
+
+
+u0 printSlice([]i32 nums) {
+    i := 0
+    printf("Slice len: %d\n", nums.len)
+    for i < nums.len {
+        printf("%d\n", nums[i])
+        i = i + 1
+    }
+}
+
+i32 main() {
+    []i32 nums = [10]i32
+
+    printf("Slice len: %d\n", slice.len)
+
+    printSlice(nums)
+
+    return 0
+}

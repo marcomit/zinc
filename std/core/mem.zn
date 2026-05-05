@@ -1,28 +1,23 @@
-foreign *u8 malloc(u64)
-foreign *u8 realloc(*u8, u64)
-foreign u0 free(*u8)
+foreign c {
+    *u8 malloc(u64)
+    *u8 realloc(*u8, u64)
+    u0 free(*u8)
+}
 
 pub struct Allocator {
-    u64 bytes
+    u64             bytes
+    *u8(u64)        alloc
+    *u8(*u8, u64)   realloc
+    u0(*u8)         free
 }
 
 for Allocator {
-    pub Allocator new() {
-        return Allocator{ bytes: 0 }
-    }
-}
-
-for *Allocator self {
-    pub *u8 alloc(u64 size) {
-        self.bytes = self.bytes + size
-        return malloc(size)
-    }
-    pub *u8 realloc(*u8 ptr, u64 size) {
-        self.bytes = self.bytes + size
-        return realloc(ptr, size)
-    }
-    pub u0 free(*u8 ptr) {
-        self.bytes = 0
-        free(ptr)
+    pub Allocator heap() {
+        return Allocator{
+            bytes: 0,
+            alloc: c::malloc,
+            realloc: c::realloc,
+            free: c::free
+        }
     }
 }

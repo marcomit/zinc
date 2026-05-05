@@ -83,7 +83,7 @@ typedef const char **hashset_t;
 #define HASHSET_META(s) ((hashset_metadata *)((u8 *)(s) - sizeof(hashset_metadata)))
 
 /* ============================================================================
- * Hash function — FNV-1a
+ * Hash function - FNV-1a
  * ============================================================================ */
 
 static inline u32 hashset__fnv1a(const char *s) {
@@ -126,7 +126,7 @@ static inline bool hashset__find(const char **buckets, usize cap,
 	for (usize i = 0; i < cap; i++) {
 		const char *slot = buckets[idx];
 		if (slot == NULL) {
-			/* empty — key not in table */
+			/* empty - key not in table */
 			*out_idx = (first_tombstone != (usize)-1) ? first_tombstone : idx;
 			return false;
 		}
@@ -138,7 +138,7 @@ static inline bool hashset__find(const char **buckets, usize cap,
 		}
 		idx = (idx + 1) & mask;
 	}
-	/* table is full of tombstones — shouldn't happen with proper load factor */
+	/* table is full of tombstones - shouldn't happen with proper load factor */
 	*out_idx = first_tombstone;
 	return false;
 }
@@ -183,7 +183,7 @@ static inline usize hashset_cap(hashset_t set) {
 /**
  * @brief Insert a string into the set
  * @param set  Pointer to hashset (may be NULL; will be created)
- * @param key  String to insert (not copied — caller owns the memory)
+ * @param key  String to insert (not copied - caller owns the memory)
  * @return true if inserted, false if already present or OOM
  */
 static inline bool hashset_insert(hashset_t *set, const char *key) {

@@ -23,7 +23,8 @@ static std::string runCmd(const char *cmd) {
     return s;
 }
 
-extern "C" int zinc_lld_link(const char *objfile, const char *outfile) {
+extern "C" int zinc_lld_link(const char *objfile, const char *outfile,
+    const char **extra_args, int extra_args_count) {
 #if defined(__APPLE__)
     std::string sdk = runCmd("xcrun --sdk macosx --show-sdk-path 2>/dev/null");
     std::string ver = runCmd("sw_vers -productVersion 2>/dev/null");
@@ -50,8 +51,14 @@ extern "C" int zinc_lld_link(const char *objfile, const char *outfile) {
         "-syslibroot", sdk.c_str(),
         "-lSystem",
         objfile,
-        "-o", outfile,
     };
+
+    for (int i = 0; i < extra_args_count; i++) {
+        args.push_back(extra_args[i]);
+    }
+
+    args.push_back("-o");
+    args.push_back(outfile);
 
     lld::DriverDef drivers[] = {{lld::Darwin, &lld::macho::link}};
     auto res = lld::lldMain(
@@ -105,9 +112,15 @@ extern "C" int zinc_lld_link(const char *objfile, const char *outfile) {
         crti.c_str(),
         objfile,
         "-lc",
-        crtn.c_str(),
-        "-o", outfile,
     });
+
+    for (int i = 0; i < extra_args_count; i++) {
+        args.push_back(extra_args[i]);
+    }
+
+    args.push_back(crtn.c_str());
+    args.push_back("-o");
+    args.push_back(outfile);
 
     lld::DriverDef drivers[] = {{lld::Gnu, &lld::elf::link}};
     auto res = lld::lldMain(

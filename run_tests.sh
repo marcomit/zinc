@@ -125,7 +125,7 @@ run_fail_test() {
         echo -e "  ${RED}FAIL${NC}  $name  (should have been rejected, but compiled)"
         failed=$((failed + 1))
     elif [ "$COMPILE_EXIT" -ge 128 ]; then
-        echo -e "  ${RED}FAIL${NC}  $name  (compiler crashed, exit $COMPILE_EXIT — must show error, not crash)"
+        echo -e "  ${RED}FAIL${NC}  $name  (compiler crashed, exit $COMPILE_EXIT - must show error, not crash)"
         failed=$((failed + 1))
     else
         echo -e "  ${GREEN}PASS${NC}  $name  (correctly rejected)"
@@ -148,12 +148,12 @@ run_xfail_test() {
     compile "$src" "$bin" "$compile_log"
 
     if ! binary_was_produced "$bin"; then
-        echo -e "  ${YELLOW}XFAIL${NC} $name  (expected — compiler rejected)"
+        echo -e "  ${YELLOW}XFAIL${NC} $name  (expected - compiler rejected)"
         xfailed=$((xfailed + 1))
         return
     fi
 
-    # Binary was produced — check output if an .expected file exists
+    # Binary was produced - check output if an .expected file exists
     local actual exit_code
     actual=$("$bin" 2>/dev/null) || exit_code=$?
     exit_code=${exit_code:-0}
@@ -162,15 +162,15 @@ run_xfail_test() {
         local exp
         exp=$(cat "$expected")
         if [ "$actual" = "$exp" ] && [ "$exit_code" -eq 0 ]; then
-            echo -e "  ${CYAN}XPASS${NC} $name  (unexpectedly passed — promote to pass/)"
+            echo -e "  ${CYAN}XPASS${NC} $name  (unexpectedly passed - promote to pass/)"
             xpassed=$((xpassed + 1))
         else
-            echo -e "  ${YELLOW}XFAIL${NC} $name  (expected — compiles but output wrong)"
+            echo -e "  ${YELLOW}XFAIL${NC} $name  (expected - compiles but output wrong)"
             xfailed=$((xfailed + 1))
         fi
     else
         # No expected file and binary exists: treat as xpass
-        echo -e "  ${CYAN}XPASS${NC} $name  (unexpectedly passed — promote to pass/)"
+        echo -e "  ${CYAN}XPASS${NC} $name  (unexpectedly passed - promote to pass/)"
         xpassed=$((xpassed + 1))
     fi
 }

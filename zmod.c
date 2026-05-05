@@ -18,7 +18,7 @@ static char *nodeLabels[] = {
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "GOTO",         "LABEL",        "TYPE",         "ENUM",
     "BREAK",        "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
-    "STATIC_ACCESS"
+    "STATICACCESS", "NAMESPACE",    "SLICE"
 };
 
 static char *levels[] = {
@@ -356,6 +356,20 @@ static void printMacroPattern(ZMacroPattern *pattern, u8 depth) {
     }
 }
 
+static void printAnnotation(ZAnnotation *annotation) {
+    if (!annotation) return;
+    printf("%s", annotation->name->str);
+    if (veclen(annotation->args) > 0) {
+        printf("(");
+        usize len = veclen(annotation->args);
+        for (usize i = 0; i < len; i++) {
+            printAnnotation(annotation->args[i]);
+            if (i != len - 1) printf(", ");
+        }
+        printf(")");
+    }
+}
+
 void printNode(ZNode *node, u8 depth) {
     if (node == NULL) {
         printf("unknown");
@@ -368,6 +382,10 @@ void printNode(ZNode *node, u8 depth) {
 
     depth++;
     switch (node->type) {
+    case NODE_BREAK:
+    case NODE_CONTINUE:
+    case NODE_ARRAY_INIT:
+        break;
     case NODE_LITERAL:
         printf("Value: ");
         printToken(node->literalTok);
@@ -421,6 +439,12 @@ void printNode(ZNode *node, u8 depth) {
             printType(node->funcDef.generics[i]);
             printf("\n");
         }
+        indent(depth);
+        for (usize i = 0; i < veclen(node->funcDef.annotations); i++) {
+            printAnnotation(node->funcDef.annotations[i]);
+            printf(" ");
+        }
+        printf("\n");
         printNode(node->funcDef.body, depth);
         return;
 
@@ -570,9 +594,6 @@ void printNode(ZNode *node, u8 depth) {
                 node->staticAccess.base->str, node->staticAccess.prop->str);
         break;
 
-    case NODE_BREAK:
-    case NODE_CONTINUE:
-        break;
 
     case NODE_ENUM:
         printf("%s\n", stoken(node->enumDef.name));
@@ -591,6 +612,29 @@ void printNode(ZNode *node, u8 depth) {
         }
         break;
 
+    case NODE_NAMESPACE:
+        printf("%s\n", node->tok->str);
+        for (usize i = 0; i < veclen(node->block); i++) {
+            printNode(node->block[i], depth);
+        }
+        break;
+
+    case NODE_SLICE:
+        printf("\n");
+        indent(depth);
+        printf("base\n");
+        printNode(node->slice.base, depth);
+        if (node->slice.start) {
+            indent(depth);
+            printf("start\n");
+            printNode(node->slice.start, depth);
+        }
+        if (node->slice.end) {
+            indent(depth);
+            printf("end\n");
+            printNode(node->slice.end, depth);
+        }
+        break;
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
@@ -688,12 +732,12 @@ void printScope(ZScope *scope) {
     printScope(scope->parent);
 }
 
-ZState *makestate(char *filename) {
+ZState *makestate() {
     ZState *self                = zalloc(ZState);
                                 
     self->output                = NULL;
     self->currentPhase          = Z_PHASE_LEXICAL;
-    self->filename              = filename;
+    self->filename              = NULL;
     self->logs                  = NULL;
     self->verbose               = false;
     self->pathFiles             = NULL;
@@ -709,6 +753,7 @@ ZState *makestate(char *filename) {
     self->visitedFiles          = NULL;
     self->skipLLVMValidation    = false;
     self->optimizationLevel     = 0;
+    self->extraArgs             = NULL;
 
     return self;
 }
@@ -838,7 +883,7 @@ static char *resolvePath(ZState *state, char *filename) {
     if (!state->filename) return filename;
     if (filename[0] == sep) return filename;
 
-
+    
     char path[256] = { 0 };
     strncpy(path, state->filename, 256);
 

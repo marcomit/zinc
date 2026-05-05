@@ -1,4 +1,6 @@
-foreign u0 printf(*char, ...)
+foreign c {
+    u0 printf(*char, ...)
+}
 
 struct Position {
     i32 x
@@ -49,10 +51,10 @@ for Player self {
     }
 
     u0 print() {
-        printf("%s\n", self.name)
-        printf("Pos: %d %d %d\n", self.x, self.y, self.z)
-        printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)
-        printf("HP: %d\n", self.health)
+        c::printf("%s\n", self.name)
+        c::printf("Pos: %d %d %d\n", self.x, self.y, self.z)
+        c::printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)
+        c::printf("HP: %d\n", self.health)
     }
 }
 

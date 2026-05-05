@@ -102,6 +102,9 @@ typedef struct {
     bool        verbose;
     u8          optimizationLevel;
     ZNode       *root;
+
+    /* Extra arguments should be passed in the linker. */
+    char        **extraArgs;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -147,7 +150,9 @@ typedef enum {
     NODE_ENUM_FIELD,
     NODE_CAST,
     NODE_SIZEOF,
-    NODE_STATIC_ACCESS
+    NODE_STATIC_ACCESS,
+    NODE_NAMESPACE,
+    NODE_SLICE
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -160,7 +165,8 @@ typedef enum ZTypeKind {
     Z_TYPE_GENERIC,        // Instantiated generic type, e.g. List[int]
     Z_TYPE_FACET,
     Z_TYPE_ENUM,
-    Z_TYPE_NONE
+    Z_TYPE_NONE,
+    Z_TYPE_NAMESPACE
 } ZTypeKind;
 
 struct ZType {
@@ -289,6 +295,12 @@ struct ZVarDestructPattern {
     };
 };
 
+typedef struct ZAnnotation ZAnnotation;
+struct ZAnnotation {
+    ZToken *name;
+    ZAnnotation **args;
+};
+
 struct ZNode {
     ZNodeType       type;
     ZType           *resolved;
@@ -360,6 +372,9 @@ struct ZNode {
             ZNode   *receiver;
 
             ZType   **generics;
+
+            ZAnnotation **annotations;
+
             bool    pub;
         } funcDef;
 
@@ -376,10 +391,11 @@ struct ZNode {
         } call;
 
         struct {
-            ZToken  *ident;
-            ZNode   **fields;
-            ZType   **generics;
-            bool    pub;
+            ZToken      *ident;
+            ZNode       **fields;
+            ZType       **generics;
+            ZAnnotation **annotations;
+            bool        pub;
         } structDef;
 
         /* Enums are the combination of a union with an integer
@@ -392,12 +408,11 @@ struct ZNode {
          * */
         struct {
             /* The name of the enum. */
-            ZToken  *name;
-
+            ZToken      *name;
             /* Fields are a list of enumField. */
-            ZNode   **fields;
-
-            bool    pub;
+            ZNode       **fields;
+            ZAnnotation **annotations;
+            bool        pub;
         } enumDef;
 
         /* Representation of an enum's field.
@@ -434,6 +449,12 @@ struct ZNode {
             ZNode       *arr;
             ZNode       *index;
         } subscript;
+
+        struct {
+            ZNode       *start;
+            ZNode       *end;
+            ZNode       *base;
+        } slice;
 
         ZNode           **tuplelit;
 
@@ -551,7 +572,8 @@ typedef enum {
     Z_SYM_ENUM,
     Z_SYM_STRUCT,
     Z_SYM_TYPEDEF,
-    Z_SYM_GENERIC
+    Z_SYM_GENERIC,
+    Z_SYM_NAMESPACE
 } ZSymType;
 
 typedef struct ZSymbol {
@@ -576,7 +598,7 @@ typedef struct ZSymbol {
 
 struct ZScope {
     ZSymbol         **symbols;
-    ZScope   *parent;
+    ZScope          *parent;
     ZNode           *node;
     u32             depth;
     hashset_t       seen;
@@ -680,7 +702,7 @@ bool typesPrimitive(ZType *);
 ZType *typesCompatible(ZState *, ZType *, ZType *);
 
 /* ================== Zinc state ================== */
-ZState *makestate(char *);
+ZState *makestate();
 
 char *readfile(char *);
 
