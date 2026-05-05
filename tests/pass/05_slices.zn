@@ -11,45 +11,45 @@ u0 printSlice([]i32 s) {
 
 i32 sum([]i32 s) {
     total := 0
-    // i := 0
-    // for i < s.len {
-    //     total = total + s[i]
-    //     i = i + 1
-    // }
+    i := 0
+    for i < s.len {
+        total = total + s[i]
+        i = i + 1
+    }
     return total
 }
 
-// i32 main() {
-//     arr := [0, 1, 2, 3, 4]
-// 
-//     // arr[2:] -> {ptr: &arr[2], len: 3} -> {2, 3, 4}
-//     tail := arr[2:]
-//     printSlice(tail)
-// 
-//     // arr[:3] -> {ptr: &arr[0], len: 3} -> {0, 1, 2}
-//     head := arr[:3]
-//     printSlice(head)
-// 
-//     // arr[1:4] -> {ptr: &arr[1], len: 3} -> {1, 2, 3}
-//     mid := arr[1:4]
-//     printSlice(mid)
-// 
-//     // .len field
-//     putchar(48 + mid.len)
-//     putchar(10)
-// 
-//     // pass slice to function
-//     putchar(48 + sum(mid))
-//     putchar(10)
-// 
-//     // slice of slice: mid[1:] -> {2, 3}
-//     inner := mid[1:]
-//     printSlice(inner)
-// 
-//     // element mutation through slice
-//     mid[0] = 9
-//     putchar(48 + arr[1])
-//     putchar(10)
-// 
-//     return 0
-// }
+i32 main() {
+    arr := [0, 1, 2, 3, 4]
+
+    // arr[2:] -> {ptr: &arr[2], len: 3} -> {2, 3, 4}
+    tail := arr[2:]
+    printSlice(tail)
+
+    // arr[:3] -> {ptr: &arr[0], len: 3} -> {0, 1, 2}
+    head := arr[:3]
+    printSlice(head)
+
+    // arr[1:4] -> {ptr: &arr[1], len: 3} -> {1, 2, 3}
+    mid := arr[1:4]
+    printSlice(mid)
+
+    // .len field
+    putchar(48 + mid.len)
+    putchar(10)
+
+    // pass slice to function
+    putchar(48 + sum(mid))
+    putchar(10)
+
+    // slice of slice: mid[1:] -> {2, 3}
+    inner := mid[1:]
+    printSlice(inner)
+
+    // element mutation through slice
+    mid[0] = 9
+    putchar(48 + arr[1])
+    putchar(10)
+
+    return 0
+}

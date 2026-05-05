@@ -541,10 +541,11 @@ static u8 typeRank(ZTokenType t) {
     }
 }
 
-static inline bool isUnsigned(ZTokenType t) { return (bool)(t & TOK_UNSIGNED); }
-static inline bool isSigned  (ZTokenType t) { return (bool)(t & TOK_SIGNED);   }
-static inline bool isFloat   (ZTokenType t) { return (bool)(t & TOK_FLOAT);    }
-static inline bool isInteger (ZTokenType t) { return isSigned(t) || isUnsigned(t); }
+static inline bool isUnsigned(ZTokenType t) { return (bool)(t & TOK_UNSIGNED);  }
+static inline bool isSigned  (ZTokenType t) { return (bool)(t & TOK_SIGNED);    }
+static inline bool isFloat   (ZTokenType t) { return (bool)(t & TOK_FLOAT);     }
+static inline bool isInteger (ZTokenType t) { return isSigned(t) || isUnsigned(t);  }
+static inline bool isPrimitive(ZType *t)    { return t->kind == Z_TYPE_PRIMITIVE;   }
 
 static ZTokenType toSigned(u8 rank) {
     switch (rank) {
@@ -711,6 +712,7 @@ bool typesEqual(ZType *a, ZType *b) {
 }
 
 ZNode *implicitCast(ZNode *node, ZType *type) {
+    if (!node) return node;
     if (node->resolved && typesEqual(node->resolved, type)) {
         return node;
     }
@@ -1411,6 +1413,32 @@ static ZType *resolveStaticAccess(ZSemantic *ctx, ZNode *curr) {
     }
 }
 
+static ZType *resolveSlice(ZSemantic *ctx, ZNode *curr) {
+    ZType *res      = resolveType(ctx, curr->slice.base);
+    ZType *start    = resolveType(ctx, curr->slice.start);
+    ZType *end      = resolveType(ctx, curr->slice.end);
+    
+    if (curr->slice.start &&
+            (!start                                 ||
+            !isPrimitive(start)                     ||
+            !isInteger(start->primitive.token->type))
+        ) {
+        error(ctx->state, curr->slice.start->tok, "Must be an integer");
+    }
+    if (curr->slice.end &&
+            (!end                                   ||
+            !isPrimitive(end)                       ||
+            !isInteger(end->primitive.token->type)  )
+        ) {
+        error(ctx->state, curr->slice.end->tok, "Must be an integer");
+    }
+
+    curr->slice.start   = implicitCast(curr->slice.start, u64Type);
+    curr->slice.end     = implicitCast(curr->slice.end, u64Type);
+
+    return res;
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -1434,6 +1462,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
     case NODE_STRUCT_LIT:   result = resolveStructLit   (ctx, curr);    break;
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr);    break;
     case NODE_STATIC_ACCESS:result = resolveStaticAccess(ctx, curr);    break;
+    case NODE_SLICE:        result = resolveSlice       (ctx, curr);    break;
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
         if (curr->resolved) {

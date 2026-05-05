@@ -382,6 +382,10 @@ void printNode(ZNode *node, u8 depth) {
 
     depth++;
     switch (node->type) {
+    case NODE_BREAK:
+    case NODE_CONTINUE:
+    case NODE_ARRAY_INIT:
+        break;
     case NODE_LITERAL:
         printf("Value: ");
         printToken(node->literalTok);
@@ -590,9 +594,6 @@ void printNode(ZNode *node, u8 depth) {
                 node->staticAccess.base->str, node->staticAccess.prop->str);
         break;
 
-    case NODE_BREAK:
-    case NODE_CONTINUE:
-        break;
 
     case NODE_ENUM:
         printf("%s\n", stoken(node->enumDef.name));
@@ -634,7 +635,6 @@ void printNode(ZNode *node, u8 depth) {
             printNode(node->slice.end, depth);
         }
         break;
-    
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);

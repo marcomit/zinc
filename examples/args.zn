@@ -1,10 +1,21 @@
 foreign u0 printf(*char, ...)
-i32 main(i32 argc, **char argv) {
-    [6]i32 nums = [1, 2, 3, 4, 5, 6]
 
+
+u0 printSlice([]i32 nums) {
     i := 0
-    printf("%d\n", nums.len)
+    printf("Slice len: %d\n", nums.len)
+    for i < nums.len {
+        printf("%d\n", nums[i])
+        i = i + 1
+    }
+}
 
-    printf("%d\n", nums[6])
+i32 main() {
+    []i32 nums = [10]i32
+
+    printf("Slice len: %d\n", slice.len)
+
+    printSlice(nums)
+
     return 0
 }
