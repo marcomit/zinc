@@ -1,21 +1,29 @@
-foreign u0 printf(*char, ...)
+foreign c {
+    *u8 malloc(u64)
+    u0 printf(*char, ...)
+}
 
+
+pub []i32 make(i32 n) {
+    *u8 ptr = c::malloc(sizeof i32 * n)
+    ptr[4] = 10
+    []i32 slice = [1]i32
+    slice.ptr = ptr
+    slice.len = n
+    return slice
+}
 
 u0 printSlice([]i32 nums) {
     i := 0
-    printf("Slice len: %d\n", nums.len)
+    c::printf("Len %d\n", nums.len)
     for i < nums.len {
-        printf("%d\n", nums[i])
+        c::printf("%d\n", nums[i])
         i = i + 1
     }
 }
 
 i32 main() {
-    []i32 nums = [10]i32
-
-    printf("Slice len: %d\n", slice.len)
-
+    nums := make(10)
     printSlice(nums)
-
     return 0
 }
