@@ -241,6 +241,7 @@ static void putStaticFunc(ZSemantic *ctx, ZNode *node) {
     if (baseType->kind != Z_TYPE_PRIMITIVE) {
         error(ctx->state, node->tok,
                 "Static function must be attached to a primitive type");
+        return;
     }
     ZToken *base = baseType->primitive.token;
     if (!base) {
@@ -640,6 +641,7 @@ bool isVoid(ZType *t) {
 bool typesPrimitive(ZType *t) {
     if (!t) return true;
 
+    if (t->kind == Z_TYPE_POINTER) return true;
     if (t->kind != Z_TYPE_PRIMITIVE) return false;
 
     switch (t->primitive.token->type) {
@@ -1561,12 +1563,21 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
         return base->tuple[field->integer];
     } else if (base->kind == Z_TYPE_ARRAY && strcmp(field->str, "len") == 0) {
         return u64Type;
+    } else if (base->kind == Z_TYPE_ARRAY && strcmp(field->str, "ptr") == 0) {
+        ZType *pointer = maketype(Z_TYPE_POINTER);
+        pointer->base = base->array.base;
+        return pointer;
     } else {
         ZNode *resolved = resolveFuncCallEmbedded(ctx, curr, objType, field);
         if (!resolved) {
-            printf("base: %s, field: %s\n", stype(objType), field->str);
-            if (objType->kind == Z_TYPE_ARRAY && strcmp(field->str, "len") == 0) {
+            if (objType->kind == Z_TYPE_ARRAY &&
+                    strcmp(field->str, "len") == 0) {
                 return u64Type;
+            } else if (objType->kind == Z_TYPE_ARRAY &&
+                    strcmp(field->str, "ptr") == 0) {
+                ZType *pointer = maketype(Z_TYPE_POINTER);
+                pointer->base = objType->array.base;
+                return pointer;
             }
             error(ctx->state, curr->tok,
                     "Expected a struct or tuple for '.' access");
@@ -1722,6 +1733,23 @@ static void analyzeForeign(ZSemantic *ctx, ZNode *curr) {
     }
 }
 
+static void analyzeFuncArgs(ZSemantic *ctx, ZNode **fields) {
+    for (usize i = 0; i < veclen(fields); i++) {
+        ZNode *field      = fields[i];
+        ZType *fieldType  = resolveTypeRef(ctx, field->field.type);
+
+        if (!fieldType) {
+            error(ctx->state, field->field.identifier, "Unknown type resolved");
+            continue;
+        }
+        field->field.type = fieldType;
+        putRawSymbol(
+            ctx,        Z_SYM_VAR,  field->field.identifier,
+            fieldType,  field,      false
+        );
+    }
+}
+
 static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
     if (veclen(curr->funcDef.annotations) > 0) {
         warning(ctx->state,
@@ -1760,32 +1788,7 @@ static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
         putSymbol(ctx, sym);
     }
 
-    for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
-        ZNode  *arg     = curr->funcDef.args[i];
-        ZType  *argType = resolveTypeRef(ctx, arg->field.type);
-
-        if (!argType) {
-            error(ctx->state, curr->funcDef.name, "Unknown type resolved");
-            continue;
-        }
-
-        /* Unsized array parameters (e.g. []*char) decay to a pointer to
-           their element type, matching C's array-to-pointer decay rule. */
-        // if (argType && argType->kind == Z_TYPE_ARRAY && argType->array.size == 0) {
-        //     ZType *ptr  = maketype(Z_TYPE_POINTER);
-        //     ptr->base   = argType->array.base;
-        //     ptr->tok    = argType->tok;
-        //     argType     = ptr;
-        // }
-
-        arg->field.type = argType;
-        putRawSymbol(ctx,
-                Z_SYM_VAR,
-                arg->field.identifier,
-                argType,
-                arg,
-                false);
-    }
+    analyzeFuncArgs(ctx, curr->funcDef.args);
 
     ZType *savedRet             = ctx->currentFuncRet;
     ZNode *savedFunc            = ctx->currentFunc;
@@ -1852,20 +1855,18 @@ static void analyzeReturn(ZSemantic *ctx, ZNode *curr) {
             );
         }
     }
-
-    
 }
 
 static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     switch (curr->type) {
-    case NODE_VAR_DECL: analyzeVar(ctx, curr, false);              break;
-    case NODE_IF:       analyzeIf(ctx, curr);                      break;
-    case NODE_WHILE:    analyzeWhile(ctx, curr);                   break;
-    case NODE_FOR:      analyzeFor(ctx, curr);                     break;
-    case NODE_BLOCK:    analyzeBlock(ctx, curr, false);            break;
-    case NODE_DEFER:    resolveType(ctx, curr->deferStmt.expr);    break;
-    case NODE_RETURN:   analyzeReturn(ctx, curr);                  break;
-    default:            resolveType(ctx, curr);                    break;
+    case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
+    case NODE_IF:           analyzeIf(ctx, curr);                   break;
+    case NODE_WHILE:        analyzeWhile(ctx, curr);                break;
+    case NODE_FOR:          analyzeFor(ctx, curr);                  break;
+    case NODE_BLOCK:        analyzeBlock(ctx, curr, false);         break;
+    case NODE_DEFER:        resolveType(ctx, curr->deferStmt.expr); break;
+    case NODE_RETURN:       analyzeReturn(ctx, curr);               break;
+    default:                resolveType(ctx, curr);                 break;
     }
 }
 
