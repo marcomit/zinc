@@ -1,0 +1,16 @@
+use <core::mem>
+
+struct Logger {
+    i32 level
+}
+
+i32 fill(u64 size)(Logger log) {
+    return 42
+}
+
+i32 main() {
+    with heap := Allocator::heap() {
+        i32 result = fill(64)
+    }
+    return 0
+}

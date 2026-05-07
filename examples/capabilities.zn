@@ -1,33 +1,19 @@
-use <core::mem>
-
 foreign c {
     u0 printf(*char, ...)
 }
 
-[]i32 make(i32 n)(Allocator allocator) {
-    *u8 ptr = allocator.alloc(sizeof i32 * n)
-    []i32 slice = [1]i32
-    slice.ptr = ptr
-    slice.len = n
-    return slice
-}
+i32 sum(i32 a)(i32 b) -> a + b
 
-u0 printSlice([]i32 nums) {
-    i := 0
-    for i < nums.len {
-        c::printf("%d: %d\n", i, nums[i])
-        i = i + 1
-    }
-}
+i32 identity(i32 val) -> val
 
 i32 main() {
 
-    []i32 val = [1]i32
-    with heap := Allocator::heap() {
-        val = make(10)
+    with _ := 10 {
+        c::printf("sum %d\n", sum(10))
     }
-
-    printSlice(val)
+    with _ := 20 {
+        c::printf("sum %d\n", sum(10))
+    }
 
     return 0
 }
