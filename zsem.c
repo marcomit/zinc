@@ -47,6 +47,7 @@ static void analyze(ZSemantic *, ZNode *);
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
 static ZType *resolveTypeRef(ZSemantic *, ZType *);
+static void checkFunctionUsedAsValue(ZSemantic *, ZNode *);
 
 /* ================== Scope / Symbol helpers ================== */
 
@@ -115,7 +116,9 @@ static void putSymbol(ZSemantic *ctx, ZSymbol *symbol) {
 
     if (symbol->isPublic) scope = ctx->table->global;
 
-    if (!hashset_insert(&scope->seen, symbol->name->str)) {
+
+    if (strcmp(symbol->name->str, "_") == 0 &&
+        !hashset_insert(&scope->seen, symbol->name->str)) {
         /* Duplicate pub foreign declarations are valid: multiple modules
            may re-export the same C extern (like a shared header). Skip
            silently instead of raising an error. */
@@ -145,6 +148,7 @@ static ZSymbol *makeRawSymbol(
     symbol->node        = node;
     symbol->isPublic    = isGlobal;
     symbol->generics    = NULL;
+    symbol->reachable   = strcmp(name->str, "_") == 0;
 
     return symbol;
 }
@@ -454,7 +458,7 @@ static i32 lookupCapabilityByType(ZScope *scope, ZType *capability) {
     return -1;
 }
 
-static ZNode **putCapability(ZSemantic *ctx, ZNode *var) {
+static ZCapability *putCapability(ZSemantic *ctx, ZNode *var) {
     if (!var || !var->resolved) {
         error(ctx->state, var ? var->tok : NULL,
             "Invalid 'putCapability' call");
@@ -474,7 +478,7 @@ static ZNode **putCapability(ZSemantic *ctx, ZNode *var) {
         capability = cur->capabilities[i];
     }
     vecpush(capability->nodes, var);
-    return capability->nodes;
+    return capability;
 }
 
 static void registerModule(ZSemantic *ctx, ZNode *module) {
@@ -531,7 +535,7 @@ static void checkUnusedSymbols(ZSemantic *ctx) {
     ZScope *scope = ctx->table->current;
     for (usize i = 0; i < veclen(scope->symbols); i++) {
         let symbol = scope->symbols[i];
-        if (symbol->useCount == 0) {
+        if (!symbol->reachable && symbol->useCount == 0) {
             warnUnused(ctx, symbol);
         }
     }
@@ -763,6 +767,9 @@ ZNode *implicitCast(ZNode *node, ZType *type) {
 
 /* ================== Symbol lookup ================== */
 ZSymbol *resolve(ZSemantic *ctx, ZToken *ident) {
+    if (ident && ident->type == TOK_IDENT && strcmp(ident->str, "_") == 0) {
+        error(ctx->state, ident, "Use '_' only for unused variables");
+    }
     ZScope *curr = ctx->table->current;
     while (curr) {
         for (usize i = 0; i < veclen(curr->symbols); i++) {
@@ -1031,6 +1038,7 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
 
     for (usize i = 0; i < veclen(args); i++) {
         args[i]->resolved = resolveType(ctx, args[i]);
+        checkFunctionUsedAsValue(ctx, args[i]);
     }
 
     // ZType *result = NULL;
@@ -1038,33 +1046,45 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
     ZType *expectedFunc = NULL;
     if (callee->type == NODE_IDENTIFIER) {
         ZSymbol *sym = resolve(ctx, callee->identNode.tok);
-        if (!sym) {
+        if (!sym || !sym->type) {
             error(ctx->state, callee->identNode.tok,
                   "Undefined function '%s'", callee->identNode.tok->str);
             return NULL;
         }
         if (sym->kind != Z_SYM_FUNC) {
+            if (sym->type && sym->type->kind == Z_TYPE_FUNCTION) {
+                expectedFunc = sym->type;
+                expectedFunc->func.ret = resolveTypeRef(ctx, expectedFunc->func.ret);
+                for (usize i = 0; i < veclen(expectedFunc->func.args); i++) {
+                    expectedFunc->func.args[i] = resolveTypeRef(
+                        ctx,
+                        expectedFunc->func.args[i]
+                    );
+                }
+            } else {
             error(ctx->state, callee->identNode.tok,
                   "'%s' is not callable", callee->identNode.tok->str);
             return NULL;
-        }
-        if (sym->node->type == NODE_FUNC) {
-            callee->identNode.mangled = sym->node->funcDef.mangled;
-        }
+            }
+        } else {
+            if (sym->node->type == NODE_FUNC) {
+                callee->identNode.mangled = sym->node->funcDef.mangled;
+            }
 
-        /* sym->type is the raw parsed return type - resolve it so that named
-         * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
-         * result is used downstream (e.g. for member access on return value).
-         * */
-        for (usize i = 0; i < veclen(sym->type->func.args); i++) {
-            sym->type->func.args[i] = resolveTypeRef(
-                ctx, sym->type->func.args[i]
-            );
+            /* sym->type is the raw parsed return type - resolve it so that named
+             * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
+             * result is used downstream (e.g. for member access on return value).
+             * */
+            for (usize i = 0; i < veclen(sym->type->func.args); i++) {
+                sym->type->func.args[i] = resolveTypeRef(
+                    ctx, sym->type->func.args[i]
+                );
+            }
+            sym->type->func.ret     = resolveTypeRef(ctx, sym->node->funcDef.ret);
+            sym->node->funcDef.ret  = sym->type->func.ret;
+            expectedFunc            = sym->type;
+            callee->resolved        = expectedFunc->func.ret;
         }
-        sym->type->func.ret     = resolveTypeRef(ctx, sym->node->funcDef.ret);
-        sym->node->funcDef.ret  = sym->type->func.ret;
-        expectedFunc            = sym->type;
-        callee->resolved        = expectedFunc->func.ret;
     } else if (callee->type == NODE_STATIC_ACCESS) {
         ZType *resolved = resolveType(ctx, callee);
         if (!resolved) {
@@ -1240,6 +1260,15 @@ static ZType *resolveStructLit(ZSemantic *ctx, ZNode *curr) {
     return NULL;
 }
 
+static void checkFunctionUsedAsValue(ZSemantic *ctx, ZNode *node) {
+    if (!node || node->type != NODE_MEMBER) return;
+    if (node->memberAccess.mangled) {
+        error(ctx->state, node->memberAccess.field,
+            "cannot use receiver method '%s' as a value",
+            node->memberAccess.field->str);
+    }
+}
+
 static ZType* resolveIdentifier(ZSemantic *ctx, ZNode *node) {
     ZToken *tok = node->identNode.tok;
     ZSymbol *sym = resolve(ctx, tok);
@@ -1250,6 +1279,16 @@ static ZType* resolveIdentifier(ZSemantic *ctx, ZNode *node) {
     }
     if (sym->node->type == NODE_FUNC) {
         node->identNode.mangled = sym->node->funcDef.mangled;
+        ZNode *fn = sym->node;
+        if (fn->funcDef.receiver) {
+            error(ctx->state, tok,
+                "cannot use receiver method '%s' as a value",
+                tok->str);
+        } else if (veclen(fn->funcDef.capabilities) > 0) {
+            error(ctx->state, tok,
+                "cannot use capability-requiring function '%s' as a value",
+                tok->str);
+        }
     }
     return sym->type;
 }
@@ -1306,6 +1345,7 @@ static ZType *resolveArrayLiteral(ZSemantic *ctx, ZNode *curr) {
     for (usize i = 0; i < len; i++) {
         ZNode *field = curr->arraylit[i];
         ZType *fieldType = resolveType(ctx, field);
+        checkFunctionUsedAsValue(ctx, field);
 
         if (!arrType) {
             arrType = fieldType;
@@ -1679,6 +1719,7 @@ static void analyzeVar(ZSemantic *ctx, ZNode *curr, bool isGlobal) {
 
     if (curr->varDecl.rvalue) {
         rvalueType = resolveType(ctx, curr->varDecl.rvalue);
+        checkFunctionUsedAsValue(ctx, curr->varDecl.rvalue);
         rvalueType = resolveTypeRef(ctx, rvalueType);
     }
 
@@ -1927,9 +1968,11 @@ static void analyzeReturn(ZSemantic *ctx, ZNode *curr) {
 }
 
 static void analyzeCapability(ZSemantic *ctx, ZNode *curr) {
+    beginScope(ctx, curr);
     analyzeVar(ctx, curr->capability.capability, false);
     putCapability(ctx, curr->capability.capability);
     analyzeBlock(ctx, curr->capability.block, false);
+    endScope(ctx);
 }
 
 static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {

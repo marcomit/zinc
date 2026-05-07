@@ -1,0 +1,11 @@
+use <core::mem>
+
+i32 fill(u64 size)(Allocator alloc) {
+    *u8 buf = alloc.alloc(size)
+    return 42
+}
+
+i32 main() {
+    i32 result = fill(64)
+    return 0
+}

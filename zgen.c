@@ -137,8 +137,9 @@ static void putLLVMValueRef(ZCodegen *ctx, char *key, LLVMValueRef value) {
 static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
     ZLLVMScope *cur = ctx->scope;
     while (cur) {
-        for (usize i = 0;i < veclen(cur->symbols); i++) {
-            if (strcmp(cur->symbols[i]->name,  key) == 0) {
+        usize len = veclen(cur->symbols);
+        for (usize i = len; i-- > 0;) {
+            if (strcmp(cur->symbols[i]->name, key) == 0) {
                 return cur->symbols[i]->value;
             }
         }
@@ -1623,11 +1624,10 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
         node->resolved->func.variadic
     );
 
-    LLVMValueRef func = LLVMAddFunction(
-        ctx->mod,
-        node->foreignFunc.tok->str,
-        funcType
-    );
+    LLVMValueRef func = LLVMGetNamedFunction(ctx->mod, node->foreignFunc.tok->str);
+    if (!func) {
+        func = LLVMAddFunction(ctx->mod, node->foreignFunc.tok->str, funcType);
+    }
 
     putLLVMValueRef(ctx, node->foreignFunc.tok->str, func);
 
