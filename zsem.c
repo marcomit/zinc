@@ -722,10 +722,16 @@ bool typesEqual(ZType *a, ZType *b) {
         if (!typesEqual(a->func.ret, b->func.ret)) return false;
         if (veclen(a->func.args) != veclen(b->func.args)) return false;
         if (veclen(a->func.generics) != veclen(b->func.generics)) return false;
+        if (veclen(a->func.capabilities) != veclen(b->func.capabilities)) return false;
 
-        for (usize i = 0; i < veclen(a->func.args); i++) {
-            if (!typesEqual(a->func.args[i], b->func.args[i])) return false;
-        }
+        for (usize i = 0; i < veclen(a->func.args); i++)
+            if (!typesEqual(a->func.args[i], b->func.args[i]))
+                return false;
+
+        for (usize i = 0; i < veclen(a->func.capabilities); i++)
+            if (!typesEqual(a->func.capabilities[i], b->func.capabilities[i]))
+                return false;
+
         return true;
     case Z_TYPE_ENUM:
         return a == b;
