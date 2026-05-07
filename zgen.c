@@ -747,9 +747,9 @@ static LLVMValueRef genEnumDecl(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef func;
-    LLVMValueRef *args = NULL;
-    ZNode *callee = node->call.callee;
+    LLVMValueRef func   = NULL;
+    LLVMValueRef *args  = NULL;
+    ZNode *callee       = node->call.callee;
 
     if (callee->type == NODE_MEMBER && callee->memberAccess.mangled) {
         /* Receiver method call: look up the global function and inject self. */
@@ -786,10 +786,39 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
 
 
     usize fixedParamCount = LLVMCountParamTypes(funcType);
-    LLVMTypeRef *fixedParamTypes = fixedParamCount > 0
-        ? znalloc(LLVMTypeRef, fixedParamCount) : NULL;
-    if (fixedParamTypes)
+    LLVMTypeRef *fixedParamTypes = NULL;
+    if (fixedParamCount > 0) {
+        fixedParamTypes = znalloc(LLVMTypeRef, fixedParamCount);
         LLVMGetParamTypes(funcType, fixedParamTypes);
+    }
+
+    for (usize i = 0; i < veclen(node->call.capabilities); i++) {
+        if (!node->call.capabilities[i]) {
+            warning(ctx->state, node->tok, "Empty capability\n");
+            continue;
+        } else if (!node->call.capabilities[i]->tok) {
+            warning(ctx->state, node->tok, "Empty tok field\n");
+            continue;
+        }
+        LLVMValueRef capability = getLLVMValueRef(
+            ctx, node->call.capabilities[i]->tok->str
+        );
+        if (!capability) {
+            error(
+                ctx->state,
+                node->call.capabilities[i]->tok,
+                "Capability '%s' not found",
+                stoken(node->call.capabilities[i]->tok)
+            );
+        } else {
+            capability = LLVMBuildLoad2(
+                ctx->builder,
+                genType(ctx, node->call.capabilities[i]->resolved),
+                capability, label(ctx, node->call.capabilities[i]->tok)
+            );
+        }
+        vecpush(args, capability);
+    }
 
     for (usize i = 0; i < veclen(node->call.args); i++) {
         LLVMValueRef arg = genExpr(ctx, node->call.args[i]);
@@ -797,7 +826,10 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         /* ABI adaptation: foreign functions declare small struct params as
          * i32/i64 (packed integer).  If the Zinc-side arg is a struct,
          * store it to a temp slot and reload as the packed integer so the
-         * backend emits a single-register load instead of per-field loads. */
+         * backend emits a single-register load instead of per-field loads.
+         * FIXME: Implement a specific annotation [[packed]] instead of 'understand'
+         * if the argument should be packed.
+         * */
         if (fixedParamTypes && i < fixedParamCount) {
             LLVMTypeRef expected = fixedParamTypes[i];
             LLVMTypeRef actual   = LLVMTypeOf(arg);
@@ -1427,9 +1459,6 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef genStructLitInto(
         ZCodegen *ctx, ZNode *node, LLVMValueRef dest) {
     LLVMTypeRef structType  = genType(ctx, node->resolved);
-    if (!dest) {
-        printf("New alloca emitted\n");
-    }
     LLVMValueRef ptr        = dest ? dest :
                                 LLVMBuildAlloca(
                                         ctx->builder, structType, label(ctx, node->tok));
@@ -1816,21 +1845,27 @@ static void genDefer(ZCodegen *ctx, ZNode *node) {
     vecpush(ctx->scope->defers, node->deferStmt.expr);
 }
 
+static void genCapability(ZCodegen *ctx, ZNode *node) {
+    genStmt(ctx, node->capability.capability);
+    genStmt(ctx, node->capability.block);
+}
+
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     if (!stmt) return;
     
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
-    case NODE_IF:       genIf       (ctx, stmt);    break;
-    case NODE_FOR:      genFor      (ctx, stmt);    break;
-    case NODE_RETURN:   genRet      (ctx, stmt);    break;
-    case NODE_CALL:     genCall     (ctx, stmt);    break;
-    case NODE_BLOCK:    genBlock    (ctx, stmt);    break;
-    case NODE_WHILE:    genWhile    (ctx, stmt);    break;
-    case NODE_BREAK:    genBreak    (ctx, stmt);    break;
-    case NODE_DEFER:    genDefer    (ctx, stmt);    break;
-    case NODE_VAR_DECL: genVarDecl  (ctx, stmt);    break;
-    case NODE_CONTINUE: genContinue (ctx, stmt);    break;
+    case NODE_IF:           genIf           (ctx, stmt);    break;
+    case NODE_FOR:          genFor          (ctx, stmt);    break;
+    case NODE_RETURN:       genRet          (ctx, stmt);    break;
+    case NODE_CALL:         genCall         (ctx, stmt);    break;
+    case NODE_BLOCK:        genBlock        (ctx, stmt);    break;
+    case NODE_WHILE:        genWhile        (ctx, stmt);    break;
+    case NODE_BREAK:        genBreak        (ctx, stmt);    break;
+    case NODE_DEFER:        genDefer        (ctx, stmt);    break;
+    case NODE_VAR_DECL:     genVarDecl      (ctx, stmt);    break;
+    case NODE_CONTINUE:     genContinue     (ctx, stmt);    break;
+    case NODE_CAPABILITY:   genCapability   (ctx, stmt);    break;
     default: {
         LLVMValueRef compiled = genExpr(ctx, stmt);
         if (compiled) return;
@@ -1986,11 +2021,10 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_MEMBER:
         genFuncVars(ctx, node->memberAccess.object);
         break;
-    case NODE_FOR: {
+    case NODE_FOR:
         genFuncVars(ctx, node->forStmt.var);
         genFuncVars(ctx, node->forStmt.block);
         break;
-   }
     case NODE_WHILE:
         genFuncVars(ctx, node->whileStmt.cond);
         genFuncVars(ctx, node->whileStmt.branch);
@@ -1999,6 +2033,10 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->ifStmt.cond);
         genFuncVars(ctx, node->ifStmt.body);
         genFuncVars(ctx, node->ifStmt.elseBranch);
+        break;
+    case NODE_CAPABILITY:
+        genFuncVars(ctx, node->capability.capability);
+        genFuncVars(ctx, node->capability.block);
         break;
     case NODE_VAR_DECL:
         buildFuncVar(ctx, node->varDecl.rvalue);
@@ -2032,6 +2070,27 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     }
 }
 
+static void addFuncArgs(ZCodegen *ctx,
+        LLVMValueRef func,
+        ZNode **funcArgs, usize paramOffset) {
+    for (usize i = 0; i < veclen(funcArgs); i++) {
+        char *name = funcArgs[i]->field.identifier->str;
+        ZType *argType = funcArgs[i]->field.type;
+        LLVMTypeRef paramType = NULL;
+        LLVMValueRef slot = NULL;
+        paramType = genType(ctx, argType);
+        if (argType->kind == Z_TYPE_FUNCTION) {
+            paramType = LLVMPointerType(
+                LLVMInt8TypeInContext(ctx->ctx), 0
+            );
+            slot = LLVMGetParam(func, i + paramOffset);
+        } else {
+            slot = LLVMBuildAlloca(ctx->builder, paramType, name);
+            LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
+        }
+        putLLVMValueRef(ctx, name, slot);
+    }
+}
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     beginScope(Z_SCOPE_FUNC, ctx);
@@ -2045,6 +2104,11 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     if (f->funcDef.receiver) {
         LLVMTypeRef receiverType = genType(ctx, f->funcDef.receiver->resolved);
         vecpush(args, receiverType);
+    }
+
+    for (usize i = 0; i < veclen(f->funcDef.capabilities); i++) {
+        LLVMTypeRef refType = genType(ctx, f->funcDef.capabilities[i]->field.type);
+        vecpush(args, refType);
     }
 
     for (usize i = 0; i < veclen(f->funcDef.args); i++) {
@@ -2062,37 +2126,25 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMBasicBlockRef entry = makeblock(ctx);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
-    if (f->funcDef.receiver) {
-      char *name = f->funcDef.receiver->field.identifier->str;
-      LLVMTypeRef recType = genType(ctx, f->funcDef.receiver->resolved);
-      LLVMValueRef slot = LLVMBuildAlloca(ctx->builder, recType, name);
-      LLVMBuildStore(ctx->builder, LLVMGetParam(func, 0), slot);
-      putLLVMValueRef(ctx, name, slot);
-    }
-
     /* Allocate a stack slot for each parameter so they can be reassigned.
      * The receiver (if present) occupies param index 0, so regular args
      * start at offset 1. */
-    usize paramOffset = f->funcDef.receiver ? 1 : 0;
-    for (usize i = 0; i < veclen(f->funcDef.args); i++) {
-        char *name = f->funcDef.args[i]->field.identifier->str;
-        ZType *argType = f->funcDef.args[i]->field.type;
-        LLVMTypeRef paramType = NULL;
-        LLVMValueRef slot = NULL;
-        paramType = genType(ctx, argType);
-        if (argType->kind == Z_TYPE_FUNCTION) {
-            paramType = LLVMPointerType(
-                LLVMInt8TypeInContext(ctx->ctx), 0
-            );
-            slot = LLVMGetParam(func, i + paramOffset);
-        } else {
-            slot = LLVMBuildAlloca(ctx->builder, paramType, name);
-            LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
-        }
-
-
+    usize paramOffset = 0;
+    if (f->funcDef.receiver) {
+        char *name = f->funcDef.receiver->field.identifier->str;
+        LLVMTypeRef recType = genType(ctx, f->funcDef.receiver->resolved);
+        LLVMValueRef slot = LLVMBuildAlloca(ctx->builder, recType, name);
+        LLVMBuildStore(ctx->builder, LLVMGetParam(func, 0), slot);
         putLLVMValueRef(ctx, name, slot);
+        paramOffset++;
     }
+
+    addFuncArgs(ctx, func, f->funcDef.capabilities, paramOffset);
+    addFuncArgs(
+        ctx, func,
+        f->funcDef.args,
+        paramOffset + veclen(f->funcDef.capabilities)
+    );
 
     /* All variable declarations are declared at the start of the function. */
     genFuncVars(ctx, f->funcDef.body);
@@ -2225,12 +2277,13 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
     }
 
     const char *outname = output ? output : "a.out";
-    printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", output);
 
     int ret = zinc_lld_link(objfile, outname,
             (const char**)state->extraArgs, veclen(state->extraArgs));
     if (ret != 0) {
         error(state, NULL, "Linker failed with code %d", ret);
+    } else {
+        printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", output);
     }
 
     remove(objfile);

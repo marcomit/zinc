@@ -152,7 +152,8 @@ typedef enum {
     NODE_SIZEOF,
     NODE_STATIC_ACCESS,
     NODE_NAMESPACE,
-    NODE_SLICE
+    NODE_SLICE,
+    NODE_CAPABILITY
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -196,6 +197,7 @@ struct ZType {
             ZType   *ret;
             ZType   **args;
             ZType   **generics;
+            ZType   **capabilities;
             bool    variadic;
         } func;
 
@@ -374,6 +376,7 @@ struct ZNode {
             ZType   **generics;
 
             ZAnnotation **annotations;
+            ZNode   **capabilities;
 
             bool    pub;
         } funcDef;
@@ -387,7 +390,11 @@ struct ZNode {
 
         struct {
             ZNode   *callee;
-            ZNode   ** args;
+            ZNode   **args;
+
+            /* It is a list of references to the capabilites' definition.
+             * This list MUST be set in the semantic analysis. */
+            ZNode   **capabilities;
         } call;
 
         struct {
@@ -513,6 +520,11 @@ struct ZNode {
         struct {
             ZType           *type;
         } sizeofExpr;
+
+        struct {
+            ZNode *capability;
+            ZNode *block;
+        } capability;
     };
 };
 
@@ -596,10 +608,16 @@ typedef struct ZSymbol {
     bool            reachable;
 } ZSymbol;
 
+typedef struct ZCapability {
+    ZType *type;
+    ZNode **nodes;
+} ZCapability;
+
 struct ZScope {
     ZSymbol         **symbols;
     ZScope          *parent;
     ZNode           *node;
+    ZCapability     **capabilities;
     u32             depth;
     hashset_t       seen;
 };

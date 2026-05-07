@@ -18,7 +18,7 @@ static char *nodeLabels[] = {
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "GOTO",         "LABEL",        "TYPE",         "ENUM",
     "BREAK",        "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
-    "STATICACCESS", "NAMESPACE",    "SLICE"
+    "STATICACCESS", "NAMESPACE",    "SLICE",        "CAPABILITY"
 };
 
 static char *levels[] = {
@@ -634,6 +634,11 @@ void printNode(ZNode *node, u8 depth) {
             printf("end\n");
             printNode(node->slice.end, depth);
         }
+        break;
+    case NODE_CAPABILITY:
+        printf("\n");
+        printNode(node->capability.capability, depth);
+        printNode(node->capability.block, depth);
         break;
     default:
             printf("(details not implemented in printer for node %d)",
