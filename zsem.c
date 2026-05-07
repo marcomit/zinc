@@ -447,6 +447,36 @@ static void putNamespace(ZSemantic *ctx, ZNode *node) {
     );
 }
 
+static i32 lookupCapabilityByType(ZScope *scope, ZType *capability) {
+    for (usize i = 0; i < veclen(scope->capabilities); i++)
+        if (typesEqual(scope->capabilities[i]->type, capability))
+            return i;
+    return -1;
+}
+
+static ZNode **putCapability(ZSemantic *ctx, ZNode *var) {
+    if (!var || !var->resolved) {
+        error(ctx->state, var ? var->tok : NULL,
+            "Invalid 'putCapability' call");
+        return NULL;
+    }
+
+    ZScope *cur = ctx->table->current;
+
+    i32 i = lookupCapabilityByType(cur, var->resolved);
+    ZCapability *capability = NULL;
+    if (i == -1) {
+        capability          = zalloc(ZCapability);
+        capability->nodes   = NULL;
+        capability->type    = var->resolved;
+        vecpush(cur->capabilities, capability);
+    } else {
+        capability = cur->capabilities[i];
+    }
+    vecpush(capability->nodes, var);
+    return capability->nodes;
+}
+
 static void registerModule(ZSemantic *ctx, ZNode *module) {
     ZScope *scope = NULL;
     for (usize i = 0; i < veclen(ctx->scopes); i++) {
@@ -692,10 +722,16 @@ bool typesEqual(ZType *a, ZType *b) {
         if (!typesEqual(a->func.ret, b->func.ret)) return false;
         if (veclen(a->func.args) != veclen(b->func.args)) return false;
         if (veclen(a->func.generics) != veclen(b->func.generics)) return false;
+        if (veclen(a->func.capabilities) != veclen(b->func.capabilities)) return false;
 
-        for (usize i = 0; i < veclen(a->func.args); i++) {
-            if (!typesEqual(a->func.args[i], b->func.args[i])) return false;
-        }
+        for (usize i = 0; i < veclen(a->func.args); i++)
+            if (!typesEqual(a->func.args[i], b->func.args[i]))
+                return false;
+
+        for (usize i = 0; i < veclen(a->func.capabilities); i++)
+            if (!typesEqual(a->func.capabilities[i], b->func.capabilities[i]))
+                return false;
+
         return true;
     case Z_TYPE_ENUM:
         return a == b;
@@ -981,17 +1017,25 @@ static ZNode *resolveFuncCallEmbedded(ZSemantic *ctx,
     return ptr;
 }
 
+static ZNode *lookupScopedCapability(ZSemantic *ctx, ZType *required) {
+    ZScope *curr = ctx->table->current;
+    i32 i = lookupCapabilityByType(curr, required);
+    if (i == -1 || veclen(curr->capabilities[i]->nodes) == 0) return NULL;
+    return veclast(curr->capabilities[i]->nodes);
+}
+
 static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
     ZNode *callee = curr->call.callee;
     ZNode **args = curr->call.args;
-    bool variadic = false;
+    // bool variadic = false;
 
     for (usize i = 0; i < veclen(args); i++) {
         args[i]->resolved = resolveType(ctx, args[i]);
     }
 
-    ZType *result = NULL;
-    ZType **expectedArgs = NULL;
+    // ZType *result = NULL;
+    // ZType **expectedArgs = NULL;
+    ZType *expectedFunc = NULL;
     if (callee->type == NODE_IDENTIFIER) {
         ZSymbol *sym = resolve(ctx, callee->identNode.tok);
         if (!sym) {
@@ -1017,11 +1061,10 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                 ctx, sym->type->func.args[i]
             );
         }
-        result                  = resolveTypeRef(ctx, sym->node->funcDef.ret);
-        expectedArgs            = sym->type->func.args;
-        sym->node->funcDef.ret  = result;
-        variadic                = sym->type->func.variadic;
-        callee->resolved        = result;
+        sym->type->func.ret     = resolveTypeRef(ctx, sym->node->funcDef.ret);
+        sym->node->funcDef.ret  = sym->type->func.ret;
+        expectedFunc            = sym->type;
+        callee->resolved        = expectedFunc->func.ret;
     } else if (callee->type == NODE_STATIC_ACCESS) {
         ZType *resolved = resolveType(ctx, callee);
         if (!resolved) {
@@ -1039,9 +1082,8 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                 ctx, resolved->func.args[i]
             );
         }
-        result              = resolveTypeRef(ctx, resolved->func.ret);
-        expectedArgs        = resolved->func.args;
-        variadic            = resolved->func.variadic;
+        resolved->func.ret  = resolveTypeRef(ctx, resolved->func.ret);
+        expectedFunc        = resolved;
         callee->resolved    = resolved;
     } else {
         /* Expression call (includes NODE_MEMBER, subscripts, etc.):
@@ -1056,32 +1098,34 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                 stype(calleeType));
             return NULL;
         }
-        result = resolveTypeRef(ctx, calleeType->func.ret);
-        calleeType->func.ret = result;
         for (usize i = 0; i < veclen(calleeType->func.args); i++) {
             calleeType->func.args[i] = resolveTypeRef(
                 ctx, calleeType->func.args[i]
             );
         }
-        expectedArgs = calleeType->func.args;
-        variadic     = calleeType->func.variadic;
+        calleeType->func.ret    = resolveTypeRef(ctx, calleeType->func.ret);
+        expectedFunc            = calleeType;
+        /* callee->resolved is already set to calleeType (the function type)
+         * by resolveType above - leave it as the function type so that genCall
+         * can derive the LLVM funcType for indirect/function-pointer calls. */
     }
 
-    if (!result) return NULL;
+    if (!expectedFunc) return NULL;
 
-    if (!variadic && veclen(expectedArgs) != veclen(args)) {
+    usize expectedArgsLen = veclen(expectedFunc->func.args);
+    if (!expectedFunc->func.variadic && expectedArgsLen != veclen(args)) {
         if (!curr->tok) {
             warning(ctx->state, NULL,
                 "Node %d does not have tok\n", curr->type);
         }
         error(ctx->state, curr->tok,
                 "Expected %zu argument(s), got %zu",
-                veclen(expectedArgs), veclen(args));
+                expectedArgsLen, veclen(args));
         return NULL;
     }
 
-    for (usize i = 0; i < veclen(expectedArgs); i++) {
-        ZType *expected = expectedArgs[i];
+    for (usize i = 0; i < expectedArgsLen; i++) {
+        ZType *expected = expectedFunc->func.args[i];
         /* If the argument is a generic skip the validation*/
         if (expected && expected->kind == Z_TYPE_GENERIC) {
             continue;
@@ -1103,7 +1147,18 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
         curr->call.args[i] = implicitCast(args[i], expected);
     }
 
-    return result;
+    for (usize i = 0; i < veclen(expectedFunc->func.capabilities); i++) {
+        ZNode *reference = lookupScopedCapability(
+            ctx, expectedFunc->func.capabilities[i]
+        );
+        if (!reference) {
+            error(ctx->state, curr->tok,
+                "Capability '%s' not found in the current scope",
+                stype(expectedFunc->func.capabilities[i]));
+        }
+        vecpush(curr->call.capabilities, reference);
+    }
+    return expectedFunc->func.ret;
 }
 
 static bool isLvalue(ZNode *node) {
@@ -1733,16 +1788,18 @@ static void analyzeForeign(ZSemantic *ctx, ZNode *curr) {
     }
 }
 
-static void analyzeFuncArgs(ZSemantic *ctx, ZNode **fields) {
+static void analyzeFuncArgs(ZSemantic *ctx, ZType **types, ZNode **fields) {
     for (usize i = 0; i < veclen(fields); i++) {
-        ZNode *field      = fields[i];
-        ZType *fieldType  = resolveTypeRef(ctx, field->field.type);
+        ZNode *field        = fields[i];
+        ZType *fieldType    = resolveTypeRef(ctx, field->field.type);
 
         if (!fieldType) {
             error(ctx->state, field->field.identifier, "Unknown type resolved");
             continue;
         }
-        field->field.type = fieldType;
+        field->field.type   = fieldType;
+        field->resolved     = fieldType;
+        types[i]            = fieldType;
         putRawSymbol(
             ctx,        Z_SYM_VAR,  field->field.identifier,
             fieldType,  field,      false
@@ -1788,7 +1845,19 @@ static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
         putSymbol(ctx, sym);
     }
 
-    analyzeFuncArgs(ctx, curr->funcDef.args);
+    analyzeFuncArgs(ctx,
+        curr->resolved->func.args,
+        curr->funcDef.args
+    );
+
+    analyzeFuncArgs(ctx,
+        curr->resolved->func.capabilities,
+        curr->funcDef.capabilities
+    );
+
+    for (usize i = 0; i < veclen(curr->funcDef.capabilities); i++) {
+        putCapability(ctx, curr->funcDef.capabilities[i]);
+    }
 
     ZType *savedRet             = ctx->currentFuncRet;
     ZNode *savedFunc            = ctx->currentFunc;
@@ -1857,6 +1926,12 @@ static void analyzeReturn(ZSemantic *ctx, ZNode *curr) {
     }
 }
 
+static void analyzeCapability(ZSemantic *ctx, ZNode *curr) {
+    analyzeVar(ctx, curr->capability.capability, false);
+    putCapability(ctx, curr->capability.capability);
+    analyzeBlock(ctx, curr->capability.block, false);
+}
+
 static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     switch (curr->type) {
     case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
@@ -1866,6 +1941,7 @@ static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     case NODE_BLOCK:        analyzeBlock(ctx, curr, false);         break;
     case NODE_DEFER:        resolveType(ctx, curr->deferStmt.expr); break;
     case NODE_RETURN:       analyzeReturn(ctx, curr);               break;
+    case NODE_CAPABILITY:   analyzeCapability(ctx, curr);           break;
     default:                resolveType(ctx, curr);                 break;
     }
 }

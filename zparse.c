@@ -46,6 +46,7 @@ static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
 static ZNode *parseVarInferred              (ZParser *);
 static ZNode *parseVarDefTyped              (ZParser *);
+static ZNode *parseBlockOrInline            (ZParser *);
 
 /* File-level parsing functions */
 static ZNode *parseImport                   (ZParser *);
@@ -497,8 +498,6 @@ static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
         return NULL;
     }
     commitErrors(parser);
-    printf("Slice parsed\n");
-    printNode(res, 0);
     return res;
 }
 
@@ -854,6 +853,21 @@ ZNode *expandListMacro(ZParser *parser) {
     return node;
 }
 
+static ZNode *parseCapabilityBlock(ZParser *parser) {
+    expect(parser, TOK_WITH);
+    ZNode *capability = parseVarDef(parser);
+    if (!capability) {
+        error(parser->state, peek(parser), "Invalid expression");
+        return NULL;
+    }
+
+    ZNode *block                            = parseBlockOrInline(parser);
+    ZNode *capabilityBlock                  = makenode(NODE_CAPABILITY);
+    capabilityBlock->capability.capability  = capability;
+    capabilityBlock->capability.block       = block;
+    return capabilityBlock;
+}
+
 ZNode *parseStmt(ZParser *parser) {
     guard(canPeek(parser));
 
@@ -861,13 +875,14 @@ ZNode *parseStmt(ZParser *parser) {
 
 
     switch (t) {
-    case TOK_IF:        return parseIf      (parser);
-    case TOK_FOR:       return parseLoops   (parser);
-    case TOK_MATCH:     return parseMatch   (parser);
-    case TOK_DEFER:     return parseDefer   (parser);
-    case TOK_RETURN:    return parseReturn  (parser);
-    case TOK_BREAK:     return parseBreak   (parser);
-    case TOK_CONTINUE:  return parseContinue(parser);
+    case TOK_IF:        return parseIf              (parser);
+    case TOK_FOR:       return parseLoops           (parser);
+    case TOK_MATCH:     return parseMatch           (parser);
+    case TOK_DEFER:     return parseDefer           (parser);
+    case TOK_RETURN:    return parseReturn          (parser);
+    case TOK_BREAK:     return parseBreak           (parser);
+    case TOK_CONTINUE:  return parseContinue        (parser);
+    case TOK_WITH:      return parseCapabilityBlock (parser);
     default: {
         ZParserSnapshot *snap = store(parser);
 
@@ -956,6 +971,7 @@ static ZNode *parseField(ZParser *parser) {
     node->field.type        = type;
     node->field.identifier  = ident;
     node->resolved          = type;
+    node->tok               = ident;
     return node;
 }
 
@@ -1443,9 +1459,18 @@ static ZNode *parseFuncDecl(ZParser *parser,
     }
 
     ZNode **args = parseGenericList(parser,
-        TOK_LPAREN, TOK_RPAREN,
-        parseField,
-        true);
+        TOK_LPAREN,     TOK_RPAREN,
+        parseField,     true
+    );
+
+    ZNode **capabilities = NULL;
+    if (check(parser, TOK_LPAREN)) {
+        capabilities = parseGenericList(
+            parser,
+            TOK_LPAREN,     TOK_RPAREN,
+            parseField,     true
+        );
+    }
 
     ZNode *body = NULL;
 
@@ -1468,28 +1493,31 @@ static ZNode *parseFuncDecl(ZParser *parser,
                 "Expected function body '{...}' after declaration");
     }
 
+    ZType *func                 = maketype(Z_TYPE_FUNCTION);
+    func->func.ret              = ret;
+    func->func.args             = NULL;
+    func->func.capabilities     = NULL;
+
+    for (usize i = 0; i < veclen(args); i++)
+        vecpush(func->func.args, args[i]->field.type);
+    for (usize i = 0; i < veclen(capabilities); i++)
+        vecpush(func->func.capabilities, capabilities[i]->field.type);
+
     ZNode *node                 = makenode(NODE_FUNC);
+    node->tok                   = name;
+    node->resolved              = func;
     node->funcDef.ret           = ret;
     node->funcDef.name          = name;
     node->funcDef.args          = args;
     node->funcDef.body          = body;
     node->funcDef.pub           = public;
     node->funcDef.generics      = generics;
-    node->tok                   = name;
     node->funcDef.base          = NULL;
     node->funcDef.receiver      = NULL;
     node->funcDef.mangled       = name->str;
     node->funcDef.annotations   = annotations;
+    node->funcDef.capabilities  = capabilities;
 
-    ZType *func                 = maketype(Z_TYPE_FUNCTION);
-    func->func.ret              = ret;
-    func->func.args             = NULL;
-
-    for (usize i = 0; i < veclen(args); i++) {
-        vecpush(func->func.args, args[i]->field.type);
-    }
-
-    node->resolved = func;
     return node;
 }
 

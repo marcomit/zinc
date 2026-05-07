@@ -1,0 +1,18 @@
+use <core::mem>
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+i32 fill(u64 size)(Allocator alloc) {
+    *u8 buf = alloc.alloc(size)
+    return 42
+}
+
+i32 main() {
+    with heap := Allocator::heap() {
+        i32 result = fill(64)
+        c::printf("%d\n", result)
+    }
+    return 0
+}

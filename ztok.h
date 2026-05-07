@@ -46,6 +46,7 @@ DEF(TOK_SIZEOF,     "sizeof",           TOK_FLOWS_MASK | TOK_OVERRIDABLE | 0x16)
 DEF(TOK_MOD,        "mod",              TOK_FLOWS_MASK | 0x17)
 DEF(TOK_WHERE,      "where",            TOK_FLOWS_MASK | 0x18)
 DEF(TOK_WITH,       "with",             TOK_FLOWS_MASK | 0x19)
+DEF(TOK_USING,      "using",            TOK_FLOWS_MASK | 0x1A)
 #endif
 
 #ifdef TOK_TYPES

@@ -1,0 +1,25 @@
+use <core::mem>
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+// allocInner requires the same capability as its caller.
+// The capability is threaded automatically - no explicit passing.
+*u8 allocInner(u64 size)(Allocator alloc) {
+    return alloc.alloc(size)
+}
+
+i32 allocOuter(u64 size)(Allocator alloc) {
+    *u8 buf = allocInner(size)
+    return 7
+}
+
+i32 main() {
+    with heap := Allocator::heap() {
+        i32 a = allocOuter(32)
+        i32 b = allocOuter(64)
+        c::printf("%d %d\n", a, b)
+    }
+    return 0
+}
