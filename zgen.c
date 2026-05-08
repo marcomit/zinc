@@ -2277,14 +2277,30 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
     }
 
     const char *outname = output ? output : "a.out";
+#ifdef _WIN32
+    /* The PE linker uses the exact name given; ensure .exe extension. */
+    char *outname_buf = NULL;
+    {
+        size_t n = strlen(outname);
+        if (n < 4 || strcmp(outname + n - 4, ".exe") != 0) {
+            outname_buf = (char *)malloc(n + 5);
+            memcpy(outname_buf, outname, n);
+            memcpy(outname_buf + n, ".exe", 5);
+            outname = outname_buf;
+        }
+    }
+#endif
 
     int ret = zinc_lld_link(objfile, outname,
             (const char**)state->extraArgs, veclen(state->extraArgs));
     if (ret != 0) {
         error(state, NULL, "Linker failed with code %d", ret);
     } else {
-        printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", output);
+        printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", outname);
     }
+#ifdef _WIN32
+    free(outname_buf);
+#endif
 
     remove(objfile);
 

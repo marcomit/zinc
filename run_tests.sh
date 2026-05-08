@@ -22,6 +22,9 @@ if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
     shift
 fi
 
+EXE_EXT=""
+case "${OSTYPE:-}" in msys*|cygwin*) EXE_EXT=".exe" ;; esac
+
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
@@ -63,7 +66,7 @@ run_pass_test() {
     local name
     name=$(basename "$src" .zn)
     local expected="${src%.zn}.expected"
-    local bin="$TMP_DIR/$name"
+    local bin="$TMP_DIR/${name}${EXE_EXT}"
     local compile_log="$TMP_DIR/${name}.compile.log"
 
     compile "$src" "$bin" "$compile_log"
@@ -71,8 +74,8 @@ run_pass_test() {
     if ! binary_was_produced "$bin"; then
         echo -e "  ${RED}FAIL${NC}  $name"
         echo -e "       compilation did not produce a binary"
-        if grep -q "error:" "$compile_log" 2>/dev/null; then
-            grep "error:" "$compile_log" | head -3 | sed 's/^/       /'
+        if [ -s "$compile_log" ]; then
+            head -20 "$compile_log" | sed 's/^/       /'
         fi
         failed=$((failed + 1))
         return
@@ -116,7 +119,7 @@ run_fail_test() {
     local src="$1"
     local name
     name=$(basename "$src" .zn)
-    local bin="$TMP_DIR/$name"
+    local bin="$TMP_DIR/${name}${EXE_EXT}"
     local compile_log="$TMP_DIR/${name}.compile.log"
 
     compile "$src" "$bin" "$compile_log"
@@ -142,7 +145,7 @@ run_xfail_test() {
     local name
     name=$(basename "$src" .zn)
     local expected="${src%.zn}.expected"
-    local bin="$TMP_DIR/$name"
+    local bin="$TMP_DIR/${name}${EXE_EXT}"
     local compile_log="$TMP_DIR/${name}.compile.log"
 
     compile "$src" "$bin" "$compile_log"

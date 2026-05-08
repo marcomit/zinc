@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
-#include <libgen.h>
 
 #define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
@@ -76,9 +75,12 @@ static char *getCompilerPath() {
 
     if (len == 0) return NULL;
 
-    char *last = strrchr(buf, '\\');
+    // Normalize to forward slashes first, then strip the filename.
+    for (DWORD i = 0; i < len; i++) if (buf[i] == '\\') buf[i] = '/';
+
+    char *last = strrchr(buf, '/');
     if (last) *last = '\0';
-    return strdup(last);
+    return strdup(buf);
 }
 
 #endif
@@ -887,6 +889,8 @@ void _debug(ZState *state, ZToken *tok, const char *src_file,
 static char *resolvePath(ZState *state, char *filename) {
     if (!state->filename) return filename;
     if (filename[0] == sep) return filename;
+    // Windows absolute path: "C:/..." or "C:\..."
+    if (filename[0] && filename[1] == ':' && (filename[2] == '/' || filename[2] == '\\')) return filename;
 
     
     char path[256] = { 0 };
