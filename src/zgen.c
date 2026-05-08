@@ -1171,7 +1171,6 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
             return NULL;
         }
 
-        LLVMTypeRef type = genType(ctx, node->resolved);
         LLVMValueRef ptr = genLvalue(ctx, node->unary.operand);
         return ptr;// LLVMBuildLoad2(ctx->builder, type, ptr, label(ctx, node->tok));
     }
@@ -1193,6 +1192,41 @@ static ZType *nodeEffectiveType(ZNode *node) {
     if (!node) return NULL;
     if (node->type == NODE_CAST) return node->castExpr.toType;
     return node->resolved;
+}
+
+static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
+    LLVMBasicBlockRef tBranch = makeblock(ctx);
+    LLVMBasicBlockRef fBranch = makeblock(ctx);
+    LLVMBasicBlockRef merge = makeblock(ctx);
+
+    cond = LLVMBuildICmp(
+        ctx->builder, LLVMIntNE, cond,
+        LLVMConstInt(LLVMTypeOf(cond), 0, false),
+        label(ctx, node->tok)
+    );
+    LLVMBuildCondBr(ctx->builder, cond, tBranch, fBranch);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, tBranch);
+    LLVMValueRef tValue = genExpr(ctx, node->ifStmt.body);
+    LLVMBuildBr(ctx->builder, merge);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, fBranch);
+    LLVMValueRef fValue = genExpr(ctx, node->ifStmt.elseBranch);
+    LLVMBuildBr(ctx->builder, merge);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, merge);
+    LLVMTypeRef resultType = genType(ctx, node->resolved);
+    LLVMValueRef phi = LLVMBuildPhi(
+        ctx->builder, resultType, label(ctx, node->tok)
+    );
+
+    LLVMValueRef vals[2]            = {tValue,  fValue};
+    LLVMBasicBlockRef branches[2]   = {tBranch, fBranch};
+
+    LLVMAddIncoming(phi, vals, branches, 2);
+
+    return phi;
 }
 
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
@@ -1544,6 +1578,7 @@ static LLVMValueRef genArrayInit(ZCodegen *ctx, ZNode *node) {
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
+        case NODE_IF:               return genInlineIf      (ctx, node);
         case NODE_CALL:             return genCall          (ctx, node);
         case NODE_CAST:             return genCast          (ctx, node);
         case NODE_UNARY:            return genUnary         (ctx, node);

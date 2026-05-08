@@ -287,8 +287,11 @@ static ZNode *parseGenericBinary(ZParser *parser,
         ZNode *right = wrapNode(parser, parseRight);
 
         if (!right) {
-            node = NULL;
-            break;
+            error(
+                parser->state, op,
+                "expected expression after '%s'", stoken(op)
+            );
+            return NULL;
         }
 
         node->binary.op = op;
@@ -311,6 +314,27 @@ static ZNode *parseArrayInit(ZParser *parser) {
     node->arrayinit = arr;
 
     return node;
+}
+
+static ZNode *parseInlineIf(ZParser *parser) {
+    expect(parser, TOK_IF);
+    ZNode *cond         = parseExpr(parser);
+    guard(cond);
+    
+    expect(parser, TOK_ARROW);
+    ZNode *body         = parseExpr(parser);
+    guard(body);
+
+    expect(parser, TOK_ELSE);
+    expect(parser, TOK_ARROW);
+    ZNode *elseBranch   = parseExpr(parser);
+    guard(elseBranch);
+
+    ZNode *ifExpr               = makenode(NODE_IF);
+    ifExpr->ifStmt.cond         = cond;
+    ifExpr->ifStmt.body         = body;
+    ifExpr->ifStmt.elseBranch   = elseBranch;
+    return ifExpr;
 }
 
 static ZNode *parsePrimary(ZParser *parser) {
@@ -372,8 +396,8 @@ static ZNode *parsePrimary(ZParser *parser) {
         node->literalTok    = consume(parser);
         node->tok           = node->literalTok;
         return node;
-    } else if (match(parser, TOK_SIZEOF)) {
-        ZToken *tok         = peek(parser);
+    } else if (check(parser, TOK_SIZEOF)) {
+        ZToken *tok         = consume(parser);
         ZType *type         = parseType(parser);
         if (!type) {
             error(parser->state, tok, "Expected type argument to sizeof");
@@ -383,6 +407,8 @@ static ZNode *parsePrimary(ZParser *parser) {
         node->sizeofExpr.type   = type;
         node->tok               = tok;
         return node;
+    } else if (check(parser, TOK_IF)) {
+        return parseInlineIf(parser);
     }
 
     return NULL;

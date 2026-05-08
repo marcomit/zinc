@@ -1,0 +1,11 @@
+foreign u0 printf(*char, ...)
+i32 main() {
+    i32 x = 1
+    i32 y = 2
+    i32 z = if x > y -> x
+             else    -> y
+
+    printf("%d\n", z)
+
+    return 0
+}
