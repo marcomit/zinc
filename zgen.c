@@ -1271,6 +1271,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 
     let div = bothUnsigned ? LLVMBuildUDiv : LLVMBuildSDiv;
     let mod = bothUnsigned ? LLVMBuildURem : LLVMBuildSRem;
+    let rightShift = bothUnsigned ? LLVMBuildLShr : LLVMBuildAShr;
 
     let lt  = bothUnsigned ? LLVMIntULT : LLVMIntSLT;
     let gt  = bothUnsigned ? LLVMIntUGT : LLVMIntSGT;
@@ -1289,7 +1290,10 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     case TOK_GTE:   return LLVMBuildICmp(ctx->builder, gte, left, right, l);
     case TOK_EQEQ:  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, l);
     case TOK_NOTEQ: return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, l);
-
+    case TOK_BITL:  return LLVMBuildShl (ctx->builder, left, right, l);
+    case TOK_BITR:  return rightShift   (ctx->builder, left, right, l);
+    case TOK_BITOR: return LLVMBuildOr  (ctx->builder, left, right, l);
+    case TOK_BITXOR:return LLVMBuildXor (ctx->builder, left, right, l);
     default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
     }
 }
@@ -1327,8 +1331,14 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     }
     case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
     case TOK_REF:   return genLvalue(ctx, node->unary.operand);
+    case TOK_BITNOT: {
+        LLVMTypeRef ref         = LLVMTypeOf(arg);
+        LLVMValueRef allOnes    = LLVMConstAllOnes(ref);
+        return LLVMBuildXor(ctx->builder, arg, allOnes, l);
+     }
+
     default:
-        error(ctx->state, node->unary.operat, "Unknown binary operator");
+        error(ctx->state, node->unary.operat, "Unknown unary operator");
         return NULL;
     }
 
