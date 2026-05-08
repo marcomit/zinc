@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025, Marco Menegazzi
+
 #ifndef ZINC_H
 #define ZINC_H
 

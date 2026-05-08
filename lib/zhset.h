@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025, Marco Menegazzi
+
 /**
  * @file zhset.h
  * @brief A lightweight, header-only string hashset for C

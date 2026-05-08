@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025, Marco Menegazzi
+
 #ifndef Z_COLORS_H
 #define Z_COLORS_H
 

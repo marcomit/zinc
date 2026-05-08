@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025, Marco Menegazzi
+
 /* This file is the Semantic analyzer.
  *
  * Now what is a semantic analyzer?

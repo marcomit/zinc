@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025, Marco Menegazzi
+
 #include "zmem.h"
 #include "zvec.h"
 #include "zarena.h"

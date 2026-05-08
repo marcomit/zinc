@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025, Marco Menegazzi
+
 /**
  * @file zvec.h
  * @brief A lightweight, header-only dynamic array (vector) library for C
