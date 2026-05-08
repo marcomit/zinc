@@ -1546,6 +1546,19 @@ static ZType *resolveSlice(ZSemantic *ctx, ZNode *curr) {
     return res;
 }
 
+static ZType *resolveInlineIf(ZSemantic *ctx, ZNode *node) {
+    ZType *cond         = resolveType(ctx, node->ifStmt.cond);
+    ZType *trueBranch   = resolveType(ctx, node->ifStmt.body);
+    ZType *falseBranch  = resolveType(ctx, node->ifStmt.elseBranch);
+
+    if (!isComparable(ctx, cond)) {
+        error(ctx->state, node->ifStmt.cond->tok,
+            "is not a comparable value");
+        return NULL;
+    }
+    return typesCompatible(ctx->state, trueBranch, falseBranch);
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -1570,6 +1583,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr);    break;
     case NODE_STATIC_ACCESS:result = resolveStaticAccess(ctx, curr);    break;
     case NODE_SLICE:        result = resolveSlice       (ctx, curr);    break;
+    case NODE_IF:           result = resolveInlineIf    (ctx, curr);    break;
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
         if (curr->resolved) {
