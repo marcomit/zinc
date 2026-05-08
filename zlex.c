@@ -1,4 +1,5 @@
 #include "zinc.h"
+#include <ctype.h>
 
 #define FNV_OFFSET 2166136261u
 #define FNV_PRIME	 16777619u
@@ -22,7 +23,7 @@ typedef struct {
 	char *line;
 
 	/* Current position of the text */
-	size_t row, col;
+	usize row, col;
 
 	/* Track if newline was seen since last token */
 	bool sawNewline;
@@ -245,8 +246,41 @@ static ZToken *parseSymbol(ZLexer *l) {
 	return NULL;
 }
 
+static ZToken *parseHexNumber(ZLexer *l) {
+    if (strncmp(l->current, "0x", 2) != 0) return NULL;
+    next(l); next(l);
+    char *start = l->current;
+    while (isdigit(*l->current) ||
+            (tolower(*l->current) >= 'a' &&
+             tolower(*l->current) <= 'f')) next(l);
+
+    long long value = strtoll(start, NULL, 16);
+	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
+
+	return makeinteger(value, start);
+}
+
+static ZToken *parseBinNumber(ZLexer *l) {
+    if (strncmp(l->current, "0b", 2) != 0) return NULL;
+    next(l); next(l);
+    char *start = l->current;
+
+    while (*l->current == '0' || *l->current == '1') next(l);
+
+    long long value = strtoll(start, NULL, 2);
+	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
+
+	return makeinteger(value, start);
+}
+
 static ZToken *parseNumber(ZLexer *l) {
 	char *start = l->current;
+    if (strncmp(start, "0x", 2) == 0) {
+        return parseHexNumber(l);
+    } else if (strncmp(start, "0b", 2) == 0) {
+        return parseBinNumber(l);
+    }
+
 	if (!isdigit(*l->current)) return NULL;
 
 	while (isdigit(*l->current)) next(l);

@@ -1170,7 +1170,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
 
         LLVMTypeRef type = genType(ctx, node->resolved);
         LLVMValueRef ptr = genLvalue(ctx, node->unary.operand);
-        return LLVMBuildLoad2(ctx->builder, type, ptr, label(ctx, node->tok));
+        return ptr;// LLVMBuildLoad2(ctx->builder, type, ptr, label(ctx, node->tok));
     }
     default:
         error(ctx->state,
@@ -1531,14 +1531,14 @@ static LLVMValueRef genArrayInit(ZCodegen *ctx, ZNode *node) {
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
-        case NODE_LITERAL:          return genLit           (ctx, node);
-        case NODE_IDENTIFIER:       return genIdent         (ctx, node);
         case NODE_CALL:             return genCall          (ctx, node);
         case NODE_CAST:             return genCast          (ctx, node);
-        case NODE_STATIC_ACCESS:    return genStaticAccess  (ctx, node);
-        case NODE_BINARY:           return genBinary        (ctx, node);
         case NODE_UNARY:            return genUnary         (ctx, node);
+        case NODE_BINARY:           return genBinary        (ctx, node);
+        case NODE_LITERAL:          return genLit           (ctx, node);
         case NODE_ARRAY_INIT:       return genArrayInit     (ctx, node);
+        case NODE_IDENTIFIER:       return genIdent         (ctx, node);
+        case NODE_STATIC_ACCESS:    return genStaticAccess  (ctx, node);
 
         case NODE_MEMBER:
         case NODE_SUBSCRIPT:
@@ -2093,7 +2093,6 @@ static void addFuncArgs(ZCodegen *ctx,
 }
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
-    beginScope(Z_SCOPE_FUNC, ctx);
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
     LLVMTypeRef *args = NULL;
 
@@ -2123,6 +2122,8 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMValueRef func =  LLVMAddFunction(ctx->mod, f->funcDef.mangled, funcType);
     ctx->currentFunc = func;
 
+    putLLVMValueRef(ctx, f->funcDef.mangled, func);
+    beginScope(Z_SCOPE_FUNC, ctx);
     LLVMBasicBlockRef entry = makeblock(ctx);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
@@ -2164,7 +2165,6 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     }
     endScope(ctx);
 
-    putLLVMValueRef(ctx, f->funcDef.mangled, func);
 
     return func;
 }
