@@ -8,18 +8,21 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install LLVM and Clang
+      - name: Install LLVM and Clang (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y llvm-dev clang liblld-dev
-          # Ensure llvm-config is reachable as a plain command.
-          # On Ubuntu the package installs it as llvm-config-<version>.
           if ! command -v llvm-config &>/dev/null; then
             VERSIONED=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
             if [ -n "$VERSIONED" ]; then
@@ -32,8 +35,61 @@ jobs:
           echo "llvm-config: $(llvm-config --version)"
           echo "clang:       $(clang --version | head -1)"
 
-      - name: Build zinc
+      - name: Install LLVM and Clang (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm lld
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+
+      - name: Verify LLVM (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "llvm-config: $(llvm-config --version)"
+          echo "clang:       $(clang --version | head -1)"
+          echo "lld prefix:  $(brew --prefix lld)"
+
+      # The choco LLVM package ships the compiler only — no headers, no llvm-config.
+      # MSYS2's mingw-w64-x86_64-llvm is a full dev distribution that includes all of
+      # those, and is the standard approach for LLVM development on Windows CI.
+      - name: Install LLVM via MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-llvm
+            mingw-w64-x86_64-lld
+            mingw-w64-x86_64-clang
+            make
+
+      - name: Export LLVM flags (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          # llvm-config may return multi-line output; collapse to one line so
+          # GITHUB_ENV's key=value parser doesn't choke on bare "-lLLVM-XX" lines.
+          echo "LLVM_CFLAGS=$(llvm-config --cflags | tr '\n' ' ')"          >> "$GITHUB_ENV"
+          echo "LLVM_LDFLAGS=$(llvm-config --ldflags --libs all --system-libs | tr '\n' ' ')" >> "$GITHUB_ENV"
+          echo "llvm-config: $(llvm-config --version)"
+          echo "clang:       $(clang --version | head -1)"
+
+      - name: Build zinc (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
         run: make clean && make
 
-      - name: Run tests
+      - name: Build zinc (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: make clean && make
+
+      - name: Run tests (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash run_tests.sh
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: bash run_tests.sh

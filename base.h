@@ -1,6 +1,8 @@
 #ifndef BASE_H
 #define BASE_H
 
+#include "compat.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -10,8 +12,12 @@
 #include <ctype.h>
 #include <errno.h>
 
+#ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+#ifndef max
 #define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
 #define let __auto_type
 

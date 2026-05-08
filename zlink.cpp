@@ -2,12 +2,15 @@
 #include "lld/Common/Driver.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #if defined(__APPLE__)
 LLD_HAS_DRIVER(macho)
+#elif defined(_WIN32)
+LLD_HAS_DRIVER(coff)
 #else
 LLD_HAS_DRIVER(elf)
 #endif
@@ -19,7 +22,7 @@ static std::string runCmd(const char *cmd) {
     if (!fgets(buf, sizeof(buf), f)) { pclose(f); return {}; }
     pclose(f);
     std::string s(buf);
-    if (!s.empty() && s.back() == '\n') s.pop_back();
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
     return s;
 }
 
@@ -61,6 +64,41 @@ extern "C" int zinc_lld_link(const char *objfile, const char *outfile,
     args.push_back(outfile);
 
     lld::DriverDef drivers[] = {{lld::Darwin, &lld::macho::link}};
+    auto res = lld::lldMain(
+        llvm::ArrayRef<const char *>(args.data(), args.size()),
+        llvm::outs(), llvm::errs(),
+        llvm::ArrayRef<lld::DriverDef>(drivers, 1)
+    );
+    return res.retCode;
+
+#elif defined(_WIN32) && defined(__MINGW32__)
+    // On MSYS2/MinGW64, delegate linking to clang — it handles the sysroot,
+    // CRT startup files, and MinGW runtime libraries automatically.
+    // system() on MinGW uses cmd.exe; errors from clang flow to our stderr.
+    char cmd[8192];
+    // Quote both paths — they may contain spaces or backslashes.
+    int n = snprintf(cmd, sizeof(cmd), "clang -o \"%s\" \"%s\"", outfile, objfile);
+    for (int i = 0; i < extra_args_count && n < (int)sizeof(cmd) - 256; i++)
+        n += snprintf(cmd + n, sizeof(cmd) - n, " \"%s\"", extra_args[i]);
+    int ret = system(cmd);
+    return (ret == 0) ? 0 : 1;
+
+#elif defined(_WIN32)
+    // MSVC: lld-link with the MSVC / Windows SDK runtime libraries.
+    std::string outarg = "/out:" + std::string(outfile);
+    std::vector<const char *> args = {
+        "lld-link",
+        "/nologo",
+        "/subsystem:console",
+        "/defaultlib:libcmt",
+        "/defaultlib:oldnames",
+    };
+    args.push_back(objfile);
+    for (int i = 0; i < extra_args_count; i++)
+        args.push_back(extra_args[i]);
+    args.push_back(outarg.c_str());
+
+    lld::DriverDef drivers[] = {{lld::WinLink, &lld::coff::link}};
     auto res = lld::lldMain(
         llvm::ArrayRef<const char *>(args.data(), args.size()),
         llvm::outs(), llvm::errs(),

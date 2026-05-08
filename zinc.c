@@ -3,11 +3,8 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <getopt.h>
 #include <signal.h>
-#include <execinfo.h>
 #include <time.h>
-#include <libgen.h>
 
 // #ifdef VEC_ALLOC
 // #undef VEC_ALLOC

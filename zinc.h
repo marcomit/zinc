@@ -7,11 +7,7 @@
 #include "zmem.h"
 #include <stdatomic.h>
 
-#ifdef _WIN32
-static char sep = '\\';
-#else
 static char sep = '/';
-#endif
 
 
 typedef enum {
