@@ -884,27 +884,12 @@ ZNode *parseStmt(ZParser *parser) {
     case TOK_CONTINUE:  return parseContinue        (parser);
     case TOK_WITH:      return parseCapabilityBlock (parser);
     default: {
-        ZParserSnapshot *snap = store(parser);
-
-        pushErrorCheckpoint(parser);
-        ZNode *node = parseVarInferred(parser);
-        if (node) goto ret;
-        rollbackErrors(parser);
-
-        undo(parser, snap);
-        pushErrorCheckpoint(parser);
-        node = parseVarDefTyped(parser);
-        if (node) goto ret;
-        rollbackErrors(parser);
-
-        undo(parser, snap);
-        node = parseExpr(parser);
-
-        if (!node) undo(parser, snap);
-
-ret:
-        commitErrors(parser);
-        return node;
+        return parseOrGrammar(parser, (ZParseFunc[]){
+            parseVarInferred,
+            parseVarDefTyped,
+            parseBlock,
+            parseExpr
+        }, 4);
     }
     }
 }
