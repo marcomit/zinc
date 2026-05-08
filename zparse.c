@@ -554,7 +554,7 @@ static ZNode *parseUnary(ZParser *parser) {
 
     ZTokenType valids[] = {
         TOK_PLUS,   TOK_MINUS,  TOK_NOT,
-        TOK_STAR,   TOK_REF
+        TOK_STAR,   TOK_REF,    TOK_BITNOT
     };
 
     usize len = sizeof(valids) / sizeof(valids[0]);
@@ -576,65 +576,65 @@ static ZNode *parseUnary(ZParser *parser) {
 
 static ZNode *parseFactor(ZParser *parser) {
     ZTokenType valids[] = {TOK_STAR, TOK_DIV, TOK_MOD};
-    return parseGenericBinary(parser,
-            parseUnary,
-            parseUnary,
-            valids,
-            arrlen(valids));
+    return parseGenericBinary(parser, parseUnary, parseUnary, valids, arrlen(valids));
 }
 
 static ZNode *parseTerm(ZParser *parser) {
     ZTokenType valids[] = {TOK_PLUS, TOK_MINUS};
-    return parseGenericBinary(parser,
-            parseFactor,
-            parseFactor,
-            valids,
-            arrlen(valids));
+    return parseGenericBinary(parser, parseFactor, parseFactor, valids, arrlen(valids));
+}
+
+static ZNode *parseShiftBit(ZParser *parser) {
+    ZTokenType valids[] = {TOK_BITL, TOK_BITR};
+    return parseGenericBinary(parser, parseTerm, parseTerm, valids, arrlen(valids));
 }
 
 static ZNode *parseComparison(ZParser *parser) {
     ZTokenType valids[] = {TOK_LT, TOK_GT, TOK_LTE, TOK_GTE};
-    return parseGenericBinary(parser,
-            parseTerm,
-            parseTerm,
-            valids,
-            arrlen(valids));
+    return parseGenericBinary(parser, parseShiftBit, parseShiftBit, valids, arrlen(valids));
 }
 
 static ZNode *parseEquality(ZParser *parser) {
     ZTokenType valids[] = {TOK_EQEQ, TOK_NOTEQ};
-    return parseGenericBinary(parser,
-            parseComparison,
-            parseComparison,
-            valids,
-            arrlen(valids));
+    return parseGenericBinary(
+        parser, parseComparison, parseComparison, valids, arrlen(valids)
+    );
+}
+
+static ZNode *parseBitAnd(ZParser *parser) {
+    ZTokenType valid = TOK_REF;
+    return parseGenericBinary(parser, parseEquality, parseEquality, &valid, 1);
+}
+
+static ZNode *parseBitXor(ZParser *parser) {
+    ZTokenType valid = TOK_BITXOR;
+    return parseGenericBinary(parser, parseBitAnd, parseBitAnd, &valid, 1);
+}
+
+static ZNode *parseBitOr(ZParser *parser) {
+    ZTokenType valid = TOK_BITOR;
+    return parseGenericBinary(parser, parseBitXor, parseBitXor, &valid, 1);
 }
 
 static ZNode *parseLogicalAnd(ZParser *parser) {
     ZTokenType valids[] = {TOK_AND};
-    return parseGenericBinary(parser,
-            parseEquality,
-            parseEquality,
-            valids,
-            arrlen(valids));
+    return parseGenericBinary(parser, parseBitOr, parseBitOr, valids, arrlen(valids));
 }
 
 static ZNode *parseLogicalOr(ZParser *parser) {
     ZTokenType valids[] = {TOK_OR};
-    return parseGenericBinary(parser,
-            parseLogicalAnd,
-            parseLogicalAnd,
-            valids,
-            arrlen(valids));
+    return parseGenericBinary(
+        parser, parseLogicalAnd, parseLogicalAnd,
+        valids, arrlen(valids)
+    );
 }
 
 static ZNode *parseBinary(ZParser *parser) {
     ZTokenType valids[] = {TOK_EQ};
-    return parseGenericBinary(parser,
-            parseLogicalOr,
-            parseBinary,
-            valids,
-            arrlen(valids));
+    return parseGenericBinary(
+        parser, parseLogicalOr, parseBinary,
+        valids, arrlen(valids)
+    );
 }
 
 static ZNode **parseGenericList(ZParser *parser,

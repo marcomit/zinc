@@ -1298,6 +1298,13 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
     ZType     *left     = resolveType(ctx, curr->binary.left);
     ZType     *right    = resolveType(ctx, curr->binary.right);
 
+    if (op & TOK_BITOPERATOR_MASK) {
+        if (isPrimitive(left)   &&  !isInteger(left->primitive.token->type) &&
+            isPrimitive(right)  &&  !isInteger(right->primitive.token->type)) {
+            error(ctx->state, curr->binary.op, "Bit operators can be used only with integers");
+            return NULL;
+        }
+    }
 
     /* Auto promotion rules should be handled by typesCompatible. */
     ZType *promoted     = typesCompatible(ctx->state, left, right);
