@@ -45,27 +45,35 @@ else
   _WIN_DEFS     :=
 endif
 
-CFLAGS   = -g -Wall -Wextra -Wdeprecated-declarations -O2 $(_WIN_DEFS) $(_LLVM_CFLAGS)
-CXXFLAGS = -g -O2 -std=c++17 $(_WIN_DEFS) $(_LLVM_CFLAGS) $(LLD_INCLUDES)
+SRC_DIR = src
+LIB_DIR = lib
+INCLUDES = -I include -I lib
+
+CFLAGS   = -g -Wall -Wextra -Wdeprecated-declarations -O2 $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS)
+CXXFLAGS = -g -O2 -std=c++17 $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS) $(LLD_INCLUDES)
 LDFLAGS  = $(LLD_LIBS) $(_LLVM_LDFLAGS)
-TARGET = zinc
+TARGET    = zinc
 BUILD_DIR = build
 
-C_SRC = zinc.c zmem.c zparse.c zlex.c zmod.c zsem.c zmacro.c zgen.c
-CXX_SRC = zlink.cpp
-C_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(C_SRC))
-CXX_OBJ = $(patsubst %.cpp,$(BUILD_DIR)/%.o,$(CXX_SRC))
-OBJ = $(C_OBJ) $(CXX_OBJ)
+C_SRC   = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(LIB_DIR)/*.c)
+CXX_SRC = $(wildcard $(SRC_DIR)/*.cpp)
+C_OBJ   = $(patsubst $(SRC_DIR)/%.c,  $(BUILD_DIR)/%.o, $(wildcard $(SRC_DIR)/*.c)) \
+          $(patsubst $(LIB_DIR)/%.c,  $(BUILD_DIR)/%.o, $(wildcard $(LIB_DIR)/*.c))
+CXX_OBJ = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o, $(CXX_SRC))
+OBJ     = $(C_OBJ) $(CXX_OBJ)
 
 all: $(TARGET)
 
 $(TARGET): $(OBJ)
 	$(CXX) -o $(TARGET) $(OBJ) $(LDFLAGS)
 
-$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/%.o: %.cpp | $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(LIB_DIR)/%.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 $(BUILD_DIR):
