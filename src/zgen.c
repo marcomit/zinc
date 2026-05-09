@@ -1209,10 +1209,12 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
 
     LLVMPositionBuilderAtEnd(ctx->builder, tBranch);
     LLVMValueRef tValue = genExpr(ctx, node->ifStmt.body);
+    LLVMBasicBlockRef tExit = LLVMGetInsertBlock(ctx->builder);
     LLVMBuildBr(ctx->builder, merge);
 
     LLVMPositionBuilderAtEnd(ctx->builder, fBranch);
     LLVMValueRef fValue = genExpr(ctx, node->ifStmt.elseBranch);
+    LLVMBasicBlockRef fExit = LLVMGetInsertBlock(ctx->builder);
     LLVMBuildBr(ctx->builder, merge);
 
     LLVMPositionBuilderAtEnd(ctx->builder, merge);
@@ -1222,7 +1224,7 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     );
 
     LLVMValueRef vals[2]            = {tValue,  fValue};
-    LLVMBasicBlockRef branches[2]   = {tBranch, fBranch};
+    LLVMBasicBlockRef branches[2]   = {tExit,   fExit};
 
     LLVMAddIncoming(phi, vals, branches, 2);
 

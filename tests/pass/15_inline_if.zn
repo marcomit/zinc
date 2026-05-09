@@ -1,11 +1,14 @@
 foreign u0 printf(*char, ...)
 i32 main() {
-    i32 x = 1
-    i32 y = 2
-    i32 z = if x > y -> x
-             else    -> y
+    i32 x = 5
+    i32 y = 4
+    i32 z = 3
 
-    printf("%d\n", z)
+    i32 nested =
+            if x > z -> if x > y -> x else -> y
+            else -> if z > y -> z else -> y
+
+    printf("%d\n", nested)
 
     return 0
 }
