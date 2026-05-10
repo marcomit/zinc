@@ -1,0 +1,28 @@
+// Nested `with` blocks of the same capability type.
+// The inner block shadows the outer one; after it ends the outer is restored.
+// Uses a simple Tag struct so we can read which capability is active.
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+struct Tag {
+    i32 val
+}
+
+i32 getVal()(Tag t) {
+    return t.val
+}
+
+i32 main() {
+    with ta := Tag { val: 10 } {
+        c::printf("%d\n", getVal())    // 10 — outer active
+
+        with tb := Tag { val: 20 } {
+            c::printf("%d\n", getVal())  // 20 — inner shadows outer
+        }
+
+        c::printf("%d\n", getVal())    // 10 — outer restored
+    }
+    return 0
+}

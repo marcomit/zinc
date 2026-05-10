@@ -1,0 +1,27 @@
+// Capability-requiring function called in both branches of an if.
+// The if-body is a child scope; lookupScopedCapability walks up to find the capability.
+
+use <core::mem>
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+i32 allocate(u64 size)(Allocator alloc) {
+    *u8 buf = alloc.alloc(size)
+    return 1
+}
+
+i32 main() {
+    i32 flag = 1
+    with heap := Allocator::heap() {
+        i32 r = 0
+        if flag == 1 {
+            r = allocate(16)
+        } else {
+            r = allocate(32)
+        }
+        c::printf("%d\n", r)
+    }
+    return 0
+}

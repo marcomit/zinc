@@ -1,0 +1,34 @@
+// Four levels of call chain, each requiring the same capability.
+// Verifies that the capability threads correctly through all levels
+// without being passed explicitly.
+
+use <core::mem>
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+i32 leaf()(Allocator alloc) {
+    *u8 buf = alloc.alloc(8)
+    return 99
+}
+
+i32 level3()(Allocator alloc) {
+    return leaf()
+}
+
+i32 level2()(Allocator alloc) {
+    return level3()
+}
+
+i32 level1()(Allocator alloc) {
+    return level2()
+}
+
+i32 main() {
+    with heap := Allocator::heap() {
+        i32 r = level1()
+        c::printf("%d\n", r)
+    }
+    return 0
+}

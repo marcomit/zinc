@@ -1696,10 +1696,15 @@ static void genRetChainDefer(ZCodegen *ctx) {
     genChainDefer(ctx, scope);
 }
 
+static inline bool LLVMCanInsertRet(ZCodegen *ctx) {
+    return !LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder));
+}
+
 static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     if (!ret->returnStmt.expr || isVoid(ret->resolved)) {
         if (ret->returnStmt.expr) genExpr(ctx, ret->returnStmt.expr);
         genRetChainDefer(ctx);
+        if (!LLVMCanInsertRet(ctx)) return NULL;
         return LLVMBuildRetVoid(ctx->builder);
     }
 
@@ -1716,6 +1721,7 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
 
     genRetChainDefer(ctx);
 
+    if (!LLVMCanInsertRet(ctx)) return NULL;
     return LLVMBuildRet(ctx->builder, val);
 }
 
