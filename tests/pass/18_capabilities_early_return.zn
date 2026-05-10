@@ -1,0 +1,24 @@
+// Early return from inside a capability block.
+// The function returns before the `with` scope ends normally.
+
+use <core::mem>
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+i32 allocate(u64 size)(Allocator alloc) {
+    *u8 buf = alloc.alloc(size)
+    return 7
+}
+
+i32 run() {
+    with heap := Allocator::heap() {
+        return allocate(32)
+    }
+}
+
+i32 main() {
+    c::printf("%d\n", run())
+    return 0
+}

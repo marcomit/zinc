@@ -1,0 +1,25 @@
+// Capability-requiring function called inside a for loop body.
+// The for-body is a child scope of the `with` scope;
+// lookupScopedCapability walks parent scopes so the capability is found.
+
+use <core::mem>
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+i32 allocate(u64 size)(Allocator alloc) {
+    *u8 buf = alloc.alloc(size)
+    return 1
+}
+
+i32 main() {
+    with heap := Allocator::heap() {
+        i32 sum = 0
+        for i32 i = 0; i < 3; i = i + 1 {
+            sum = sum + allocate(16)
+        }
+        c::printf("%d\n", sum)
+    }
+    return 0
+}

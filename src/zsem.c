@@ -68,6 +68,7 @@ static ZScope *makescope(ZScope *parent, ZNode *node) {
     self->node          = node;
     self->symbols       = NULL;
     self->seen          = NULL;
+    self->capabilities  = NULL;
     return self;
 }
 
@@ -455,9 +456,11 @@ static void putNamespace(ZSemantic *ctx, ZNode *node) {
 }
 
 static i32 lookupCapabilityByType(ZScope *scope, ZType *capability) {
-    for (usize i = 0; i < veclen(scope->capabilities); i++)
-        if (typesEqual(scope->capabilities[i]->type, capability))
+    for (usize i = 0; i < veclen(scope->capabilities); i++) {
+        if (typesEqual(scope->capabilities[i]->type, capability)) {
             return i;
+        }
+    }
     return -1;
 }
 
@@ -1029,7 +1032,12 @@ static ZNode *resolveFuncCallEmbedded(ZSemantic *ctx,
 
 static ZNode *lookupScopedCapability(ZSemantic *ctx, ZType *required) {
     ZScope *curr = ctx->table->current;
-    i32 i = lookupCapabilityByType(curr, required);
+    i32 i = -1;
+    while (curr) {
+        i = lookupCapabilityByType(curr, required);
+        if (i != -1) break;
+        curr = curr->parent;
+    }
     if (i == -1 || veclen(curr->capabilities[i]->nodes) == 0) return NULL;
     return veclast(curr->capabilities[i]->nodes);
 }
@@ -1037,15 +1045,12 @@ static ZNode *lookupScopedCapability(ZSemantic *ctx, ZType *required) {
 static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
     ZNode *callee = curr->call.callee;
     ZNode **args = curr->call.args;
-    // bool variadic = false;
 
     for (usize i = 0; i < veclen(args); i++) {
         args[i]->resolved = resolveType(ctx, args[i]);
         checkFunctionUsedAsValue(ctx, args[i]);
     }
 
-    // ZType *result = NULL;
-    // ZType **expectedArgs = NULL;
     ZType *expectedFunc = NULL;
     if (callee->type == NODE_IDENTIFIER) {
         ZSymbol *sym = resolve(ctx, callee->identNode.tok);

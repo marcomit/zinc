@@ -1,0 +1,17 @@
+// Calling a capability-requiring function after the `with` block ends.
+// The capability is no longer in scope — compiler must reject this.
+
+use <core::mem>
+
+i32 fill(u64 size)(Allocator alloc) {
+    *u8 buf = alloc.alloc(size)
+    return 1
+}
+
+i32 main() {
+    with heap := Allocator::heap() {
+        i32 x = fill(32)
+    }
+    i32 y = fill(64)    // Error: Allocator capability not in scope
+    return 0
+}

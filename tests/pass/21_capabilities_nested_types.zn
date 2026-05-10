@@ -1,0 +1,28 @@
+// Function requiring two different capability types (Allocator and Logger).
+// Each type is provided by a separate nested `with` block;
+// lookupScopedCapability walks parent scopes so both are found at the call site.
+
+use <core::mem>
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+struct Logger {
+    i32 level
+}
+
+i32 allocAndLog(u64 size)(Allocator alloc, Logger log) {
+    *u8 buf = alloc.alloc(size)
+    return log.level
+}
+
+i32 main() {
+    with log := Logger { level: 42 } {
+        with heap := Allocator::heap() {
+            i32 r = allocAndLog(16)
+            c::printf("%d\n", r)
+        }
+    }
+    return 0
+}
