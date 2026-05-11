@@ -658,10 +658,18 @@ static ZNode *parseLogicalOr(ZParser *parser) {
     );
 }
 
+static ZNode *parseNullCoalescing(ZParser *parser) {
+    ZTokenType valid = TOK_COALESCING;
+    return parseGenericBinary(
+        parser, parseLogicalOr, parseLogicalOr,
+        &valid, 1
+    );
+}
+
 static ZNode *parseBinary(ZParser *parser) {
     ZTokenType valids[] = {TOK_EQ};
     return parseGenericBinary(
-        parser, parseLogicalOr, parseBinary,
+        parser, parseNullCoalescing, parseBinary,
         valids, arrlen(valids)
     );
 }
