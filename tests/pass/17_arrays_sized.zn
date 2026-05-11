@@ -1,0 +1,76 @@
+foreign c {
+    u0 printf(*char, ...)
+}
+
+u0 sumAndPrint([]i32 s) {
+    i32 total = 0
+    i := 0
+    for i < s.len {
+        total = total + s[i]
+        i = i + 1
+    }
+    c::printf("%d\n", total)
+}
+
+u0 printSlice([]i32 s) {
+    i := 0
+    for i < s.len {
+        c::printf("%d\n", s[i])
+        i = i + 1
+    }
+}
+
+i32 main() {
+    // Array literal (infers sized-array type from elements)
+    arr := [1, 2, 3, 4, 5]
+
+    // Element access via index
+    i := 0
+    for i < 5 {
+        c::printf("%d\n", arr[i])
+        i = i + 1
+    }
+
+    // Another array
+    fib := [1, 1, 2, 3, 5, 8, 13]
+    j := 0
+    for j < 7 {
+        c::printf("%d\n", fib[j])
+        j = j + 1
+    }
+
+    // Element mutation via subscript
+    fib[0] = 99
+    c::printf("%d\n", fib[0])
+
+    // Full-slice and pass to function
+    sumAndPrint(arr[0:])
+
+    // Slice with range
+    mid := arr[1:4]
+    sumAndPrint(mid)
+
+    // Multi-element arithmetic
+    vals := [10, 20, 30]
+    c::printf("%d\n", vals[0] + vals[1] + vals[2])
+
+    // Slice len field
+    head := fib[:4]
+    c::printf("%d\n", head.len)
+
+    // Slice of slice
+    inner := arr[1:4]
+    inner2 := inner[1:]
+    printSlice(inner2)
+
+    // Mutation through slice propagates to original array
+    s := arr[0:]
+    s[0] = 42
+    c::printf("%d\n", arr[0])
+
+    // Array of larger integers
+    bytes := [72, 105, 10, 0]
+    c::printf("%d\n", bytes[0])
+
+    return 0
+}

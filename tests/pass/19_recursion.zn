@@ -1,0 +1,70 @@
+foreign c {
+    u0 printf(*char, ...)
+}
+
+// Factorial: direct self-recursion
+i32 factorial(i32 n) {
+    if n <= 1 { return 1 }
+    return n * factorial(n - 1)
+}
+
+// Fibonacci: two self-recursive calls
+i32 fib(i32 n) {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+// Accumulator-style: pass running total as argument
+i32 sumTo(i32 n, i32 acc) {
+    if n == 0 { return acc }
+    return sumTo(n - 1, acc + n)
+}
+
+// Descending print
+u0 countDown(i32 n) {
+    if n < 0 { return }
+    c::printf("%d\n", n)
+    countDown(n - 1)
+}
+
+// Ascending print
+u0 countUp(i32 start, i32 limit) {
+    if start > limit { return }
+    c::printf("%d\n", start)
+    countUp(start + 1, limit)
+}
+
+// Power: x ^ n
+i32 power(i32 x, i32 n) {
+    if n == 0 { return 1 }
+    return x * power(x, n - 1)
+}
+
+i32 main() {
+    // Factorial
+    c::printf("%d\n", factorial(0))
+    c::printf("%d\n", factorial(1))
+    c::printf("%d\n", factorial(5))
+    c::printf("%d\n", factorial(10))
+
+    // Fibonacci sequence
+    c::printf("%d\n", fib(0))
+    c::printf("%d\n", fib(1))
+    c::printf("%d\n", fib(7))
+    c::printf("%d\n", fib(10))
+
+    // Accumulator sum
+    c::printf("%d\n", sumTo(5, 0))
+    c::printf("%d\n", sumTo(10, 0))
+
+    // Print ranges
+    countDown(3)
+    countUp(1, 4)
+
+    // Power
+    c::printf("%d\n", power(2, 0))
+    c::printf("%d\n", power(2, 8))
+    c::printf("%d\n", power(3, 4))
+
+    return 0
+}
