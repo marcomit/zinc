@@ -1,0 +1,93 @@
+foreign c {
+    u0 printf(*char, ...)
+}
+
+i32 main() {
+    // Nested while loops
+    i := 0
+    for i < 3 {
+        j := 0
+        for j < 3 {
+            c::printf("%d%d\n", i, j)
+            j = j + 1
+        }
+        i = i + 1
+    }
+
+    // break exits only innermost loop
+    outer := 0
+    for outer < 3 {
+        inner := 0
+        for inner < 5 {
+            if inner == 2 { break }
+            c::printf("i%d\n", inner)
+            inner = inner + 1
+        }
+        c::printf("o%d\n", outer)
+        outer = outer + 1
+    }
+
+    // continue in inner loop
+    row := 0
+    for row < 2 {
+        col := 0
+        for col < 4 {
+            col = col + 1
+            if col mod 2 == 0 { continue }
+            c::printf("%d\n", col)
+        }
+        row = row + 1
+    }
+
+    // Nested C-style for loops
+    for i32 x = 0; x < 3; x = x + 1 {
+        for i32 y = 0; y < 3; y = y + 1 {
+            if x == y { c::printf("diag%d\n", x) }
+        }
+    }
+
+    // Nested if-else chains
+    i32 score = 75
+    if score >= 90 {
+        c::printf("A\n")
+    } else {
+        if score >= 80 {
+            c::printf("B\n")
+        } else {
+            if score >= 70 {
+                c::printf("C\n")
+            } else {
+                c::printf("F\n")
+            }
+        }
+    }
+
+    // break in nested for loop (C-style)
+    found := -1
+    for i32 idx = 0; idx < 10; idx = idx + 1 {
+        if idx * idx > 20 {
+            found = idx
+            break
+        }
+    }
+    c::printf("found=%d\n", found)
+
+    // Loop with multiple continues and break
+    i32 cnt = 0
+    k := 0
+    for k < 20 {
+        k = k + 1
+        if k mod 3 == 0 { continue }
+        if k > 10 { break }
+        cnt = cnt + 1
+    }
+    c::printf("cnt=%d\n", cnt)
+
+    // Many conditions chained
+    i32 v = 5
+    if v == 1      { c::printf("one\n") }
+    else { if v == 5 { c::printf("five\n") }
+    else { c::printf("other\n") } }
+
+    return 0
+}

@@ -1,0 +1,52 @@
+foreign c {
+    *u8 malloc(u64)
+    u0 printf(*char, ...)
+}
+
+struct Node {
+    i32 val
+    i32 extra
+}
+
+i32 main() {
+    // Read through a pointer
+    i32 x = 42
+    *i32 ptr = &x
+    c::printf("%d\n", *ptr)
+
+    // Pointer to struct: field read
+    Node n = Node { val: 10, extra: 20 }
+    *Node np = &n
+    c::printf("%d\n", np.val)
+    c::printf("%d\n", np.extra)
+
+    // Modify struct field through pointer
+    np.val = 77
+    c::printf("%d\n", n.val)
+
+    // Heap-allocated struct with pointer receiver
+    *Node hp = c::malloc(sizeof Node)
+    hp.val = 5
+    hp.extra = 6
+    c::printf("%d %d\n", hp.val, hp.extra)
+
+    // none comparison
+    *i32 nptr = none
+    if nptr == none { c::printf("is_null\n") }
+    if nptr != none { c::printf("FAIL\n") }
+
+    // Assign valid pointer and re-check
+    nptr = &x
+    if nptr != none { c::printf("not_null\n") }
+    if nptr == none { c::printf("FAIL\n") }
+
+    // Pointer to pointer: read outer value
+    *i32 a = &x
+    **i32 pp = &a
+    // Load the inner pointer value
+    *i32 inner = *pp
+    c::printf("%d\n", *inner)
+
+    // Pointer as function argument
+    return 0
+}

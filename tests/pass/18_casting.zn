@@ -1,0 +1,71 @@
+foreign c {
+    u0 printf(*char, ...)
+}
+
+i32 main() {
+    // i32 -> i64 widening
+    i32 small = 42
+    i64 big = small as i64
+    c::printf("%lld\n", big)
+
+    // i64 -> i32 truncation
+    i64 large = 1000
+    i32 trunc = large as i32
+    c::printf("%d\n", trunc)
+
+    // i32 -> f64 conversion
+    i32 ival = 7
+    f64 fval = ival as f64
+    c::printf("%.1f\n", fval)
+
+    // f64 -> i32 truncation toward zero
+    f64 pi = 3.14
+    i32 ipi = pi as i32
+    c::printf("%d\n", ipi)
+
+    // f64 -> f32 narrowing
+    f64 d = 2.5
+    f32 f = d as f32
+    c::printf("%.1f\n", f)
+
+    // i32 -> u8 truncation (mod 256)
+    i32 big2 = 300
+    u8 byte = big2 as u8
+    c::printf("%d\n", byte)
+
+    // u8 -> i32 zero-extension
+    u8 b = 200
+    i32 extended = b as i32
+    c::printf("%d\n", extended)
+
+    // i32 -> u32 reinterpret
+    i32 neg = -1
+    u32 uns = neg as u32
+    c::printf("%u\n", uns)
+
+    // sizeof basic types
+    c::printf("%llu\n", sizeof i32)
+    c::printf("%llu\n", sizeof i64)
+    c::printf("%llu\n", sizeof u8)
+    c::printf("%llu\n", sizeof f32)
+    c::printf("%llu\n", sizeof f64)
+
+    // sizeof struct (Point: two i32 = 8 bytes)
+    // (We use the size in an expression)
+    u64 ptr_size = sizeof *i32
+    if ptr_size > 0 { c::printf("ptr_ok\n") }
+
+    // Chain: float -> int -> back to float
+    f64 start = 9.9
+    i32 mid = start as i32
+    f64 back = mid as f64
+    c::printf("%.1f\n", back)
+
+    // Cast in expression context
+    i32 a = 3
+    i32 b2 = 4
+    f64 result = (a as f64) / (b2 as f64)
+    c::printf("%.2f\n", result)
+
+    return 0
+}

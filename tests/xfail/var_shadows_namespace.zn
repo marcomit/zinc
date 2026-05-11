@@ -1,0 +1,19 @@
+// BUG: A local variable named 'c' shadows the 'c' namespace from
+// 'foreign c { ... }', causing "Base should refer to a type" and
+// "Unresolved type" errors when calling c::printf.
+//
+// The semantic analyzer resolves 'c' as the local variable (type Calc)
+// instead of the foreign namespace. This means any variable named after
+// a foreign namespace breaks all uses of that namespace after the declaration.
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+struct Calc { i32 val }
+
+i32 main() {
+    Calc c = Calc { val: 42 }
+    c::printf("%d\n", c.val)
+    return 0
+}

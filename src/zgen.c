@@ -845,6 +845,25 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
             }
         }
 
+        usize totalArgIndex = veclen(node->call.capabilities) + i;
+
+        /* C default argument promotions for variadic arguments:
+         *  f32         -> f64
+         *  i1/i8/i16   -> i32
+         *  The backend rely on the frontend to emit these, zinc must do it explicitly
+         *  or callers like printf read garbage.
+         */
+        if (LLVMIsFunctionVarArg(funcType) && totalArgIndex >= (usize)fixedParamCount) {
+            LLVMTypeRef argType = LLVMTypeOf(arg);
+            LLVMTypeKind kind   = LLVMGetTypeKind(argType);
+            if (kind == LLVMFloatTypeKind) {
+                arg = LLVMBuildFPExt(ctx->builder, arg, f64Type, "");
+            } else if (kind == LLVMIntegerTypeKind &&
+                       LLVMGetIntTypeWidth(argType) < 32) {
+                arg = LLVMBuildZExt(ctx->builder, arg, i32Type, "");
+            }
+        }
+
         vecpush(args, arg);
     }
 

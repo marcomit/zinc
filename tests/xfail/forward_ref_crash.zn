@@ -1,0 +1,26 @@
+// BUG: Calling a function defined LATER in the source file crashes the compiler.
+// The semantic analyzer registers all declarations in a first pass (so type
+// checking passes), but the code generator processes functions in source order.
+// When genCall tries to look up the LLVM value ref for `helper`, it hasn't been
+// created yet, causing a NULL pointer dereference crash in genCall.
+//
+// This also means mutual recursion between any two functions crashes.
+// Fix: codegen needs a first pass that emits all function declarations
+// (LLVMAddFunction) before generating bodies.
+
+foreign c {
+    u0 printf(*char, ...)
+}
+
+u0 caller() {
+    helper()
+}
+
+u0 helper() {
+    c::printf("helper\n")
+}
+
+i32 main() {
+    caller()
+    return 0
+}
