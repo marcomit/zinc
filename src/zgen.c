@@ -1250,6 +1250,40 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     return phi;
 }
 
+static LLVMValueRef genNullCoalescing(ZCodegen *ctx, ZNode *root) {
+    LLVMTypeRef typeRef = genType(ctx, root->resolved);
+    LLVMValueRef left   = genExpr(ctx, root->binary.left);
+    LLVMValueRef cond   = LLVMBuildICmp(
+        ctx->builder, LLVMIntNE, left,
+        root->resolved->kind == Z_TYPE_POINTER ?
+            LLVMConstPointerNull(typeRef) :
+            LLVMConstInt(typeRef, 0, false), label(ctx, root->binary.left->tok)
+    );
+
+    LLVMBasicBlockRef entryBranch   = LLVMGetInsertBlock(ctx->builder);
+    LLVMBasicBlockRef rightBranch   = makeblock(ctx);
+    LLVMBasicBlockRef mergeBranch   = makeblock(ctx);
+
+    LLVMBuildCondBr(ctx->builder, cond, mergeBranch, rightBranch);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, rightBranch);
+    LLVMValueRef right  = genExpr(ctx, root->binary.right);
+    rightBranch         = LLVMGetInsertBlock(ctx->builder);
+    LLVMBuildBr(ctx->builder, mergeBranch);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, mergeBranch);
+    LLVMValueRef phi                = LLVMBuildPhi(
+        ctx->builder, typeRef, label(ctx, root->tok)
+    );
+
+    LLVMAddIncoming(phi,
+        (LLVMValueRef[]){left, right},
+        (LLVMBasicBlockRef[]){entryBranch, rightBranch},
+        2
+    );
+    return phi;
+}
+
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     if (root->binary.op->type == TOK_EQ) {
         LLVMValueRef ptr = genLvalue(ctx, root->binary.left);
@@ -1259,6 +1293,12 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     }
 
     ZTokenType op = root->binary.op->type;
+
+    /* Null coalescing operator. */
+    if (op == TOK_COALESCING) {
+        return genNullCoalescing(ctx, root);
+    }
+
     /* Logical operator. */
     if (op == TOK_AND || op == TOK_OR) {
         bool is_and = op == TOK_AND;
