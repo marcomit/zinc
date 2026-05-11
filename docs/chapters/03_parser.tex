@@ -1,0 +1,55 @@
+\chapter{Parser \& AST}
+\label{ch:parser}
+
+\section{Overview}
+
+The parser (\texttt{zparse.c}) performs recursive-descendant parsing over the token stream produced by the lexer and builds an Abstract Syntax Tree (AST) composed of \texttt{ZNode} nodes.
+It returns a \texttt{ZNode**} dynamic array (one entry per top-level declaration).
+
+\section{ZNode}
+Every construct in the language is represented as a tagged union node:
+\begin{verbatim}
+struct ZNode {
+    ZNodeType type;
+    union {
+        /* type-specific fields. */
+    };
+}
+\end{verbatim}
+
+\section{Parsing Strategy}
+The parser is hand-written recursive descent parser. Operator precedence is handled via the standard technique of one parsing function per precedence level, from lowest (\texttt{parseExpr}) to highest (\texttt{parsePrimary})
+The parser also have some helpers to handle the token stream:
+\texttt{ZToken *peek(ZParser *)} takes the current token from the token stream.
+\texttt{ZToken *consume(ZParser *)} takes the current token and advance the token stream.
+\texttt{bool check(ZParser *, ZTokenType)} // true if the current token is the type passed.
+\texttt{bool match(ZParser, ZTokenType)} // same as check but if true consumes the token.
+
+The parser starts parsing file-level statements calling one of the following functions depending on the current token:
+\begin{itemize}
+    \item \texttt{parseFuncDecl} plain and normal functions
+    \item \texttt{parseFuncBlock} a block of functions (static or not).
+    \item \texttt{parseEnumDecl} enums.
+    \item \texttt{parseStructDecl} struct.
+    \item \texttt{parseImport} the /zn{use} declaration.
+    \item \texttt{skipMacro} macro expansion via \texttt{zmacro.c}
+\end{itemize}
+
+Inside a block, \texttt{parseBlock} dispatches to statement-level parsers including \texttt{parseIf,parseLoops,parseMatch,parseReturn,parseDefer,parseVarDef}.
+
+\section{Inline blocks (\zn{->})}
+A function body may be written as a single inline expression with \texttt{->}:
+\begin{lstlisting}[style=zinc, caption={Inline method body}]
+i32 square(i32) -> x * x
+\end{lstlisting}
+
+\texttt{parseBlockOrInline} handles this by detecting the \zn{->} token and wrapping the expression in a \texttt{NODE\_RETURN} node so the semantic and codegen passes treat it uniformly.
+
+Also \zn{if} and \zn{for} supports the inline blocks but they are converted in a normal \texttt{NODE\_BLOCK} with a single statement (the parsed expression).
+
+\begin{note}
+\zn{if} can be used as expression via the \zn{->} operator. For more details check the language reference.
+\end{note}
+\section{Error Recovery}
+On a parse error the parser calls \texttt{error(state, token, fmt, ...)} and returns \texttt{NULL}. Most callers propagate \texttt{NULL} upward via the \texttt{guard(c)} or \texttt{ensure(p, msg)} macros, which aborts the current production without crashing.
+These is currently no automatic synchronization / panic-mode recovery.

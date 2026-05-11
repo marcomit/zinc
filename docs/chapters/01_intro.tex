@@ -2,48 +2,47 @@
 
 \section{Overview}
 
-Zic is a statically-types, compiled systems programming language designed for clarity, performance, and expressiveness.
-It compiles to native binaries via LLVM and supports generics, receiver functions, a macro system and C ABI interoperability.
+Zinc is a statically-typed, compiled systems programming language designed for clarity, performance, and expressiveness.
+It compiles native binaries via LLVM and supports generics, receiver functions (methods), a hygienic macro system (WIP), and C interoperability through \zn{foreign} declarations.
 
 \section{Compiler Pipeline}
 
-The Zinc compiler is a multi=phase pipeline written in C. The phases run sequentially on each source file:
+The Zinc compiler is a single-pass, multi-phase pipeline written in C. The phases run sequentially on each source file:
 
 \begin{center}
 \begin{tabular}{lll}
-
 \toprule
-\textbf{Phase} & \textbf{Source file} & \textbf{Responsability}\\
-
+\textbf{Phase} & \textbf{Source file} & \textbf{Responsibility} \\
 \midrule
-Lexical analysis & \texttt{zlex.c} & Tokenize source text and keyword hashing\\
-Syntax analysis & \texttt{zparse.c} & Build AST from token stream\\
-Semantic analysis & \texttt{zsem.c} & Type checking, scope and symbol resolution\\
-Code generation & \texttt{zgen/c} & Emit LLVM IR and link object files via lld\\
-
+Lexical analysis  & \texttt{zlex.c}   & Tokenize source text; keyword hashing \\
+Syntax analysis   & \texttt{zparse.c} & Build AST from token stream \\
+Semantic analysis & \texttt{zsem.c}   & Type checking, scope \& symbol resolution \\
+Code generation   & \texttt{zgen.c}   & Emit LLVM IR; drive lld linker \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 Supporting components:
 
-\begin{destription}[leftmargin=4em]
-\item[\texttt{zmacro.c}] Macro pattern matching and expansion, invoked during parsing.
-\item[\texttt{zmod.c}] Handle multi-file compilation, AST debug and logs printing.
-\item[\texttt{zmem.h}] Modular allocators definition
-\item[\texttt{zmem.c}] Arena allocator for fast allocations and cleanup.
-\item[\texttt{zvec.h}] Header-only library for dynamic array used through the compiler.
-\item[\texttt{zhset.h}] Header-only library string hash set for duplicate detection in symbol table.
+\begin{description}[leftmargin=4em]
+  \item[\texttt{zmacro.c}] Hygienic macro pattern matching and expansion, invoked during parsing.
+  \item[\texttt{zmod.c}]   Module resolution: handles \zn{use} imports, multi-file compilation, and AST debug and logs printing.
+  \item[\texttt{zmem.h}]   Supports modular allocators.
+  \item[\texttt{zmem.c}]   Arena allocator for fast allocations and clean up. It supports also scoped allocations via \texttt{startScope()}/\texttt{endScope()}.
+  \item[\texttt{zvec.h}]   Header-only generic dynamic array used throughout the compiler.
+  \item[\texttt{zhset.h}]  Header-only string hash set for duplicate detection in symbol tables.
+  \item[\texttt{zinc.h}] Header file that contains all definitions for the compilation process.
 \end{description}
 
-\section{Hello world}
-This is the program every programmer should compile for the first time:
+\section{Hello World}
 
-\begin{lstlisting}[style=zinc,caption={Hello World in Zinc}]
-foreign u0 printf(*char, ...)
+\begin{lstlisting}[style=zinc, caption={Hello World in Zinc}]
+  foreign u0 printf(*char) // imports the C function
 
-u32 main() {
-    printf("Hello world\n")
-    return 0
-}
-\end{lstdlisting}
+  u32 main() {
+      printf("Hello, World!\n")
+      return 0
+  }
+\end{lstlisting}
+
+
