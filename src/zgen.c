@@ -425,7 +425,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
             if (!params[i]) return NULL;
         }
         LLVMTypeRef ret = genType(ctx, type->func.ret);
-        return LLVMFunctionType(ret, params, (unsigned)argc, 0);
+        return LLVMFunctionType(ret, params, (unsigned)argc, type->func.variadic);
     }
 
     case Z_TYPE_STRUCT: {
@@ -558,6 +558,7 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
     } else if (!node->tok) {
         error(ctx->state, NULL,
                 "'genIdent' called with a null token on node %d", node->type);
+        return NULL;
     }
 
     char *key = node->identNode.mangled ? node->identNode.mangled : node->tok->str;
@@ -722,8 +723,8 @@ static LLVMValueRef genEnumDecl(ZCodegen *ctx, ZNode *node) {
         return NULL;
     }
 
-    LLVMTypeRef enumType = genType(ctx, node->resolved);
-    LLVMTypeRef fieldType = genType(ctx, node->resolved->enm.fields[index]);
+    LLVMTypeRef enumType    = genType(ctx, node->resolved);
+    LLVMTypeRef fieldType   = genType(ctx, node->resolved->enm.fields[index]);
 
     LLVMBuildStore(
         ctx->builder,
@@ -773,6 +774,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         /* Expression call: covers identifiers, static access, subscripts, and
          * function-pointer fields (NODE_MEMBER without mangled). */
         func = genExpr(ctx, callee);
+        if (!func) return NULL;
     }
 
     /* For indirect calls (locally-loaded function pointers) the LLVM value is
@@ -2234,7 +2236,9 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     }
 
     LLVMTypeRef funcType = LLVMFunctionType(ret, args, veclen(args), false);
-    LLVMValueRef func =  LLVMAddFunction(ctx->mod, f->funcDef.mangled, funcType);
+    LLVMValueRef func = LLVMGetNamedFunction(ctx->mod, f->funcDef.mangled);
+    if (!func)
+        func = LLVMAddFunction(ctx->mod, f->funcDef.mangled, funcType);
     ctx->currentFunc = func;
 
     putLLVMValueRef(ctx, f->funcDef.mangled, func);
@@ -2285,6 +2289,8 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 }
 
 static void compile(ZCodegen *, ZNode *);
+static void genForwardDecl(ZCodegen *, ZNode *);
+
 static void genNamespace(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < veclen(node->block); i++) {
         compile(ctx, node->block[i]);
@@ -2302,14 +2308,61 @@ static void compile(ZCodegen *ctx, ZNode *root) {
 
     case NODE_MODULE:
         beginModule(ctx, root);
+        /* Pass 1: emit all struct/enum LLVM types so forward declarations
+         * can reference them without hitting getCachedStruct misses. */
         for (usize i = 0; i < veclen(root->module.root); i++) {
-            compile(ctx, root->module.root[i]);
+            ZNode *child = root->module.root[i];
+            if (child->type == NODE_STRUCT || child->type == NODE_ENUM)
+                genType(ctx, child->resolved);
         }
+        /* Pass 2: emit forward declarations for every function so
+         * out-of-order and mutually-recursive calls resolve correctly. */
+        for (usize i = 0; i < veclen(root->module.root); i++)
+            genForwardDecl(ctx, root->module.root[i]);
+        /* Pass 3: emit function bodies and remaining declarations. */
+        for (usize i = 0; i < veclen(root->module.root); i++)
+            compile(ctx, root->module.root[i]);
         endModule(ctx);
         break;
     default:
         error(ctx->state, root->tok, "(compilation not yet implemented for %d)", root->type);
         break;
+    }
+}
+
+static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
+    switch (node->type) {
+    case NODE_NAMESPACE:
+        for (usize i = 0; i < veclen(node->block); i++)
+            genForwardDecl(ctx, node->block[i]);
+        break;
+    case NODE_FUNC: {
+        if (!node->funcDef.mangled)
+            node->funcDef.mangled = mangler((ZToken*[]) { node->funcDef.name, NULL });
+
+        LLVMTypeRef ret      = genType(ctx, node->funcDef.ret);
+        LLVMTypeRef *args    = NULL;
+
+        if (node->funcDef.receiver) {
+            vecpush(args, genType(ctx, node->funcDef.receiver->resolved));
+        }
+        for (usize i = 0; i < veclen(node->funcDef.capabilities); i++) {
+            vecpush(args, genType(ctx, node->funcDef.capabilities[i]->field.type));
+        }
+        for (usize i = 0; i < veclen(node->funcDef.args); i++) {
+            ZType *at = node->funcDef.args[i]->field.type;
+            LLVMTypeRef arg = genType(ctx, at);
+            if (at->kind == Z_TYPE_FUNCTION)
+                arg = LLVMPointerType(arg, 0);
+            vecpush(args, arg);
+        }
+
+        LLVMTypeRef funcType = LLVMFunctionType(ret, args, veclen(args), false);
+        LLVMValueRef decl    = LLVMAddFunction(ctx->mod, node->funcDef.mangled, funcType);
+        putLLVMValueRef(ctx, node->funcDef.mangled, decl);
+        break;
+    }
+    default: break;
     }
 }
 
