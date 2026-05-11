@@ -1,0 +1,156 @@
+% -- Page layout
+\usepackage[margin=2.5cm, top=3cm, bottom=3cm]{geometry}
+\setlength{\parskip}{0.5rem}
+\setlength{\parindent}{0pt}
+
+% -- Colors
+\usepackage{dvipsnames}{xcolor}
+\definecolor{zn-keyword}    {HTML}{c678dd}
+\definecolor{zn-type}       {HTML}{56b62c}
+\definecolor{zn-string}     {HTML}{98c379}
+\definecolor{zn-comment}    {HTML}{7f848e}
+\definecolor{zn-number}     {HTML}{d19a66}
+\definecolor{zn-bg}         {HTML}{ffffff}
+\definecolor{zn-fg}         {HTML}{abb2bf}
+\definecolor{linkcolor}     {HTML}{4183c4}
+
+% -- Code listings
+\usepackage{listings}
+\usepackage{lstautogobble}
+
+\lstdefinelanguage{Zinc}{
+    keywords={
+        if,         else,       for,    return,     struct,     pub,
+        foreign,    use,        type,   match,      defer,      goto,
+        break,      continue,   macro,  facet,      and,        or,
+        not,        true,       false,  none,       with
+    },
+    keywordstyle=\color{zn-keyword}\bfseries,
+    otherkewords={:=, ->, ::, ...},
+    sensitive=true,
+
+
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{zn-comment}\itshape,
+    
+    morestring=[b]",
+    stringstyle=\color{zn-string},
+
+    literate=
+        {u0}{{\textcolor{zn-type}{u0}}}2
+        {u1}{{\textcolor{zn-type}{u0}}}2
+        {u8}{{\textcolor{zn-type}{u0}}}2
+        {i8}{{\textcolor{zn-type}{u0}}}2
+        {u16}{{\textcolor{zn-type}{u0}}}3
+        {i16}{{\textcolor{zn-type}{u0}}}3
+        {u32}{{\textcolor{zn-type}{u0}}}3
+        {i32}{{\textcolor{zn-type}{u0}}}3
+        {u64}{{\textcolor{zn-type}{u0}}}3
+        {i64}{{\textcolor{zn-type}{u0}}}3
+        {f32}{{\textcolor{zn-type}{u0}}}3
+        {f64}{{\textcolor{zn-type}{u0}}}3
+        {char}{{\textcolor{zn-type}{u0}}}4
+        {:=}{{\textbf{:=}}}2
+        {->}{{\textbf{->}}}2
+}
+
+lstdefinestyle{zinc}{
+    language=Zinc,
+    backgroundcolor=\color{zn-bg},
+    numbers=left,
+    numberstyle=\tiny\color{zn-comment},
+    numbersep=8,
+
+    frame=single,
+    framesep=4pt,
+    rulecolor=\color{zn-comment},
+    xleftmargin=1.5em,
+    xrightmargin=0.5em,
+    breaklines=true,
+    autogobble=true,
+    tabsize=4,
+    showstringspaces=false,
+    captionpos=b,
+}
+
+\lstdefinestyle{zninline}{
+    language=Zinc,
+    basicstyle=\ttfamily\small,
+    breaklines=false,
+    autogobble=true,
+}
+
+\newcommand{\zn}[1]{\lstdinline[style=zninline]{#1}}
+
+
+% -- Basics
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\uspackage{tabularc}
+\usepackage[
+    colorlinks  = true,
+    linkcolor   = linkcolor,
+    urlcolor    = linkcolor,
+    citecolor   = linkcolor,
+    pdftitle    = {The Zinc Programming Language},
+    pdfauthor   = {Marco Menegazzi}
+]{hyperref}
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LR,RO]{\thepage}
+\fancyhead[RE]{\textit{\leftmark}}
+\fancyhead[LO]{\textit{\rightmark}}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+\newtcolorbox{note}{
+    colback=yellow!8,
+    colfram=yellow!60!black,
+    fonttitle=\bfseries,
+    title=Note,
+    breakable,
+}
+
+\newtcolorbox{warn}{
+    colback=red!5,
+    colframe=red!60!black,
+    fonttitle=\bfseries,
+    title=Warning,
+    breakable,
+}
+
+% -- Content
+
+\title{
+    \vspace{2cm}
+    {\Huge\bfseries The Zinc Programming Language}\\[1em]
+    {\large Compiler Internals \& Language Reference}\\[2em]
+    \rule{\linewidth}{0.5pt}
+}
+
+\author{Marco Menegazzi}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontent
+
+% -- Chapters
+
+\input{chapters/01_intro}
+\input{chapters/02_language_reference}
+\input{chapters/03_lexer}
+\input{chapters/04_parser}
+\input{chapters/05_semantics}
+\input{chapters/06_codegen}
+\input{chapters/07_macros}
+
+\end{document}
