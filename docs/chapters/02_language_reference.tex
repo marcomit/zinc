@@ -1,7 +1,7 @@
 \chapter{Language Reference}
 
 \section{Variables and Constants}
-Zic distinguishes between comp-time constants and runtime variables.
+Zinc distinguishes between comp-time constants and runtime variables.
 
 Compile-time constants are folded into the code and they are often used for fixed configurations, magic numbers or array sizes.
 
@@ -18,3 +18,68 @@ other := 10
 \end{verbatim}
 Variables are statically typed and their type can be specified or inferred and assigned at compile time.
 
+\section{Primitive Types}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+    Type & Description
+\midrule
+    \zn{u0} & Empty type (\texttt{void} equivalent)\\
+    \zn{u1} & Boolean type (true or false)\\
+    \zn{u8},\zn{u16}\zn{u32},\zn{u64} & Unsigned integer with  fixed-width\\
+    \zn{u8},\zn{u16}\zn{u32},\zn{u64} & Signed integer with fixed-width\\
+    \zn{f32},\zn{f64} & Floating point numbers\\
+\endrule
+\end{tabular}
+\end{center}
+
+\section{Literals}
+\begin{itemize}
+    \item Integers: Decimal \texttt{123}, Hex \texttt{0xdeadbeef}, Binary 0b1010101
+    \item Floats: Standard 3.14, Scientific 1e-10
+    \item Chars: Currently not supported.
+    \item Strings: represented as \texttt{*char} Content inside "".
+        They supports terminators: \\n, \\t, \\r, \\", \\0
+\end{itemize}
+
+\section{Arrays \& Slices}
+Array size must be a constant value and known at compile time.
+The compiler saves the length so that the size is known everywhere the array is passed.
+\begin{lstlisting}[style=zinc, caption={Array example}]
+[]i32 nums = [5]i32 // Uninitialized array (not zero initialized)
+[5]i32 nums = [1, 2, 3, 4, 5] // Array literal
+\end{lstlisting}
+
+\section{Tuples}
+Group multiple values together into a single value. They can carry different types in the same tuple.
+They are compiled like an unnamed struct.
+
+\begin{lstlisting}[style=zinc, caption={Basic tuple example}]
+pair := (12, "hello")
+triple := (21, "hello", 3.14)
+\end{lstlisting}
+
+Elements are accessed by index: \texttt{.0}, \texttt{.1}, \texttt{.2}.
+\begin{lstlisting}[style=zinc, caption={Tuple field access}]
+tuple := (1, "hello", 3.14)
+u32 tmp = tuple.0
+\end{lstlisting}
+
+Tuples are often used to return multiple values from a function:
+\begin{lstlisting}[style=zinc, caption={Multi-return values}]
+(u32, u32) info(u32 x) {
+    return (x * x, x * 4)
+}
+\end{lstlisting}
+
+\section{Structs}
+Classic data structure to store multiple field in one structure.
+\begin{lstlisting}[style=zinc, caption={Struct example}]
+struct Vector2 {
+    f32 x
+    f32 y
+}
+origin := Vector2{ x: 0, y: 0 }
+\end{lstlisting}
+
+Fields can accessed by the . operator. For pointer the object will be auto-dereferenced to access the field.
