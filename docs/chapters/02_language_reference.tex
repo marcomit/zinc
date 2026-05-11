@@ -1,85 +1,347 @@
 \chapter{Language Reference}
 
-\section{Variables and Constants}
-Zinc distinguishes between comp-time constants and runtime variables.
+\section{Types}
 
-Compile-time constants are folded into the code and they are often used for fixed configurations, magic numbers or array sizes.
+Zinc is statically typed: every expression has a type that is fully known at
+compile time.
 
-\begin{verbatim}
-HASH_MAP_ENTRIES :: 1024
-hashmap := [HASH_MAP_ENTRIES]HashMap
-\end{verbatim}
+\subsection{Primitive Types}
 
-Variables are stored in the stack at runtime and they are always mutable.
-
-\begin{verbatim}
-i32 val = 0
-other := 10
-\end{verbatim}
-Variables are statically typed and their type can be specified or inferred and assigned at compile time.
-
-\section{Primitive Types}
 \begin{center}
-\begin{tabular}{lll}
+\begin{tabular}{ll}
 \toprule
-    Type & Description
+Type & Description \\
 \midrule
-    \zn{u0} & Empty type (\texttt{void} equivalent)\\
-    \zn{u1} & Boolean type (true or false)\\
-    \zn{u8},\zn{u16}\zn{u32},\zn{u64} & Unsigned integer with  fixed-width\\
-    \zn{u8},\zn{u16}\zn{u32},\zn{u64} & Signed integer with fixed-width\\
-    \zn{f32},\zn{f64} & Floating point numbers\\
-\endrule
+\zn{u0}                             & Empty type (\texttt{void} equivalent) \\
+\zn{u1}                             & Boolean (\texttt{true} or \texttt{false}) \\
+\zn{u8}, \zn{u16}, \zn{u32}, \zn{u64} & Unsigned fixed-width integers \\
+\zn{i8}, \zn{i16}, \zn{i32}, \zn{i64} & Signed fixed-width integers \\
+\zn{f32}, \zn{f64}                  & Floating-point numbers \\
+\bottomrule
 \end{tabular}
 \end{center}
 
-\section{Literals}
+\subsection{Compound Types}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Type & Description \\
+\midrule
+\texttt{*T}       & Pointer to \texttt{T} \\
+\texttt{[n]T}     & Fixed-size array of \texttt{n} elements \\
+\texttt{[]T}      & Slice (pointer + length) \\
+\texttt{(T1, T2)} & Tuple (at least 2 fields) \\
+\texttt{R(A, B)}  & Function type: returns \texttt{R}, takes args \texttt{A}, \texttt{B}, \ldots \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Literals}
+
 \begin{itemize}
-    \item Integers: Decimal \texttt{123}, Hex \texttt{0xdeadbeef}, Binary 0b1010101
-    \item Floats: Standard 3.14, Scientific 1e-10
-    \item Chars: Currently not supported.
-    \item Strings: represented as \texttt{*char} Content inside "".
-        They supports terminators: \\n, \\t, \\r, \\", \\0
+    \item \textbf{Integers:} Decimal \texttt{123}, hexadecimal \texttt{0xdeadbeef},
+          binary \texttt{0b1010101}
+    \item \textbf{Floats:} Standard \texttt{3.14}, scientific \texttt{1e-10}
+    \item \textbf{Booleans:} \texttt{true}, \texttt{false}
+    \item \textbf{Null pointer:} \texttt{none}
+    \item \textbf{Chars:} Not supported.
+    \item \textbf{Strings:} \texttt{*char}, content between double quotes.
+          Supported escapes: \texttt{{\textbackslash}n \textbackslash t \textbackslash r \textbackslash" \textbackslash 0}
 \end{itemize}
 
-\section{Arrays \& Slices}
-Array size must be a constant value and known at compile time.
-The compiler saves the length so that the size is known everywhere the array is passed.
-\begin{lstlisting}[style=zinc, caption={Array example}]
-[]i32 nums = [5]i32 // Uninitialized array (not zero initialized)
-[5]i32 nums = [1, 2, 3, 4, 5] // Array literal
+\subsection{Arrays and Slices}
+
+Array sizes must be compile-time constants.
+\begin{lstlisting}[style=zinc, caption={Arrays and slices}]
+[5]i32 nums = [1, 2, 3, 4, 5] // Typed declaration with literal
+arr := [1, 2, 3, 4, 5]        // Type inferred from literal
+
+// Slicing produces a []T (pointer + length)
+mid  := arr[1:4]  // indices 1..3
+head := arr[:3]   // indices 0..2
+tail := arr[3:]   // indices 3..end
 \end{lstlisting}
 
-\section{Tuples}
-Group multiple values together into a single value. They can carry different types in the same tuple.
-They are compiled like an unnamed struct.
+A slice compiles to a struct carrying a pointer and a length.
+The \texttt{.len} field is available on both arrays and slices.
+Mutations through a slice propagate to the underlying array.
 
-\begin{lstlisting}[style=zinc, caption={Basic tuple example}]
-pair := (12, "hello")
-triple := (21, "hello", 3.14)
-\end{lstlisting}
-
-Elements are accessed by index: \texttt{.0}, \texttt{.1}, \texttt{.2}.
-\begin{lstlisting}[style=zinc, caption={Tuple field access}]
-tuple := (1, "hello", 3.14)
-u32 tmp = tuple.0
-\end{lstlisting}
-
-Tuples are often used to return multiple values from a function:
-\begin{lstlisting}[style=zinc, caption={Multi-return values}]
-(u32, u32) info(u32 x) {
-    return (x * x, x * 4)
+\begin{lstlisting}[style=zinc, caption={Iterating with .len}]
+i := 0
+for i < arr.len {
+    arr[i] = i
+    i = i + 1
 }
 \end{lstlisting}
 
-\section{Structs}
-Classic data structure to store multiple field in one structure.
-\begin{lstlisting}[style=zinc, caption={Struct example}]
+\subsection{Tuples}
+
+Tuples group heterogeneous values into a single unnamed struct.
+They require at least two elements.
+
+\begin{lstlisting}[style=zinc, caption={Tuple construction and access}]
+pair   := (12, "hello")
+triple := (21, "hello", 3.14)
+
+u32 n = triple.0   // access by index
+\end{lstlisting}
+
+Tuples are the idiomatic way to return multiple values:
+
+\begin{lstlisting}[style=zinc, caption={Multiple return values}]
+(u32, u32) divmod(u32 a, u32 b) {
+    return (a / b, a mod b)
+}
+\end{lstlisting}
+
+\subsection{Structs}
+
+\begin{lstlisting}[style=zinc, caption={Struct declaration and construction}]
 struct Vector2 {
     f32 x
     f32 y
 }
-origin := Vector2{ x: 0, y: 0 }
+origin := Vector2{ x: 0.0, y: 0.0 }
 \end{lstlisting}
 
-Fields can accessed by the . operator. For pointer the object will be auto-dereferenced to access the field.
+Fields are accessed with \texttt{.}. Pointer types are auto-dereferenced on
+field access, so \texttt{ptr.field} and \texttt{(*ptr).field} are equivalent.
+
+\subsection{Enums}
+
+Enums are tagged unions (sum types) that can carry per-variant data.
+Each variant is a struct prefixed by a \texttt{u8} discriminant tag.
+
+\begin{lstlisting}[style=zinc, caption={Enum declaration and construction}]
+enum Shape {
+    Square(f32)     // single f32 payload
+    Rect(f32, f32)  // two f32 payloads
+    None            // no payload
+}
+
+square := Shape::Square(10.0)
+rect   := Shape::Rect(12.0, 10.0)
+\end{lstlisting}
+
+\section{Variables}
+
+Variables live on the stack and are always mutable.
+The type can be stated explicitly or inferred from the right-hand side.
+
+\begin{lstlisting}[style=zinc, caption={Variable declarations}]
+i32 val = 0   // explicit type
+other := 10   // inferred type
+\end{lstlisting}
+
+\textbf{Destructuring} binds struct fields or tuple elements directly to names:
+
+\begin{lstlisting}[style=zinc, caption={Destructuring}]
+// Struct: bind fields by name, optionally with a rename
+{x, y}             := point
+{x: px, y: py}     := point
+
+// Tuple: bind by position
+(first, second)    := pair
+\end{lstlisting}
+
+\section{Functions}
+
+\subsection{Declarations}
+
+Functions follow C-like syntax.
+The arrow form \zn{->} is shorthand for a single-expression body.
+
+\begin{lstlisting}[style=zinc, caption={Function declarations}]
+u32 add(u32 a, u32 b) {
+    return a + b
+}
+
+u32 mul(u32 a, u32 b) -> a * b
+
+i32 main() {
+    return add(10, mul(12, 3))
+}
+\end{lstlisting}
+
+\subsection{Receiver Methods}
+
+The \zn{for} block attaches methods to a type.
+The named binding after the type is the implicit \emph{self} argument.
+
+\begin{lstlisting}[style=zinc, caption={Receiver methods}]
+for i32 self {
+    u32 add(u32 b) -> self + b
+}
+
+for *i32 ptr {
+    u0 incr() {
+        *ptr = *ptr + 1
+    }
+}
+
+i32 main() {
+    val := 10
+    val.add(5)
+    10.add(20)
+
+    p := &val
+    p.incr()
+    return 0
+}
+\end{lstlisting}
+
+\subsection{Static Functions}
+
+Omitting the receiver binding creates a static (namespace-scoped) function
+called with \zn{Type::name()} syntax.
+
+\begin{lstlisting}[style=zinc, caption={Static functions}]
+struct Counter {
+    i32 count
+}
+
+for Counter {
+    Counter new() -> Counter{ count: 0 }
+}
+
+i32 main() {
+    c := Counter::new()
+    return 0
+}
+\end{lstlisting}
+
+\subsection{Capabilities}
+
+A capability is a contextual dependency declared in a second parameter list
+after the main one. The caller does not pass it explicitly; instead it is
+threaded automatically from a surrounding \zn{with} block.
+
+\begin{lstlisting}[style=zinc, caption={Capability declaration and use}]
+use <core::mem>
+
+*u8 allocBuf(u64 size)(Allocator alloc) {
+    return alloc.alloc(size)
+}
+
+i32 main() {
+    with heap := Allocator::heap() {
+        buf := allocBuf(1024) // alloc injected automatically
+    }
+    return 0
+}
+\end{lstlisting}
+
+Capabilities are propagated transitively: a function that calls another
+capability-requiring function inherits the requirement automatically.
+
+\subsection{Foreign Declarations}
+
+Foreign declarations import C functions for use as ordinary Zinc functions.
+Variadic C functions are supported with \texttt{...}.
+Related functions can be grouped under a named namespace.
+
+\begin{lstlisting}[style=zinc, caption={Foreign declarations}]
+foreign u0 printf(*char, ...)
+
+foreign libc {
+    *u8 malloc(u64)
+    u0  free(*u8)
+}
+
+i32 main() {
+    printf("Hello, world!\n")
+    buf := libc::malloc(1024)
+    libc::free(buf)
+    return 0
+}
+\end{lstlisting}
+
+\section{Control Flow}
+
+\subsection{Conditionals}
+
+\begin{lstlisting}[style=zinc, caption={if / else}]
+if x > 0 {
+    // positive
+} else if x == 0 {
+    // zero
+} else {
+    // negative
+}
+\end{lstlisting}
+
+\zn{if} is also an expression when written with \zn{->}.
+Branches must produce values of the same type.
+
+\begin{lstlisting}[style=zinc, caption={Inline if expression}]
+i32 abs = if x >= 0 -> x else -> -x
+
+// Nesting is allowed
+i32 max3 = if a > b -> if a > c -> a else -> c
+           else     -> if b > c -> b else -> c
+\end{lstlisting}
+
+\subsection{Loops}
+
+Zinc uses \zn{for} for both C-style and while-style loops.
+
+\begin{lstlisting}[style=zinc, caption={Loop forms}]
+// While-style
+i := 0
+for i < 10 {
+    i = i + 1
+}
+
+// C-style
+for j := 0; j < 10; j = j + 1 {
+    // ...
+}
+\end{lstlisting}
+
+\zn{break} exits the innermost loop; \zn{continue} skips to the next iteration.
+
+\begin{lstlisting}[style=zinc, caption={break and continue}]
+for i < 10 {
+    i = i + 1
+    if i == 5 { break }
+    if i mod 2 == 0 { continue }
+    // only odd values below 5 reach here
+}
+\end{lstlisting}
+
+\subsection{Defer}
+
+\zn{defer} schedules a statement to run when the enclosing scope exits,
+in last-in first-out order.
+
+\begin{lstlisting}[style=zinc, caption={defer}]
+{
+    buf := libc::malloc(1024)
+    defer libc::free(buf)   // runs at end of block
+
+    // ... use buf ...
+}
+\end{lstlisting}
+
+\section{Operators}
+
+\subsection{Arithmetic}
+
+\subsection{Comparison}
+
+\subsection{Logical}
+
+\subsection{Bitwise}
+
+\section{Type Casting}
+
+\section{Imports}
+
+\section{Interfaces}
+
+\section{Generics}
+
+\section{Macros}
+
+\section{Type Aliases}
