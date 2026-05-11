@@ -1,0 +1,49 @@
+\chapter{Introduction}
+
+\section{Overview}
+
+Zic is a statically-types, compiled systems programming language designed for clarity, performance, and expressiveness.
+It compiles to native binaries via LLVM and supports generics, receiver functions, a macro system and C ABI interoperability.
+
+\section{Compiler Pipeline}
+
+The Zinc compiler is a multi=phase pipeline written in C. The phases run sequentially on each source file:
+
+\begin{center}
+\begin{tabular}{lll}
+
+\toprule
+\textbf{Phase} & \textbf{Source file} & \textbf{Responsability}\\
+
+\midrule
+Lexical analysis & \texttt{zlex.c} & Tokenize source text and keyword hashing\\
+Syntax analysis & \texttt{zparse.c} & Build AST from token stream\\
+Semantic analysis & \texttt{zsem.c} & Type checking, scope and symbol resolution\\
+Code generation & \texttt{zgen/c} & Emit LLVM IR and link object files via lld\\
+
+\bottomrule
+\end{tabular}
+\end{center}
+
+Supporting components:
+
+\begin{destription}[leftmargin=4em]
+\item[\texttt{zmacro.c}] Macro pattern matching and expansion, invoked during parsing.
+\item[\texttt{zmod.c}] Handle multi-file compilation, AST debug and logs printing.
+\item[\texttt{zmem.h}] Modular allocators definition
+\item[\texttt{zmem.c}] Arena allocator for fast allocations and cleanup.
+\item[\texttt{zvec.h}] Header-only library for dynamic array used through the compiler.
+\item[\texttt{zhset.h}] Header-only library string hash set for duplicate detection in symbol table.
+\end{description}
+
+\section{Hello world}
+This is the program every programmer should compile for the first time:
+
+\begin{lstlisting}[style=zinc,caption={Hello World in Zinc}]
+foreign u0 printf(*char, ...)
+
+u32 main() {
+    printf("Hello world\n")
+    return 0
+}
+\end{lstdlisting}

@@ -1,0 +1,20 @@
+\chapter{Language Reference}
+
+\section{Variables and Constants}
+Zic distinguishes between comp-time constants and runtime variables.
+
+Compile-time constants are folded into the code and they are often used for fixed configurations, magic numbers or array sizes.
+
+\begin{verbatim}
+HASH_MAP_ENTRIES :: 1024
+hashmap := [HASH_MAP_ENTRIES]HashMap
+\end{verbatim}
+
+Variables are stored in the stack at runtime and they are always mutable.
+
+\begin{verbatim}
+i32 val = 0
+other := 10
+\end{verbatim}
+Variables are statically typed and their type can be specified or inferred and assigned at compile time.
+
