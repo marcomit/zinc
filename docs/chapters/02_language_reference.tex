@@ -328,6 +328,91 @@ in last-in first-out order.
 
 \subsection{Arithmetic}
 
+\subsection{Update Operator}
+
+The update operator \zn{:} reads a mutable location, transforms its value
+through an expression, and writes the result back. It replaces the family of
+compound-assignment operators (\texttt{+=}, \texttt{-=}, \texttt{*=}, \ldots)
+with a single, uniform mechanism that also extends naturally to method calls.
+
+\subsubsection*{Syntax}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Form & Desugars to \\
+\midrule
+\texttt{x : \emph{op} \emph{expr}} & \texttt{x = x \emph{op} \emph{expr}} \\
+\texttt{x : \emph{unary\_op}}      & \texttt{x = \emph{unary\_op} x}      \\
+\texttt{x : f(\emph{args})}        & \texttt{x = f(x, \emph{args})}       \\
+\texttt{x : .method(\emph{args})}  & \texttt{x = x.method(\emph{args})}   \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The left-hand side must be a mutable location: a variable, a field access, a
+pointer dereference, or a subscript. The right-hand side must be one of the
+four forms above; plain assignment uses \zn{=} instead.
+
+\subsubsection*{Basic usage}
+
+\begin{lstlisting}[style=zinc, caption={Update operator --- arithmetic}]
+count : + 1          // count = count + 1
+price : * 1.08       // price = price * 1.08
+ratio : / total      // ratio = ratio / total
+remaining : 100 -    // ERROR: leading operand not allowed
+\end{lstlisting}
+
+For non-commutative operations where the current value must appear on the
+right-hand side, write a plain assignment instead:
+
+\begin{lstlisting}[style=zinc, caption={Non-commutative case --- use plain assignment}]
+x = 1 - x           // explicit, unambiguous
+x = 100 / x
+\end{lstlisting}
+
+\subsubsection*{Unary forms}
+
+\begin{lstlisting}[style=zinc, caption={Update operator --- unary}]
+flag  : not          // flag  = !flag
+mask  : ~            // mask  = ~mask
+\end{lstlisting}
+
+\subsubsection*{Function and method forms}
+
+When the RHS is a function call, the current value is passed as the first
+argument. When the RHS is a method call (dot form), it becomes the receiver.
+
+\begin{lstlisting}[style=zinc, caption={Update operator --- calls}]
+buf    : compress()        // buf    = compress(buf)
+name   : .to_lower()       // name   = name.to_lower()
+value  : clamp(0, 100)     // value  = clamp(value, 0, 100)
+config : merge(defaults)   // config = merge(config, defaults)
+\end{lstlisting}
+
+\subsubsection*{Evaluation guarantee}
+
+The left-hand side is evaluated exactly once, even when it contains a
+side-effecting expression such as a subscript with a computed index.
+
+\begin{lstlisting}[style=zinc, caption={Left-hand side evaluated once}]
+buf[next_slot()] : + 1
+// Equivalent to:
+//   __addr := &buf[next_slot()]   // next_slot() called once
+//   *__addr = *__addr + 1
+\end{lstlisting}
+
+\subsubsection*{Type rule}
+
+The expression produced by the RHS must have the same type as the
+left-hand side. Using \zn{:} to change a variable's type is a compile-time
+error; use a new declaration with \zn{:=} instead.
+
+\begin{lstlisting}[style=zinc, caption={Type mismatch is a compile error}]
+i32 count = 0
+count : .to_string()   // ERROR: RHS produces *char, expected i32
+\end{lstlisting}
+
 \subsection{Comparison}
 
 \subsection{Logical}
