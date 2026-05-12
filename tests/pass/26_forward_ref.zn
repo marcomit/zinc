@@ -1,0 +1,9 @@
+foreign u0 printf(*char, ...)
+
+u0 caller() -> helper()
+u0 helper() -> printf("helper\n")
+
+i32 main() {
+    caller()
+    return 0
+}
