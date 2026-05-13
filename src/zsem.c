@@ -884,6 +884,12 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
 static ZType *_resolveTypeRef(ZSemantic *ctx, ZType *type, ZType ***seen) {
     if (!type) return NULL;
 
+    for (usize i = 0; i < veclen(*seen); i++) {
+        if (typesEqual((*seen)[i], type)) {
+            error(ctx->state, type->tok, "Circular types");
+            return (*seen)[i];
+        }
+    }
     switch (type->kind) {
     case Z_TYPE_PRIMITIVE: {
         if (type->primitive.token->type != TOK_IDENT) return type;
@@ -893,6 +899,18 @@ static ZType *_resolveTypeRef(ZSemantic *ctx, ZType *type, ZType ***seen) {
                   "Unknown type '%s'", type->primitive.token->str);
             return NULL;
         }
+        vecpush(*seen, type);
+        if (sym->kind == Z_SYM_STRUCT) {
+            for (usize i = 0; i < veclen(sym->type->strct.fields); i++) {
+                sym->type->strct.fields[i]->field.type = _resolveTypeRef(
+                    ctx, sym->type->strct.fields[i]->field.type, seen
+                );
+            }
+        }
+        // if (sym->kind == Z_SYM_TYPEDEF) {
+            if (sym->node->resolved) return sym->node->resolved;
+            return _resolveTypeRef(ctx, sym->node->typeDef.type, seen);
+        // }
         return sym->type;
     }
     case Z_TYPE_POINTER:
@@ -1210,9 +1228,10 @@ static ZType *resolveStructLit(ZSemantic *ctx, ZNode *curr) {
                 "struct '%s' not found", curr->tok->str);
         return NULL;
     }
-    if (structSym->kind != Z_SYM_STRUCT) {
-        error(ctx->state, structSym->name,
-                    "'%s' is not a struct", stoken(structSym->name));
+    ZType *symType = resolveType(ctx, structSym->node);
+    if (!symType || symType->kind != Z_TYPE_STRUCT) {
+        error(ctx->state, curr->structlit.ident,
+                    "'%s' is not a struct", stoken(curr->structlit.ident));
         return NULL;
     }
 
@@ -1254,19 +1273,7 @@ static ZType *resolveStructLit(ZSemantic *ctx, ZNode *curr) {
             );
         }
     }
-    ZSymbol *resolved = resolve(ctx, curr->structlit.ident);
-
-    if (!resolved) {
-        error(ctx->state, curr->structlit.ident,
-                "Unknown struct literal");
-    } else {
-        if (resolved->kind != Z_SYM_STRUCT) {
-            error(ctx->state, curr->structlit.ident,
-                    "This is not a struct literal");
-        }
-        return resolved->type;
-    }
-    return NULL;
+    return symType;
 }
 
 static void checkFunctionUsedAsValue(ZSemantic *ctx, ZNode *node) {
@@ -1933,8 +1940,10 @@ static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
     ZType *savedRet             = ctx->currentFuncRet;
     ZNode *savedFunc            = ctx->currentFunc;
 
-    ctx->currentFuncRet    = resolveTypeRef(ctx, curr->funcDef.ret);
-    ctx->currentFunc       = curr;
+    curr->funcDef.ret           = resolveTypeRef(ctx, curr->funcDef.ret);
+    curr->resolved->func.ret    = curr->funcDef.ret;
+    ctx->currentFuncRet         = curr->funcDef.ret;
+    ctx->currentFunc            = curr;
 
     analyzeBlock(ctx, curr->funcDef.body, false);
 
@@ -2053,11 +2062,7 @@ static void discoverGlobalScope(ZSemantic *ctx, ZNode *root) {
         case NODE_VAR_DECL:     putVar(ctx, child, false);  break;
         case NODE_ENUM:         putEnum(ctx, child);        break;
         case NODE_NAMESPACE:    putNamespace(ctx, child);   break;
-
-        case NODE_TYPEDEF: {
-            putTypedef(ctx, child);
-            break;
-        }
+        case NODE_TYPEDEF:      putTypedef(ctx, child);     break;
 
         case NODE_FOREIGN: {
             /* Foreign functions are callable like regular functions.
@@ -2106,7 +2111,6 @@ static void checkEmbedFieldConflicts(ZSemantic *ctx, ZType *strct, hashset_t *se
 }
 
 static void analyzeStruct(ZSemantic *ctx, ZNode *structDef) {
-    ZType **seen = NULL;
     ZNode **fields = structDef->structDef.fields;
     usize len = veclen(fields);
 
@@ -2116,9 +2120,9 @@ static void analyzeStruct(ZSemantic *ctx, ZNode *structDef) {
         if (field->type == NODE_EMBED_FIELD) {
             if (!field->tok && field->resolved && field->resolved->kind == Z_TYPE_PRIMITIVE)
                 field->tok = field->resolved->primitive.token;
-            field->resolved = _resolveTypeRef(ctx, field->resolved, &seen);
+            field->resolved = resolveTypeRef(ctx, field->resolved);
         } else if (field->type == NODE_FIELD) {
-            field->field.type = _resolveTypeRef(ctx, field->field.type, &seen);
+            field->field.type = resolveTypeRef(ctx, field->field.type);
         } else {
             error(ctx->state, structDef->tok, "Invalid field type");
         }
@@ -2214,6 +2218,11 @@ static void analyzeNamespace(ZSemantic *ctx, ZNode *node) {
     }
 }
 
+static void analyzeTypedef(ZSemantic *ctx, ZNode *node) {
+    ZType *resolved = resolveTypeRef(ctx, node->typeDef.type);
+    node->resolved = resolved;
+}
+
 /* ================== Main analysis pass ================== */
 
 static void analyze(ZSemantic *ctx, ZNode *root) {
@@ -2224,6 +2233,7 @@ static void analyze(ZSemantic *ctx, ZNode *root) {
         switch (child->type) {
         case NODE_FOREIGN:      analyzeForeign(ctx, child);     break;
         case NODE_FUNC:         analyzeFunc(ctx, child);        break;
+        case NODE_TYPEDEF:      analyzeTypedef(ctx, child);     break;
         case NODE_VAR_DECL:     analyzeVar(ctx, child, true);   break;
         case NODE_STRUCT:       analyzeStruct(ctx, child);      break;
         case NODE_ENUM:         analyzeEnum(ctx, child);        break;
