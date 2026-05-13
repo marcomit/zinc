@@ -536,6 +536,7 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
     case TOK_STR_LIT:
         return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx, node->tok));
     case TOK_INT_LIT:
+    case TOK_RUNE_LIT:
         return LLVMConstInt(i32Type, tok->integer, true);
     case TOK_TRUE:
         return LLVMConstInt(i1Type, true, false);
@@ -1291,7 +1292,8 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         LLVMValueRef ptr = genLvalue(ctx, root->binary.left);
         LLVMValueRef val = genExpr(ctx, root->binary.right);
         if (!ptr || !val) return NULL;
-        return LLVMBuildStore(ctx->builder, val, ptr);
+        LLVMBuildStore(ctx->builder, val, ptr);
+        return val;
     }
 
     ZTokenType op = root->binary.op->type;

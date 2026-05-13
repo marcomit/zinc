@@ -804,6 +804,7 @@ static ZType *resolveLiteralType(ZNode *curr) {
 
     ZType *t = maketype(Z_TYPE_PRIMITIVE);
     switch (curr->literalTok->type) {
+    case TOK_RUNE_LIT:
     case TOK_INT_LIT: {
         t->primitive.token = maketoken(TOK_I32, NULL);
         break;
