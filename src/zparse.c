@@ -38,6 +38,7 @@ static ZNode *parseBreak                    (ZParser *);
 static ZNode *parseBlock                    (ZParser *);
 static ZNode *parseMatch                    (ZParser *);
 static ZNode *parseDefer                    (ZParser *);
+static ZNode *parseUnary                    (ZParser *);
 static ZNode *parseLoops                    (ZParser *);
 static ZNode *parseReturn                   (ZParser *);
 static ZNode *parseVarDef                   (ZParser *);
@@ -267,14 +268,15 @@ static ZNode *parseOrGrammar(ZParser *parser, ZParseFunc *pf, usize len) {
     return NULL;
 }
 
-static ZNode *parseGenericBinary(ZParser *parser,
+static ZNode *_parseGenericBinary(ZParser *parser,
                                     ZParseFunc parseLeft,
                                     ZParseFunc parseRight,
                                     ZTokenType *validTokens,
-                                    size_t validTokensLen) {
+                                    size_t validTokensLen,
+                                    ZNode *expr) {
     ZNode *node = NULL;
 
-    ZNode *left = wrapNode(parser, parseLeft);
+    ZNode *left = expr ? expr : wrapNode(parser, parseLeft);
 
     guard(left);
 
@@ -302,6 +304,17 @@ static ZNode *parseGenericBinary(ZParser *parser,
     }
 
     return node ? node : left;
+}
+static ZNode *parseGenericBinary(ZParser *parser,
+                                    ZParseFunc parseLeft,
+                                    ZParseFunc parseRight,
+                                    ZTokenType *validTokens,
+                                    size_t validTokensLen) {
+    return _parseGenericBinary(
+        parser,         parseLeft,
+        parseRight,     validTokens,
+        validTokensLen, NULL
+    );
 }
 
 static ZNode *parseArrayInit(ZParser *parser) {
@@ -557,8 +570,8 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     return res;
 }
 
-static ZNode *parsePostfixExpr(ZParser *parser) {
-    ZNode *left = wrapNode(parser, parsePrimary);
+static ZNode *_parsePostfixExpr(ZParser *parser, ZNode *base) {
+    ZNode *left = base ? base : wrapNode(parser, parsePrimary);
 
     guard(left);
 
@@ -573,7 +586,11 @@ static ZNode *parsePostfixExpr(ZParser *parser) {
     return left;
 }
 
-static ZNode *parseUnary(ZParser *parser) {
+static ZNode *parsePostfixExpr(ZParser *parser) {
+    return _parsePostfixExpr(parser, NULL);
+}
+
+static ZNode *_parseUnary(ZParser *parser, ZNode *expr) {
     ZToken *start = peek(parser);
     guard(start);
 
@@ -586,9 +603,7 @@ static ZNode *parseUnary(ZParser *parser) {
         TOK_STAR,   TOK_REF,    TOK_BITNOT
     };
 
-    usize len = sizeof(valids) / sizeof(valids[0]);
-
-    if (!isValidToken(parser, valids, len)) {
+    if (!isValidToken(parser, valids, arrlen(valids))) {
         error(parser->state, start,
                 "Expected expression, got '%s'", stoken(start));
         return NULL;
@@ -596,11 +611,15 @@ static ZNode *parseUnary(ZParser *parser) {
 
     node = makenode(NODE_UNARY);
     node->unary.operat = consume(parser);
-    node->unary.operand = wrapNode(parser, parseUnary);
+    node->unary.operand = expr ? expr : wrapNode(parser, parseUnary);
 
     guard(node->unary.operand);
 
     return node;
+}
+
+static ZNode *parseUnary(ZParser *parser) {
+    return _parseUnary(parser, NULL);
 }
 
 static ZNode *parseFactor(ZParser *parser) {
@@ -664,6 +683,92 @@ static ZNode *parseNullCoalescing(ZParser *parser) {
         parser, parseLogicalOr, parseLogicalOr,
         &valid, 1
     );
+}
+
+static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
+    ZToken *tok = peek(parser);
+    guard(tok);
+
+    /* Binary op: x: + 1  ->  x + 1 */
+    ZTokenType binOps[] = {
+        TOK_PLUS, TOK_MINUS,  TOK_STAR, TOK_DIV, TOK_MOD,
+        TOK_BITL, TOK_BITR,   TOK_REF,  TOK_BITOR, TOK_BITXOR,
+        TOK_AND,  TOK_OR,     TOK_COALESCING
+    };
+    if (isValidToken(parser, binOps, arrlen(binOps))) {
+        ZToken *op  = consume(parser);
+        ZNode  *rhs = wrapNode(parser, parseExpr);
+        if (!rhs) {
+            error(parser->state, op, "expected expression after '%s'", stoken(op));
+            return NULL;
+        }
+        ZNode *node        = makenode(NODE_BINARY);
+        node->binary.op    = op;
+        node->binary.left  = lhs;
+        node->binary.right = rhs;
+        node->tok          = op;
+        return node;
+    }
+
+    /* Postfix on lhs: x: .field  ->  x.field,  x: [i]  ->  x[i] */
+    if (tok->type == TOK_DOT || tok->type == TOK_LSBRACKET || tok->type == TOK_CAST) {
+        return _parsePostfixExpr(parser, lhs);
+    }
+
+    /* Prefix unary on lhs: x: not  ->  not x,  x: ~  ->  ~x */
+    ZTokenType unaryOps[] = { TOK_NOT, TOK_BITNOT };
+    if (isValidToken(parser, unaryOps, arrlen(unaryOps))) {
+        ZNode *node         = makenode(NODE_UNARY);
+        node->unary.operat  = consume(parser);
+        node->unary.operand = lhs;
+        node->tok           = node->unary.operat;
+        return node;
+    }
+
+    /* Function call with lhs prepended: x: f(args)  ->  f(x, args) */
+    ZNode *callee = wrapNode(parser, parsePrimary);
+    if (callee) {
+        if (!check(parser, TOK_LPAREN)) {
+            error(parser->state, peek(parser),
+                    "expected '(' after '%s' in update expression",
+                    stoken(callee->tok));
+            return NULL;
+        }
+        consume(parser); /* ( */
+        ZNode **args = NULL;
+        vecpush(args, lhs);
+        ZNode **rest = parseArgs(parser);
+        for (usize i = 0; i < veclen(rest); i++)
+            vecpush(args, rest[i]);
+        expect(parser, TOK_RPAREN);
+        ZNode *call       = makenode(NODE_CALL);
+        call->call.callee = callee;
+        call->call.args   = args;
+        call->tok         = callee->tok;
+        return _parsePostfixExpr(parser, call);
+    }
+
+    error(parser->state, tok, "unexpected token '%s' in update expression", stoken(tok));
+    return NULL;
+}
+
+static ZNode *parseUpdate(ZParser *parser) {
+    ZNode *lhs = parseNullCoalescing(parser);
+    guard(lhs);
+
+    ZToken *colon = peek(parser);
+    if (!colon || colon->type != TOK_COLON || colon->newlineBefore) return NULL;
+    consume(parser);
+
+    ZNode *rhs = parseUpdateRhs(parser, lhs);
+    guard(rhs);
+
+    ZNode *assign        = makenode(NODE_BINARY);
+    assign->binary.op    = maketoken(TOK_EQ, NULL);
+    assign->binary.left  = lhs;
+    assign->binary.right = rhs;
+    assign->tok          = lhs->tok;
+    return assign;
 }
 
 static ZNode *parseBinary(ZParser *parser) {
@@ -925,8 +1030,9 @@ ZNode *parseStmt(ZParser *parser) {
             parseVarInferred,
             parseVarDefTyped,
             parseBlock,
+            parseUpdate,
             parseExpr
-        }, 4);
+        }, 5);
     }
     }
 }
@@ -1162,6 +1268,8 @@ ZNode *parseExpr(ZParser *parser) {
         }
         return placeholder;
     }
+
+    if (check(parser, TOK_IF)) return parseInlineIf(parser);
 
     return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
 
@@ -1503,6 +1611,9 @@ static ZNode *parseFuncDecl(ZParser *parser,
             ret->returnStmt.expr = expr;
             body = makenode(NODE_BLOCK);
             vecpush(body->block, ret);
+        } else {
+            error(parser->state, peek(parser), "Failed to parse inline return");
+            return NULL;
         }
     } else if (check(parser, TOK_LBRACKET)) {
         body = wrapNode(parser, parseBlock);
