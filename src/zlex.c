@@ -52,10 +52,10 @@ ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
 	return self;
 }
 
-static uint32_t hashtoken(const char *buff, size_t len) {
-	uint32_t hash = FNV_OFFSET;
+static u32 hashtoken(const char *buff, size_t len) {
+	u32 hash = FNV_OFFSET;
 	for (size_t i = 0; i < len; i++) {
-		hash ^= (uint8_t)(buff[i]);
+		hash ^= (u8)(buff[i]);
 		hash *= FNV_PRIME;
 	}
 	return hash;
@@ -82,7 +82,7 @@ static void initKeywords() {
 	usize len = sizeof(keywords) / sizeof(keywords[0]);
 	for (size_t i = 0; i < len; i++) {
 		const char *name = keywords[i].keyword;
-		uint32_t hash = hashtoken(name, strlen(name)) & HASHMAP_TOK_MASK;
+		u32 hash = hashtoken(name, strlen(name)) & HASHMAP_TOK_MASK;
 
 		while (keywordEntries[hash].keyword != NULL) {
 			hash = (hash + 1) & HASHMAP_TOK_MASK;
@@ -93,7 +93,7 @@ static void initKeywords() {
 }
 
 ZTokenType findKeyword(const char *ident, size_t len) {
-	uint32_t hash = hashtoken(ident, len) & HASHMAP_TOK_MASK;
+	u32 hash = hashtoken(ident, len) & HASHMAP_TOK_MASK;
 
 	while (keywordEntries[hash].keyword != NULL) {
 		if (strlen(keywordEntries[hash].keyword) == len &&
@@ -171,54 +171,149 @@ static void skip(ZLexer *l, u8 chars) {
 	while (chars--) next(l);
 }
 
+static u32 decodeUtf8(char **src) {
+    u8 c = (u8)**src;
+    if ((c & 0x80) == 0x00) {
+        (*src)++;
+        return c;
+    } else if ((c & 0xE0) == 0xC0) {
+        u32 cp = c & 0x1F; (*src)++;
+        cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
+        return cp;
+    } else if ((c & 0xF0) == 0xE0) {
+        u32 cp = c & 0x0F; (*src)++;
+        cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
+        cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
+        return cp;
+    } else {
+        u32 cp = c & 0x07; (*src)++;
+        cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
+        cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
+        cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
+        return cp;
+    }
+}
+
+static u32 decodeHexCode(ZLexer *l, char **src, int len) {
+    (*src)++;
+    u32 cp = 0;
+
+    for (int i = 0; i < len; i++) {
+        char c = **src;
+        if (!c) {
+            error(l->state,
+                veclast(l->tokens),
+                "Unexpected end of unicode code point"
+            );
+            return 0xFFFD;
+        }
+        if      (c >= '0' && c <= '9') cp = (cp << 4) | (u32)(c - '0');
+        else if (c >= 'a' && c <= 'f') cp = (cp << 4) | (u32)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') cp = (cp << 4) | (u32)(c - 'A' + 10);
+        else {
+            error(l->state, veclast(l->tokens),
+                "Invalid unicode code point");
+            return 0xFFFD;
+        }
+        (*src)++;
+    }
+
+    return cp;
+}
+
+static u32 parseEscapeChar(ZLexer *l, char **src) {
+    switch (**src) {
+    case 'n':  (*src)++; return '\n';
+    case 't':  (*src)++; return '\t';
+    case 'r':  (*src)++; return '\r';
+    case '\\': (*src)++; return '\\';
+    case '"':  (*src)++; return '"';
+    case '\'': (*src)++; return '\'';
+    case '0':  (*src)++; return '\0';
+    case 'u': return decodeHexCode(l, src, 4);
+    case 'U': return decodeHexCode(l, src, 8);
+    default: {
+        u32 cp = (u8)**src;
+        (*src)++;
+        return cp;
+    }
+    }
+}
+
+static void pushCodepointUtf8(char **buff, u32 cp) {
+    if (cp < 0x80) { // starts with 0
+        vecpush(*buff, (char)cp);
+    } else if (cp < 0x800) { // starts with 110
+        vecpush(*buff, (char)(0xC0 | (cp >> 6)));
+        vecpush(*buff, (char)(0x80 | (cp & 0x3F)));
+    } else if (cp < 0x10000) { // starts with 1110
+        vecpush(*buff, (char)(0xE0 | (cp >> 12)));
+        vecpush(*buff, (char)(0x80 | ((cp >> 6) & 0x3F)));
+        vecpush(*buff, (char)(0x80 | (cp & 0x3F)));
+    } else { // starts with 11110
+        vecpush(*buff, (char)(0xF0 | (cp >> 18)));
+        vecpush(*buff, (char)(0x80 | ((cp >> 12) & 0x3F)));
+        vecpush(*buff, (char)(0x80 | ((cp >> 6) & 0x3F)));
+        vecpush(*buff, (char)(0x80 | (cp & 0x3F)));
+    }
+}
+
 static ZToken *parseString(ZLexer *l) {
 	if (*l->current != '"') return NULL;
 	next(l);
 
 	char *start = l->current;
+	char *buff = NULL;
+	char *src = l->current;
 
-	// First pass: count length and check for unterminated string
-	size_t len = 0;
-	while (*l->current && *l->current != '"') {
-		if (*l->current == '\\' && *(l->current + 1)) {
-			next(l);  // skip backslash
-		}
-		next(l);
-		len++;
+	while (*src && *src != '"') {
+        u32 cp;
+        if (*src == '\\' && *(src + 1)) {
+            src++;
+            cp = parseEscapeChar(l, &src);
+        } else {
+            cp = decodeUtf8(&src);
+        }
+        pushCodepointUtf8(&buff, cp);
 	}
 
-	if (!*l->current) {
-		error(l->state, veclast(l->tokens), "Unterminated string %.10s", start);
-		return NULL;
-	}
-	next(l);  // consume closing quote
-
-	// Second pass: build string with escape sequences
-	char *buff = znalloc(char, len + 1);
-	char *src = start;
-	size_t i = 0;
-
-	while (*src && src < l->current - 1) {
-		if (*src == '\\' && *(src + 1)) {
-			src++;
-			switch (*src) {
-				case 'n':  buff[i++] = '\n'; break;
-				case 't':  buff[i++] = '\t'; break;
-				case 'r':  buff[i++] = '\r'; break;
-				case '\\': buff[i++] = '\\'; break;
-				case '"':  buff[i++] = '"';  break;
-				case '\'': buff[i++] = '\''; break;
-				case '0':  buff[i++] = '\0'; break;
-				default:   buff[i++] = *src; break;  // unknown escape, keep as-is
-			}
-		} else {
-			buff[i++] = *src;
-		}
-		src++;
-	}
-	buff[i] = '\0';
+    if (*src == '"') src++;
+    else {
+        error(l->state, makestring(buff, start), "Unterminated string");
+        return NULL;
+    }
+    vecpush(buff, '\0');
+    l->current = src;
 
 	return makestring(buff, start);
+}
+
+static ZToken *makeRune(u32 codepoint, char *start) {
+    ZToken *self = maketoken(TOK_RUNE_LIT, start);
+    self->integer = (i64)codepoint;
+    return self;
+}
+
+static ZToken *parseRune(ZLexer *l) {
+    if (*l->current != '\'') return NULL;
+    char *start = l->current;
+    char *src = l->current + 1;
+
+    if (!*src) return NULL;
+
+    u32 cp;
+    if (*src == '\\' && *(src + 1)) {
+        src++;
+        cp = parseEscapeChar(l, &src);
+    } else {
+        cp = decodeUtf8(&src);
+    }
+
+    if (*src != '\'') return NULL;
+    src++;
+
+    l->current = src;
+    return makeRune(cp, start);
 }
 
 static ZToken *parseSymbol(ZLexer *l) {
@@ -407,6 +502,9 @@ ZToken **ztokenize(ZState *state) {
 		char *sourceLinePtr = l->line;
 		if (*l->current == '"') {
 			curr = parseString(l);
+		} else if (*l->current == '\'') {
+			curr = parseRune(l);
+			if (!curr) curr = parseSymbol(l);
 		} else if (isalpha(*l->current) || *l->current == '_') {
 			curr = parseLiteral(l);
 		} else if (isdigit(*l->current)) {

@@ -57,6 +57,7 @@ DEF(TOK_USING,      "using",            TOK_FLOWS_MASK | 0x1A)
 DEF(TOK_VOID,       "u0",               TOK_TYPES_MASK                              | 0x20)
 DEF(TOK_BOOL,       "u1",               TOK_TYPES_MASK | TOK_SIGNED                 | 0x21)
 DEF(TOK_CHAR,       "char",             TOK_TYPES_MASK                              | 0x22)
+DEF(TOK_RUNE,       "rune",             TOK_TYPES_MASK | TOK_UNSIGNED               | 0x33)
 DEF(TOK_F32,        "f32",              TOK_TYPES_MASK | TOK_FLOAT                  | 0x23)
 DEF(TOK_F64,        "f64",              TOK_TYPES_MASK | TOK_FLOAT                  | 0x24)
 DEF(TOK_I8,         "i8",               TOK_TYPES_MASK | TOK_SIGNED                 | 0x25)
@@ -79,7 +80,7 @@ DEF(TOK_STR_LIT,    "string literal",   TOK_DYN_MASK | TOK_LITERAL              
 DEF(TOK_INT_LIT,    "int literal",      TOK_DYN_MASK | TOK_LITERAL                      | 0x41)
 DEF(TOK_FLOAT_LIT,  "float literal",    TOK_DYN_MASK | TOK_LITERAL                      | 0x43)
 DEF(TOK_IDENT,      "identifier",       TOK_DYN_MASK | TOK_LITERAL | TOK_OVERRIDABLE    | 0x44)
-DEF(TOK_CHAR_LIT,   "char literal",     TOK_DYN_MASK | TOK_LITERAL | TOK_OVERRIDABLE    | 0x45)
+DEF(TOK_RUNE_LIT,   "rune literal",     TOK_DYN_MASK | TOK_LITERAL | TOK_OVERRIDABLE    | 0x45)
 #endif
 
 #ifdef TOK_SYMBOLS
