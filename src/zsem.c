@@ -899,18 +899,19 @@ static ZType *_resolveTypeRef(ZSemantic *ctx, ZType *type, ZType ***seen) {
                   "Unknown type '%s'", type->primitive.token->str);
             return NULL;
         }
-        vecpush(*seen, type);
         if (sym->kind == Z_SYM_STRUCT) {
-            for (usize i = 0; i < veclen(sym->type->strct.fields); i++) {
-                sym->type->strct.fields[i]->field.type = _resolveTypeRef(
-                    ctx, sym->type->strct.fields[i]->field.type, seen
-                );
-            }
-        }
-        // if (sym->kind == Z_SYM_TYPEDEF) {
+            // for (usize i = 0; i < veclen(sym->type->strct.fields); i++) {
+            //     ZNode *field = sym->type->strct.fields[i];
+            //     field->resolved = _resolveTypeRef(
+            //         ctx, field->resolved, NULL
+            //     );
+            //     sym->node->structDef.fields[i]->resolved = field->resolved;
+            // }
+        } else if (sym->kind == Z_SYM_TYPEDEF) {
             if (sym->node->resolved) return sym->node->resolved;
+            vecpush(*seen, type);
             return _resolveTypeRef(ctx, sym->node->typeDef.type, seen);
-        // }
+        }
         return sym->type;
     }
     case Z_TYPE_POINTER:
@@ -2123,6 +2124,7 @@ static void analyzeStruct(ZSemantic *ctx, ZNode *structDef) {
             field->resolved = resolveTypeRef(ctx, field->resolved);
         } else if (field->type == NODE_FIELD) {
             field->field.type = resolveTypeRef(ctx, field->field.type);
+            field->resolved = field->field.type;
         } else {
             error(ctx->state, structDef->tok, "Invalid field type");
         }

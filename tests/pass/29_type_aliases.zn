@@ -20,16 +20,10 @@ type V2     = Point    // struct alias
 type V2ptr  = *Point   // pointer-to-struct alias
 type byteptr = *byte   // pointer alias of aliased primitive
 
-type BinaryOp = uint(uint, uint)    // function type alias
-type Predicate = bool(int)          // uses aliased primitive in signature
-
-
 float add_scalar(scalar a, scalar b) -> a + b
 
-uint apply(BinaryOp f, uint a, uint b) -> f(a, b)
-
 void print_point(V2ptr p) {
-    printf("(%f, %f)\n", p.x, p.y)
+    printf("(%.0f, %.0f)\n", p.x, p.y)
 }
 
 bool is_positive(int n) -> n > 0
@@ -39,31 +33,24 @@ for V2 self {
     V2 scale(scalar factor) -> V2{x: self.x * factor, y: self.y * factor}
 }
 
-
 int main() {
-
     V2 a = Point{x: 3.0, y: 4.0}
 
     Point b = V2{x: 1.0, y: 2.0}
 
     scalar s = 2.0
     index  i = 0
-
+    
     V2ptr pa = &a
-
+    
     print_point(pa)
-
+    
     float l = b.len()
-    printf("len sq: %f\n", l)
-
-    // BinaryOp op = add
-    // 
-    // uint result = apply(op, 10, 32)
-    // printf("apply: %d\n", result)
-
+    printf("len sq: %.0f\n", l)
+    
     Point scaled = a.scale(s)
-    printf("scaled: %f %f\n", scaled.x, scaled.y)
-
+    printf("scaled: %.0f %.0f\n", scaled.x, scaled.y)
+    
     bool pos = is_positive(-5)
     if pos -> printf("positive\n")
     else   -> printf("not positive\n")
