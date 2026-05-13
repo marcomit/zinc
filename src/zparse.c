@@ -1844,15 +1844,17 @@ static ZNode *parseTypedef(ZParser *parser, bool public) {
     ensure(check(parser, TOK_IDENT), "Expected an identifier");
 
     ZToken *alias = consume(parser);
+    expect(parser, TOK_EQ);
 
     ZType *type = wrapType(parser, parseType);
     
     ensure(type, "Invalid type");
 
-    ZNode *node = makenode(NODE_TYPEDEF);
+    ZNode *node         = makenode(NODE_TYPEDEF);
     node->typeDef.alias = alias;
     node->typeDef.type  = type;
-    node->typeDef.pub     = public;
+    node->typeDef.pub   = public;
+    node->tok           = alias;
     return node;
 }
 

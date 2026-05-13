@@ -19,6 +19,11 @@ struct Point {
     i32 y
 }
 
+struct Linked {
+    i32 val
+    *Linked next
+}
+
 f32 sum(f64 x, f64 y) {
     return x + y
 }

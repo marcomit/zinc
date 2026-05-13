@@ -377,6 +377,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         case TOK_U8:    return i8Type;
         case TOK_I16:
         case TOK_U16:   return i16Type;
+        case TOK_RUNE:
         case TOK_I32:
         case TOK_U32:   return i32Type;
         case TOK_I64:
@@ -675,7 +676,6 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
 
     ZLLVMStack *stack = getStackValue(ctx, node->varDecl.rvalue);
     if (!stack) {
-        printf("Stack allocation not found\n");
         error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
         return;
     }
@@ -2081,7 +2081,7 @@ static void buildNestedFuncVar(
  * NOTE: this method stores always the expression that requires the stack allocation.
  * So for variable declaration always store the rvalue node and not the variable node.
  * */
-static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
+static void buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
     if (!node) {
         error(ctx->state, NULL, "'buildFuncVar' called with a null node");
         return;
@@ -2092,7 +2092,7 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node) {
     }
 
     /* Function types are passed as pointers and fit in a register - no alloca needed. */
-    if (node->resolved->kind == Z_TYPE_FUNCTION) return;
+    if (!force && node->resolved->kind == Z_TYPE_FUNCTION) return;
 
     LLVMValueRef elem = NULL;
     LLVMTypeRef elemType = NULL;
@@ -2126,13 +2126,13 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->returnStmt.expr);
         break;
     case NODE_TUPLE_LIT:
-        buildFuncVar(ctx, node);
+        buildFuncVar(ctx, node, false);
         for (usize i = 0; i < veclen(node->tuplelit); i++) {
             genFuncVars(ctx, node->tuplelit[i]);
         }
         break;
     case NODE_STRUCT_LIT:
-        buildFuncVar(ctx, node);
+        buildFuncVar(ctx, node, false);
         break;
     case NODE_CAST:
         genFuncVars(ctx, node->castExpr.expr);
@@ -2158,7 +2158,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->capability.block);
         break;
     case NODE_VAR_DECL:
-        buildFuncVar(ctx, node->varDecl.rvalue);
+        buildFuncVar(ctx, node->varDecl.rvalue, true);
         break;
     case NODE_CALL:
         if (!node->resolved) {
@@ -2166,11 +2166,11 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
             break;
         }
         if (!typesPrimitive(node->resolved)) {
-            buildFuncVar(ctx, node);
+            buildFuncVar(ctx, node, false);
         }
         for (usize i = 0; i < veclen(node->call.args); i++) {
             if (!typesPrimitive(node->call.args[i]->resolved)) {
-                buildFuncVar(ctx, node->call.args[i]);
+                buildFuncVar(ctx, node->call.args[i], false);
             }
         }
         break;
@@ -2306,8 +2306,8 @@ static void compile(ZCodegen *ctx, ZNode *root) {
     case NODE_FOREIGN:      genForeign  (ctx, root);            break;
     case NODE_FUNC:         genFunc     (ctx, root);            break;
     case NODE_NAMESPACE:    genNamespace(ctx, root);            break;
+    case NODE_TYPEDEF:
     case NODE_MACRO:        /* Doesn't generate anything. */    break;
-
     case NODE_MODULE:
         beginModule(ctx, root);
         /* Pass 1: emit all struct/enum LLVM types so forward declarations
