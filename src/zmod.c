@@ -20,7 +20,8 @@ static char *nodeLabels[] = {
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "GOTO",         "LABEL",        "TYPE",         "ENUM",
     "BREAK",        "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
-    "STATICACCESS", "NAMESPACE",    "SLICE",        "CAPABILITY"
+    "STATICACCESS", "NAMESPACE",    "SLICE",        "CAPABILITY",   "MATCH",
+    "MATCH_ARM"
 };
 
 static char *levels[] = {
@@ -644,6 +645,18 @@ void printNode(ZNode *node, u8 depth) {
         printf("\n");
         printNode(node->capability.capability, depth);
         printNode(node->capability.block, depth);
+        break;
+    case NODE_MATCH:
+        printf("\n");
+        printNode(node->match.cond, depth);
+        for (usize i = 0; i < veclen(node->match.arms); i++) {
+            printNode(node->match.arms[i], depth);
+        }
+        break;
+    case NODE_MATCH_ARM:
+        printf("\n");
+        printDestructedVar(node->matchArm.pattern, depth);
+        printNode(node->matchArm.expr, depth);
         break;
     default:
             printf("(details not implemented in printer for node %d)",

@@ -55,10 +55,7 @@ static void checkFunctionUsedAsValue(ZSemantic *, ZNode *);
 /* ================== Scope / Symbol helpers ================== */
 
 static ZType *none      = NULL;
-static ZType *zvoid     = NULL;
 static ZType *u1Type    = NULL;
-static ZType *ztrue     = NULL;
-static ZType *zfalse    = NULL;
 static ZType *u64Type   = NULL;
 
 static ZScope *makescope(ZScope *parent, ZNode *node) {
@@ -1118,21 +1115,46 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
         if (!resolved) {
             error(ctx->state, callee->tok, "Unresolved type");
             return NULL;
-        } else if (resolved->kind != Z_TYPE_FUNCTION) {
+        } else if (resolved->kind == Z_TYPE_FUNCTION) {
+            for (usize i = 0; i < veclen(resolved->func.args); i++) {
+                resolved->func.args[i] = resolveTypeRef(
+                    ctx, resolved->func.args[i]
+                );
+            }
+            resolved->func.ret  = resolveTypeRef(ctx, resolved->func.ret);
+            expectedFunc        = resolved;
+            callee->resolved    = resolved;
+            curr->resolved      = resolved->func.ret;
+            info(ctx->state, curr->tok, "Resolved %s\n", stype(resolved));
+        } else if (resolved->kind == Z_TYPE_ENUM) {
+            ZType **variants      = resolved->enm.fields;
+            ZNode **fields        = NULL;
+            for (usize i = 0; i < veclen(resolved->enm.fields) && !fields; i++) {
+                if (tokeneq(variants[i]->strct.name, callee->staticAccess.prop)) {
+                    fields = variants[i]->strct.fields;
+                }
+            }
+            if (!fields) {
+                error(ctx->state, callee->tok,
+                    "Invalid enum variant '%s'",
+                    stoken(callee->staticAccess.prop)
+                );
+                return NULL;
+            }
+
+            curr->resolved = resolved;
+            expectedFunc = maketype(Z_TYPE_FUNCTION);
+            expectedFunc->func.ret = resolved;
+            for (usize i = 1; i < veclen(fields); i++) {
+                vecpush(expectedFunc->func.args, fields[i]->resolved);
+            }
+        } else {
             error(ctx->state, callee->tok,
                 "Expected function type, got %s",
                 stype(resolved)
             );
             return NULL;
         }
-        for (usize i = 0; i < veclen(resolved->func.args); i++) {
-            resolved->func.args[i] = resolveTypeRef(
-                ctx, resolved->func.args[i]
-            );
-        }
-        resolved->func.ret  = resolveTypeRef(ctx, resolved->func.ret);
-        expectedFunc        = resolved;
-        callee->resolved    = resolved;
     } else {
         /* Expression call (includes NODE_MEMBER, subscripts, etc.):
          * resolveType handles all callee forms uniformly. For NODE_MEMBER,
@@ -1487,9 +1509,9 @@ static ZType *resolveStaticAccess(ZSemantic *ctx, ZNode *curr) {
 
         /* Skip the first argument (always the flag). */
         for (usize i = 1; i < veclen(strct->strct.fields); i++) {
-            strct->strct.fields[i]->field.type = resolveTypeRef(
-                ctx, strct->strct.fields[i]->field.type
-            );
+            strct->strct.fields[i]->field.type  = resolveTypeRef(
+                ctx, strct->strct.fields[i]->field.type);
+            strct->strct.fields[i]->resolved    = strct->strct.fields[i]->field.type;
         }
         return baseSym->type;
     } else if (baseSym->kind == Z_SYM_TYPEDEF) {
@@ -2270,9 +2292,6 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     ZSemantic *ctx = makesemantic(state, root);
 
     if (!none)      none    = maketype(Z_TYPE_NONE);
-    if (!ztrue)     ztrue   = makePrimitiveType(TOK_TRUE);
-    if (!zfalse)    zfalse  = makePrimitiveType(TOK_FALSE);
-    if (!zvoid)     zvoid   = makePrimitiveType(TOK_VOID);
     if (!u1Type)    u1Type  = makePrimitiveType(TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType(TOK_U64);
 
