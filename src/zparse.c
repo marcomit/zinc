@@ -962,14 +962,14 @@ static ZNode *parseMatch(ZParser *parser) {
     ZNode *expr = parseExpr(parser);
     parser->noStructLit = savedNoStructLit;
 
-    if (!expr) printf("Expression parsed\n");
     ensure(expr, "Expected an expression");
 
     expect(parser, TOK_LBRACKET);
     ZNode **arms        = NULL;
     ZNode *arm          = NULL;
     do {
-        arm = parseMatchArm(parser);
+        arm = tryParse(parser, parseMatchArm(parser));
+        if (!arm) break;
         vecpush(arms, arm);
     } while (!check(parser, TOK_RBRACKET) && match(parser, TOK_COMMA));
     expect(parser, TOK_RBRACKET);
@@ -1333,28 +1333,44 @@ static ZAnnotation **parseAnnotations(ZParser *parser) {
     return annotations;
 }
 
-static ZNode *parseIf(ZParser *parser) {
+static ZNode *parseIfLet(ZParser *parser) {
+    expect(parser, TOK_IF);
+    ZVarDestructPattern *pattern = parseDestructVar(parser, true);
+    guard(pattern);
+    expect(parser, TOK_ASSIGN);
+    bool savedNoStructLit = parser->noStructLit;
+    parser->noStructLit = true;
+    ZNode *expr = parseExpr(parser);
+    parser->noStructLit = savedNoStructLit;
+    guard(expr);
+    ZNode *body = parseBlockOrInline(parser);
+
+    ZNode *var = makenodevar(pattern, NULL, expr);
+
+    ZNode *iflet = makenode(NODE_IF);
+    iflet->ifStmt.cond = var;
+    iflet->ifStmt.body = body;
+    return iflet;
+}
+
+static ZNode *parseIfStmt(ZParser *parser) {
     ZToken *start = peek(parser);
     expect(parser, TOK_IF);
 
     parser->noStructLit = true;
     ZNode *cond = parseExpr(parser);
     parser->noStructLit = false;
-
     guard(cond);
 
-    ZParseFunc elseBranch[] = {
-        parseIf, parseBlockOrInline
-    };
-
     ZNode *body = parseBlockOrInline(parser);
-
     guard(body);
 
     ZNode *node = makenode(NODE_IF);
 
     if (canPeek(parser) && match(parser, TOK_ELSE)) {
-        ZNode *elseBody = parseOrGrammar(parser, elseBranch, 2);
+        ZNode *elseBody = parseOrGrammar(parser, (ZParseFunc[]){
+            parseIf, parseBlockOrInline
+        }, 2);
         if (!elseBody) return NULL;
         node->ifStmt.elseBranch = elseBody;
     }
@@ -1363,6 +1379,10 @@ static ZNode *parseIf(ZParser *parser) {
     node->ifStmt.body   = body;
     node->tok           = start;
     return node;
+}
+
+static ZNode *parseIf(ZParser *parser) {
+    return parseOrGrammar(parser, (ZParseFunc[]){parseIfLet, parseIfStmt}, 2);
 }
 
 static ZNode *parseFor(ZParser *parser) {

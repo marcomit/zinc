@@ -312,8 +312,12 @@ ZNode *getStructField(ZSemantic *ctx, ZType *strct, ZToken *field) {
 static void putVarPattern(
         ZSemantic *ctx, ZNode *node,
         ZType *type, ZVarDestructPattern *pattern) {
-    if (!type) return;
+    if (!type) {
+        warning(ctx->state, node->tok, "No type provided for putVarPattern");
+        return;
+    }
     if (pattern->type == Z_VAR_IDENT) {
+        info(ctx->state, pattern->ident, "Adding %s", stoken(pattern->ident));
         putRawSymbol(
             ctx,
             Z_SYM_VAR,
@@ -376,6 +380,48 @@ static void putVarPattern(
                 );
             }
         }
+    } else if (pattern->type == Z_VAR_ENUM) {
+        if (type->kind != Z_TYPE_ENUM) {
+            error(ctx->state, pattern->tok,
+                "'%s' doesn't support destructuring", stype(type));
+            return;
+        } else if (!tokeneq(type->enm.name, pattern->base)) {
+            error(ctx->state, pattern->tok,
+                    "Expected '%s', got '%s'",
+                    type->enm.name->str,
+                    pattern->base->str);
+        }
+        ZType *variant = NULL;
+        for (usize i = 0; i < veclen(type->enm.fields) && !variant; i++) {
+            ZType *field = type->enm.fields[i];
+            if (tokeneq(field->strct.name, pattern->prop))
+                variant = type->enm.fields[i];
+        }
+
+        if (!variant) {
+            error(ctx->state, pattern->tok,
+                "enum variant '%s' not found for '%s'",
+                pattern->prop->str, stype(type));
+            return;
+        }
+
+        usize expected  = veclen(variant->strct.fields) - 1;
+        usize got       = veclen(pattern->args);
+
+        if (expected != got) {
+            error(ctx->state, pattern->tok,
+                "Expected %zu args, got %zu", expected, got);
+            return;
+        }
+
+        for (usize i = 0; i < expected; i++) {
+            putVarPattern(ctx, node,
+                variant->strct.fields[i + 1]->field.type, pattern->args[i]
+            );
+        }
+        
+    } else {
+        error(ctx->state, pattern->tok, "Unhandled destructure pattern");
     }
 }
 
@@ -762,9 +808,10 @@ ZNode *implicitCast(ZNode *node, ZType *type) {
         return node;
     }
 
-    ZNode *cast = makenode(NODE_CAST);
-    cast->castExpr.expr = node;
-    cast->castExpr.toType = type;
+    ZNode *cast             = makenode(NODE_CAST);
+    cast->castExpr.expr     = node;
+    cast->castExpr.toType   = type;
+    cast->resolved          = type;
     return cast;
 }
 
@@ -1622,11 +1669,13 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
     case NODE_IF:           result = resolveInlineIf    (ctx, curr);    break;
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
+        info(ctx->state, curr->tok, "Analyze var decl as expr");
         if (curr->resolved) {
             result = resolveTypeRef(ctx, curr->resolved);
         } else if (curr->varDecl.rvalue) {
             result = resolveType(ctx, curr->varDecl.rvalue);
         }
+        putVarPattern(ctx, curr, result, curr->varDecl.pattern);
         break;
 
     case NODE_CAST: {
@@ -1823,7 +1872,9 @@ static void analyzeIf(ZSemantic *ctx, ZNode *curr) {
         );
     }
 
-    curr->ifStmt.cond = implicitCast(curr->ifStmt.cond, u1Type);
+    if (curr->ifStmt.cond->type != NODE_VAR_DECL) {
+        curr->ifStmt.cond = implicitCast(curr->ifStmt.cond, u1Type);
+    }
 
     analyzeBlock(ctx, curr->ifStmt.body, true);
 

@@ -319,13 +319,22 @@ static bool _getStructIndex(ZType *strct, char *fieldName, u32 **path) {
 }
 
 /* Returns the index of the field for a struct.
- * Returns -1 if it does not exist. */
+ * Returns NULL if it does not exist. */
 static u32 *getStructIndex(ZType *strct, char *fieldName) {
     u32 *path = NULL;
     if (!_getStructIndex(strct, fieldName, &path)) {
         return NULL;
     }
     return path;
+}
+
+static i32 enumIndexField(ZType *enumType, ZToken *field) {
+    for (usize i = 0; i < veclen(enumType->enm.fields); i++) {
+        if (tokeneq(enumType->enm.fields[i]->strct.name, field)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 static ZNode *getStructField(ZType *strct, char *fieldName) {
@@ -612,13 +621,15 @@ static void putDestructuredPatternInStack(
         ZVarDestructPattern *pattern, LLVMValueRef ptr) {
     if (!pattern || !type) return;
 
-    if (pattern->type == Z_VAR_IDENT) {
+    switch (pattern->type) {
+    case Z_VAR_IDENT:
         putLLVMValueRef(
             ctx,
             pattern->ident->str,
             ptr
         );
-    } else if (pattern->type == Z_VAR_STRUCT) {
+        break;
+    case Z_VAR_STRUCT: {
         LLVMTypeRef typeRef = genType(ctx, type);
         for (usize i = 0; i < veclen(pattern->fields); i++) {
 
@@ -652,7 +663,9 @@ static void putDestructuredPatternInStack(
                 gep
             );
         }
-    } else if (pattern->type == Z_VAR_TUPLE) {
+        break;
+    }
+    case Z_VAR_TUPLE: {
         LLVMTypeRef typeRef = genType(ctx, type);
         for (usize i = 0; i < veclen(pattern->tuple); i++) {
             LLVMValueRef gep = LLVMBuildStructGEP2(
@@ -665,6 +678,14 @@ static void putDestructuredPatternInStack(
                 gep
             );
         }
+        break;
+    }
+    case Z_VAR_ENUM: {
+        break;
+    }
+    default:
+        error(ctx->state, pattern->tok, "Unhandled destruct pattern");
+        break;
     }
 }
 
@@ -696,15 +717,6 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
         node->varDecl.pattern,
         stack->stack
     );
-}
-
-static i32 enumIndexField(ZType *enumType, ZToken *field) {
-    for (usize i = 0; i < veclen(enumType->enm.fields); i++) {
-        if (tokeneq(enumType->enm.fields[i]->strct.name, field)) {
-            return i;
-        }
-    }
-    return -1;
 }
 
 static LLVMValueRef genEnumDecl(ZCodegen *ctx, ZNode *node) {
@@ -1210,12 +1222,6 @@ static bool typeIsUnsigned(ZType *type) {
     return (bool)(type->primitive.token->type & TOK_UNSIGNED);
 }
 
-static ZType *nodeEffectiveType(ZNode *node) {
-    if (!node) return NULL;
-    if (node->type == NODE_CAST) return node->castExpr.toType;
-    return node->resolved;
-}
-
 static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
     LLVMBasicBlockRef tBranch = makeblock(ctx);
@@ -1348,8 +1354,8 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
                      LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
 
 
-    bool bothUnsigned = typeIsUnsigned(nodeEffectiveType(root->binary.left)) &&
-                        typeIsUnsigned(nodeEffectiveType(root->binary.right));
+    bool bothUnsigned = typeIsUnsigned(root->binary.left->resolved) &&
+                        typeIsUnsigned(root->binary.right->resolved);
 
     char *l = label(ctx, root->tok);
 
@@ -1642,6 +1648,64 @@ static LLVMValueRef genArrayInit(ZCodegen *ctx, ZNode *node) {
     return stack->stack;
 }
 
+static LLVMValueRef matchVarPattern(ZCodegen *ctx,
+        ZType *type, ZVarDestructPattern *pattern, LLVMValueRef ptr) {
+    switch (pattern->type) {
+    case Z_VAR_IDENT:   return LLVMConstInt(i8Type, 1, false);
+    case Z_VAR_ENUM: {
+        LLVMValueRef variantPtr = LLVMBuildStructGEP2(
+            ctx->builder, genType(ctx, type), ptr, 0, label(ctx, pattern->tok)
+        );
+        i32 variantIdx = enumIndexField(type, pattern->prop);
+        if (variantIdx == -1) {
+            error(ctx->state, pattern->tok, "Variant not found");
+            return NULL;
+        }
+        return LLVMBuildICmp(ctx->builder, LLVMIntEQ,
+            variantPtr, LLVMConstInt(i8Type, variantIdx, false),
+            label(ctx, pattern->prop)
+        );
+    }
+    case Z_VAR_TUPLE: {
+        LLVMBasicBlockRef entry = LLVMGetInsertBlock(ctx->builder);
+        LLVMBasicBlockRef merge = makeblock(ctx);
+
+        for (usize i = 0; i < veclen(pattern->tuple); i++) {
+            LLVMBasicBlockRef block = makeblock(ctx);
+            LLVMPositionBuilderAtEnd(ctx->builder, block);
+            LLVMValueRef cond = matchVarPattern(
+                ctx, type->tuple[i], pattern->tuple[i],
+                LLVMBuildStructGEP2(
+                    ctx->builder, genType(ctx, type), ptr, i, label(ctx, pattern->tok)
+                )
+            );
+
+            LLVMBuildCondBr(
+                ctx->builder,
+                cond, block, merge
+            );
+        }
+        LLVMValueRef phi = LLVMBuildPhi(
+            ctx->builder,
+            genType(ctx, type),
+            label(ctx, pattern->tok)
+        );
+        return phi;
+    }
+    default:            return LLVMConstInt(i8Type, 0, false);
+    }
+}
+
+static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
+    ZLLVMStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        error(ctx->state, node->tok, "Missing stack value");
+        return NULL;
+    }
+    putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, stack->stack);
+    return NULL;
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
         case NODE_IF:               return genInlineIf      (ctx, node);
@@ -1653,6 +1717,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_ARRAY_INIT:       return genArrayInit     (ctx, node);
         case NODE_IDENTIFIER:       return genIdent         (ctx, node);
         case NODE_STATIC_ACCESS:    return genStaticAccess  (ctx, node);
+        case NODE_VAR_DECL:         return genVarDestruct   (ctx, node);
 
         case NODE_MEMBER:
         case NODE_SUBSCRIPT:

@@ -10,9 +10,15 @@ Option :: enum {
 main :: i32 () {
     val := Option::Some(10)
     
-    match Option::Some(10) {
-        Option::Some(some) -> libc::printf("%d\n", some)
+    // match Option::Some(10) {
+    //     Option::Some(some) -> libc::printf("%d\n", some),
+    //     Option::None() -> libc::printf("none\n")
+    // }
+
+    if Option::Some(value) := val {
+        libc::printf("%d\n", value)
     }
+
 
     return 0
 }
