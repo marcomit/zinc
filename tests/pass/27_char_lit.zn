@@ -1,8 +1,8 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-u32 main() {
+main :: u32 () {
     // ASCII rune printed as character and as integer value
     c::printf("%c\n", 'a')
     c::printf("%d\n", 'A')

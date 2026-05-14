@@ -1,39 +1,39 @@
-foreign u0 printf(*char, ...)
-foreign u0 exit(i32)
+foreign printf :: u0 (*char, ...)
+foreign exit :: u0 (i32)
 
-type void  = u0
-type bool  = u1
-type int   = i32
-type uint  = u32
-type byte  = u8
-type float = f32
+void  :: type u0
+bool  :: type u1
+int   :: type i32
+uint  :: type u32
+byte  :: type u8
+float :: type f32
 
-type scalar = float   // alias of an alias
-type index  = uint    // alias of an alias
+scalar :: type float   // alias of an alias
+index  :: type uint    // alias of an alias
 
-struct Point {
+Point :: struct {
     float x
     float y
 }
 
-type V2     = Point    // struct alias
-type V2ptr  = *Point   // pointer-to-struct alias
-type byteptr = *byte   // pointer alias of aliased primitive
+V2     :: type Point    // struct alias
+V2ptr  :: type *Point   // pointer-to-struct alias
+byteptr :: type *byte   // pointer alias of aliased primitive
 
-float add_scalar(scalar a, scalar b) -> a + b
+add_scalar :: float (scalar a, scalar b) -> a + b
 
-void print_point(V2ptr p) {
+print_point :: void (V2ptr p) {
     printf("(%.0f, %.0f)\n", p.x, p.y)
 }
 
-bool is_positive(int n) -> n > 0
+is_positive :: bool (int n) -> n > 0
 
-for V2 self {
-    float len() -> self.x * self.x + self.y * self.y
-    V2 scale(scalar factor) -> V2{x: self.x * factor, y: self.y * factor}
+V2 self :: for {
+    len :: float () -> self.x * self.x + self.y * self.y
+    scale :: V2 (scalar factor) -> V2{x: self.x * factor, y: self.y * factor}
 }
 
-int main() {
+main :: int () {
     V2 a = Point{x: 3.0, y: 4.0}
 
     Point b = V2{x: 1.0, y: 2.0}

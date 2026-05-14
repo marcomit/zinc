@@ -103,7 +103,7 @@ char *stoken(ZToken *token) {
     case TOK_IDENT:     sprintf(tok, "%s", token->str);                         break;
     case TOK_INT_LIT:   sprintf(tok, "%lld", (long long)token->integer);                   break;
     case TOK_FLOAT_LIT: sprintf(tok, "%g", token->floating);                    break;
-    #define DEF(id, str, _) case id: sprintf(tok, str);                         break;
+    #define DEF(id, str, _) case id: sprintf(tok, "%s", str);                   break;
 
     #define TOK_FLOWS
     #define TOK_TYPES
@@ -127,7 +127,7 @@ char *tokname(ZTokenType type) {
     char *tok = allocator.alloc(32);
 
     switch (type) {
-#define DEF(id, str, _) case id: sprintf(tok, str); break; 
+#define DEF(id, str, _) case id: sprintf(tok, "%s", str); break; 
 
     #define TOK_FLOWS
     #define TOK_TYPES

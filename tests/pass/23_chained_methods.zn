@@ -1,60 +1,60 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-struct Vec2 {
+Vec2 :: struct  {
     i32 x
     i32 y
 }
 
-struct Rect {
+Rect :: struct  {
     i32 x
     i32 y
     i32 w
     i32 h
 }
 
-for Vec2 {
-    Vec2 zero() -> Vec2 { x: 0, y: 0 }
-    Vec2 from(i32 x, i32 y) -> Vec2 { x: x, y: y }
+Vec2 :: for  {
+    zero :: Vec2 () -> Vec2 { x: 0, y: 0 }
+    from :: Vec2 (i32 x, i32 y) -> Vec2 { x: x, y: y }
 }
 
-for Vec2 self {
-    i32 len2()  -> self.x * self.x + self.y * self.y
-    Vec2 scale(i32 s) -> Vec2 { x: self.x * s, y: self.y * s }
-    Vec2 add(Vec2 other) -> Vec2 { x: self.x + other.x, y: self.y + other.y }
-    u0 print() -> c::printf("(%d,%d)\n", self.x, self.y)
-    i32 sum()   -> self.x + self.y
+Vec2 self :: for {
+    len2 :: i32 ()  -> self.x * self.x + self.y * self.y
+    scale :: Vec2 (i32 s) -> Vec2 { x: self.x * s, y: self.y * s }
+    add :: Vec2 (Vec2 other) -> Vec2 { x: self.x + other.x, y: self.y + other.y }
+    print :: u0 () -> c::printf("(%d,%d)\n", self.x, self.y)
+    sum :: i32 ()   -> self.x + self.y
 }
 
-for Rect {
-    Rect make(i32 x, i32 y, i32 w, i32 h) -> Rect { x: x, y: y, w: w, h: h }
+Rect :: for  {
+    make :: Rect (i32 x, i32 y, i32 w, i32 h) -> Rect { x: x, y: y, w: w, h: h }
 }
 
-for Rect self {
-    i32 area()    -> self.w * self.h
-    i32 perimeter() -> 2 * (self.w + self.h)
-    u1 contains(i32 px, i32 py) {
+Rect self :: for {
+    area :: i32 ()    -> self.w * self.h
+    perimeter :: i32 () -> 2 * (self.w + self.h)
+    contains :: u1 (i32 px, i32 py) {
         return px >= self.x and px < self.x + self.w and
                py >= self.y and py < self.y + self.h
     }
-    u0 print() -> c::printf("Rect(%d,%d,%d,%d)\n", self.x, self.y, self.w, self.h)
+    print :: u0 () -> c::printf("Rect(%d,%d,%d,%d)\n", self.x, self.y, self.w, self.h)
 }
 
-for i32 self {
-    i32 abs() {
+i32 self :: for {
+    abs :: i32 () {
         if self < 0 { return -self }
         return self
     }
-    i32 clamp(i32 lo, i32 hi) {
+    clamp :: i32 (i32 lo, i32 hi) {
         if self < lo { return lo }
         if self > hi { return hi }
         return self
     }
-    u0 print() -> c::printf("%d\n", self)
+    print :: u0 () -> c::printf("%d\n", self)
 }
 
-i32 main() {
+main :: i32 () {
     // Static method calls
     Vec2 origin = Vec2::zero()
     origin.print()

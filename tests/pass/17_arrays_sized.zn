@@ -1,8 +1,8 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-u0 sumAndPrint([]i32 s) {
+sumAndPrint :: u0 ([]i32 s) {
     i32 total = 0
     i := 0
     for i < s.len {
@@ -12,7 +12,7 @@ u0 sumAndPrint([]i32 s) {
     c::printf("%d\n", total)
 }
 
-u0 printSlice([]i32 s) {
+printSlice :: u0 ([]i32 s) {
     i := 0
     for i < s.len {
         c::printf("%d\n", s[i])
@@ -20,7 +20,7 @@ u0 printSlice([]i32 s) {
     }
 }
 
-i32 main() {
+main :: i32 () {
     // Array literal (infers sized-array type from elements)
     arr := [1, 2, 3, 4, 5]
 

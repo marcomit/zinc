@@ -1,29 +1,29 @@
-foreign c {
-    u0      printf(*char, ...)
-    i32     putchar(i32)
-    u64     strlen(*char)
-    i32     strcmp(*char, *char)
-    i32     strncmp(*char, *char, u64)
-    *u8     strcpy(*u8, *char)
-    *u8     strcat(*u8, *char)
-    *char   strstr(*char, *char)
-    *u8     malloc(u64)
+c :: foreign {
+    printf :: u0 (*char, ...)
+    putchar :: i32 (i32)
+    strlen :: u64 (*char)
+    strcmp :: i32 (*char, *char)
+    strncmp :: i32 (*char, *char, u64)
+    strcpy :: *u8(*u8, *char)
+    strcat :: *u8 (*u8, *char)
+    strstr :: *char (*char, *char)
+    malloc :: *u8 (u64)
 }
 
-pub struct String {
+pub String :: struct {
     *char data
     u64   len
 }
 
-for String {
-    pub String from(*char s) -> String { data: s, len: c::strlen(s) }
+String :: for {
+    pub from :: String (*char s) -> String { data: s, len: c::strlen(s) }
 
-    pub String withCapacity(u64 cap) {
+    pub withCapacity :: String (u64 cap) {
         *char buf = c::malloc(cap + 1)
         return String { data: buf, len: 0 }
     }
 
-    pub String concat(*char a, *char b) {
+    pub concat :: String (*char a, *char b) {
         u64 total = c::strlen(a) + c::strlen(b)
         buf := c::malloc(total + 1)
         c::strcpy(buf, a)
@@ -36,20 +36,20 @@ for String {
     }
 }
 
-for String self {
-    pub u64 len() -> self.len
+String self :: for {
+    pub len :: u64 () -> self.len
 
-    pub u1 isEmpty() -> self.len == 0
+    pub isEmpty :: u1 () -> self.len == 0
 
-    pub u0 print() -> c::printf(self.data)
+    pub print :: u0 () -> c::printf(self.data)
 
-    pub u0 println() -> c::printf("%s\n", self.data)
+    pub println :: u0 () -> c::printf("%s\n", self.data)
 
-    pub u1 eq(*char other) -> c::strcmp(self.data, other) == 0
+    pub eq :: u1 (*char other) -> c::strcmp(self.data, other) == 0
 
-    pub u1 neq(*char other) -> c::strcmp(self.data, other) != 0
+    pub neq :: u1 (*char other) -> c::strcmp(self.data, other) != 0
 
-    pub u1 startsWith(*char prefix) {
+    pub startsWith :: u1 (*char prefix) {
         u64 plen = c::strlen(prefix)
         if plen > self.len {
             return false
@@ -58,13 +58,13 @@ for String self {
         return c::strncmp(self.data, prefix, plen) == 0
     }
 
-    pub u1 contains(*char other) {
+    pub contains :: u1 (*char other) {
         *char found = c::strstr(self.data, other)
         if not found { return false }
         return true
     }
 
-    pub String append(*char other) {
+    pub append :: String (*char other) {
         u64 total = c::strlen(other) + self.len
 
         buf := c::malloc(total + 1)
@@ -78,7 +78,7 @@ for String self {
         }
     }
 
-    pub String clone() {
+    pub clone :: String () {
         buf := c::malloc(self.len + 1)
         c::strcpy(buf, self.data)
 

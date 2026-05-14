@@ -2,19 +2,17 @@
 // The inner block shadows the outer one; after it ends the outer is restored.
 // Uses a simple Tag struct so we can read which capability is active.
 
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-struct Tag {
+Tag :: struct {
     i32 val
 }
 
-i32 getVal()(Tag t) {
-    return t.val
-}
+getVal :: i32 ()[Tag t] -> t.val
 
-i32 main() {
+main :: i32 () {
     with ta := Tag { val: 10 } {
         c::printf("%d\n", getVal())    // 10 — outer active
 

@@ -1,6 +1,6 @@
-foreign u0 printf(*char)
+foreign printf :: u0(*char)
 
-i32 main(i32 argc) {
+main :: i32(i32 argc) {
 
     i32 x = 5
     if x == 5  { printf("eq\n")  }

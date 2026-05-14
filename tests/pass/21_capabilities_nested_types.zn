@@ -4,20 +4,20 @@
 
 use <core::mem>
 
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-struct Logger {
+Logger :: struct  {
     i32 level
 }
 
-i32 allocAndLog(u64 size)(Allocator alloc, Logger log) {
+allocAndLog :: i32 (u64 size)[Allocator alloc, Logger log] {
     *u8 buf = alloc.alloc(size)
     return log.level
 }
 
-i32 main() {
+main :: i32 () {
     with log := Logger { level: 42 } {
         with heap := Allocator::heap() {
             i32 r = allocAndLog(16)

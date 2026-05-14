@@ -1,22 +1,22 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
 
-struct Counter {
+Counter :: struct {
     i32 count
 }
 
-struct Rect {
+Rect :: struct {
     i32 w
     i32 h
 }
 
-for Counter self {
-    u0 print() -> c::printf("%d\n", self.count)
-    i32 get() -> self.count
-    i32 add(i32 n) -> self.count + n
-    i32 between(i32 lo, i32 hi) {
+Counter self :: for {
+    print :: u0() -> c::printf("%d\n", self.count)
+    get :: i32 () -> self.count
+    add :: i32 (i32 n) -> self.count + n
+    between :: i32 (i32 lo, i32 hi) {
         if self.count > lo and self.count < hi {
             return 1
         }
@@ -24,19 +24,18 @@ for Counter self {
     }
 }
 
-for Rect self {
-    i32 area() -> self.w * self.h
-    u0 describe() -> c::printf("%d %d\n", self.w, self.h)
-    i32 scaledArea(i32 factor) -> self.w * self.h * factor
+Rect self :: for {
+    area :: i32 () -> self.w * self.h
+    describe :: u0 () -> c::printf("%d %d\n", self.w, self.h)
+    scaledArea :: i32 (i32 factor) -> self.w * self.h * factor
 }
 
-for i32 self {
-    i32 sum(i32 other) -> other + self
-
-    u0 print() -> c::printf("%d\n", self)
+i32 self :: for {
+    sum :: i32 (i32 other) -> other + self
+    print :: u0 () -> c::printf("%d\n", self)
 }
 
-i32 main() {
+main :: i32 () {
     Counter c = Counter { count: 3 }
 
     c.print()

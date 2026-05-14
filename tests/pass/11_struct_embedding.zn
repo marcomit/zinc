@@ -1,37 +1,37 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-struct Position {
+Position :: struct {
     i32 x
     i32 y
     i32 z
 }
 
-struct Velocity {
+Velocity :: struct {
     i32 vx
     i32 vy
     i32 vz
 }
 
-struct Acceleration {
+Acceleration :: struct {
     i32 ax
     i32 ay
     i32 az
 }
 
-struct Metadata {
+Metadata :: struct {
     u32 flags
     *char name
 }
 
-struct Stats {
+Stats :: struct {
     i32 health
     i32 stamina
 }
 
 // Flatten-safe composition
-struct Player {
+Player :: struct  {
     ...Position
     ...Velocity
     ...Acceleration
@@ -39,8 +39,8 @@ struct Player {
     ...Stats
 }
 
-for Player self {
-    u0 update() {
+Player self :: for {
+    update :: u0 () {
         self.vx = self.vx + self.ax
         self.vy = self.vy + self.ay
         self.vz = self.vz + self.az
@@ -50,7 +50,7 @@ for Player self {
         self.z = self.z + self.vz
     }
 
-    u0 print() {
+    print :: u0 () {
         c::printf("%s\n", self.name)
         c::printf("Pos: %d %d %d\n", self.x, self.y, self.z)
         c::printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)
@@ -58,7 +58,7 @@ for Player self {
     }
 }
 
-i32 main() {
+main :: i32 () {
     p := Player {
         name: "Hero",
 

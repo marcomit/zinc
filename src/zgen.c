@@ -1396,6 +1396,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     case TOK_BITR:  return rightShift   (ctx->builder, left, right, l);
     case TOK_BITOR: return LLVMBuildOr  (ctx->builder, left, right, l);
     case TOK_BITXOR:return LLVMBuildXor (ctx->builder, left, right, l);
+    case TOK_REF:   return LLVMBuildAnd (ctx->builder, left, right, l);
     default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
     }
 }

@@ -1,8 +1,8 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 main() {
+main :: i32 () {
     i32 a = 10
     i32 b = 3
 
@@ -10,7 +10,7 @@ i32 main() {
     c::printf("%d\n", a - b)
     c::printf("%d\n", a * b)
     c::printf("%d\n", a / b)
-    c::printf("%d\n", a mod b)
+    c::printf("%d\n", a % b)
     c::printf("%d\n", -a)
     c::printf("%d\n", +a)
 
@@ -47,12 +47,12 @@ i32 main() {
     // Unsigned mod
     u32 ua = 17
     u32 ub = 5
-    c::printf("%u\n", ua mod ub)
+    c::printf("%u\n", ua % ub)
 
     // Negative mod (signed, C semantics: result has sign of dividend)
     i32 na = -7
     i32 nb = 3
-    c::printf("%d\n", na mod nb)
+    c::printf("%d\n", na % nb)
 
     // Exact boundary
     i32 z = 10

@@ -3,22 +3,22 @@
 
 use <core::mem>
 
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 allocate(u64 size)(Allocator alloc) {
-    *u8 buf = alloc.alloc(size)
+allocate :: i32 (u64 size)[Allocator alloc] {
+    _ := alloc.alloc(size)
     return 7
 }
 
-i32 run() {
-    with heap := Allocator::heap() {
+run :: i32 () {
+    with _ := Allocator::heap() {
         return allocate(32)
     }
 }
 
-i32 main() {
+main :: i32 () {
     c::printf("%d\n", run())
     return 0
 }

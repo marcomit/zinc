@@ -1,4 +1,6 @@
-foreign raylib {
+use <core::mem>
+
+raylib :: foreign {
     u0 InitWindow(i32, i32, *char)
     u0 CloseWindow()
     u0 SetTargetFPS(i32)
@@ -15,33 +17,32 @@ foreign raylib {
     u0 DrawText(*char, i32, i32, i32, Color)
 }
 
-foreign c {
-    *u8 malloc(u64)
-    *u8 realloc(*u8, u64)
+c :: foreign {
     u0 printf(*char, ...)
     i32 exit(i32)
 }
 
-struct Vector2 {
+Vector2 :: struct {
     f32 x
     f32 y
 }
 
-struct Rectangle {
-    f32 x
-    f32 y
+Rectangle :: struct {
+    // f32 x
+    // f32 y
+    ...Vector2
     f32 width
     f32 height
 }
 
-struct Color {
+Color :: struct {
     u8 r
     u8 g
     u8 b
     u8 a
 }
 
-struct Snake {
+Snake :: struct {
     **Rectangle tail
     u64 len
     u64 cap
@@ -50,9 +51,9 @@ struct Snake {
     i32 direction
 }
 
-for Rectangle {
-    *Rectangle new(f32 x, f32 y, f32 width, f32 height) {
-        *Rectangle self = c::malloc(sizeof Rectangle)
+Rectangle :: for {
+    new :: *Rectangle (f32 x, f32 y, f32 width, f32 height)(Allocator allocator) {
+        *Rectangle self = allocator.alloc(sizeof Rectangle)
         self.x = x
         self.y = y
         self.width = width
@@ -61,61 +62,69 @@ for Rectangle {
     }
 }
 
-for *Rectangle self {
-    u0 draw(Color color) -> raylib::DrawRectangleRec(*self, color)
+*Rectangle :: for self {
+    draw :: u0 (Color color) -> raylib::DrawRectangleRec(*self, color)
 }
 
-for Color {
-    Color new(u8 r, u8 g, u8 b, u8 a) {
+Color :: for {
+    new :: Color (u8 r, u8 g, u8 b, u8 a) {
         return Color {r: r, g: g, b: b, a: a}
     }
 }
 
-for Snake {
-    *Snake new(f32 block) {
-        *Snake self = c::malloc(sizeof Snake)
+Snake :: for {
+    new :: *Snake (f32 block)(Allocator allocator) {
+        *Snake self = allocator.alloc(sizeof Snake)
         self.cap = 16
         self.len = 0
-        self.tail = c::malloc(sizeof *Rectangle * self.cap)
+        self.tail = allocator.alloc(sizeof *Rectangle * self.cap)
         self.direction = 0
         self.block = block
         return self
     }
 }
 
-for *Snake self {
-    u0 add(*Rectangle item) {
+*Snake :: for self {
+    add :: u0 (*Rectangle item)(Allocator allocator) {
         if self.len >= self.cap {
-            self.cap = self.cap * 2
-            self.tail = c::realloc(self.tail, self.cap * sizeof *Rectangle)
+            self.cap: * 2
+            self.tail: allocator.realloc(self.cap * sizeof *Rectangle)
         }
         self.tail[self.len] = item
-        self.len = self.len + 1
+        self.len: + 1
     }
 
-    u0 draw(Color color) {
+    draw :: u0 (Color color) {
         i := 0
         for i < self.len {
             self.tail[i].draw(color)
-            i = i + 1
+            i: + 1
         }
     }
 
-    u0 move() {
+    move :: u0 () {
         i := self.len - 1
         for i > 0 as u64 {
             self.tail[i].x = self.tail[i - 1].x
             self.tail[i].y = self.tail[i - 1].y
-            i = i - 1
+            i: - 1
         }
         
-        if self.direction == 0 { self.tail[0].x = self.tail[0].x + self.block }
-        if self.direction == 1 { self.tail[0].y = self.tail[0].y - self.block }
-        if self.direction == 2 { self.tail[0].x = self.tail[0].x - self.block }
-        if self.direction == 3 { self.tail[0].y = self.tail[0].y + self.block }
+        // match self.direction {
+        //     0 -> self.tail[0].x: + self.block
+        //     1 -> self.tail[0].y: - self.block
+        //     2 -> self.tail[0].x: - self.block
+        //     3 -> self.tail[0].y: + self.block
+        //     _ -> none
+        // }
+
+        if self.direction == 0      { self.tail[0].x: + self.block }
+        else if self.direction == 1 { self.tail[0].y: - self.block }
+        else if self.direction == 2 { self.tail[0].x: - self.block }
+        else if self.direction == 3 { self.tail[0].y: + self.block }
     }
 
-    u1 checkAppleCollision(*Rectangle apple) {
+    checkAppleCollision :: u1 (*Rectangle apple) {
         headCenter := Vector2 { 
             x: self.tail[0].x + (self.block / 2.0), 
             y: self.tail[0].y + (self.block / 2.0) 
@@ -123,19 +132,18 @@ for *Snake self {
         return raylib::CheckCollisionCircleRec(headCenter, 2.0, *apple)
     }
 
-    u1 checkSelfCollision() {
-        i := 1
-        for i < self.len {
+    checkSelfCollision :: u1 () {
+        i := 0
+        for (i = i + 1) < self.len {
             if self.tail[0].x == self.tail[i].x and self.tail[0].y == self.tail[i].y {
                 return true
             }
-            i = i + 1
         }
         return false
     }
 }
 
-i32 main() {
+main :: i32 () {
     screenWidth     := 400
     screenHeight    := 400
     block           := 20.0
@@ -147,44 +155,47 @@ i32 main() {
     red     := Color::new(255, 0, 0, 255)
     green   := Color::new(0, 255, 0, 255)
 
-    snake   := Snake::new(block)
-    snake.add(Rectangle::new(7.0 * block, 10.0 * block, block, block))
-    snake.add(Rectangle::new(6.0 * block, 10.0 * block, block, block))
-    snake.add(Rectangle::new(5.0 * block, 10.0 * block, block, block))
+    with _ := Allocator::heap() {
 
-    apple   := Rectangle::new(15.0 * block, 15.0 * block, block, block)
+        snake   := Snake::new(block)
+        snake.add(Rectangle::new(7.0 * block, 10.0 * block, block, block))
+        snake.add(Rectangle::new(6.0 * block, 10.0 * block, block, block))
+        snake.add(Rectangle::new(5.0 * block, 10.0 * block, block, block))
 
-    for not raylib::WindowShouldClose() {
-        if raylib::IsKeyDown(262) and snake.direction != 2 { snake.direction = 0 }
-        if raylib::IsKeyDown(265) and snake.direction != 3 { snake.direction = 1 }
-        if raylib::IsKeyDown(263) and snake.direction != 0 { snake.direction = 2 }
-        if raylib::IsKeyDown(264) and snake.direction != 1 { snake.direction = 3 }
+        apple   := Rectangle::new(15.0 * block, 15.0 * block, block, block)
 
-        snake.move()
+        for not raylib::WindowShouldClose() {
+            if raylib::IsKeyDown(262) and snake.direction != 2 { snake.direction = 0 }
+            if raylib::IsKeyDown(265) and snake.direction != 3 { snake.direction = 1 }
+            if raylib::IsKeyDown(263) and snake.direction != 0 { snake.direction = 2 }
+            if raylib::IsKeyDown(264) and snake.direction != 1 { snake.direction = 3 }
 
-        if snake.checkSelfCollision() {
-            c::printf("Game Over! Snake bit itself.\n")
-            c::exit(0) 
+            snake.move()
+
+            if snake.checkSelfCollision() {
+                c::printf("Game Over! Snake bit itself.\n")
+                c::exit(0) 
+            }
+
+            if snake.checkAppleCollision(apple) {
+                lastIdx := snake.len - 1
+                snake.add(Rectangle::new(snake.tail[lastIdx].x, snake.tail[lastIdx].y, block, block))
+                apple.x = (apple.x + 100.0) mod screenWidth as f32
+                apple.y = (apple.y + 60.0) mod screenHeight as f32
+            }
+
+            if snake.tail[0].x >= screenWidth as f32 { snake.tail[0].x = 0.0 }
+            if snake.tail[0].x < 0.0 { snake.tail[0].x = screenWidth as f32 - block }
+            if snake.tail[0].y >= screenHeight as f32 { snake.tail[0].y = 0.0 }
+            if snake.tail[0].y < 0.0 { snake.tail[0].y = screenHeight as f32 - block }
+
+            raylib::BeginDrawing()
+            raylib::ClearBackground(black)
+            apple.draw(red)
+            snake.draw(green)
+            raylib::DrawFPS(10, 10)
+            raylib::EndDrawing()
         }
-
-        if snake.checkAppleCollision(apple) {
-            lastIdx := snake.len - 1
-            snake.add(Rectangle::new(snake.tail[lastIdx].x, snake.tail[lastIdx].y, block, block))
-            apple.x = (apple.x + 100.0) mod screenWidth as f32
-            apple.y = (apple.y + 60.0) mod screenHeight as f32
-        }
-
-        if snake.tail[0].x >= screenWidth as f32 { snake.tail[0].x = 0.0 }
-        if snake.tail[0].x < 0.0 { snake.tail[0].x = screenWidth as f32 - block }
-        if snake.tail[0].y >= screenHeight as f32 { snake.tail[0].y = 0.0 }
-        if snake.tail[0].y < 0.0 { snake.tail[0].y = screenHeight as f32 - block }
-
-        raylib::BeginDrawing()
-        raylib::ClearBackground(black)
-        apple.draw(red)
-        snake.draw(green)
-        raylib::DrawFPS(10, 10)
-        raylib::EndDrawing()
     }
 
     raylib::CloseWindow()

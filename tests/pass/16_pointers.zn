@@ -1,14 +1,14 @@
-foreign c {
-    *u8 malloc(u64)
-    u0 printf(*char, ...)
+c :: foreign {
+    malloc :: *u8 (u64)
+    printf :: u0 (*char, ...)
 }
 
-struct Node {
+Node :: struct  {
     i32 val
     i32 extra
 }
 
-i32 main() {
+main :: i32 () {
     // Read through a pointer
     i32 x = 42
     *i32 ptr = &x
