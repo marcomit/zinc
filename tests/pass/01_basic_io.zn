@@ -1,6 +1,6 @@
-foreign u0 printf(*char)
+foreign printf :: u0 (*char)
 
-u32 main() {
+main :: u32 () {
     printf("Hello, World!\n")
     printf("line1\n")
     printf("line2\n")

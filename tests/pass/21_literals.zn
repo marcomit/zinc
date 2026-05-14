@@ -1,8 +1,8 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 main() {
+main :: i32 () {
     // Integer literals
     i32 zero = 0
     i32 pos = 42

@@ -1,16 +1,16 @@
 use <core::mem>
 
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 fill(u64 size)(Allocator alloc) {
-    *u8 buf = alloc.alloc(size)
+fill :: i32 (u64 size)[Allocator alloc] {
+    _ := alloc.alloc(size)
     return 42
 }
 
-i32 main() {
-    with heap := Allocator::heap() {
+main :: i32 () {
+    with _ := Allocator::heap() {
         i32 result = fill(64)
         c::printf("%d\n", result)
     }

@@ -1,6 +1,6 @@
 use <core::mem>
 
-foreign raylib {
+raylib :: foreign {
     u0 InitWindow(i32, i32, *char)
     u0 CloseWindow()
     u0 SetTargetFPS(i32)
@@ -17,17 +17,17 @@ foreign raylib {
     u0 DrawText(*char, i32, i32, i32, Color)
 }
 
-foreign c {
+c :: foreign {
     u0 printf(*char, ...)
     i32 exit(i32)
 }
 
-struct Vector2 {
+Vector2 :: struct {
     f32 x
     f32 y
 }
 
-struct Rectangle {
+Rectangle :: struct {
     // f32 x
     // f32 y
     ...Vector2
@@ -35,14 +35,14 @@ struct Rectangle {
     f32 height
 }
 
-struct Color {
+Color :: struct {
     u8 r
     u8 g
     u8 b
     u8 a
 }
 
-struct Snake {
+Snake :: struct {
     **Rectangle tail
     u64 len
     u64 cap
@@ -51,8 +51,8 @@ struct Snake {
     i32 direction
 }
 
-for Rectangle {
-    *Rectangle new(f32 x, f32 y, f32 width, f32 height)(Allocator allocator) {
+Rectangle :: for {
+    new :: *Rectangle (f32 x, f32 y, f32 width, f32 height)(Allocator allocator) {
         *Rectangle self = allocator.alloc(sizeof Rectangle)
         self.x = x
         self.y = y
@@ -62,18 +62,18 @@ for Rectangle {
     }
 }
 
-for *Rectangle self {
-    u0 draw(Color color) -> raylib::DrawRectangleRec(*self, color)
+*Rectangle :: for self {
+    draw :: u0 (Color color) -> raylib::DrawRectangleRec(*self, color)
 }
 
-for Color {
-    Color new(u8 r, u8 g, u8 b, u8 a) {
+Color :: for {
+    new :: Color (u8 r, u8 g, u8 b, u8 a) {
         return Color {r: r, g: g, b: b, a: a}
     }
 }
 
-for Snake {
-    *Snake new(f32 block)(Allocator allocator) {
+Snake :: for {
+    new :: *Snake (f32 block)(Allocator allocator) {
         *Snake self = allocator.alloc(sizeof Snake)
         self.cap = 16
         self.len = 0
@@ -84,30 +84,30 @@ for Snake {
     }
 }
 
-for *Snake self {
-    u0 add(*Rectangle item)(Allocator allocator) {
+*Snake :: for self {
+    add :: u0 (*Rectangle item)(Allocator allocator) {
         if self.len >= self.cap {
-            // self.cap: * 2
-            // self.tail: allocator.realloc(self.cap * sizeof *Rectangle)
+            self.cap: * 2
+            self.tail: allocator.realloc(self.cap * sizeof *Rectangle)
         }
         self.tail[self.len] = item
-        // self.len: + 1
+        self.len: + 1
     }
 
-    u0 draw(Color color) {
+    draw :: u0 (Color color) {
         i := 0
         for i < self.len {
             self.tail[i].draw(color)
-            // i: + 1
+            i: + 1
         }
     }
 
-    u0 move() {
+    move :: u0 () {
         i := self.len - 1
         for i > 0 as u64 {
             self.tail[i].x = self.tail[i - 1].x
             self.tail[i].y = self.tail[i - 1].y
-            // i: - 1
+            i: - 1
         }
         
         // match self.direction {
@@ -118,13 +118,13 @@ for *Snake self {
         //     _ -> none
         // }
 
-        // if self.direction == 0      { self.tail[0].x: + self.block }
-        // else if self.direction == 1 { self.tail[0].y: - self.block }
-        // else if self.direction == 2 { self.tail[0].x: - self.block }
-        // else if self.direction == 3 { self.tail[0].y: + self.block }
+        if self.direction == 0      { self.tail[0].x: + self.block }
+        else if self.direction == 1 { self.tail[0].y: - self.block }
+        else if self.direction == 2 { self.tail[0].x: - self.block }
+        else if self.direction == 3 { self.tail[0].y: + self.block }
     }
 
-    u1 checkAppleCollision(*Rectangle apple) {
+    checkAppleCollision :: u1 (*Rectangle apple) {
         headCenter := Vector2 { 
             x: self.tail[0].x + (self.block / 2.0), 
             y: self.tail[0].y + (self.block / 2.0) 
@@ -132,7 +132,7 @@ for *Snake self {
         return raylib::CheckCollisionCircleRec(headCenter, 2.0, *apple)
     }
 
-    u1 checkSelfCollision() {
+    checkSelfCollision :: u1 () {
         i := 0
         for (i = i + 1) < self.len {
             if self.tail[0].x == self.tail[i].x and self.tail[0].y == self.tail[i].y {
@@ -143,7 +143,7 @@ for *Snake self {
     }
 }
 
-i32 main() {
+main :: i32 () {
     screenWidth     := 400
     screenHeight    := 400
     block           := 20.0

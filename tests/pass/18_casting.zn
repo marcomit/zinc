@@ -1,8 +1,8 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 main() {
+main :: i32 () {
     // i32 -> i64 widening
     i32 small = 42
     i64 big = small as i64

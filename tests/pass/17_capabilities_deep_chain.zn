@@ -4,29 +4,21 @@
 
 use <core::mem>
 
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 leaf()(Allocator alloc) {
-    *u8 buf = alloc.alloc(8)
+leaf :: i32 ()[Allocator alloc] {
+    _ := alloc.alloc(8)
     return 99
 }
 
-i32 level3()(Allocator alloc) {
-    return leaf()
-}
+level3 :: i32 ()[Allocator _] -> leaf()
+level2 :: i32 ()[Allocator _] -> level3()
+level1 :: i32 ()[Allocator _] -> level2()
 
-i32 level2()(Allocator alloc) {
-    return level3()
-}
-
-i32 level1()(Allocator alloc) {
-    return level2()
-}
-
-i32 main() {
-    with heap := Allocator::heap() {
+main :: i32 () {
+    with _ := Allocator::heap() {
         i32 r = level1()
         c::printf("%d\n", r)
     }

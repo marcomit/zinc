@@ -1,31 +1,21 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-struct Vec {
+Vec :: struct {
     i32 x
     i32 y
 }
 
-for Vec {
-    Vec new() {
-        return Vec{ x: 10, y: 20 }
-    }
+Vec :: for {
+    new :: Vec () -> Vec{ x: 10, y: 20 }
 }
 
-(i32, i32) flatTuple() {
-    return (1, 2)
-}
+flatTuple       :: (i32, i32)() -> (1, 2)
+labeledTuple    :: (*char, i32)() -> ("hello", 42)
+nested          :: ((*char, Vec), i32)() -> (("ciao", Vec::new()), 99)
 
-(*char, i32) labeledTuple() {
-    return ("hello", 42)
-}
-
-((*char, Vec), i32) nested() {
-    return (("ciao", Vec::new()), 99)
-}
-
-i32 main() {
+main :: i32 () {
     (a, b) := flatTuple()
     c::printf("%d %d\n", a, b)
 

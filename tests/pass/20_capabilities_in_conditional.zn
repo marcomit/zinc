@@ -3,16 +3,16 @@
 
 use <core::mem>
 
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 allocate(u64 size)(Allocator alloc) {
+allocate :: i32 (u64 size)[Allocator alloc] {
     *u8 buf = alloc.alloc(size)
     return 1
 }
 
-i32 main() {
+main :: i32 () {
     i32 flag = 1
     with heap := Allocator::heap() {
         i32 r = 0

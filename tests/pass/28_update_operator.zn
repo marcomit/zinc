@@ -1,0 +1,48 @@
+use <core::mem>
+void :: type u0
+bool :: type u1
+
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+LinkedList :: struct {
+    i32 val
+    *LinkedList next
+}
+LinkedList :: for {
+    new :: *LinkedList(*LinkedList next, i32 val)[Allocator allocator] {
+        *LinkedList self = allocator.alloc(sizeof LinkedList)
+        self.next = next
+        self.val = val
+        return self
+    }
+}
+*LinkedList self :: for {
+    print :: u0 () {
+        if not self { return }
+        c::printf("%d\n", self.val)
+        self.next.print()
+    }
+}
+
+main :: i32 () {
+    with _ := Allocator::heap() {
+        i := 0
+        root := LinkedList::new(none, 0)
+
+        for (i) < 10 {
+            root : LinkedList::new(i)
+            i: + 1
+        }
+
+        for root {
+            c::printf("%d\n", root.val)
+            root : .next
+        }
+
+        flag := false
+        flag : not
+    }
+    return 0
+}

@@ -1,12 +1,12 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 outer_fn() -> 100
+outer_fn :: i32 () -> 100
 
-i32 inner_fn(i32 x) -> x * 2
+inner_fn :: i32 (i32 x) -> x * 2
 
-i32 main() {
+main :: i32 () {
     // Variable shadowing in nested scopes via for loops
     i32 x = 1
     c::printf("%d\n", x)

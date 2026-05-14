@@ -1,12 +1,10 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-(*char, i32) tuple() {
-    return ("john", 40)
-}
+tuple :: (*char, i32)() -> ("john", 40)
 
-i32 main() {
+main :: i32 () {
 
     val := tuple()
 

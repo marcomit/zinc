@@ -28,6 +28,19 @@
         return NULL;                                                            \
     }
 
+#define tryParse(p, func) ({                                                          \
+    ZParserSnapshot *saved = store(p);                                          \
+    pushErrorCheckpoint(p);                                                     \
+    let res = (func);                                                           \
+    if (!res) {                                                                 \
+        undo(p, saved);                                                         \
+        rollbackErrors(p);                                                      \
+    } else {                                                                    \
+        commitErrors(p);                                                        \
+    }                                                                           \
+    res;                                                                        \
+})
+
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType                            (ZParser *);
@@ -59,7 +72,6 @@ static ZNode *parseTypedef                  (ZParser *, bool);
 static ZNode *parseFuncDecl                 (ZParser *, ZAnnotation **, bool);
 static ZNode *parseEnumDecl                 (ZParser *, ZAnnotation **, bool);
 static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
-static ZNode *parseForeignDecl              (ZParser *, bool);
 
 static ZType **parseGenericsDecl            (ZParser *, bool);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
@@ -229,40 +241,9 @@ static void undo(ZParser *parser, ZParserSnapshot *snap) {
     parser->tokenIndex      = snap->tokenIndex;
 }
 
-/* Since this function tries to parse macros for now i save the current source of tokens
- * such that after the execution of the function i can undo the modification. */
-static ZNode *wrapNode(ZParser *parser, ZParseFunc parse) {
-    ZParserSnapshot *saved = store(parser);
-
-    pushErrorCheckpoint(parser);
-    ZNode *res = parse(parser);
-
-    if (!res) {
-        undo(parser, saved);
-        rollbackErrors(parser);
-    } else {
-        commitErrors(parser);
-    }
-    return res;
-}
-
-static ZType *wrapType(ZParser *parser, ZType *(*parse)(ZParser *)) {
-    ZParserSnapshot *saved = store(parser);
-    pushErrorCheckpoint(parser);
-    ZType *res = parse(parser);
-
-    if (!res) {
-        undo(parser, saved);
-        rollbackErrors(parser);
-    } else {
-        commitErrors(parser);
-    }
-    return res;
-}
-
 static ZNode *parseOrGrammar(ZParser *parser, ZParseFunc *pf, usize len) {
     for (usize i = 0; i < len; i++) {
-        ZNode *parsed = wrapNode(parser, pf[i]);
+        ZNode *parsed = tryParse(parser, pf[i](parser));
         if (parsed) return parsed;
     }
     return NULL;
@@ -276,7 +257,7 @@ static ZNode *_parseGenericBinary(ZParser *parser,
                                     ZNode *expr) {
     ZNode *node = NULL;
 
-    ZNode *left = expr ? expr : wrapNode(parser, parseLeft);
+    ZNode *left = expr ? expr : tryParse(parser, parseLeft(parser));
 
     guard(left);
 
@@ -286,7 +267,7 @@ static ZNode *_parseGenericBinary(ZParser *parser,
         node = makenode(NODE_BINARY);
         ZToken *op = consume(parser);
 
-        ZNode *right = wrapNode(parser, parseRight);
+        ZNode *right = tryParse(parser, parseRight(parser));
 
         if (!right) {
             error(
@@ -362,7 +343,7 @@ static ZNode *parsePrimary(ZParser *parser) {
     } else if (match(parser, TOK_LPAREN)) {
         bool prevNoStructLit = parser->noStructLit;
         parser->noStructLit  = false;
-        ZNode *node          = wrapNode(parser, parseExpr);
+        ZNode *node          = tryParse(parser, parseExpr(parser));
         parser->noStructLit  = prevNoStructLit;
         expect(parser, TOK_RPAREN);
         return node;
@@ -429,9 +410,9 @@ static ZNode *parsePrimary(ZParser *parser) {
 
 static ZNode *parseSlice(ZParser *parser, ZNode *previous) {
     expect(parser, TOK_LSBRACKET);
-    ZNode *start    = wrapNode(parser, parseExpr);
+    ZNode *start    = tryParse(parser, parseExpr(parser));
     expect(parser, TOK_COLON);
-    ZNode *end      = wrapNode(parser, parseExpr);
+    ZNode *end      = tryParse(parser, parseExpr(parser));
     expect(parser, TOK_RSBRACKET);
 
     ZNode *node     = makenode(NODE_SLICE);
@@ -443,7 +424,7 @@ static ZNode *parseSlice(ZParser *parser, ZNode *previous) {
 
 static ZNode *parseArrSubscript(ZParser *parser, ZNode *previous) {
     expect(parser, TOK_LSBRACKET);
-    ZNode *index = wrapNode(parser, parseExpr);
+    ZNode *index = tryParse(parser, parseExpr(parser));
     expect(parser, TOK_RSBRACKET);
 
     ZNode *node = makenode(NODE_SUBSCRIPT);
@@ -455,13 +436,13 @@ static ZNode *parseArrSubscript(ZParser *parser, ZNode *previous) {
 static ZNode **parseArgs(ZParser *parser) {
     ZNode **args = NULL;
     
-    ZNode *expr = wrapNode(parser, parseExpr);
+    ZNode *expr = tryParse(parser, parseExpr(parser));
     if (!expr) return args;
     
     vecpush(args, expr);
     
     while (match(parser, TOK_COMMA)) {
-        expr = wrapNode(parser, parseExpr);
+        expr = tryParse(parser, parseExpr(parser));
         if (!expr) break;
         vecpush(args, expr);
     }
@@ -571,7 +552,7 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
 }
 
 static ZNode *_parsePostfixExpr(ZParser *parser, ZNode *base) {
-    ZNode *left = base ? base : wrapNode(parser, parsePrimary);
+    ZNode *left = base ? base : tryParse(parser, parsePrimary(parser));
 
     guard(left);
 
@@ -594,7 +575,7 @@ static ZNode *_parseUnary(ZParser *parser, ZNode *expr) {
     ZToken *start = peek(parser);
     guard(start);
 
-    ZNode *node = wrapNode(parser, parsePostfixExpr);
+    ZNode *node = tryParse(parser, parsePostfixExpr(parser));
 
     if (node) return node;
 
@@ -611,7 +592,7 @@ static ZNode *_parseUnary(ZParser *parser, ZNode *expr) {
 
     node = makenode(NODE_UNARY);
     node->unary.operat = consume(parser);
-    node->unary.operand = expr ? expr : wrapNode(parser, parseUnary);
+    node->unary.operand = expr ? expr : tryParse(parser, parseUnary(parser));
 
     guard(node->unary.operand);
 
@@ -697,7 +678,7 @@ static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
     };
     if (isValidToken(parser, binOps, arrlen(binOps))) {
         ZToken *op  = consume(parser);
-        ZNode  *rhs = wrapNode(parser, parseExpr);
+        ZNode  *rhs = tryParse(parser, parseExpr(parser));
         if (!rhs) {
             error(parser->state, op, "expected expression after '%s'", stoken(op));
             return NULL;
@@ -726,7 +707,7 @@ static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
     }
 
     /* Function call with lhs prepended: x: f(args)  ->  f(x, args) */
-    ZNode *callee = wrapNode(parser, parsePrimary);
+    ZNode *callee = tryParse(parser, parsePrimary(parser));
     if (callee) {
         if (!check(parser, TOK_LPAREN)) {
             error(parser->state, peek(parser),
@@ -789,7 +770,7 @@ static ZNode **parseGenericList(ZParser *parser,
     
     do {
         if (check(parser, right)) break;
-        ZNode *cur = wrapNode(parser, func);
+        ZNode *cur = tryParse(parser, func(parser));
         if (!cur) {
             error(parser->state, peek(parser), "Expected an expression");
             return list;
@@ -819,10 +800,10 @@ static ZType **parseTypeList(ZParser *parser, ZTokenType left, ZTokenType right)
     expect(parser, left);
     ZType **args = NULL;
     do {
-        ZType *curr = wrapType(parser, parseType);
+        ZType *curr = tryParse(parser, parseType(parser));
         if (!curr) {
             error(parser->state, peek(parser), "Expected a type in type list");
-            return args;
+            return NULL;
         }
         vecpush(args, curr);
         if (!match(parser, TOK_COMMA)) break;
@@ -870,6 +851,8 @@ static ZType *parseTypeTuple(ZParser *parser) {
     if (!types) {
         error(parser->state, peek(parser), "Expected types in tuple type");
         return NULL;
+    } else if (veclen(types) == 1) {
+        return types[0];
     } else if (veclen(types) < 2) {
         error(parser->state, peek(parser),
                 "Tuple type requires at least 2 elements, got %zu",
@@ -883,15 +866,14 @@ static ZType *parseTypeTuple(ZParser *parser) {
 }
 
 static ZType *parseTypeFunc(ZParser *parser, ZType *previous) {
-    ZType **args = parseTypeList(parser, TOK_LPAREN, TOK_RPAREN);
+    ZType **args = tryParse(parser, parseTypeList(parser, TOK_LPAREN, TOK_RPAREN));
+    if (!args) return previous;
     ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
         generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
         if (!generics) {
-            error(parser->state, peek(parser),
-                    "Expected generic type parameters in '[...]'");
-            return NULL;
+            return previous;
         }
     }
 
@@ -925,7 +907,7 @@ ZType *parseType(ZParser *parser) {
     u8 stars        = 0;
     while (match(parser, TOK_STAR)) stars++;
 
-    ZType *base     = wrapType(parser, parseAtom);
+    ZType *base     = tryParse(parser, parseAtom(parser));
     ensure(base, "Failed to parse atom type");
 
     base = applyStarsToType(base, stars);
@@ -961,7 +943,7 @@ static ZNode *parseMatch(ZParser *parser) {
     error(parser->state, peek(parser),
             "'match' statement are not implemented yet!");
 
-    ZNode *expr = wrapNode(parser, parseExpr);
+    ZNode *expr = tryParse(parser, parseExpr(parser));
 
     ensure(expr, "Expected an expression");
 
@@ -1062,7 +1044,7 @@ static ZNode *parseBlock(ZParser *parser) {
     ZNode *block = makenode(NODE_BLOCK);
     ZNode *stmt = NULL;
     do {
-        stmt = wrapNode(parser, parseStmt);
+        stmt = tryParse(parser, parseStmt(parser));
         if (stmt) vecpush(block->block, stmt);
     } while (stmt);
 
@@ -1083,7 +1065,7 @@ static ZNode *parseBlock(ZParser *parser) {
 }
 
 static ZNode *parseField(ZParser *parser) {
-    ZType *type = wrapType(parser, parseType);
+    ZType *type = tryParse(parser, parseType(parser));
 
     if (!type) {
         return NULL;
@@ -1171,14 +1153,9 @@ static ZNode *parseEnumField(ZParser *parser) {
 static ZNode *parseEnumDecl(ZParser *parser,
     ZAnnotation **annotations, bool public) {
     ZToken *start = peek(parser);
+    expect(parser, TOK_IDENT);
+    expect(parser, TOK_DOUBLE_COLON);
     expect(parser, TOK_ENUM);
-
-
-    if (!check(parser, TOK_IDENT)) {
-        error(parser->state, peek(parser), "Expected an identifier");
-        return NULL;
-    }
-    ZToken *name = consume(parser);
 
     ZType **generics = NULL;
     if (check(parser, TOK_LSBRACKET)) {
@@ -1195,14 +1172,14 @@ static ZNode *parseEnumDecl(ZParser *parser,
     }
 
     ZNode *node                 = makenode(NODE_ENUM);
-    node->enumDef.name          = name;
+    node->enumDef.name          = start;
     node->enumDef.pub           = public;
     node->enumDef.fields        = fields;
     node->enumDef.annotations   = annotations;
     node->tok                   = node->enumDef.name;
 
     ZType *type                 = maketype(Z_TYPE_ENUM);
-    type->enm.name              = name;
+    type->enm.name              = start;
     type->enm.generics          = generics;
     type->enm.fields            = NULL;
 
@@ -1218,10 +1195,10 @@ static ZNode *parseEnumDecl(ZParser *parser,
 static ZNode *parseStructDecl(ZParser *parser,
     ZAnnotation **annotations, bool public) {
     ZToken *start = peek(parser);
+    expect(parser, TOK_IDENT);
+    expect(parser, TOK_DOUBLE_COLON);
     expect(parser, TOK_STRUCT);
-    ensure(check(parser, TOK_IDENT), "Expected an identifier");
 
-    ZToken *name = consume(parser);
     ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
@@ -1244,7 +1221,7 @@ static ZNode *parseStructDecl(ZParser *parser,
     ZNode *node                 = makenode(NODE_STRUCT);
     node->structDef.fields      = fields;
     node->structDef.generics    = generics;
-    node->structDef.ident       = name;
+    node->structDef.ident       = start;
     node->structDef.pub         = public;
     node->structDef.annotations = annotations;
 
@@ -1395,13 +1372,13 @@ static ZNode *parseWhile(ZParser *parser) {
     expect(parser, TOK_FOR);
 
     parser->noStructLit = true;
-    ZNode *cond = wrapNode(parser, parseExpr);
+    ZNode *cond = tryParse(parser, parseExpr(parser));
     parser->noStructLit = false;
     if (!cond) {
         error(parser->state, peek(parser),
                 "Expected condition expression after 'while'");
     }
-    ZNode *body = wrapNode(parser, parseBlockOrInline);
+    ZNode *body = tryParse(parser, parseBlockOrInline(parser));
 
     ZNode *node = makenode(NODE_WHILE);
     node->whileStmt.branch  = body;
@@ -1567,19 +1544,11 @@ static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
 static ZNode *parseFuncDecl(ZParser *parser,
     ZAnnotation **annotations, bool public) {
     ZToken *start = peek(parser);
-    ZType *ret = wrapType(parser, parseType);
 
-    if (!ret) {
-        error(parser->state, start, "Expected return type");
-        return NULL;
-    } else if (!check(parser, TOK_IDENT)) {
-        error(parser->state, start, "Expected an identifier");
-        return NULL;
-    }
+    if (!check(parser, TOK_IDENT)) return NULL;
+    ZToken *name = consume(parser);
 
-    ZToken *name    = consume(parser);
     ZType **generics = NULL;
-
     if (check(parser, TOK_LSBRACKET)) {
         generics = parseGenericsDecl(parser, true);
         if (!generics) {
@@ -1588,16 +1557,28 @@ static ZNode *parseFuncDecl(ZParser *parser,
         }
     }
 
+    expect(parser, TOK_DOUBLE_COLON);
+
+    bool savedNoFuncType = parser->noFuncType;
+    parser->noFuncType = true;
+    ZType *ret = tryParse(parser, parseType(parser));
+    parser->noFuncType = savedNoFuncType;
+
+    if (!ret) {
+        error(parser->state, start, "Expected return type after '::'");
+        return NULL;
+    }
+
     ZNode **args = parseGenericList(parser,
         TOK_LPAREN,     TOK_RPAREN,
         parseField,     true
     );
 
     ZNode **capabilities = NULL;
-    if (check(parser, TOK_LPAREN)) {
+    if (check(parser, TOK_LSBRACKET)) {
         capabilities = parseGenericList(
             parser,
-            TOK_LPAREN,     TOK_RPAREN,
+            TOK_LSBRACKET, TOK_RSBRACKET,
             parseField,     true
         );
     }
@@ -1605,7 +1586,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
     ZNode *body = NULL;
 
     if (match(parser, TOK_ARROW)) {
-        ZNode *expr = wrapNode(parser, parseExpr);
+        ZNode *expr = tryParse(parser, parseExpr(parser));
         if (expr) {
             ZNode *ret = makenode(NODE_RETURN);
             ret->returnStmt.expr = expr;
@@ -1616,7 +1597,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
             return NULL;
         }
     } else if (check(parser, TOK_LBRACKET)) {
-        body = wrapNode(parser, parseBlock);
+        body = tryParse(parser, parseBlock(parser));
     } else {
         error(parser->state, peek(parser), "Unexpected token");
     }
@@ -1724,7 +1705,7 @@ static ZNode *parseVarInferred(ZParser *parser) {
     ZVarDestructPattern *pattern = parseDestructVar(parser);
 
     expect(parser, TOK_ASSIGN);
-    ZNode *expr = wrapNode(parser, parseExpr);
+    ZNode *expr = tryParse(parser, parseExpr(parser));
 
     if (!expr) {
         error(parser->state, peek(parser), "Expected expression after ':='");
@@ -1756,7 +1737,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
 
     expect(parser, TOK_EQ);
     
-    expr = wrapNode(parser, parseExpr);
+    expr = tryParse(parser, parseExpr(parser));
     if (!expr) {
         error(parser->state, peek(parser), "Expected expression after '='");
         return NULL;
@@ -1792,7 +1773,7 @@ static ZNode *parseTupleLit(ZParser *parser) {
     expect(parser, TOK_LPAREN);
     ZNode *expr = NULL;
     ZNode **fields = NULL;
-    while (( expr = wrapNode(parser, parseExpr) )) {
+    while (( expr = tryParse(parser, parseExpr(parser)) )) {
         vecpush(fields, expr);
         if (check(parser, TOK_RPAREN)) break;
         if (!match(parser, TOK_COMMA)) break;
@@ -1816,7 +1797,7 @@ static ZNode *parseArrayLit(ZParser *parser) {
     ZNode **values = NULL;
     ZNode *expr = NULL;
 
-    while (( expr = wrapNode(parser, parseExpr) )) {
+    while (( expr = tryParse(parser, parseExpr(parser)) )) {
         vecpush(values, expr);
         if (check(parser, TOK_RSBRACKET)) break;
         if (!match(parser, TOK_COMMA)) break;
@@ -1867,7 +1848,7 @@ static ZNode *parseStructLit(ZParser *parser) {
             return NULL;
         }
 
-        ZNode *expr = wrapNode(parser, parseExpr);
+        ZNode *expr = tryParse(parser, parseExpr(parser));
 
         if (!expr) return NULL;
 
@@ -1951,13 +1932,12 @@ static ZNode *parseImport(ZParser *parser) {
 }
 
 static ZNode *parseTypedef(ZParser *parser, bool public) {
+    ZToken *alias = peek(parser);
+    expect(parser, TOK_IDENT);
+    expect(parser, TOK_DOUBLE_COLON);
     expect(parser, TOK_TYPEDEF);
-    ensure(check(parser, TOK_IDENT), "Expected an identifier");
 
-    ZToken *alias = consume(parser);
-    expect(parser, TOK_EQ);
-
-    ZType *type = wrapType(parser, parseType);
+    ZType *type = tryParse(parser, parseType(parser));
     
     ensure(type, "Invalid type");
 
@@ -1970,11 +1950,13 @@ static ZNode *parseTypedef(ZParser *parser, bool public) {
 }
 
 static ZType *parseFuncType(ZParser *parser) {
-    ZType *ret      = wrapType(parser, parseType);
-    guard(ret);
-    ensure(check(parser, TOK_IDENT), "Expected an identifier");
-    ZToken *name    = consume(parser);
+    ZToken *start   = peek(parser);
 
+    bool prev = parser->noFuncType;
+    parser->noFuncType = true;
+    ZType *ret      = tryParse(parser, parseType(parser));
+    parser->noFuncType = prev;
+    guard(ret);
     expect(parser, TOK_LPAREN);
 
     ZType **args    = NULL;
@@ -1986,11 +1968,14 @@ static ZType *parseFuncType(ZParser *parser) {
             variadic = true;
             // break;
         } else {
-            arg = wrapType(parser, parseType);
+            arg = tryParse(parser, parseType(parser));
             if (arg) vecpush(args, arg);
         }
     } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
 
+    if (!check(parser, TOK_RPAREN)) {
+        printf("Error )\n");
+    }
     expect(parser, TOK_RPAREN);
 
     ZType *func         = maketype(Z_TYPE_FUNCTION);
@@ -1998,21 +1983,17 @@ static ZType *parseFuncType(ZParser *parser) {
     func->func.args     = args;
     func->func.generics = NULL;
     func->func.variadic = variadic;
-    func->tok           = name;
-
+    func->tok           = start;
     return func;
 }
 
 static ZNode *parseForeignBlock(ZParser *parser) {
-    // ZToken *start = peek(parser);
-    // ZToken *lib = start;
-    // expect(parser, TOK_IDENT);
-    // expect(parser, TOK_DOUBLE_COLON);
-    ZToken *start   = peek(parser);
-    expect(parser, TOK_FOREIGN);
-    ZToken *lib     = peek(parser);
-    expect(parser, TOK_IDENT);
+    ZToken *start = peek(parser);
+    ZToken *lib = start;
 
+    expect(parser, TOK_IDENT);
+    expect(parser, TOK_DOUBLE_COLON);
+    expect(parser, TOK_FOREIGN);
     expect(parser, TOK_LBRACKET);
 
     ZType *func         = NULL;
@@ -2021,20 +2002,27 @@ static ZNode *parseForeignBlock(ZParser *parser) {
     namespace->tok      = lib;
     namespace->block    = NULL;
     ZNode *node         = NULL;
+
+
+    ZToken *name = NULL;
     while (!check(parser, TOK_RBRACKET)) {
-        start = peek(parser);
         public = match(parser, TOK_PUB);
+        name = peek(parser);
+
+        expect(parser, TOK_IDENT);
+        expect(parser, TOK_DOUBLE_COLON);
+
         func = parseFuncType(parser);
         if (!func) {
-            error(parser->state, start, "Error parsing function");
+            error(parser->state, peek(parser), "Error parsing function");
             return NULL;
         }
         node                    = makenode(NODE_FOREIGN);
         node->foreignFunc.ret   = func->func.ret;
-        node->foreignFunc.tok   = func->tok;
+        node->foreignFunc.tok   = name;
         node->foreignFunc.args  = func->func.args;
         node->foreignFunc.pub   = public;
-        node->tok               = start;
+        node->tok               = name;
         node->resolved          = func;
 
         vecpush(namespace->block, node);
@@ -2045,37 +2033,23 @@ static ZNode *parseForeignBlock(ZParser *parser) {
 }
 
 static ZNode *parseForeignInlineDecl(ZParser *parser, bool public) {
-    ZToken *start = peek(parser);
     expect(parser, TOK_FOREIGN);
+    ZToken *start = peek(parser);
+    expect(parser, TOK_IDENT);
+    expect(parser, TOK_DOUBLE_COLON);
 
     ZType *func = parseFuncType(parser);
-
     guard(func);
 
     ZNode *node = makenode(NODE_FOREIGN);
     node->foreignFunc.ret   = func->func.ret;
-    node->foreignFunc.tok   = func->tok;
+    node->foreignFunc.tok   = start;
     node->foreignFunc.args  = func->func.args;
     node->foreignFunc.pub   = public;
     node->tok               = start;
     node->resolved          = func;
     return node;
 }
-
-static ZNode *parseForeignDecl(ZParser *parser, bool public) {
-    ensure(check(parser, TOK_FOREIGN), "Expected 'foreign' keyword");
-    if (checkAhead(parser, TOK_IDENT, 1) &&
-        checkAhead(parser, TOK_LBRACKET, 2)) {
-        if (public) {
-            error(parser->state, peek(parser),
-                "Foreign block doesn't support 'pub' keyword");
-        }
-        return parseForeignBlock(parser);
-    } else {
-        return parseForeignInlineDecl(parser, public);
-    }
-}
-
 
 /* Parse the pattern of the macro.
  * The pattern can be formed by a combination of these elements:
@@ -2305,18 +2279,20 @@ static ZNode *parseModule(ZParser *parser) {
 }
 
 static ZNode *parseFuncBlock(ZParser *parser) {
-    expect(parser, TOK_FOR);
     ZType *type = parseType(parser);
+    ZToken *rec = NULL;
 
     guard(type);
 
-    ZToken *rec = NULL;
     if (check(parser, TOK_IDENT)) rec = consume(parser);
+    expect(parser, TOK_DOUBLE_COLON);
+    expect(parser, TOK_FOR);
 
     /* Declare facets this block must implement. */
+    guard(type);
     ZType **facets = NULL;
     if (match(parser, TOK_WITH)) {
-        ZType *type = wrapType(parser, parseGenericDecl);
+        ZType *type = tryParse(parser, parseGenericDecl(parser));
         if (!type) {
             error(parser->state, peek(parser),
                     "Unespected token");
@@ -2326,7 +2302,7 @@ static ZNode *parseFuncBlock(ZParser *parser) {
         vecpush(facets, type);
 
         while (match(parser, TOK_PLUS)) {
-            type = wrapType(parser, parseGenericDecl);
+            type = tryParse(parser, parseGenericDecl(parser));
             if (!type) break;
             vecpush(facets, type);
         }
@@ -2414,12 +2390,10 @@ static ZNode *parseFuncBlock(ZParser *parser) {
 
 static ZNode *parse(ZParser *parser) {
     guard(canPeek(parser));
-
     ZToken *start = peek(parser);
     ZTokenType t = start->type;
     ZAnnotation **annotations = NULL;
 
-    // 'use' (module import) never takes pub
     if (t == TOK_MODULE) {
         return parseImport(parser);
     } else if (t == TOK_DBL_OPEN) {
@@ -2428,26 +2402,29 @@ static ZNode *parse(ZParser *parser) {
 
     bool public = match(parser, TOK_PUB);
 
-    guard(canPeek(parser));
+    if (check(parser, TOK_FOREIGN)) {
+        return parseForeignInlineDecl(parser, public);
+    }
 
+    ZParserSnapshot *snap = store(parser);
+
+    ZType *base = parseType(parser);
+    guard(base);
+    if (check(parser, TOK_IDENT)) {
+        undo(parser, snap);
+        return parseFuncBlock(parser);
+    }
+    expect(parser, TOK_DOUBLE_COLON);
+    guard(canPeek(parser));
     t = peek(parser)->type;
 
-    if (t == TOK_IDENT && checkAhead(parser, TOK_ASSIGN, 1)) {
-        return parseVarInferred(parser);
-    }
+    undo(parser, snap);
 
-    if ((t == TOK_FOREIGN   ||
-        t == TOK_TYPEDEF    ||
-        t == TOK_MACRO      ||
-        t == TOK_FOR        ) && annotations) {
-        error(parser->state, start, "Annotations not supported");
-        return NULL;
-    }
     switch (t) {
-    case TOK_FOREIGN:   return parseForeignDecl (parser, public);
+    case TOK_FOREIGN:   return parseForeignBlock(parser);
+    case TOK_FOR:       return parseFuncBlock   (parser);
     case TOK_TYPEDEF:   return parseTypedef     (parser, public);
     case TOK_MACRO:     return skipMacro        (parser, public);
-    case TOK_FOR:       return parseFuncBlock   (parser);
     case TOK_STRUCT:    return parseStructDecl  (parser, annotations, public);
     case TOK_ENUM:      return parseEnumDecl    (parser, annotations, public);
     default: {

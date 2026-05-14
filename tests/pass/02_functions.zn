@@ -1,46 +1,27 @@
-foreign u0 printf(*char)
+foreign printf :: u0 (*char)
 
-u0 greet() {
-    printf("greet\n")
+greet :: u0 () -> printf("greet\n")
+
+say_bye :: u0 () -> printf("bye\n")
+
+print_msg :: u0 (*char msg) -> printf(msg)
+
+add :: i32 (i32 a, i32 b) -> a + b
+
+Vec :: struct { i32 len }
+
+Counter :: struct { i32 count }
+
+Vec :: for {
+    create :: u0 () -> printf("Vec:new\n")
 }
 
-u0 say_bye() {
-    printf("bye\n")
+Counter :: for {
+    say :: u0 (*char msg) -> printf(msg)
+    value :: i32 () -> 65
 }
 
-u0 print_msg(*char msg) {
-    printf(msg)
-}
-
-i32 add(i32 a, i32 b) {
-    return a + b
-}
-
-struct Vec {
-    i32 len
-}
-
-struct Counter {
-    i32 count
-}
-
-for Vec {
-    u0 create() {
-        printf("Vec:new\n")
-    }
-}
-
-for Counter {
-    u0 say(*char msg) {
-        printf(msg)
-    }
-
-    i32 value() {
-        return 65
-    }
-}
-
-i32 main() {
+main :: i32 () {
     greet()
     say_bye()
     print_msg("msg\n")

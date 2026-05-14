@@ -1,8 +1,8 @@
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-i32 main() {
+main :: i32 () {
     defer c::printf("1\n")
 
     if true {

@@ -1,34 +1,34 @@
-foreign c {
-    *u8 malloc(u64)
-    u0 printf(*char, ...)
+c :: foreign {
+    malloc :: *u8(u64)
+    printf :: u0 (*char, ...)
 }
 
-struct Vec2 {
+Vec2 :: struct {
     f32 x
     f32 y
 }
 
-struct Color {
+Color :: struct {
     u8 r
     u8 g
     u8 b
 }
 
-struct Point {
+Point :: struct {
     i32 x
     i32 y
 }
 
-struct Linked {
+Linked :: struct {
     i32 val
     *Linked next
 }
 
-f32 sum(f64 x, f64 y) {
+sum :: f32 (f64 x, f64 y) {
     return x + y
 }
 
-i32 main() {
+main :: i32 () {
     Point p = Point { x: 10, y: 20 }
     i32 val = p.x
     c::printf("member ok\n")

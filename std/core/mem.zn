@@ -1,18 +1,18 @@
-foreign c {
-    *u8 malloc(u64)
-    *u8 realloc(*u8, u64)
-    u0 free(*u8)
+c :: foreign {
+    malloc :: *u8(u64)
+    realloc :: *u8(*u8, u64)
+    free :: u0(*u8)
 }
 
-pub struct Allocator {
+pub Allocator :: struct {
     u64             bytes
     *u8(u64)        alloc
     *u8(*u8, u64)   realloc
     u0(*u8)         free
 }
 
-for Allocator {
-    pub Allocator heap() {
+Allocator :: for {
+    pub heap :: Allocator() {
         return Allocator{
             bytes: 0,
             alloc: c::malloc,
