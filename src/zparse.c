@@ -1349,7 +1349,9 @@ static ZNode *parseIfLet(ZParser *parser) {
 
     ZNode *elseBranch = NULL;
     if (match(parser, TOK_ELSE)) {
-        elseBranch = parseBlockOrInline(parser);
+        elseBranch = parseOrGrammar(
+            parser, (ZParseFunc[]){ parseIf, parseBlockOrInline }, 2
+        );
     }
 
     ZNode *iflet                = makenode(NODE_IF);
