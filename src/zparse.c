@@ -1347,9 +1347,15 @@ static ZNode *parseIfLet(ZParser *parser) {
 
     ZNode *var = makenodevar(pattern, NULL, expr);
 
-    ZNode *iflet = makenode(NODE_IF);
-    iflet->ifStmt.cond = var;
-    iflet->ifStmt.body = body;
+    ZNode *elseBranch = NULL;
+    if (match(parser, TOK_ELSE)) {
+        elseBranch = parseBlockOrInline(parser);
+    }
+
+    ZNode *iflet                = makenode(NODE_IF);
+    iflet->ifStmt.cond          = var;
+    iflet->ifStmt.body          = body;
+    iflet->ifStmt.elseBranch    = elseBranch;
     return iflet;
 }
 
