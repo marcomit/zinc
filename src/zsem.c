@@ -317,7 +317,6 @@ static void putVarPattern(
         return;
     }
     if (pattern->type == Z_VAR_IDENT) {
-        info(ctx->state, pattern->ident, "Adding %s", stoken(pattern->ident));
         putRawSymbol(
             ctx,
             Z_SYM_VAR,
@@ -1172,7 +1171,6 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
             expectedFunc        = resolved;
             callee->resolved    = resolved;
             curr->resolved      = resolved->func.ret;
-            info(ctx->state, curr->tok, "Resolved %s\n", stype(resolved));
         } else if (resolved->kind == Z_TYPE_ENUM) {
             ZType **variants      = resolved->enm.fields;
             ZNode **fields        = NULL;
@@ -1669,7 +1667,6 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
     case NODE_IF:           result = resolveInlineIf    (ctx, curr);    break;
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
-        info(ctx->state, curr->tok, "Analyze var decl as expr");
         if (curr->resolved) {
             result = resolveTypeRef(ctx, curr->resolved);
         } else if (curr->varDecl.rvalue) {

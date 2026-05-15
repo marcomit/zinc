@@ -73,7 +73,7 @@ typedef struct {
     ZLogLevel       level;
     ZPhase          phase;
     const char      *src_file;
-    int              src_line;
+    int             src_line;
 } ZLog;
 
 typedef struct {

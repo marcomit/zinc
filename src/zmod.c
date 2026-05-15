@@ -840,12 +840,12 @@ void _error(ZState *state, ZToken *tok, const char *src_file,
     va_start(args, fmt);
 
     ZLog *log = vmakelog(Z_ERROR,
-            state->filename,
-            tok,
-            src_file,
-            src_line,
-            fmt,
-            args);
+        veclast(state->visitedFiles),
+        tok,
+        src_file,
+        src_line,
+        fmt,
+        args);
     log->phase = state->currentPhase;
     vecpush(state->logs, log);
     
