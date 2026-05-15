@@ -73,7 +73,7 @@ typedef struct {
     ZLogLevel       level;
     ZPhase          phase;
     const char      *src_file;
-    int              src_line;
+    int             src_line;
 } ZLog;
 
 typedef struct {
@@ -152,7 +152,9 @@ typedef enum {
     NODE_STATIC_ACCESS,
     NODE_NAMESPACE,
     NODE_SLICE,
-    NODE_CAPABILITY
+    NODE_CAPABILITY,
+    NODE_MATCH,
+    NODE_MATCH_ARM
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -267,7 +269,8 @@ enum {
     Z_VAR_IDENT,
     Z_VAR_TUPLE,
     Z_VAR_STRUCT,
-    Z_VAR_PAIR
+    Z_VAR_PAIR,
+    Z_VAR_ENUM
 };
 
 /* Struct representing the destructuring of a variable.
@@ -284,6 +287,12 @@ struct ZVarDestructPattern {
     union {
         ZToken *ident;
         ZVarDestructPattern **tuple;
+
+        struct {
+            ZToken              *base;
+            ZToken              *prop;
+            ZVarDestructPattern **args;
+        };
 
         /* Array of Z_VAR_PAIR */
         ZVarDestructPattern **fields;
@@ -325,6 +334,16 @@ struct ZNode {
             ZNode   *incr;
             ZNode   *block;
         } forStmt;
+
+        struct {
+            ZVarDestructPattern *pattern;
+            ZNode   *expr;
+        } matchArm;
+
+        struct {
+            ZNode   *cond;
+            ZNode   **arms;
+        } match;
 
         struct {
             ZToken  *op;
@@ -750,6 +769,7 @@ void printTokens(ZToken **);
 
 void printType(ZType *);
 void printNode(ZNode *, u8);
+void printDestructedVar(ZVarDestructPattern *, u8);
 void printSymbol(ZSymbol *);
 
 void printScope(ZScope *);

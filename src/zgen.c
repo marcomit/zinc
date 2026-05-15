@@ -319,13 +319,22 @@ static bool _getStructIndex(ZType *strct, char *fieldName, u32 **path) {
 }
 
 /* Returns the index of the field for a struct.
- * Returns -1 if it does not exist. */
+ * Returns NULL if it does not exist. */
 static u32 *getStructIndex(ZType *strct, char *fieldName) {
     u32 *path = NULL;
     if (!_getStructIndex(strct, fieldName, &path)) {
         return NULL;
     }
     return path;
+}
+
+static i32 enumIndexField(ZType *enumType, ZToken *field) {
+    for (usize i = 0; i < veclen(enumType->enm.fields); i++) {
+        if (tokeneq(enumType->enm.fields[i]->strct.name, field)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 static ZNode *getStructField(ZType *strct, char *fieldName) {
@@ -612,13 +621,15 @@ static void putDestructuredPatternInStack(
         ZVarDestructPattern *pattern, LLVMValueRef ptr) {
     if (!pattern || !type) return;
 
-    if (pattern->type == Z_VAR_IDENT) {
+    switch (pattern->type) {
+    case Z_VAR_IDENT:
         putLLVMValueRef(
             ctx,
             pattern->ident->str,
             ptr
         );
-    } else if (pattern->type == Z_VAR_STRUCT) {
+        break;
+    case Z_VAR_STRUCT: {
         LLVMTypeRef typeRef = genType(ctx, type);
         for (usize i = 0; i < veclen(pattern->fields); i++) {
 
@@ -652,7 +663,9 @@ static void putDestructuredPatternInStack(
                 gep
             );
         }
-    } else if (pattern->type == Z_VAR_TUPLE) {
+        break;
+    }
+    case Z_VAR_TUPLE: {
         LLVMTypeRef typeRef = genType(ctx, type);
         for (usize i = 0; i < veclen(pattern->tuple); i++) {
             LLVMValueRef gep = LLVMBuildStructGEP2(
@@ -665,6 +678,31 @@ static void putDestructuredPatternInStack(
                 gep
             );
         }
+        break;
+    }
+    case Z_VAR_ENUM: {
+        i32 variantIndex = enumIndexField(type, pattern->prop);
+        if (variantIndex == -1) {
+            error(ctx->state, pattern->prop, "Variant not found");
+            return;
+        }
+        ZType *variantType          = type->enm.fields[variantIndex];
+        LLVMTypeRef variantTypeRef  = genType(ctx, variantType);
+
+        for (usize i = 0; i < veclen(pattern->args); i++) {
+            LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
+                ctx->builder, variantTypeRef, ptr,
+                i + 1, label(ctx, pattern->args[i]->tok));
+            putDestructuredPatternInStack(
+                ctx,                variantType->strct.fields[i + 1]->resolved,
+                pattern->args[i],   fieldPtr
+            );
+        }
+        break;
+    }
+    default:
+        error(ctx->state, pattern->tok, "Unhandled destruct pattern");
+        break;
     }
 }
 
@@ -689,22 +727,6 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
         val = castValue(ctx, val, node->varDecl.rvalue->resolved, node->resolved);
         LLVMBuildStore(ctx->builder, val, stack->stack);
     }
-
-    putDestructuredPatternInStack(
-        ctx,
-        node->resolved,
-        node->varDecl.pattern,
-        stack->stack
-    );
-}
-
-static i32 enumIndexField(ZType *enumType, ZToken *field) {
-    for (usize i = 0; i < veclen(enumType->enm.fields); i++) {
-        if (tokeneq(enumType->enm.fields[i]->strct.name, field)) {
-            return i;
-        }
-    }
-    return -1;
 }
 
 static LLVMValueRef genEnumDecl(ZCodegen *ctx, ZNode *node) {
@@ -1210,12 +1232,6 @@ static bool typeIsUnsigned(ZType *type) {
     return (bool)(type->primitive.token->type & TOK_UNSIGNED);
 }
 
-static ZType *nodeEffectiveType(ZNode *node) {
-    if (!node) return NULL;
-    if (node->type == NODE_CAST) return node->castExpr.toType;
-    return node->resolved;
-}
-
 static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
     LLVMBasicBlockRef tBranch = makeblock(ctx);
@@ -1348,8 +1364,8 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
                      LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
 
 
-    bool bothUnsigned = typeIsUnsigned(nodeEffectiveType(root->binary.left)) &&
-                        typeIsUnsigned(nodeEffectiveType(root->binary.right));
+    bool bothUnsigned = typeIsUnsigned(root->binary.left->resolved) &&
+                        typeIsUnsigned(root->binary.right->resolved);
 
     char *l = label(ctx, root->tok);
 
@@ -1642,6 +1658,156 @@ static LLVMValueRef genArrayInit(ZCodegen *ctx, ZNode *node) {
     return stack->stack;
 }
 
+static void matchPattern(
+    ZCodegen *,             ZType *,
+    ZVarDestructPattern *,  LLVMValueRef, LLVMBasicBlockRef
+);
+
+static void matchTuplePattern(
+        ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
+        LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+    LLVMTypeRef typeRef = genType(ctx, type);
+    for (usize i = 0; i < veclen(pattern->tuple); i++) {
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
+            ctx->builder, typeRef, ptr, i, label(ctx, pattern->tuple[i]->tok));
+        matchPattern(
+            ctx, type->tuple[i],
+            pattern->tuple[i], fieldPtr, failBranch);
+    }
+}
+
+static void matchStructPattern(
+        ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
+        LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+    LLVMTypeRef typeRef = genType(ctx, type);
+    for (usize i = 0; i < veclen(pattern->fields); i++) {
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
+            ctx->builder, typeRef, ptr, i, label(ctx, pattern->fields[i]->key)
+        );
+        matchPattern(
+            ctx, type->strct.fields[i]->resolved,
+            pattern->fields[i]->value, fieldPtr, failBranch
+        );
+    }
+}
+
+static void matchEnumPattern(
+        ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
+        LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+    i32 variantIndex = enumIndexField(type, pattern->prop);
+
+    if (variantIndex == -1) {
+        error(ctx->state,
+            pattern->prop,
+            "Enum variant '%s' not found",
+            stoken(pattern->prop)
+        );
+        return;
+    }
+    ZType *variantType = type->enm.fields[variantIndex];
+
+    LLVMValueRef tagPtr = LLVMBuildStructGEP2(
+        ctx->builder, genType(ctx, type), ptr, 0, label(ctx, pattern->prop));
+
+    LLVMValueRef tag = LLVMBuildLoad2(
+        ctx->builder, i8Type, tagPtr, label(ctx, pattern->prop)
+    );
+
+    LLVMValueRef cond = LLVMBuildICmp(
+        ctx->builder, LLVMIntEQ, tag,
+        LLVMConstInt(i8Type, variantIndex, false),
+        label(ctx, pattern->prop)
+    );
+
+    LLVMBasicBlockRef entry = makeblock(ctx);
+    LLVMBuildCondBr(ctx->builder, cond,
+            entry, failBranch);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+    LLVMTypeRef variantTypeRef = genType(ctx, variantType);
+
+    for (usize i = 0; i < veclen(pattern->args); i++) {
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
+            ctx->builder, variantTypeRef, ptr,
+            i + 1, label(ctx, pattern->args[i]->tok));
+
+        matchPattern(ctx,
+            variantType->strct.fields[i + 1]->resolved,
+            pattern->args[i], fieldPtr, failBranch);
+    }
+}
+
+static void matchPattern(
+        ZCodegen *ctx,
+        ZType *type,
+        ZVarDestructPattern *pattern,
+        LLVMValueRef ptr,
+        LLVMBasicBlockRef failBranch) {
+    switch (pattern->type) {
+    case Z_VAR_IDENT:                                                               break;
+    case Z_VAR_TUPLE:   matchTuplePattern    (ctx, type, pattern, ptr, failBranch); break;
+    case Z_VAR_STRUCT:  matchStructPattern   (ctx, type, pattern, ptr, failBranch); break;
+    case Z_VAR_ENUM:    matchEnumPattern     (ctx, type, pattern, ptr, failBranch); break;
+    default:
+        error(ctx->state, pattern->tok, "Unknown pattern %d", pattern->type);
+        break;
+    }
+}
+
+static LLVMValueRef genMatchCond(
+    ZCodegen *ctx,                  ZType *type,
+    ZVarDestructPattern *pattern,   LLVMValueRef ptr) {
+    LLVMBasicBlockRef success   = makeblock(ctx);
+    LLVMBasicBlockRef failure   = makeblock(ctx);
+    LLVMBasicBlockRef merge     = makeblock(ctx);
+
+    matchPattern(ctx, type, pattern, ptr, failure);
+    LLVMBuildBr(ctx->builder, success);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, success);
+    LLVMValueRef trueVal        = LLVMConstInt(i1Type, 1, false);
+    LLVMBuildBr(ctx->builder, merge);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, failure);
+    LLVMValueRef falseVal       = LLVMConstInt(i1Type, 0, false);
+    LLVMBuildBr(ctx->builder, merge);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, merge);
+    LLVMValueRef phi = LLVMBuildPhi(ctx->builder, i1Type, label(ctx, pattern->tok));
+
+    LLVMAddIncoming(
+        phi,
+        (LLVMValueRef[])        {   trueVal, falseVal   },
+        (LLVMBasicBlockRef[])   {   success, failure    },
+        2
+    );
+    return phi;
+}
+
+static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
+    ZNode *rvalue = node->varDecl.rvalue;
+    LLVMValueRef ptr = NULL;
+
+    if (rvalue->type == NODE_IDENTIFIER) {
+        char *key = rvalue->identNode.mangled ? rvalue->identNode.mangled : rvalue->tok->str;
+        ptr = getLLVMValueRef(ctx, key);
+        if (!ptr) {
+            error(ctx->state, rvalue->tok, "'%s' not found", rvalue->tok->str);
+            return NULL;
+        }
+    } else {
+        ZLLVMStack *stack = getStackValue(ctx, rvalue);
+        if (!stack) {
+            error(ctx->state, node->tok, "Missing stack value");
+            return NULL;
+        }
+        ptr = stack->stack;
+    }
+
+    putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
+    return genMatchCond(ctx, node->resolved, node->varDecl.pattern, ptr);
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
         case NODE_IF:               return genInlineIf      (ctx, node);
@@ -1653,6 +1819,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_ARRAY_INIT:       return genArrayInit     (ctx, node);
         case NODE_IDENTIFIER:       return genIdent         (ctx, node);
         case NODE_STATIC_ACCESS:    return genStaticAccess  (ctx, node);
+        case NODE_VAR_DECL:         return genVarDestruct   (ctx, node);
 
         case NODE_MEMBER:
         case NODE_SUBSCRIPT:
@@ -1873,6 +2040,16 @@ static void genFor(ZCodegen *ctx, ZNode *node) {
     ctx->scope->startLoop       = entry;
     ctx->scope->endLoop         = endfor;
 
+    // Bind the loop variable in the loop scope so it shadows any stale
+    // function-scope entry that was inserted by the pre-pass (genFuncVars).
+    if (node->forStmt.var) {
+        ZNode *varDecl = node->forStmt.var;
+        ZLLVMStack *loopSlot = getStackValue(ctx, varDecl->varDecl.rvalue);
+        if (loopSlot) {
+            putDestructuredPatternInStack(
+                ctx, varDecl->resolved, varDecl->varDecl.pattern, loopSlot->stack);
+        }
+    }
     genVarDecl(ctx, node->forStmt.var);
 
     LLVMBuildBr             (ctx->builder, entry);
@@ -2082,18 +2259,18 @@ static void buildNestedFuncVar(
  * NOTE: this method stores always the expression that requires the stack allocation.
  * So for variable declaration always store the rvalue node and not the variable node.
  * */
-static void buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
+static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
     if (!node) {
         error(ctx->state, NULL, "'buildFuncVar' called with a null node");
-        return;
+        return NULL;
     } else if (!node->resolved) {
         error(ctx->state, node->tok,
                 "Missing resolved type for node %d", node->type);
-        return;
+        return NULL;;
     }
 
     /* Function types are passed as pointers and fit in a register - no alloca needed. */
-    if (!force && node->resolved->kind == Z_TYPE_FUNCTION) return;
+    if (!force && node->resolved->kind == Z_TYPE_FUNCTION) return NULL;
 
     LLVMValueRef elem = NULL;
     LLVMTypeRef elemType = NULL;
@@ -2110,6 +2287,7 @@ static void buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
     addFuncVar(ctx, val, elem, type, elemType, node);
 
     buildNestedFuncVar(ctx, node, val);
+    return val;
 }
 
 /* All variables of the function body are allocated at the start of the block.
@@ -2142,7 +2320,12 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->memberAccess.object);
         break;
     case NODE_FOR:
-        genFuncVars(ctx, node->forStmt.var);
+        // Only allocate the stack slot — name binding is deferred to genFor
+        // so each loop body gets its own scope entry and avoids name collisions
+        // when two loops declare the same variable (e.g. two `for i` loops).
+        if (node->forStmt.var) {
+            buildFuncVar(ctx, node->forStmt.var->varDecl.rvalue, true);
+        }
         genFuncVars(ctx, node->forStmt.block);
         break;
     case NODE_WHILE:
@@ -2158,9 +2341,11 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->capability.capability);
         genFuncVars(ctx, node->capability.block);
         break;
-    case NODE_VAR_DECL:
-        buildFuncVar(ctx, node->varDecl.rvalue, true);
+    case NODE_VAR_DECL: {
+        LLVMValueRef ptr = buildFuncVar(ctx, node->varDecl.rvalue, true);
+        putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
         break;
+    }
     case NODE_CALL:
         if (!node->resolved) {
             error(ctx->state, node->tok, "Unresolved type");

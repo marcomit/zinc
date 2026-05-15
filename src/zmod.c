@@ -20,7 +20,8 @@ static char *nodeLabels[] = {
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "GOTO",         "LABEL",        "TYPE",         "ENUM",
     "BREAK",        "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
-    "STATICACCESS", "NAMESPACE",    "SLICE",        "CAPABILITY"
+    "STATICACCESS", "NAMESPACE",    "SLICE",        "CAPABILITY",   "MATCH",
+    "MATCH_ARM"
 };
 
 static char *levels[] = {
@@ -297,7 +298,7 @@ void printType(ZType *type) {
     }
 }
 
-static void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
+void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
     indent(depth);
 
     if (pattern->type == Z_VAR_IDENT) {
@@ -305,6 +306,10 @@ static void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
     } else if (pattern->type == Z_VAR_PAIR) {
         printf("%s:\n", pattern->key->str);
         printDestructedVar(pattern->value, depth + 1);
+    } else if (pattern->type == Z_VAR_ENUM) {
+        printf("%s::%s\n", pattern->base->str, pattern->prop->str);
+        for (usize i = 0; i < veclen(pattern->args); i++)
+            printDestructedVar(pattern->args[i], depth + 1);
     } else {
         bool isTuple = pattern->type == Z_VAR_TUPLE;
         ZVarDestructPattern **list = isTuple ?
@@ -645,6 +650,18 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->capability.capability, depth);
         printNode(node->capability.block, depth);
         break;
+    case NODE_MATCH:
+        printf("\n");
+        printNode(node->match.cond, depth);
+        for (usize i = 0; i < veclen(node->match.arms); i++) {
+            printNode(node->match.arms[i], depth);
+        }
+        break;
+    case NODE_MATCH_ARM:
+        printf("\n");
+        printDestructedVar(node->matchArm.pattern, depth);
+        printNode(node->matchArm.expr, depth);
+        break;
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
@@ -823,12 +840,12 @@ void _error(ZState *state, ZToken *tok, const char *src_file,
     va_start(args, fmt);
 
     ZLog *log = vmakelog(Z_ERROR,
-            state->filename,
-            tok,
-            src_file,
-            src_line,
-            fmt,
-            args);
+        veclast(state->visitedFiles),
+        tok,
+        src_file,
+        src_line,
+        fmt,
+        args);
     log->phase = state->currentPhase;
     vecpush(state->logs, log);
     

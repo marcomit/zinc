@@ -55,10 +55,7 @@ static void checkFunctionUsedAsValue(ZSemantic *, ZNode *);
 /* ================== Scope / Symbol helpers ================== */
 
 static ZType *none      = NULL;
-static ZType *zvoid     = NULL;
 static ZType *u1Type    = NULL;
-static ZType *ztrue     = NULL;
-static ZType *zfalse    = NULL;
 static ZType *u64Type   = NULL;
 
 static ZScope *makescope(ZScope *parent, ZNode *node) {
@@ -315,7 +312,10 @@ ZNode *getStructField(ZSemantic *ctx, ZType *strct, ZToken *field) {
 static void putVarPattern(
         ZSemantic *ctx, ZNode *node,
         ZType *type, ZVarDestructPattern *pattern) {
-    if (!type) return;
+    if (!type) {
+        warning(ctx->state, node->tok, "No type provided for putVarPattern");
+        return;
+    }
     if (pattern->type == Z_VAR_IDENT) {
         putRawSymbol(
             ctx,
@@ -379,6 +379,48 @@ static void putVarPattern(
                 );
             }
         }
+    } else if (pattern->type == Z_VAR_ENUM) {
+        if (type->kind != Z_TYPE_ENUM) {
+            error(ctx->state, pattern->tok,
+                "'%s' doesn't support destructuring", stype(type));
+            return;
+        } else if (!tokeneq(type->enm.name, pattern->base)) {
+            error(ctx->state, pattern->tok,
+                    "Expected '%s', got '%s'",
+                    type->enm.name->str,
+                    pattern->base->str);
+        }
+        ZType *variant = NULL;
+        for (usize i = 0; i < veclen(type->enm.fields) && !variant; i++) {
+            ZType *field = type->enm.fields[i];
+            if (tokeneq(field->strct.name, pattern->prop))
+                variant = type->enm.fields[i];
+        }
+
+        if (!variant) {
+            error(ctx->state, pattern->tok,
+                "enum variant '%s' not found for '%s'",
+                pattern->prop->str, stype(type));
+            return;
+        }
+
+        usize expected  = veclen(variant->strct.fields) - 1;
+        usize got       = veclen(pattern->args);
+
+        if (expected != got) {
+            error(ctx->state, pattern->tok,
+                "Expected %zu args, got %zu", expected, got);
+            return;
+        }
+
+        for (usize i = 0; i < expected; i++) {
+            putVarPattern(ctx, node,
+                variant->strct.fields[i + 1]->field.type, pattern->args[i]
+            );
+        }
+        
+    } else {
+        error(ctx->state, pattern->tok, "Unhandled destructure pattern");
     }
 }
 
@@ -765,9 +807,10 @@ ZNode *implicitCast(ZNode *node, ZType *type) {
         return node;
     }
 
-    ZNode *cast = makenode(NODE_CAST);
-    cast->castExpr.expr = node;
-    cast->castExpr.toType = type;
+    ZNode *cast             = makenode(NODE_CAST);
+    cast->castExpr.expr     = node;
+    cast->castExpr.toType   = type;
+    cast->resolved          = type;
     return cast;
 }
 
@@ -1118,21 +1161,45 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
         if (!resolved) {
             error(ctx->state, callee->tok, "Unresolved type");
             return NULL;
-        } else if (resolved->kind != Z_TYPE_FUNCTION) {
+        } else if (resolved->kind == Z_TYPE_FUNCTION) {
+            for (usize i = 0; i < veclen(resolved->func.args); i++) {
+                resolved->func.args[i] = resolveTypeRef(
+                    ctx, resolved->func.args[i]
+                );
+            }
+            resolved->func.ret  = resolveTypeRef(ctx, resolved->func.ret);
+            expectedFunc        = resolved;
+            callee->resolved    = resolved;
+            curr->resolved      = resolved->func.ret;
+        } else if (resolved->kind == Z_TYPE_ENUM) {
+            ZType **variants      = resolved->enm.fields;
+            ZNode **fields        = NULL;
+            for (usize i = 0; i < veclen(resolved->enm.fields) && !fields; i++) {
+                if (tokeneq(variants[i]->strct.name, callee->staticAccess.prop)) {
+                    fields = variants[i]->strct.fields;
+                }
+            }
+            if (!fields) {
+                error(ctx->state, callee->tok,
+                    "Invalid enum variant '%s'",
+                    stoken(callee->staticAccess.prop)
+                );
+                return NULL;
+            }
+
+            curr->resolved = resolved;
+            expectedFunc = maketype(Z_TYPE_FUNCTION);
+            expectedFunc->func.ret = resolved;
+            for (usize i = 1; i < veclen(fields); i++) {
+                vecpush(expectedFunc->func.args, fields[i]->resolved);
+            }
+        } else {
             error(ctx->state, callee->tok,
                 "Expected function type, got %s",
                 stype(resolved)
             );
             return NULL;
         }
-        for (usize i = 0; i < veclen(resolved->func.args); i++) {
-            resolved->func.args[i] = resolveTypeRef(
-                ctx, resolved->func.args[i]
-            );
-        }
-        resolved->func.ret  = resolveTypeRef(ctx, resolved->func.ret);
-        expectedFunc        = resolved;
-        callee->resolved    = resolved;
     } else {
         /* Expression call (includes NODE_MEMBER, subscripts, etc.):
          * resolveType handles all callee forms uniformly. For NODE_MEMBER,
@@ -1487,9 +1554,9 @@ static ZType *resolveStaticAccess(ZSemantic *ctx, ZNode *curr) {
 
         /* Skip the first argument (always the flag). */
         for (usize i = 1; i < veclen(strct->strct.fields); i++) {
-            strct->strct.fields[i]->field.type = resolveTypeRef(
-                ctx, strct->strct.fields[i]->field.type
-            );
+            strct->strct.fields[i]->field.type  = resolveTypeRef(
+                ctx, strct->strct.fields[i]->field.type);
+            strct->strct.fields[i]->resolved    = strct->strct.fields[i]->field.type;
         }
         return baseSym->type;
     } else if (baseSym->kind == Z_SYM_TYPEDEF) {
@@ -1605,6 +1672,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
         } else if (curr->varDecl.rvalue) {
             result = resolveType(ctx, curr->varDecl.rvalue);
         }
+        putVarPattern(ctx, curr, result, curr->varDecl.pattern);
         break;
 
     case NODE_CAST: {
@@ -1801,7 +1869,9 @@ static void analyzeIf(ZSemantic *ctx, ZNode *curr) {
         );
     }
 
-    curr->ifStmt.cond = implicitCast(curr->ifStmt.cond, u1Type);
+    if (curr->ifStmt.cond->type != NODE_VAR_DECL) {
+        curr->ifStmt.cond = implicitCast(curr->ifStmt.cond, u1Type);
+    }
 
     analyzeBlock(ctx, curr->ifStmt.body, true);
 
@@ -2270,9 +2340,6 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     ZSemantic *ctx = makesemantic(state, root);
 
     if (!none)      none    = maketype(Z_TYPE_NONE);
-    if (!ztrue)     ztrue   = makePrimitiveType(TOK_TRUE);
-    if (!zfalse)    zfalse  = makePrimitiveType(TOK_FALSE);
-    if (!zvoid)     zvoid   = makePrimitiveType(TOK_VOID);
     if (!u1Type)    u1Type  = makePrimitiveType(TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType(TOK_U64);
 

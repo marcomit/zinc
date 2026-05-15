@@ -75,7 +75,7 @@ static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
 
 static ZType **parseGenericsDecl            (ZParser *, bool);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
-
+static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
 static ZParseFunc exprFunc[] = {
     parseBinary,
     parseTupleLit,
@@ -936,21 +936,49 @@ static ZNode *parseDefer(ZParser *parser) {
     return node;
 }
 
+static ZNode *parseMatchArm(ZParser *parser) {
+    ZVarDestructPattern *pattern = parseDestructVar(parser, true);
+    if (!pattern) printf("Pattern\n");
+    guard(pattern);
+    expect(parser, TOK_ARROW);
+    ZNode *expr = parseExpr(parser);
+    if (!expr) printf("Expr\n");
+    guard(expr);
+
+    ZNode *arm              = makenode(NODE_MATCH_ARM);
+    arm->matchArm.pattern   = pattern;
+    arm->matchArm.expr      = expr;
+    return arm;
+}
+
 //FIXME: Not yet implemented. Use else-if chain instead.
 static ZNode *parseMatch(ZParser *parser) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_MATCH);
 
-    error(parser->state, peek(parser),
-            "'match' statement are not implemented yet!");
 
-    ZNode *expr = tryParse(parser, parseExpr(parser));
+    bool savedNoStructLit = parser->noStructLit;
+    parser->noStructLit = savedNoStructLit;
+    ZNode *expr = parseExpr(parser);
+    parser->noStructLit = savedNoStructLit;
 
     ensure(expr, "Expected an expression");
 
     expect(parser, TOK_LBRACKET);
+    ZNode **arms        = NULL;
+    ZNode *arm          = NULL;
+    do {
+        arm = tryParse(parser, parseMatchArm(parser));
+        if (!arm) break;
+        vecpush(arms, arm);
+    } while (!check(parser, TOK_RBRACKET) && match(parser, TOK_COMMA));
     expect(parser, TOK_RBRACKET);
 
-    return NULL;
+    ZNode *match        = makenode(NODE_MATCH);
+    match->tok          = start;
+    match->match.cond   = expr;
+    match->match.arms   = arms;
+    return match;
 }
 
 /* Not handled yet. */
@@ -1305,28 +1333,44 @@ static ZAnnotation **parseAnnotations(ZParser *parser) {
     return annotations;
 }
 
-static ZNode *parseIf(ZParser *parser) {
+static ZNode *parseIfLet(ZParser *parser) {
+    expect(parser, TOK_IF);
+    ZVarDestructPattern *pattern = parseDestructVar(parser, true);
+    guard(pattern);
+    expect(parser, TOK_ASSIGN);
+    bool savedNoStructLit = parser->noStructLit;
+    parser->noStructLit = true;
+    ZNode *expr = parseExpr(parser);
+    parser->noStructLit = savedNoStructLit;
+    guard(expr);
+    ZNode *body = parseBlockOrInline(parser);
+
+    ZNode *var = makenodevar(pattern, NULL, expr);
+
+    ZNode *iflet = makenode(NODE_IF);
+    iflet->ifStmt.cond = var;
+    iflet->ifStmt.body = body;
+    return iflet;
+}
+
+static ZNode *parseIfStmt(ZParser *parser) {
     ZToken *start = peek(parser);
     expect(parser, TOK_IF);
 
     parser->noStructLit = true;
     ZNode *cond = parseExpr(parser);
     parser->noStructLit = false;
-
     guard(cond);
 
-    ZParseFunc elseBranch[] = {
-        parseIf, parseBlockOrInline
-    };
-
     ZNode *body = parseBlockOrInline(parser);
-
     guard(body);
 
     ZNode *node = makenode(NODE_IF);
 
     if (canPeek(parser) && match(parser, TOK_ELSE)) {
-        ZNode *elseBody = parseOrGrammar(parser, elseBranch, 2);
+        ZNode *elseBody = parseOrGrammar(parser, (ZParseFunc[]){
+            parseIf, parseBlockOrInline
+        }, 2);
         if (!elseBody) return NULL;
         node->ifStmt.elseBranch = elseBody;
     }
@@ -1335,6 +1379,10 @@ static ZNode *parseIf(ZParser *parser) {
     node->ifStmt.body   = body;
     node->tok           = start;
     return node;
+}
+
+static ZNode *parseIf(ZParser *parser) {
+    return parseOrGrammar(parser, (ZParseFunc[]){parseIfLet, parseIfStmt}, 2);
 }
 
 static ZNode *parseFor(ZParser *parser) {
@@ -1635,7 +1683,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
     return node;
 }
 
-static ZVarDestructPattern *parseDestructVar(ZParser *parser) {
+static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) {
     guard(canPeek(parser));
 
     ZVarDestructPattern *cur    = NULL;
@@ -1643,8 +1691,26 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser) {
     ZToken *tok                 = consume(parser);
 
     if (tok->type == TOK_IDENT) {
-        cur = makeVarDestructPattern(Z_VAR_IDENT);
-        cur->ident = tok;
+        if (conditional && match(parser, TOK_DOUBLE_COLON)) {
+            if (!check(parser, TOK_IDENT)) {
+                error(parser->state, peek(parser), "Expected identifier");
+            }
+            cur = makeVarDestructPattern(Z_VAR_ENUM);
+            cur->base = tok;
+            cur->prop = consume(parser);
+            cur->args = NULL;
+
+            expect(parser, TOK_LPAREN);
+            do {
+                ZVarDestructPattern *item = parseDestructVar(parser, conditional);
+                if (!item) break;
+                vecpush(cur->args, item);
+            } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+            expect(parser, TOK_RPAREN);
+        } else {
+            cur = makeVarDestructPattern(Z_VAR_IDENT);
+            cur->ident = tok;
+        }
     } else if (tok->type == TOK_LBRACKET) {
         ZToken *key = NULL;
         while (true) {
@@ -1654,7 +1720,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser) {
             if (check(parser, TOK_COMMA) || check(parser, TOK_RBRACKET)) {
                 cur = makeDestructIdent(key);
             } else if (match(parser, TOK_COLON)) {
-                cur = parseDestructVar(parser);
+                cur = parseDestructVar(parser, conditional);
             } else {
                 error(parser->state, peek(parser),
                         "Unexpected token");
@@ -1681,13 +1747,11 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser) {
         cur = makeVarDestructPattern(Z_VAR_STRUCT);
         cur->fields = list;
     } else if (tok->type == TOK_LPAREN) {
-        while (true) {
-            cur = parseDestructVar(parser);
+        do {
+            cur = parseDestructVar(parser, conditional);
             if (!cur) break;
             vecpush(list, cur);
-            if (!match(parser, TOK_COMMA)) break;
-            if (check(parser, TOK_RPAREN)) break;
-        }
+        } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
 
         expect(parser, TOK_RPAREN);
         cur = makeVarDestructPattern(Z_VAR_TUPLE);
@@ -1702,7 +1766,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser) {
 }
 
 static ZNode *parseVarInferred(ZParser *parser) {
-    ZVarDestructPattern *pattern = parseDestructVar(parser);
+    ZVarDestructPattern *pattern = parseDestructVar(parser, false);
 
     expect(parser, TOK_ASSIGN);
     ZNode *expr = tryParse(parser, parseExpr(parser));
@@ -1732,7 +1796,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
     //             "Variable declaration must be defined in the same line");
     // }
 
-    ZVarDestructPattern *var = parseDestructVar(parser);
+    ZVarDestructPattern *var = parseDestructVar(parser, false);
     ZNode *expr = NULL;
 
     expect(parser, TOK_EQ);
@@ -1742,15 +1806,12 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
         error(parser->state, peek(parser), "Expected expression after '='");
         return NULL;
     }
-
     
     return makenodevar(var, type, expr);
 }
 
 static ZNode *parseVarDef(ZParser *parser) {
-    ZParseFunc func[] = {
-        parseVarInferred, parseVarDefTyped
-    };
+    ZParseFunc func[] = { parseVarInferred, parseVarDefTyped };
     return parseOrGrammar(parser, func, 2);
 }
 
