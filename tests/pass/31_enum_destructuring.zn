@@ -1,0 +1,67 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+Result :: enum {
+    Ok(i32)
+    Err(i32)
+}
+
+Option :: enum {
+    Some(i32)
+    None
+}
+
+main :: i32 () {
+    r1 := Result::Ok(0)
+    if Result::Ok(code) := r1 {
+        c::printf("ok:%d\n", code)
+    }
+
+    r2 := Result::Err(404)
+    if Result::Err(ecode) := r2 {
+        c::printf("err:%d\n", ecode)
+    }
+
+    if Result::Err(e) := r1 { c::printf("WRONG\n") }
+
+    if Result::Ok(v) := r2 { c::printf("WRONG\n") }
+
+    sum := 0
+    for i := 0; i < 5; i = i + 1 {
+        ri := Result::Ok(i)
+        if Result::Ok(vi) := ri { sum = sum + vi }
+    }
+    c::printf("sum:%d\n", sum)
+
+    evens := 0
+    n := 0
+    for n < 6 {
+        rn := Result::Ok(n)
+        if Result::Ok(vn) := rn {
+            if vn % 2 == 0 {
+                evens = evens + vn
+            }
+        }
+        n = n + 1
+    }
+    c::printf("evens:%d\n", evens)
+
+    outer := Option::Some(10)
+    if Option::Some(x) := outer {
+        inner := Result::Ok(x + 5)
+        if Result::Ok(y) := inner {
+            c::printf("nested:%d\n", y)
+        }
+    }
+
+    outer2 := Option::None()
+    if Option::Some(x2) := outer2 {
+        inner2 := Result::Ok(x2)
+        if Result::Ok(y2) := inner2 {
+            c::printf("WRONG\n")
+        }
+    }
+
+    return 0
+}

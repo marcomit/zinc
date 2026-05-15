@@ -769,6 +769,7 @@ void printTokens(ZToken **);
 
 void printType(ZType *);
 void printNode(ZNode *, u8);
+void printDestructedVar(ZVarDestructPattern *, u8);
 void printSymbol(ZSymbol *);
 
 void printScope(ZScope *);

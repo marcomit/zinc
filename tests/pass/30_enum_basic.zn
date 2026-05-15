@@ -1,0 +1,40 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+Option :: enum {
+    Some(i32)
+    None
+}
+
+main :: i32 () {
+    val := Option::Some(42)
+    if Option::Some(n) := val {
+        c::printf("some:%d\n", n)
+    }
+
+    empty := Option::None()
+    if Option::Some(n) := empty {
+        c::printf("WRONG\n")
+    }
+
+    if Option::Some(x) := val {
+        c::printf("matched:%d\n", x)
+    }
+
+    v2 := Option::Some(7)
+    if Option::Some(x) := v2 {
+        c::printf("%d\n", x)
+        c::printf("%d\n", x + 1)
+    }
+
+    v3 := Option::Some(100)
+    if Option::Some(a) := v3 {
+        v4 := Option::Some(200)
+        if Option::Some(b) := v4 {
+            c::printf("%d %d\n", a, b)
+        }
+    }
+
+    return 0
+}

@@ -298,7 +298,7 @@ void printType(ZType *type) {
     }
 }
 
-static void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
+void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
     indent(depth);
 
     if (pattern->type == Z_VAR_IDENT) {
@@ -307,7 +307,7 @@ static void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
         printf("%s:\n", pattern->key->str);
         printDestructedVar(pattern->value, depth + 1);
     } else if (pattern->type == Z_VAR_ENUM) {
-        printf("%s::%s", pattern->base->str, pattern->prop->str);
+        printf("%s::%s\n", pattern->base->str, pattern->prop->str);
         for (usize i = 0; i < veclen(pattern->args); i++)
             printDestructedVar(pattern->args[i], depth + 1);
     } else {
