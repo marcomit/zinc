@@ -118,7 +118,7 @@ static void putSymbol(ZSemantic *ctx, ZSymbol *symbol) {
     if (symbol->isPublic) scope = ctx->table->global;
 
 
-    if (strcmp(symbol->name->str, "_") == 0 &&
+    if (strcmp(symbol->name->str, "_") != 0 &&
         !hashset_insert(&scope->seen, symbol->name->str)) {
         /* Duplicate pub foreign declarations are valid: multiple modules
            may re-export the same C extern (like a shared header). Skip
@@ -914,6 +914,7 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
     case Z_TYPE_POINTER:
         return false;
     case Z_TYPE_ARRAY:
+        if (type->array.size == 0) return false;
         return isInfiniteSize(type->array.base, root, seen);
     case Z_TYPE_TUPLE:
         for (usize i = 0; i < veclen(type->tuple); i++)
@@ -1263,6 +1264,9 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
     }
 
     for (usize i = 0; i < veclen(expectedFunc->func.capabilities); i++) {
+        expectedFunc->func.capabilities[i] = resolveTypeRef(ctx,
+                expectedFunc->func.capabilities[i]
+        );
         ZNode *reference = lookupScopedCapability(
             ctx, expectedFunc->func.capabilities[i]
         );
@@ -1857,6 +1861,8 @@ static void analyzeVar(ZSemantic *ctx, ZNode *curr, bool isGlobal) {
 }
 
 static void analyzeIf(ZSemantic *ctx, ZNode *curr) {
+    bool isIfLet = curr->ifStmt.cond->type == NODE_VAR_DECL;
+    if (isIfLet) beginScope(ctx, curr);
     ZType *cond = resolveType(ctx, curr->ifStmt.cond);
     
     if (!cond) {
@@ -1874,6 +1880,7 @@ static void analyzeIf(ZSemantic *ctx, ZNode *curr) {
     }
 
     analyzeBlock(ctx, curr->ifStmt.body, true);
+    if (isIfLet) endScope(ctx);
 
     if (curr->ifStmt.elseBranch) {
         ZNode *el = curr->ifStmt.elseBranch;
