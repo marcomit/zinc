@@ -2040,6 +2040,16 @@ static void genFor(ZCodegen *ctx, ZNode *node) {
     ctx->scope->startLoop       = entry;
     ctx->scope->endLoop         = endfor;
 
+    // Bind the loop variable in the loop scope so it shadows any stale
+    // function-scope entry that was inserted by the pre-pass (genFuncVars).
+    if (node->forStmt.var) {
+        ZNode *varDecl = node->forStmt.var;
+        ZLLVMStack *loopSlot = getStackValue(ctx, varDecl->varDecl.rvalue);
+        if (loopSlot) {
+            putDestructuredPatternInStack(
+                ctx, varDecl->resolved, varDecl->varDecl.pattern, loopSlot->stack);
+        }
+    }
     genVarDecl(ctx, node->forStmt.var);
 
     LLVMBuildBr             (ctx->builder, entry);
@@ -2310,7 +2320,12 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->memberAccess.object);
         break;
     case NODE_FOR:
-        genFuncVars(ctx, node->forStmt.var);
+        // Only allocate the stack slot — name binding is deferred to genFor
+        // so each loop body gets its own scope entry and avoids name collisions
+        // when two loops declare the same variable (e.g. two `for i` loops).
+        if (node->forStmt.var) {
+            buildFuncVar(ctx, node->forStmt.var->varDecl.rvalue, true);
+        }
         genFuncVars(ctx, node->forStmt.block);
         break;
     case NODE_WHILE:
