@@ -2248,8 +2248,21 @@ static void buildNestedFuncVar(
             buildNestedFuncVar(ctx, val, ptr);
         }
     } else if (node->type == NODE_ENUM_LIT) {
-        LLVMTypeRef enumType = genType(ctx, node->resolved);
-
+        ZToken *variant = node->call.callee->staticAccess.prop;
+        i32 variantIndex = enumIndexField(
+            node->resolved, variant
+        );
+        ZType *variantType = node->resolved->enm.fields[variantIndex];
+        LLVMTypeRef variantTypeRef = genType(ctx, variantType);
+        for (usize i = 0; i < veclen(node->call.args); i++) {
+            ZNode *val = node->call.args[i];
+            LLVMValueRef ptr = LLVMBuildStructGEP2(ctx->builder,
+                variantTypeRef, parent, i + 1, label(ctx, variant)
+            );
+            LLVMTypeRef fieldType = genType(ctx, variantType->strct.fields[i]->resolved);
+            addFuncVar(ctx, ptr, NULL, fieldType, NULL, val);
+            buildNestedFuncVar(ctx, val, ptr);
+        }
     }
 }
 
