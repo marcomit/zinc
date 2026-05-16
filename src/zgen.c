@@ -570,6 +570,9 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
         error(ctx->state, NULL,
                 "'genIdent' called with a null token on node %d", node->type);
         return NULL;
+    } else if (!node->resolved) {
+        error(ctx->state, node->tok, "%zu doesn't have the resolved field", node->type);
+        return NULL;
     }
 
     char *key = node->identNode.mangled ? node->identNode.mangled : node->tok->str;

@@ -1133,10 +1133,11 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                         expectedFunc->func.args[i]
                     );
                 }
+                callee->resolved = expectedFunc;
             } else {
-            error(ctx->state, callee->identNode.tok,
-                  "'%s' is not callable", callee->identNode.tok->str);
-            return NULL;
+                error(ctx->state, callee->identNode.tok,
+                      "'%s' is not callable", callee->identNode.tok->str);
+                return NULL;
             }
         } else {
             if (sym->node->type == NODE_FUNC) {
