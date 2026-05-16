@@ -29,12 +29,25 @@ body:
     attributes:
       label: Type
       options:
+        - label: Lexer (zlex.c)
+        - label: Parser (zparse.c)
+        - label: Semantic analysis (zsem.c)
+        - label: Code generation (zgen.c)
+        - label: Macros (zmacro.c)
         - label: Refactor
         - label: Documentation
         - label: Performance
         - label: Code cleanup
         - label: CI/CD
         - label: Other
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Affected Files
+      placeholder: "e.g. zgen.c:1412, zparse.c:918"
+    validations:
+      required: false
 
   - type: textarea
     id: notes
