@@ -729,51 +729,6 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
     }
 }
 
-static LLVMValueRef genEnumDecl(ZCodegen *ctx, ZNode *node) {
-    ZLLVMStack *stack = getStackValue(ctx, node);
-    if (!stack) {
-        error(ctx->state, node->tok, "Missing stack value");
-        return NULL;
-    }
-
-    i32 index = enumIndexField(
-        node->resolved,
-        node->call.callee->staticAccess.prop
-    );
-
-    if (index == -1) {
-        error(ctx->state, node->staticAccess.prop, "Field not found");
-        return NULL;
-    }
-
-    LLVMTypeRef enumType    = genType(ctx, node->resolved);
-    LLVMTypeRef fieldType   = genType(ctx, node->resolved->enm.fields[index]);
-
-    LLVMBuildStore(
-        ctx->builder,
-        LLVMConstInt(i8Type, (u32)index, false),
-        stack->stack
-    );
-
-    ZNode **args = node->call.args;
-    for (usize i = 0; i < veclen(args); i++) {
-        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
-            ctx->builder, fieldType, stack->stack, i + 1, label(ctx, args[i]->tok));
-
-        LLVMBuildStore(
-            ctx->builder,
-            genExpr(ctx, args[i]),
-            fieldPtr
-        );
-
-    }
-
-    return LLVMBuildLoad2(
-        ctx->builder,
-        enumType,
-        stack->stack, label(ctx, node->tok));
-}
-
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef func   = NULL;
     LLVMValueRef *args  = NULL;
@@ -791,9 +746,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         LLVMValueRef self = genExpr(ctx, callee->memberAccess.object);
         vecpush(args, self);
 
-    } else if (callee->resolved->kind == Z_TYPE_ENUM) {
-        return genEnumDecl(ctx, node);
-    } else {
+    }  else {
         /* Expression call: covers identifiers, static access, subscripts, and
          * function-pointer fields (NODE_MEMBER without mangled). */
         func = genExpr(ctx, callee);
@@ -1185,6 +1138,47 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
+    ZLLVMStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        error(ctx->state, node->tok, "Missing stack value");
+        return NULL;
+    }
+
+    i32 index = enumIndexField(
+        node->resolved,
+        node->call.callee->staticAccess.prop
+    );
+
+    if (index == -1) {
+        error(ctx->state, node->staticAccess.prop, "Field not found");
+        return NULL;
+    }
+
+    LLVMTypeRef fieldType   = genType(ctx, node->resolved->enm.fields[index]);
+
+    LLVMBuildStore(
+        ctx->builder,
+        LLVMConstInt(i8Type, (u32)index, false),
+        stack->stack
+    );
+
+    ZNode **args = node->call.args;
+    for (usize i = 0; i < veclen(args); i++) {
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
+            ctx->builder, fieldType, stack->stack, i + 1, label(ctx, args[i]->tok));
+
+        LLVMBuildStore(
+            ctx->builder,
+            genExpr(ctx, args[i]),
+            fieldPtr
+        );
+
+    }
+
+    return stack->stack;
+}
+
 /* genLvalue is used to load the address of the expression rather than the value.
  * meanwhile the function to load the value is genExpr.
  * */
@@ -1192,6 +1186,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
     case NODE_ARRAY_LIT:        return genArrayLitPtr       (ctx, node);
     case NODE_SLICE:            return genSlicePtr          (ctx, node);
+    case NODE_ENUM_LIT:         return genEnumLitPtr        (ctx, node);
     case NODE_STRUCT_LIT:       return genStructLitPtr      (ctx, node);
     case NODE_TUPLE_LIT:        return genTupleLitPtr       (ctx, node);
     case NODE_MEMBER:           return genMemberAccessPtr   (ctx, node);
@@ -1826,6 +1821,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_TUPLE_LIT:
         case NODE_STRUCT_LIT:
         case NODE_ARRAY_LIT:
+        case NODE_ENUM_LIT:
         case NODE_SLICE: {
             LLVMValueRef ptr = genLvalue(ctx, node);
             /* Function fields are stored as ptr in structs (unsized types can't
@@ -2251,6 +2247,9 @@ static void buildNestedFuncVar(
             addFuncVar(ctx, ptr, NULL, typeRef, NULL, val);
             buildNestedFuncVar(ctx, val, ptr);
         }
+    } else if (node->type == NODE_ENUM_LIT) {
+        LLVMTypeRef enumType = genType(ctx, node->resolved);
+
     }
 }
 
@@ -2313,6 +2312,8 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_STRUCT_LIT:
         buildFuncVar(ctx, node, false);
         break;
+    case NODE_ENUM_LIT:
+        buildFuncVar(ctx, node, false);
     case NODE_CAST:
         genFuncVars(ctx, node->castExpr.expr);
         break;
