@@ -54,7 +54,7 @@ DEF(TOK_USING,      "using",            TOK_FLOWS_MASK | 0x1A)
 
 #ifdef TOK_TYPES
 DEF(TOK_VOID,       "u0",               TOK_TYPES_MASK                              | 0x20)
-DEF(TOK_BOOL,       "u1",               TOK_TYPES_MASK | TOK_SIGNED                 | 0x21)
+DEF(TOK_BOOL,       "u1",               TOK_TYPES_MASK | TOK_UNSIGNED                 | 0x21)
 DEF(TOK_CHAR,       "char",             TOK_TYPES_MASK                              | 0x22)
 DEF(TOK_RUNE,       "rune",             TOK_TYPES_MASK | TOK_UNSIGNED               | 0x33)
 DEF(TOK_F32,        "f32",              TOK_TYPES_MASK | TOK_FLOAT                  | 0x23)

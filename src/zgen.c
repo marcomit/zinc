@@ -549,9 +549,9 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
     case TOK_RUNE_LIT:
         return LLVMConstInt(i32Type, tok->integer, true);
     case TOK_TRUE:
-        return LLVMConstInt(i1Type, true, false);
+        return LLVMConstInt(i1Type, 1, false);
     case TOK_FALSE:
-        return LLVMConstInt(i1Type, false, false);
+        return LLVMConstInt(i1Type, 0, false);
     case TOK_FLOAT_LIT:
         return LLVMConstReal(f64Type, tok->floating);
     case TOK_NONE: {
