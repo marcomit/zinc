@@ -1159,6 +1159,10 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
         }
     } else if (callee->type == NODE_STATIC_ACCESS) {
         ZType *resolved = resolveType(ctx, callee);
+        if (callee->type == NODE_ENUM_LIT) {
+            curr->type = NODE_ENUM_LIT;
+            callee->type = NODE_STATIC_ACCESS;
+        }
         if (!resolved) {
             error(ctx->state, callee->tok, "Unresolved type");
             return NULL;
@@ -1535,11 +1539,20 @@ static ZType *resolveStaticAccess(ZSemantic *ctx, ZNode *curr) {
 
     if (staticMethod) {
         return staticMethod;
-    } else if (baseSym->kind == Z_SYM_STRUCT) {
+    }
+    if (baseSym->kind == Z_SYM_TYPEDEF) {
+        baseSym->type = resolveTypeRef(ctx, baseSym->type);
+        if (!baseSym->type) {
+            error(ctx->state, baseSym->node->tok, "Undefined base");
+        }
+        return NULL;
+    }
+    if (baseSym->kind == Z_SYM_STRUCT) {
         error(ctx->state, prop,
             "Static method '%s' not found", prop->str);
+        
         return NULL;
-    } else if (baseSym->kind == Z_SYM_ENUM) {
+    } else if (baseSym->type && baseSym->type->kind == Z_TYPE_ENUM) {
         ZType **fields  = baseSym->type->enm.fields;
         ZType *strct    = NULL;
         for (usize i = 0; i < veclen(fields) && !strct; i++) {
@@ -1562,13 +1575,8 @@ static ZType *resolveStaticAccess(ZSemantic *ctx, ZNode *curr) {
                 ctx, strct->strct.fields[i]->field.type);
             strct->strct.fields[i]->resolved    = strct->strct.fields[i]->field.type;
         }
+        curr->type = NODE_ENUM_LIT;
         return baseSym->type;
-    } else if (baseSym->kind == Z_SYM_TYPEDEF) {
-        error(
-            ctx->state,
-            base,
-            "Static function with type alias as base are not supported yet");
-        return NULL;
     } else if (baseSym->kind == Z_SYM_NAMESPACE) {
         ZType *resolved = NULL;
         for (usize i = 0; i < veclen(baseSym->node->block); i++) {

@@ -7,6 +7,8 @@ Option :: enum {
     None
 }
 
+some :: Option () -> Option::Some(10)
+
 main :: i32 () {
     val := Option::Some(42)
     if Option::Some(n) := val {
@@ -34,6 +36,12 @@ main :: i32 () {
         if Option::Some(b) := v4 {
             c::printf("%d %d\n", a, b)
         }
+    }
+
+    val = some()
+
+    if Option::Some(num) := val {
+        c::printf("%d\n", num)
     }
 
     return 0

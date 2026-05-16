@@ -154,7 +154,8 @@ typedef enum {
     NODE_SLICE,
     NODE_CAPABILITY,
     NODE_MATCH,
-    NODE_MATCH_ARM
+    NODE_MATCH_ARM,
+    NODE_ENUM_LIT
 } ZNodeType;
 
 typedef enum ZTypeKind {

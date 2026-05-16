@@ -21,7 +21,7 @@ static char *nodeLabels[] = {
     "MACRO",        "GOTO",         "LABEL",        "TYPE",         "ENUM",
     "BREAK",        "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
     "STATICACCESS", "NAMESPACE",    "SLICE",        "CAPABILITY",   "MATCH",
-    "MATCH_ARM"
+    "MATCH_ARM",    "ENUM_LIT"
 };
 
 static char *levels[] = {
@@ -655,6 +655,13 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->match.cond, depth);
         for (usize i = 0; i < veclen(node->match.arms); i++) {
             printNode(node->match.arms[i], depth);
+        }
+        break;
+    case NODE_ENUM_LIT:
+        printf("\n");
+        printNode(node->call.callee, depth);
+        for (usize i = 0; i < veclen(node->call.args); i++) {
+            printNode(node->call.args[i], depth);
         }
         break;
     case NODE_MATCH_ARM:
