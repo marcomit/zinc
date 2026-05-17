@@ -710,7 +710,7 @@ static void putDestructuredPatternInStack(
 }
 
 static void genVarDecl(ZCodegen *ctx, ZNode *node) {
-    if (!node->varDecl.rvalue) {
+    if (!node->varDecl.rvalue || !node->resolved) {
         error(ctx->state, node->tok, "Invalid 'genVarDecl' call");
         return;
     }
@@ -721,13 +721,15 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
         return;
     }
 
+    putDestructuredPatternInStack(
+        ctx, node->resolved, node->varDecl.pattern, stack->stack);
+
     LLVMValueRef val = genExpr(ctx, node->varDecl.rvalue);
 
-    /* Skip the store if genExpr already wrote the value in-place (e.g. struct/array
-     * literals return the pre-allocated slot pointer - storing it would self-overwrite).
-     * For register-sized values, cast to the variable's declared type first. */
-    if (val && val != stack->stack && (!node->resolved || fitsInRegister(val))) {
-        val = castValue(ctx, val, node->varDecl.rvalue->resolved, node->resolved);
+    if (val && val != stack->stack) {
+        if (fitsInRegister(val)) {
+            val = castValue(ctx, val, node->varDecl.rvalue->resolved, node->resolved);
+        }
         LLVMBuildStore(ctx->builder, val, stack->stack);
     }
 }
@@ -1446,7 +1448,15 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     }
     case TOK_STAR: {
         LLVMTypeRef base = genType(ctx, node->resolved);
-        return LLVMBuildLoad2(ctx->builder, base, arg, l);
+        LLVMValueRef loaded = LLVMBuildLoad2(ctx->builder, base, arg, l);
+        /* Non-register loads (structs/enums) must land in the pre-allocated
+         * slot so destructure/pattern-match callers can read from a stable
+         * address — mirrors what genCall does for aggregate returns. */
+        if (!fitsInRegister(loaded)) {
+            ZLLVMStack *stack = getStackValue(ctx, node);
+            if (stack) LLVMBuildStore(ctx->builder, loaded, stack->stack);
+        }
+        return loaded;
     }
     case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
     case TOK_REF:   return genLvalue(ctx, node->unary.operand);
