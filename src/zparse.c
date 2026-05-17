@@ -1866,11 +1866,11 @@ static ZNode *parseArrayLit(ZParser *parser) {
     ZNode **values = NULL;
     ZNode *expr = NULL;
 
-    while (( expr = tryParse(parser, parseExpr(parser)) )) {
+    do {
+        expr = parseExpr(parser);
+        if (!expr) break;
         vecpush(values, expr);
-        if (check(parser, TOK_RSBRACKET)) break;
-        if (!match(parser, TOK_COMMA)) break;
-    }
+    } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
 
     expect(parser, TOK_RSBRACKET);
 
