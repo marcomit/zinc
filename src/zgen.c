@@ -1214,7 +1214,9 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         }
 
         LLVMValueRef ptr = genLvalue(ctx, node->unary.operand);
-        return ptr;// LLVMBuildLoad2(ctx->builder, type, ptr, label(ctx, node->tok));
+        LLVMTypeRef typeRef = genType(ctx, node->unary.operand->resolved);
+        ptr = LLVMBuildLoad2(ctx->builder, typeRef, ptr, label(ctx, node->tok));
+        return ptr;
     }
     default:
         error(ctx->state,
@@ -1783,6 +1785,7 @@ static LLVMValueRef genMatchCond(
 }
 
 static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
+    genVarDecl(ctx, node);
     ZNode *rvalue = node->varDecl.rvalue;
     LLVMValueRef ptr = NULL;
 
