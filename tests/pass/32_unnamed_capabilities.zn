@@ -1,0 +1,24 @@
+foreign printf :: u0 (*char, ...)
+
+Logger :: struct { i32 level }
+Context :: struct { i32 val }
+
+print_ctx :: u0 ()[Context c] -> printf("%d\n", c.val)
+print_logger :: u0 ()[Logger l] -> printf("%d\n", l.level)
+
+transitive :: u0 ()[Context, Logger] -> print_logger()
+
+test :: u0 ()[Logger, Context] {
+    transitive()
+    print_ctx()
+}
+
+main :: i32 () {
+    with _ := Logger { level : 10 } {
+        with _ := Context { val: 10 } {
+            test()
+        }
+    }
+
+    return 0
+}
