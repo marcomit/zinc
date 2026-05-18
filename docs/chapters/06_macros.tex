@@ -1,0 +1,100 @@
+\chapter{Macro System}
+\label{ch:macros}
+
+% Source: src/zmacro.c
+
+\section{Overview}
+
+Zinc macros are syntactic pattern-matching rules that expand to arbitrary AST fragments at compile time.
+They are declared with the \zn{macro} keyword and expanded during the parsing phase (before type checking).
+
+\begin{lstlisting}[style=zinc, caption={A simple macro declaration}]
+  macro unless $cond $body -> {
+      if !($cond) {
+          $body
+      }
+  }
+\end{lstlisting}
+
+\begin{lstlisting}[style=zinc, caption={Using the macro}]
+  unless is_valid {
+      return
+  }
+\end{lstlisting}
+
+\section{Pattern Elements}
+
+A macro pattern is a sequence of \emph{pattern elements}:
+
+\begin{center}
+\begin{tabular}{lp{9cm}}
+\toprule
+\textbf{Syntax} & \textbf{Meaning} \\
+\midrule
+literal token        & Must match exactly (e.g.\ \zn{from}, \zn{to}). \\
+\texttt{\$name}      & Capture variable: matches a single expression or statement block. \\
+\texttt{@name}       & Identifier capture: matches one identifier and introduces it as a new name. \\
+\texttt{\#name}      & Type capture: matches a type expression. \\
+\texttt{'\,tok}      & Quoted token: forces a literal match on an otherwise overridable symbol. \\
+\texttt{\$(...)*}      & Kleene-star repetition of the enclosed sub-pattern. \\
+\texttt{\$(...)+}      & One-or-more repetition. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Expansion}
+
+During parsing, when the parser encounters a token sequence that begins with a macro keyword, \texttt{zmacro.c} is invoked to:
+
+\begin{enumerate}
+  \item Match the remaining tokens against the declared pattern.
+  \item Bind each capture variable to the matched token span.
+  \item Substitute the captures into the macro body, producing a new token stream.
+  \item Push the new token stream back into the parser's \texttt{ZTokenStream} stack so it is parsed as ordinary Zinc code.
+\end{enumerate}
+
+The \texttt{ZTokenStream} maintains a \texttt{prev} pointer, forming a stack of streams.
+Once the injected stream is exhausted, parsing continues from the outer stream.
+
+\section{Hygiene}
+
+Identifier captures (\texttt{@name}) introduce fresh names that do not collide with identifiers already in scope.
+
+% TODO: describe the gensym mechanism in zmacro.c
+
+\section{Example: Custom Loop}
+
+\begin{lstlisting}[style=zinc, caption={A range-based \texttt{for} macro}]
+  macro for @item from $start to $end $body -> {
+      @item := $start
+      for @item < $end {
+          $body
+          @item = @item + 1
+      }
+  }
+\end{lstlisting}
+
+\begin{lstlisting}[style=zinc, caption={Usage}]
+  for i from 0 to 10 {
+      printf("%d\n", i)
+  }
+\end{lstlisting}
+
+\section{Macros and \texttt{goto}}
+
+Because expansion produces ordinary Zinc source, macros can use \zn{goto} and labels internally to express complex control structures, such as break-from-nested-loop or custom early-exit patterns.
+
+\begin{lstlisting}[style=zinc, caption={A \texttt{while} macro using \texttt{goto}}]
+  macro while $cond $body -> {
+      __entry:
+      if !($cond) { goto __exit }
+      $body
+      goto __entry
+      __exit:
+  }
+\end{lstlisting}
+
+\begin{warn}
+  Because macro labels are emitted literally, two invocations of the same goto-using macro in the same function will produce duplicate label definitions.
+  The \texttt{@name} identifier capture should be used to introduce fresh label names.
+\end{warn}

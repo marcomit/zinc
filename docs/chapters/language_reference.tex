@@ -1,5 +1,6 @@
 \chapter{Language Reference}
 
+% -----------------------------------------------------------------------------
 \section{Types}
 
 Zinc is statically typed: every expression has a type that is fully known at
@@ -90,7 +91,7 @@ u32 n = triple.0   // access by index
 Tuples are the idiomatic way to return multiple values:
 
 \begin{lstlisting}[style=zinc, caption={Multiple return values}]
-(u32, u32) divmod(u32 a, u32 b) {
+divmod :: (u32, u32)(u32 a, u32 b) {
     return (a / b, a mod b)
 }
 \end{lstlisting}
@@ -98,7 +99,7 @@ Tuples are the idiomatic way to return multiple values:
 \subsection{Structs}
 
 \begin{lstlisting}[style=zinc, caption={Struct declaration and construction}]
-struct Vector2 {
+Vector2 :: struct {
     f32 x
     f32 y
 }
@@ -114,7 +115,7 @@ Enums are tagged unions (sum types) that can carry per-variant data.
 Each variant is a struct prefixed by a \texttt{u8} discriminant tag.
 
 \begin{lstlisting}[style=zinc, caption={Enum declaration and construction}]
-enum Shape {
+Shape :: enum {
     Square(f32)     // single f32 payload
     Rect(f32, f32)  // two f32 payloads
     None            // no payload
@@ -124,6 +125,7 @@ square := Shape::Square(10.0)
 rect   := Shape::Rect(12.0, 10.0)
 \end{lstlisting}
 
+% -----------------------------------------------------------------------------
 \section{Variables}
 
 Variables live on the stack and are always mutable.
@@ -145,6 +147,7 @@ other := 10   // inferred type
 (first, second)    := pair
 \end{lstlisting}
 
+% -----------------------------------------------------------------------------
 \section{Functions}
 
 \subsection{Declarations}
@@ -153,13 +156,13 @@ Functions follow C-like syntax.
 The arrow form \zn{->} is shorthand for a single-expression body.
 
 \begin{lstlisting}[style=zinc, caption={Function declarations}]
-u32 add(u32 a, u32 b) {
+add :: u32 (u32 a, u32 b) {
     return a + b
 }
 
-u32 mul(u32 a, u32 b) -> a * b
+mul :: u32 (u32 a, u32 b) -> a * b
 
-i32 main() {
+main :: i32 () {
     return add(10, mul(12, 3))
 }
 \end{lstlisting}
@@ -170,17 +173,17 @@ The \zn{for} block attaches methods to a type.
 The named binding after the type is the implicit \emph{self} argument.
 
 \begin{lstlisting}[style=zinc, caption={Receiver methods}]
-for i32 self {
-    u32 add(u32 b) -> self + b
+i32 self :: for {
+    add :: u32 (u32 b) -> self + b
 }
 
-for *i32 ptr {
-    u0 incr() {
+*i32 ptr :: for {
+    incr :: u0 () {
         *ptr = *ptr + 1
     }
 }
 
-i32 main() {
+main :: i32 () {
     val := 10
     val.add(5)
     10.add(20)
@@ -197,15 +200,15 @@ Omitting the receiver binding creates a static (namespace-scoped) function
 called with \zn{Type::name()} syntax.
 
 \begin{lstlisting}[style=zinc, caption={Static functions}]
-struct Counter {
+Counter :: struct {
     i32 count
 }
 
-for Counter {
-    Counter new() -> Counter{ count: 0 }
+Counter :: for {
+    new :: Counter() -> Counter{ count: 0 }
 }
 
-i32 main() {
+main :: i32 () {
     c := Counter::new()
     return 0
 }
@@ -220,11 +223,11 @@ threaded automatically from a surrounding \zn{with} block.
 \begin{lstlisting}[style=zinc, caption={Capability declaration and use}]
 use <core::mem>
 
-*u8 allocBuf(u64 size)(Allocator alloc) {
+allocBuf :: *u8 (u64 size)[Allocator alloc] {
     return alloc.alloc(size)
 }
 
-i32 main() {
+main :: i32 () {
     with heap := Allocator::heap() {
         buf := allocBuf(1024) // alloc injected automatically
     }
@@ -235,6 +238,24 @@ i32 main() {
 Capabilities are propagated transitively: a function that calls another
 capability-requiring function inherits the requirement automatically.
 
+\begin{lstlisting}[style=zinc, caption={Transitive capability}]
+
+new :: *u8 ()[Allocator allocator] {
+    return allocator.alloc(sizeof MyStruct)
+}
+
+transitive :: *u8()[Allocator] { // Unnamed capability
+    return new() // Capability is passed implicitly
+}
+
+main :: i32 () {
+    with _ := Allocator::heap() {
+        transitive()
+    }
+}
+\end{lstlisting}
+Transitive capabilities are often unused in the function itself but just passed to other functions (like in this example the \texttt{transitive} function doesn't use the \texttt{Allocator}). So the capability name can be omitted.
+
 \subsection{Foreign Declarations}
 
 Foreign declarations import C functions for use as ordinary Zinc functions.
@@ -242,14 +263,14 @@ Variadic C functions are supported with \texttt{...}.
 Related functions can be grouped under a named namespace.
 
 \begin{lstlisting}[style=zinc, caption={Foreign declarations}]
-foreign u0 printf(*char, ...)
+foreign printf :: u0 (*char, ...)
 
-foreign libc {
-    *u8 malloc(u64)
-    u0  free(*u8)
+libc :: foreign {
+    malloc  :: *u8  (u64)
+    free    :: u0   (*u8)
 }
 
-i32 main() {
+main :: i32 () {
     printf("Hello, world!\n")
     buf := libc::malloc(1024)
     libc::free(buf)
@@ -257,6 +278,7 @@ i32 main() {
 }
 \end{lstlisting}
 
+% -----------------------------------------------------------------------------
 \section{Control Flow}
 
 \subsection{Conditionals}
@@ -327,6 +349,12 @@ in last-in first-out order.
 \section{Operators}
 
 \subsection{Arithmetic}
+
+\subsection{Comparison}
+
+\subsection{Logical}
+
+\subsection{Bitwise}
 
 \subsection{Update Operator}
 
@@ -413,20 +441,28 @@ i32 count = 0
 count : .to_string()   // ERROR: RHS produces *char, expected i32
 \end{lstlisting}
 
-\subsection{Comparison}
-
-\subsection{Logical}
-
-\subsection{Bitwise}
+\section{Type Aliases}
+\begin{lstlisting}[style=zinc, caption={Type aliases}]
+void :: type u0
+bool :: type u1
+int :: i32
+uint :: u32
+VeryComplicatedType :: (*i32 (*char, *char), *MyStruct)
+\end{lstlisting}
+It doesn't require an explaination.
 
 \section{Type Casting}
+To cast a type zinc uses the \zn{as} keyword after the expression:
+\begin{lstlisting}[style=zinc, caption={Type casting}]
+foreign malloc :: *u8 (u64)
+main :: i32 () {
+    *MyStruct = malloc(sizeof MyStruct)// implicit casted from *u8 to *MyStruct
+    buff := malloc(sizeof MyStruct) as *MyStruct //explicit cast
+    myStruct := buff as *u8
+}
+\end{lstlisting}
 
 \section{Imports}
 
-\section{Interfaces}
-
-\section{Generics}
-
-\section{Macros}
-
-\section{Type Aliases}
+\section{Visibility}
+There are just two level of visibility: by default when you declare a something it is visible only in that file. by adding the \zn{pub} keyword that symbol becomes global. Other files can import that file by using the \zn{keyword} filename (A \texttt{.zn} is added at the end). To include a nested file you can use the :: to navigate into a directory and \zn{super} to go up the directory.

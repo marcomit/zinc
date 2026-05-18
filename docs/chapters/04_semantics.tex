@@ -1,0 +1,173 @@
+\chapter{Semantic Analysis}
+\label{ch:semantics}
+
+% Source: src/zsem.c
+
+\section{Overview}
+
+The semantic pass (\texttt{zsem.c}) walks the AST produced by the parser and performs:
+
+\begin{itemize}
+  \item \textbf{Name resolution} - identifiers are resolved to their declaration sites.
+  \item \textbf{Type checking} - every expression is assigned a \texttt{ZType}; incompatible operands produce errors.
+  \item \textbf{Scope management} - a stack of symbol tables tracks visibility of variables, functions, and types.
+  \item \textbf{Generic instantiation} - generic structs and functions are monomorphized on demand (not yet implemented).
+  \item \textbf{Capability checking} - \zn{with T x} parameters are validated in their enclosing scope.
+  \item \textbf{Unused-symbol warnings} - variables, functions, and structs that are never referenced emit warnings (suppressed by CLI flags).
+\end{itemize}
+
+The pass is conceptually split in two phases. The first phase
+(\texttt{discoverGlobalScope}) registers every top-level declaration
+(functions, structs, enums, typedefs, namespaces, globals, foreign
+functions) into the global scope, so that modules can refer to each
+other without ordering constraints. The second phase (\texttt{analyze})
+walks each module and type-checks function bodies, statements, and
+expressions.
+
+\section{Symbol Tables}
+
+A \texttt{ZSymTable} owns the global scope and the per-module scopes.
+Each \texttt{ZScope} carries:
+
+\begin{itemize}
+  \item a \texttt{symbols} vector of \texttt{ZSymbol*} declared in the scope,
+  \item a \texttt{seen} hashset used to detect duplicate names,
+  \item a \texttt{capabilities} vector (see Capability Checking),
+  \item a pointer to its parent scope, used for lookup.
+\end{itemize}
+
+\texttt{resolve} walks the scope chain from the current scope upwards;
+on a successful match it bumps the symbol's \texttt{useCount} (the basis
+of the unused-symbol warnings). The placeholder identifier \zn{_} is
+rejected here so it cannot be referenced as a value.
+
+\begin{lstlisting}[style=zinc]
+sum :: i32 (i32 a, i32 b) {
+    return a + b
+}
+main :: i32 () {
+    i32 a = 10
+    i32 b = 20
+    res := a + b
+    return 0
+}
+\end{lstlisting}
+
+In the example above, \texttt{sum} and \texttt{main} are registered in
+the file (module) scope during phase one. When \texttt{main}'s body is
+analyzed in phase two, \texttt{beginScope} opens a fresh child scope for
+its parameters and locals; \texttt{endScope} pops it on exit and
+triggers the unused-symbol check for that frame.
+
+\section{Type Checking}
+
+Every expression node is passed through \texttt{resolveType}, which
+dispatches on \texttt{ZNodeType} and caches the result in
+\texttt{node->resolved} so each node is typed at most once.
+I created a function \texttt{typesCompatible} which checks if two types can be compatible and returns the promoted value. This function is used everywhere to permit an implicit cast. For example a function accepts i32 but i pass an i8, without the function the compiler will reject it because the expected type is i32 but the compiler catches an i8.
+
+\subsection{Binary expressions}
+
+\texttt{resolveBinary} resolves both operands, then asks
+\texttt{typesCompatible} for the common type. The rules are:
+
+\begin{itemize}
+  \item Two pointers (or pointer vs.\ \zn{none}) compare equal and yield the pointer type.
+  \item Identical types return as-is.
+  \item For two primitives the type with the higher rank wins
+        (\zn{char} < \zn{i8}/\zn{u8} < \zn{i16}/\zn{u16} < \zn{i32}/\zn{u32} < \zn{i64}/\zn{u64} < \zn{f32} < \zn{f64}).
+  \item A float on either side promotes the result to the wider float.
+  \item Mixed signed/unsigned: if the signed operand has the higher rank, it wins; if the ranks are equal, the result is promoted to the next signed rank. Promotion past \zn{i64} is refused and a warning suggests an explicit cast.
+  \item Bit-operators (\zn{&}, \zn{|}, \zn{^}, \zn{<<}, \zn{>>}) reject non-integer operands.
+\end{itemize}
+
+After promotion the operands are wrapped in \texttt{NODE\_CAST} nodes
+through \texttt{implicitCast} when needed. Comparison and logical
+operators (\zn{==}, \zn{!=}, \zn{<}, \zn{>}, \zn{<=}, \zn{>=},
+\zn{and}, \zn{or}) always yield \zn{u1}. Assignment (\zn{=}) requires
+the LHS to be an lvalue (identifier, subscript, member, or pointer
+dereference) and yields the LHS type (I have a function to check this).
+
+\subsection{Unary expressions}
+
+\texttt{resolveUnary} handles three operators specially:
+
+\begin{itemize}
+  \item \zn{&expr} wraps the operand type in a \texttt{Z\_TYPE\_POINTER}.
+  \item \zn{*expr} requires a pointer and yields the pointee.
+  \item \zn{not expr} casts the operand to \zn{u1} and returns \zn{u1}.
+\end{itemize}
+
+\subsection{Pointer arithmetic}
+
+Pointer arithmetic is not currently special-cased: pointer-vs-integer
+operations fall through the primitive-compatibility check and are
+rejected. Pointer offsetting must be expressed through subscripts
+(\zn{p[i]}) which \texttt{resolveArrSubscript} accepts for both arrays
+and pointer types (but arrays can't decay to pointers like C).
+
+\section{Receiver Resolution}
+
+Receiver functions (methods) are stored separately from free
+functions. \texttt{ZFuncTable} groups method declarations by their
+receiver's base type. This type is basically an hashmap where the key is the type and the value is a list of function declarations Receiver methods live in \texttt{funcDef} while
+namespace-qualified static methods live in \texttt{staticFuncDef}.
+
+
+\subsection{Method calls (\zn{expr.method(...)})}
+
+\texttt{resolveMemberAccess} resolves the type of the LHS, dereferences
+pointer types (so \zn{(*p).method} and \zn{p.method} behave the same),
+then:
+
+\begin{enumerate}
+  \item If the base is a struct, it first searches the struct's fields.
+  \item Failing that, it calls \texttt{resolveFuncCallEmbedded}, which walks the receiver-method tables for the type and, recursively, for any embedded fields. A method found via two distinct embedded paths is reported as a conflict.
+  \item On success, \texttt{memberAccess.mangled} is set to the method's mangled name so codegen can emit a direct call and inject the self argument.
+\end{enumerate}
+
+\texttt{checkFunctionUsedAsValue} guards against passing a receiver
+method by name (e.g.\ as an argument): once
+\texttt{memberAccess.mangled} is set the node is bound to a method and
+cannot be treated as a value.
+
+\subsection{Static access (\zn{T::method})}
+
+\texttt{resolveStaticAccess} looks up the base name and the property:
+
+\begin{itemize}
+  \item For a primitive or user type that has registered static methods, it returns the function type of the matching entry.
+  \item For an enum, it rewrites the node to \texttt{NODE\_ENUM\_LIT} and returns the enum type; codegen then emits a variant constructor.
+  \item For a namespace, it searches the namespace block for a foreign declaration with the requested name and binds \texttt{staticAccess.mangled} to the underlying C symbol.
+\end{itemize}
+\begin{note}
+Function names are mangled. This means that when the user declares a receiver function or a static function its name becomes \_ZN+(pref.len+pref for pref in prefixes). For static methods there's another mangler function.
+\end{note}
+
+\section{Capability Checking}
+
+Each \texttt{ZScope} carries a \texttt{capabilities} vector of
+\texttt{ZCapability} entries, indexed by type.
+\texttt{putCapability} either creates a fresh entry for an unseen type
+or appends to the existing one, so capabilities introduced by an
+enclosing \zn{capability} block remain visible inside nested scopes.
+
+\texttt{resolveFuncCall} iterates the callee's declared
+capability list and runs \texttt{lookupScopedCapability}, which walks
+from the current scope outward looking for a matching entry. The most
+recently pushed instance is selected and recorded in
+\texttt{call.capabilities} for codegen. A missing capability raises
+\texttt{Capability '\%s' not found in the current scope}.
+
+\section{Struct, Enum, and Embedding Checks}
+
+In addition to per-expression typing, the pass enforces several
+structural invariants:
+
+\begin{itemize}
+  \item \texttt{analyzeStruct} resolves every field type and runs \texttt{isInfiniteSize} to reject by-value cycles such as \zn{struct Node \{ Node next \}}; the user is told to use a pointer instead. Duplicate field names within a struct, and conflicts between a struct's own field and a field inherited through an embedded struct, are also reported.
+  \item \texttt{analyzeEnum} resolves each variant's payload, checks for duplicate variant names, and runs the same infinite-size check on payload fields.
+  \item \texttt{analyzeBlock} flags statements after \zn{return}, \zn{break}, or \zn{continue} as unreachable and truncates the block at that point.
+\end{itemize}
+
+% TODO: document interface / facet conformance once the implementation lands.
