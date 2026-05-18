@@ -113,7 +113,7 @@ ZToken *maketoken(ZTokenType type, char *start) {
 	return self;
 }
 
-static ZToken *makeident(char *name, char *start) {
+ZToken *makeident(char *name, char *start) {
 	ZToken *self = maketoken(TOK_IDENT, start);
 	self->str = name;
 	return self;

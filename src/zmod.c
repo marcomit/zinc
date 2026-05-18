@@ -847,7 +847,7 @@ void _error(ZState *state, ZToken *tok, const char *src_file,
     va_start(args, fmt);
 
     ZLog *log = vmakelog(Z_ERROR,
-        veclast(state->visitedFiles),
+        state->filename,
         tok,
         src_file,
         src_line,
@@ -1007,7 +1007,6 @@ static void printLineHighlight(ZToken *tok, const char *color) {
 }
 
 static void printLog(ZState *state, ZLog *log) {
-
     printf("  %s", log->filename);
     if (state->debug) {
         printf("[%s:%d]", log->src_file, log->src_line);

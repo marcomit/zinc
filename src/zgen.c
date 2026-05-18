@@ -1451,7 +1451,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
         LLVMValueRef loaded = LLVMBuildLoad2(ctx->builder, base, arg, l);
         /* Non-register loads (structs/enums) must land in the pre-allocated
          * slot so destructure/pattern-match callers can read from a stable
-         * address — mirrors what genCall does for aggregate returns. */
+         * address  -  mirrors what genCall does for aggregate returns. */
         if (!fitsInRegister(loaded)) {
             ZLLVMStack *stack = getStackValue(ctx, node);
             if (stack) LLVMBuildStore(ctx->builder, loaded, stack->stack);
@@ -2264,6 +2264,7 @@ static void buildNestedFuncVar(
             buildNestedFuncVar(ctx, val, ptr);
         }
     } else if (node->type == NODE_ENUM_LIT) {
+        info(ctx->state, node->tok, "enumlit");
         ZToken *variant = node->call.callee->staticAccess.prop;
         i32 variantIndex = enumIndexField(
             node->resolved, variant
@@ -2346,11 +2347,18 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_CAST:
         genFuncVars(ctx, node->castExpr.expr);
         break;
+    case NODE_ARRAY_LIT:
+        info(ctx->state, node->tok, "buildFuncVar");
+        buildFuncVar(ctx, node, false);
+        break;
+    case NODE_ARRAY_INIT:
+        buildFuncVar(ctx, node, false);
+        break;
     case NODE_MEMBER:
         genFuncVars(ctx, node->memberAccess.object);
         break;
     case NODE_FOR:
-        // Only allocate the stack slot — name binding is deferred to genFor
+        // Only allocate the stack slot  -  name binding is deferred to genFor
         // so each loop body gets its own scope entry and avoids name collisions
         // when two loops declare the same variable (e.g. two `for i` loops).
         if (node->forStmt.var) {
