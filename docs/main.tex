@@ -1,17 +1,17 @@
 \documentclass[11pt, a4paper, openany]{book}
 
-% Encoding & fonts
+% -- Encoding & fonts ---------------------------------------------------------
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
 \usepackage{microtype}
 
-% Page layout
+% -- Page layout --------------------------------------------------------------
 \usepackage[margin=2.5cm, top=3cm, bottom=3cm]{geometry}
 \setlength{\parskip}{0.5em}
 \setlength{\parindent}{0pt}
 
-% Colors
+% -- Colors -------------------------------------------------------------------
 \usepackage[dvipsnames]{xcolor}
 \definecolor{zn-keyword} {HTML}{C678DD}
 \definecolor{zn-type}{HTML}{56B6C2}
@@ -19,17 +19,17 @@
 \definecolor{zn-comment}{HTML}{7F848E}
 \definecolor{zn-number}{HTML}{D19A66}
 \definecolor{zn-bg}{HTML}{ffffff}
-\definecolor{zn-fg}{HTML}{ABB2BF}
+\definecolor{zn-fg}{HTML}{455045}
 \definecolor{linkcolor}{HTML}{4183C4}
 
-% Code listings
+% -- Code listings ------------------------------------------------------------
 \usepackage{listings}
 \usepackage{lstautogobble}
 
 \lstdefinelanguage{Zinc}{
   keywords={
     if, else, for, return, struct, pub, foreign, use, type,
-    match, defer, goto, break, continue, macro, facet,
+    match, defer, enum, break, continue, macro, facet,
     and, or, not, true, false, none, with
   },
   keywordstyle=\color{zn-keyword}\bfseries,
@@ -37,8 +37,8 @@
   sensitive=true,
   morecomment=[l]{//},
   morecomment=[s]{/*}{*/},
-  commentstyle=\color{zn-comment}\itshape,
-  morestring=[b]"es,
+  commentstyle=\color{zn-comment},
+  morestring=[b]",
   stringstyle=\color{zn-string},
   literate=
     {u0}{{\textcolor{zn-type}{u0}}}2
@@ -86,16 +86,16 @@
 
 \newcommand{\zn}[1]{\lstinline[style=zninline]{#1}}
 
-% Math & symbols
+% -- Math & symbols -----------------------------------------------------------
 \usepackage{amsmath}
 \usepackage{amssymb}
 
-% Graphics & tables
+% -- Graphics & tables --------------------------------------------------------
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{tabularx}
 
-% Hyperlinks
+% -- Hyperlinks ---------------------------------------------------------------
 \usepackage[
   colorlinks=true,
   linkcolor=linkcolor,
@@ -105,7 +105,7 @@
   pdfauthor={Marco Menegazzi},
 ]{hyperref}
 
-% Header/footer
+% -- Header/footer ------------------------------------------------------------
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
@@ -114,7 +114,7 @@
 \fancyhead[LO]{\textit{\rightmark}}
 \renewcommand{\headrulewidth}{0.4pt}
 
-% Misc
+% -- Misc ---------------------------------------------------------------------
 \usepackage{enumitem}
 \usepackage{tcolorbox}
 \tcbuselibrary{skins,breakable}
@@ -135,6 +135,8 @@
   breakable,
 }
 
+% -----------------------------------------------------------------------------
+
 \title{
   \vspace{2cm}
   {\Huge\bfseries The Zinc Programming Language}\\[1em]
@@ -142,20 +144,19 @@
   \rule{\linewidth}{0.5pt}
 }
 \author{Marco Menegazzi}
-\date{\today}
+% \date{\today}
 
 \begin{document}
 
 \maketitle
 \tableofcontents
 
-% Chapters
+% -- Chapters -----------------------------------------------------------------
 \input{chapters/01_intro}
+\input{chapters/language_reference}
 \input{chapters/02_lexer}
 \input{chapters/03_parser}
 \input{chapters/04_semantics}
 \input{chapters/05_codegen}
-\input{chapters/06_macros}
 
 \end{document}
-
