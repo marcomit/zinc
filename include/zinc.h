@@ -589,7 +589,7 @@ typedef struct ZParser {
     bool            noStructLit;
 
     /* When true, parseType will not consume a trailing '(' as a function-type
-     * suffix. Set in parseVarDefTyped so that `(i32,i32) (first,second) = …`
+     * suffix. Set in parseVarDefTyped so that `(i32,i32) (first,second) = ...`
      * does not greedily parse the destructure pattern as function args. */
     bool            noFuncType;
 } ZParser;
@@ -700,6 +700,7 @@ typedef struct ZSemantic {
 /* Lexer */
 ZToken **ztokenize(ZState *);
 ZToken *maketoken(ZTokenType, char *);
+ZToken *makeident(char *, char *);
 ZTokenStream *maketokstream(ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
 

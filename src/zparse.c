@@ -1095,14 +1095,29 @@ static ZNode *parseBlock(ZParser *parser) {
 static ZNode *parseField(ZParser *parser) {
     ZType *type = tryParse(parser, parseType(parser));
 
-    if (!type) {
-        return NULL;
-    }
+    guard(type);
     ensure(check(parser, TOK_IDENT), "Expected an identifier");
 
     ZToken *ident = consume(parser);
 
-    if (check(parser, TOK_LPAREN)) {
+
+    ZNode *node             = makenode(NODE_FIELD);
+    node->field.type        = type;
+    node->field.identifier  = ident;
+    node->resolved          = type;
+    node->tok               = ident;
+    return node;
+}
+
+static ZNode *parseFieldOptName(ZParser *parser) {
+    ZType *type = tryParse(parser, parseType(parser));
+    guard(type);
+    ZToken *ident = NULL;
+    if (check(parser, TOK_IDENT)) ident = consume(parser);
+    else {
+        ZToken *tok = peek(parser);
+        if (!tok) return NULL;
+        ident = makeident("_", tok->start);
     }
 
     ZNode *node             = makenode(NODE_FIELD);
@@ -1634,8 +1649,8 @@ static ZNode *parseFuncDecl(ZParser *parser,
     if (check(parser, TOK_LSBRACKET)) {
         capabilities = parseGenericList(
             parser,
-            TOK_LSBRACKET, TOK_RSBRACKET,
-            parseField,     true
+            TOK_LSBRACKET,      TOK_RSBRACKET,
+            parseFieldOptName,  true
         );
     }
 
