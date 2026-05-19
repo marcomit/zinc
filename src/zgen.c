@@ -1,5 +1,14 @@
-// SPDX-License-Identifier: BSD-3-Clause
-// Copyright (c) 2025, Marco Menegazzi
+/**
+ * @file zgen.c
+ * @brief Code generator that emits LLVM-IR
+ *
+ * It generates the LLVM-IR from the AST.
+ * It does a first pass where store all variable declarations
+ * such that the ordering doesn't matter.
+ *
+ * @copyright Copyright (c) 2025, Marco Menegazzi
+ *            SPDX-License-Identifier: BSD-3-Clause
+ */
 
 #include "base.h"
 #include "zcolors.h"
@@ -137,6 +146,13 @@ static void putLLVMValueRef(ZCodegen *ctx, char *key, LLVMValueRef value) {
     vecpush(ctx->scope->symbols, symbol);
 }
 
+/**
+ * @brief Returns the variable saved in the stack.
+ *
+ * It walks the symbols in the scope and go up while it reaches the highest scope.
+ *
+ * @see genIdent to see how it's used.
+ */
 static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
     ZLLVMScope *cur = ctx->scope;
     while (cur) {
@@ -151,6 +167,13 @@ static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
     return NULL;
 }
 
+/**
+ * @brief Initialize LLVM types
+ *
+ * Integer types are used everywhere in the code generation
+ * so they are 'cached' and initialized only once
+ * at the stack of the code generation.
+ */
 static void initNativeTypes(ZCodegen *ctx) {
     if (i0Type) return;
     i0Type  = LLVMVoidTypeInContext(ctx->ctx);
@@ -206,6 +229,13 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
     return self;
 }
 
+/**
+ * @brief Used to name LLVM instructions.
+ *
+ * If the compiler is in dev mode it emits only
+ * the prefix "zn" + a progressive counter in hex format.
+ * If the dev mode is not enabled it emits the source string given by the token
+ */
 char *label(ZCodegen *ctx, ZToken *tok) {
     memset(ctx->str, 0, veclen(ctx->str));
     vecsetlen(ctx->str, 0);
@@ -222,6 +252,15 @@ char *label(ZCodegen *ctx, ZToken *tok) {
 
 usize typeSize(ZCodegen *, ZType *);
 
+/**
+ * @brief Calculates padding of types.
+ *
+ * This function is used to calculate the padding of struct/tuple fields.
+ * It is also used for enums.
+ *
+ * @param iter used to take the type from the current field.
+ * @param fields must be a dynamic array because it uses veclen.
+ */
 static usize alignFields(ZCodegen *ctx, void **fields, ZType *(*iter)(void *)) {
     usize cur = 0;
     usize res = 0;
@@ -239,6 +278,17 @@ static inline ZType *alignStructFieldIter(void *item) {
 }
 static inline ZType *alignTupleFieldIter(void *item) { return (ZType *)item; }
 
+/**
+ * @brief Calculates the size of the type.
+ *
+ * Primitives type have a constant size.
+ * Structs and tuples are just the sum of their fields + the padding
+ * calculated with alignFields.
+ *
+ * For enums it creates a struct with two fields:
+ * - The flag that indicates the active variant and it is u8
+ * - The buffer where its size is the size of the largest variant.
+ */
 usize typeSize(ZCodegen *ctx, ZType *type) {
     usize res = 0;
     switch (type->kind) {
@@ -276,7 +326,6 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
         return res;
     }
 
-    // FIXME: the latest +1 means the flag size but it does not consider the alignment
     case Z_TYPE_ENUM: {
         usize max = 0;
         usize cur = 0;
@@ -318,8 +367,13 @@ static bool _getStructIndex(ZType *strct, char *fieldName, u32 **path) {
     return false;
 }
 
-/* Returns the index of the field for a struct.
- * Returns NULL if it does not exist. */
+/**
+ * @brief Takes the struct index of a field.
+ *
+ * A struct can be composed by embedded fields which means
+ * that a field can be accessed directly but compiled in a nested struct.
+ * So it search recursively by its embedded fields and return the path
+ */
 static u32 *getStructIndex(ZType *strct, char *fieldName) {
     u32 *path = NULL;
     if (!_getStructIndex(strct, fieldName, &path)) {
@@ -328,6 +382,11 @@ static u32 *getStructIndex(ZType *strct, char *fieldName) {
     return path;
 }
 
+/**
+ * @brief get the index of a variant's enum.
+ *
+ * @return -1 if not found
+ */
 static i32 enumIndexField(ZType *enumType, ZToken *field) {
     for (usize i = 0; i < veclen(enumType->enm.fields); i++) {
         if (tokeneq(enumType->enm.fields[i]->strct.name, field)) {
@@ -366,6 +425,22 @@ static void putStructInCache(ZCodegen *ctx, char *name, LLVMTypeRef strct) {
     vecpush(ctx->structTypes, strct);
 }
 
+/**
+ * @brief Translate a ZType to an LLVM type.
+ *
+ * For primitives it returns directly
+ * the cached values (loaded at the start of the code generation).
+ * 
+ * Arrays are compiled with a struct of two fields:
+ * - The size of the array as a u64
+ * - The pointer to the elements.
+ *
+ * Struct is compiled by call itself for each field (embedded and normal).
+ * Tuple is just an unnamed struct.
+ * Enum is a struct with two fields:
+ * - u8 is the tag that represent the active variant
+ * - *u8 is the buffer where the variant is stored (with the size of the largest field).
+ */
 static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     if (!type) {
         error(ctx->state, NULL, "Invalid 'genType' call");
@@ -527,6 +602,19 @@ static LLVMBasicBlockRef makeblock(ZCodegen *ctx) {
     );
 }
 
+/**
+ * @brief Emits all defer statements.
+ *
+ * Defer statements are stored in the scope.
+ * They are emitted in three ways:
+ * - At the end of the block
+ * - On a break/continue
+ * - On a return statement
+ *
+ * @param scope is the target scope.
+ * For break, continue and at the end of the block must be passed the parent scope.
+ * For return statements must be passed the function-level scope.
+ */
 static void genChainDefer(ZCodegen *ctx, ZLLVMScope *scope) {
     if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) return;
 
@@ -540,6 +628,9 @@ static void genChainDefer(ZCodegen *ctx, ZLLVMScope *scope) {
     }
 }
 
+/**
+ * @brief Generate literals
+ */
 static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
     ZToken *tok = node->tok;
     switch (tok->type) {
@@ -562,6 +653,11 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
     }
 }
 
+/**
+ * @brief Emits the IR for identifiers (variables).
+ *
+ * It takes the stack allocation of the identifier saved in the scope.
+ * */
 static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
     if (!node) {
         error(ctx->state, NULL, "'genIdent' called with a null node");
@@ -590,6 +686,13 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
     return val;
 }
 
+/**
+ * @brief returns the cached stack pointer
+ *
+ * Stack pointers are 'cached' by the node and saved in the scope.
+ * @param key is the cached key.
+ *
+ */
 static ZLLVMStack *getStackValue(ZCodegen *ctx, ZNode *key) {
     ZLLVMScope *scope = ctx->scope;
     ZLLVMStack **stack = NULL;
@@ -608,6 +711,9 @@ static ZLLVMStack *getStackValue(ZCodegen *ctx, ZNode *key) {
 
 static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZType *to);
 
+/**
+ * @brief returns true if the value fits in a register.
+ */
 static bool fitsInRegister(LLVMValueRef val) {
     LLVMTypeKind kind = LLVMGetTypeKind(LLVMTypeOf(val));
 
@@ -619,6 +725,14 @@ static bool fitsInRegister(LLVMValueRef val) {
         kind == LLVMFunctionTypeKind);
 }
 
+/**
+ * @brief Stores every identifier of a destructured pattern in the stack
+ *
+ * It takes a stack allocation (LLVMValueRef) and follwos a simple pattern:
+ * - An identifier stores directly the value into the scope.
+ * - A struct generates a pointer for each field and call itself.
+ * - A tuple do the same of the struct
+ * */
 static void putDestructuredPatternInStack(
         ZCodegen *ctx, ZType *type,
         ZVarDestructPattern *pattern, LLVMValueRef ptr) {
@@ -709,6 +823,15 @@ static void putDestructuredPatternInStack(
     }
 }
 
+/**
+ * @brief Generate variable declarations
+ *
+ * Variable declarations are allocated into the stack in the first-pass.
+ * So the node must be cached and the call getStackValue cannot fail.
+ *
+ * Once the pointer is looked up it stores the pattern on the left (destructured var).
+ * Then generates the expression and store the result into the stack pointer.
+ */
 static void genVarDecl(ZCodegen *ctx, ZNode *node) {
     if (!node->varDecl.rvalue || !node->resolved) {
         error(ctx->state, node->tok, "Invalid 'genVarDecl' call");
@@ -734,6 +857,20 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
     }
 }
 
+/**
+ * @brief Generates a call to a function.
+ *
+ * The name of the function depends on the 'type' of the function:
+ * - Raw functions have the normal name.
+ * - Receiver functions have a mangled name.
+ * - Static functions have also a mangled name but with a different rule
+ *   to avoid conflicts with receiver functions.
+ *
+ * The parameter list is compiled as follow:
+ * - The first parameter is the receiver, if present.
+ * - The list of capabilities.
+ * - The list of normal arguments.
+ */
 static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef func   = NULL;
     LLVMValueRef *args  = NULL;
@@ -868,6 +1005,9 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     return call;
 }
 
+/**
+ * @brief Generates the field access for an embedded field.
+ */
 static LLVMValueRef genStructGEPChain(ZCodegen *ctx,
     ZType *base, LLVMValueRef origin, u32 *path) {
     LLVMValueRef prev   = origin;
@@ -889,6 +1029,9 @@ static LLVMValueRef genStructGEPChain(ZCodegen *ctx,
     return ptr;
 }
 
+/**
+ * @brief store the array metadata into the compiled struct.
+ */
 static void storeArray(ZCodegen *ctx, ZLLVMStack *stack, LLVMValueRef length) {
     LLVMValueRef lenField = LLVMBuildStructGEP2(
         ctx->builder, stack->stackType, stack->stack, 0, "len");
@@ -907,6 +1050,9 @@ static void storeArray(ZCodegen *ctx, ZLLVMStack *stack, LLVMValueRef length) {
     LLVMBuildStore(ctx->builder, dataPtr, dataField);
 }
 
+/**
+ * @brief Generates array literal.
+ */
 static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack = getStackValue(ctx, node);
 
@@ -950,6 +1096,12 @@ static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
     return stack->stack;
 }
 
+/**
+ * @brief Generates the slice from an array.
+ *
+ * Slices are generated like array with the difference that
+ * its length is calculated at runtime.
+ */
 static LLVMValueRef genSlicePtr(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack       = getStackValue(ctx, node);
     ZType *baseType         = node->slice.base->resolved;
@@ -1184,9 +1336,12 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
     return stack->stack;
 }
 
-/* genLvalue is used to load the address of the expression rather than the value.
+/**
+ * @brief Loads the addresso of the expression.
+ *
+ * genLvalue is used to load the address of the expression rather than the value.
  * meanwhile the function to load the value is genExpr.
- * */
+ */
 static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     switch (node->type) {
     case NODE_ARRAY_LIT:        return genArrayLitPtr       (ctx, node);
@@ -1234,6 +1389,22 @@ static bool typeIsUnsigned(ZType *type) {
     return (bool)(type->primitive.token->type & TOK_UNSIGNED);
 }
 
+/**
+ * @brief Generates inline if.
+ *
+ * This uses a common instruction of LLVM called phi.
+ * In LLVM values are constants and can't be reassigned.
+ * So to generates the inline if three blocks are emitted:
+ * - The branch for the true value
+ * - The branch for the false value
+ * - The branch that takes the value from the previous one.
+ *
+ * It generates the condition and the conditional branch.
+ * Then append to the true and false branch their respectively expressions.
+ *
+ * At the end it generates the phi instruction.
+ * It takes the value of the branch comes from.
+ */
 static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
     LLVMBasicBlockRef tBranch = makeblock(ctx);
@@ -1271,6 +1442,16 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     return phi;
 }
 
+/**
+ * @brief Generates null coalescing.
+ * 
+ * It uses the phi instruction to break the runtime and go directly to the merge.
+ * Example: expr1 ?? expr2
+ *
+ * It generates expr1 and compare it to 0 (normal if condition).
+ * If true it goes to the merge branch.
+ * If false it takes the right value (also if expr2 is false)
+ */
 static LLVMValueRef genNullCoalescing(ZCodegen *ctx, ZNode *root) {
     LLVMTypeRef typeRef = genType(ctx, root->resolved);
     LLVMValueRef left   = genExpr(ctx, root->binary.left);
@@ -1305,6 +1486,14 @@ static LLVMValueRef genNullCoalescing(ZCodegen *ctx, ZNode *root) {
     return phi;
 }
 
+/**
+ * @brief Generates all binary operators.
+ *
+ * Binary operators are divided into:
+ * - Integer operations.
+ * - Boolean operations.
+ * A special case is the assign that generates the assignment.
+ */
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     if (root->binary.op->type == TOK_EQ) {
         LLVMValueRef ptr = genLvalue(ctx, root->binary.left);
@@ -1474,8 +1663,11 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
-/* Emit the appropriate LLVM cast to convert val (of Zinc type `from`) to
-   Zinc type `to`. Returns val unchanged when the types are already equal. */
+/**
+ * @brief Generates the explicit cast
+ * Emit the appropriate LLVM cast to convert val (of Zinc type `from`) to
+ * Zinc type `to`. Returns val unchanged when the types are already equal.
+ */
 static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZType *to) {
     if (!val || !from || !to) return val;
     if (typesEqual(from, to)) return val;
@@ -2201,6 +2393,7 @@ static void addFuncVar(ZCodegen *ctx,
         .elemType       = elemType,
         .node           = node,
     };
+    info(ctx->state, node->tok, "Added to the stack frame");
     vecpush(ctx->scope->stackAlloca, item);
 }
 
@@ -2251,6 +2444,7 @@ static void buildNestedFuncVar(
             buildNestedFuncVar(ctx, val, ptr);
         }
     } else if (node->type == NODE_ARRAY_LIT) {
+        info(ctx->state, node->tok, "array literal\n");
         LLVMTypeRef arrType = genType(ctx, node->resolved);
         for (usize i = 0; i < veclen(node->arraylit); i++) {
             ZNode *val  = node->arraylit[i];
@@ -2264,7 +2458,7 @@ static void buildNestedFuncVar(
             buildNestedFuncVar(ctx, val, ptr);
         }
     } else if (node->type == NODE_ENUM_LIT) {
-        info(ctx->state, node->tok, "enumlit");
+        info(ctx->state, node->tok, "enumlit %zu", veclen(node->call.args));
         ZToken *variant = node->call.callee->staticAccess.prop;
         i32 variantIndex = enumIndexField(
             node->resolved, variant
