@@ -6,13 +6,13 @@
 // instead of the foreign namespace. This means any variable named after
 // a foreign namespace breaks all uses of that namespace after the declaration.
 
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-struct Calc { i32 val }
+Calc :: struct { i32 val }
 
-i32 main() {
+main :: i32 () {
     Calc c = Calc { val: 42 }
     c::printf("%d\n", c.val)
     return 0

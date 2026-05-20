@@ -8,19 +8,15 @@
 // Fix: codegen needs a first pass that emits all function declarations
 // (LLVMAddFunction) before generating bodies.
 
-foreign c {
-    u0 printf(*char, ...)
+c :: foreign {
+    printf :: u0 (*char, ...)
 }
 
-u0 caller() {
-    helper()
-}
+caller :: u0 () -> helper()
 
-u0 helper() {
-    c::printf("helper\n")
-}
+helper :: u0 () -> c::printf("helper\n")
 
-i32 main() {
+main :: i32 () {
     caller()
     return 0
 }
