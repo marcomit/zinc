@@ -1022,7 +1022,6 @@ static LLVMValueRef genStructGEPChain(ZCodegen *ctx,
             label(ctx, base->tok)
         );
         base = base->strct.fields[path[i]]->resolved;
-
         prev = ptr;
     }
 
@@ -1226,14 +1225,20 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
             error(ctx->state, tok, "Invalid index %d for tuple", tok->integer);
             return NULL;
         }
+        return LLVMBuildStructGEP2(
+            ctx->builder,
+            genType(ctx, baseType),
+            genLvalue(ctx, node->memberAccess.object),
+            tok->integer,
+            label(ctx, tok)
+        );
     } else if (objType->kind == Z_TYPE_ARRAY) {
         LLVMValueRef ptr = genLvalue(ctx, node->memberAccess.object);
         i32 index = -1;
 
-        if (strcmp(tok->str, "len") == 0) index = 0;
+        if      (strcmp(tok->str, "len") == 0) index = 0;
         else if (strcmp(tok->str, "ptr") == 0) index = 1;
-
-        if (index == -1) {
+        else {
             error(ctx->state, tok, "Unknown field");
             return NULL;
         }
@@ -1343,6 +1348,8 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
  * meanwhile the function to load the value is genExpr.
  */
 static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
+    if (!node) return NULL;
+    printNode(node, 0);
     switch (node->type) {
     case NODE_ARRAY_LIT:        return genArrayLitPtr       (ctx, node);
     case NODE_SLICE:            return genSlicePtr          (ctx, node);
@@ -1354,7 +1361,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     case NODE_IDENTIFIER: {
         char *key = node->identNode.mangled ?
                     node->identNode.mangled :
-                    node->tok->str;
+                    stoken(node->tok);
         LLVMValueRef val = getLLVMValueRef(ctx, key);
         if (!val) {
             error(ctx->state, node->tok,
@@ -2393,7 +2400,6 @@ static void addFuncVar(ZCodegen *ctx,
         .elemType       = elemType,
         .node           = node,
     };
-    info(ctx->state, node->tok, "Added to the stack frame");
     vecpush(ctx->scope->stackAlloca, item);
 }
 
@@ -2444,7 +2450,6 @@ static void buildNestedFuncVar(
             buildNestedFuncVar(ctx, val, ptr);
         }
     } else if (node->type == NODE_ARRAY_LIT) {
-        info(ctx->state, node->tok, "array literal\n");
         LLVMTypeRef arrType = genType(ctx, node->resolved);
         for (usize i = 0; i < veclen(node->arraylit); i++) {
             ZNode *val  = node->arraylit[i];
@@ -2458,7 +2463,6 @@ static void buildNestedFuncVar(
             buildNestedFuncVar(ctx, val, ptr);
         }
     } else if (node->type == NODE_ENUM_LIT) {
-        info(ctx->state, node->tok, "enumlit %zu", veclen(node->call.args));
         ZToken *variant = node->call.callee->staticAccess.prop;
         i32 variantIndex = enumIndexField(
             node->resolved, variant
@@ -2542,7 +2546,6 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->castExpr.expr);
         break;
     case NODE_ARRAY_LIT:
-        info(ctx->state, node->tok, "buildFuncVar");
         buildFuncVar(ctx, node, false);
         break;
     case NODE_ARRAY_INIT:
