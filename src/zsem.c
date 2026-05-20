@@ -1145,7 +1145,7 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
             }
 
             /* sym->type is the raw parsed return type - resolve it so that named
-             * types (e.g. "Vec2" → Z_TYPE_STRUCT) are expanded before the
+             * types (e.g. "Vec2" -> Z_TYPE_STRUCT) are expanded before the
              * result is used downstream (e.g. for member access on return value).
              * */
             for (usize i = 0; i < veclen(sym->type->func.args); i++) {
@@ -1972,6 +1972,29 @@ static void analyzeFuncArgs(ZSemantic *ctx, ZType **types, ZNode **fields) {
     }
 }
 
+static bool satisfyReturn(ZSemantic *ctx, ZNode *node) {
+    if (!node) return false;
+
+    switch (node->type) {
+    case NODE_RETURN: return true;
+    case NODE_CAPABILITY:
+        return satisfyReturn(ctx, node->capability.block);
+    case NODE_BLOCK:
+        for (usize i = 0; i < veclen(node->block); i++) {
+            if (satisfyReturn(ctx, node->block[i])) return true;
+        }
+        return false;
+
+    case NODE_IF:
+        if (!node->ifStmt.elseBranch) return false;
+        return  satisfyReturn(ctx, node->ifStmt.body) &&
+                satisfyReturn(ctx, node->ifStmt.elseBranch);
+    default: return false;
+    }
+    
+}
+
+
 static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
     if (veclen(curr->funcDef.annotations) > 0) {
         warning(ctx->state,
@@ -2033,6 +2056,10 @@ static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
     ctx->currentFunc            = curr;
 
     analyzeBlock(ctx, curr->funcDef.body, false);
+    if (!isVoid(ctx->currentFuncRet) &&
+        !satisfyReturn(ctx, curr->funcDef.body)) {
+        error(ctx->state, curr->tok, "Missing a return statement");
+    }
 
     ctx->currentFuncRet    = savedRet;
     ctx->currentFunc       = savedFunc;

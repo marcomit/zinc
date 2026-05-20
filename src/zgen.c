@@ -858,154 +858,6 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
 }
 
 /**
- * @brief Generates a call to a function.
- *
- * The name of the function depends on the 'type' of the function:
- * - Raw functions have the normal name.
- * - Receiver functions have a mangled name.
- * - Static functions have also a mangled name but with a different rule
- *   to avoid conflicts with receiver functions.
- *
- * The parameter list is compiled as follow:
- * - The first parameter is the receiver, if present.
- * - The list of capabilities.
- * - The list of normal arguments.
- */
-static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef func   = NULL;
-    LLVMValueRef *args  = NULL;
-    ZNode *callee       = node->call.callee;
-
-    if (callee->type == NODE_MEMBER && callee->memberAccess.mangled) {
-        /* Receiver method call: look up the global function and inject self. */
-        func = getLLVMValueRef(ctx, callee->memberAccess.mangled);
-
-        if (!func) error(ctx->state,
-                    callee->tok,
-                    "Receiver function '%s' not found",
-                    callee->memberAccess.mangled);
-
-        LLVMValueRef self = genExpr(ctx, callee->memberAccess.object);
-        vecpush(args, self);
-
-    }  else {
-        /* Expression call: covers identifiers, static access, subscripts, and
-         * function-pointer fields (NODE_MEMBER without mangled). */
-        func = genExpr(ctx, callee);
-        if (!func) return NULL;
-    }
-
-    /* For indirect calls (locally-loaded function pointers) the LLVM value is
-     * not a global, so LLVMGlobalGetValueType is invalid. Derive the function
-     * type from the semantic info instead. mangled == NULL means indirect. */
-    LLVMTypeRef funcType;
-    if (callee->type == NODE_MEMBER && !callee->memberAccess.mangled) {
-        funcType = genType(ctx, callee->resolved);
-    } else if (LLVMGetValueKind(func) != LLVMFunctionValueKind) {
-        /* Indirect call through a function pointer variable. */
-        funcType = genType(ctx, callee->resolved);
-    } else {
-        funcType = LLVMGlobalGetValueType(func);
-    }
-
-
-    usize fixedParamCount = LLVMCountParamTypes(funcType);
-    LLVMTypeRef *fixedParamTypes = NULL;
-    if (fixedParamCount > 0) {
-        fixedParamTypes = znalloc(LLVMTypeRef, fixedParamCount);
-        LLVMGetParamTypes(funcType, fixedParamTypes);
-    }
-
-    for (usize i = 0; i < veclen(node->call.capabilities); i++) {
-        if (!node->call.capabilities[i]) {
-            warning(ctx->state, node->tok, "Empty capability\n");
-            continue;
-        } else if (!node->call.capabilities[i]->tok) {
-            warning(ctx->state, node->tok, "Empty tok field\n");
-            continue;
-        }
-        LLVMValueRef capability = getLLVMValueRef(
-            ctx, node->call.capabilities[i]->tok->str
-        );
-        if (!capability) {
-            error(
-                ctx->state,
-                node->call.capabilities[i]->tok,
-                "Capability '%s' not found",
-                stoken(node->call.capabilities[i]->tok)
-            );
-        } else {
-            capability = LLVMBuildLoad2(
-                ctx->builder,
-                genType(ctx, node->call.capabilities[i]->resolved),
-                capability, label(ctx, node->call.capabilities[i]->tok)
-            );
-        }
-        vecpush(args, capability);
-    }
-
-    for (usize i = 0; i < veclen(node->call.args); i++) {
-        LLVMValueRef arg = genExpr(ctx, node->call.args[i]);
-
-        /* ABI adaptation: foreign functions declare small struct params as
-         * i32/i64 (packed integer).  If the Zinc-side arg is a struct,
-         * store it to a temp slot and reload as the packed integer so the
-         * backend emits a single-register load instead of per-field loads.
-         * FIXME: Implement a specific annotation [[packed]] instead of 'understand'
-         * if the argument should be packed.
-         * */
-        if (fixedParamTypes && i < fixedParamCount) {
-            LLVMTypeRef expected = fixedParamTypes[i];
-            LLVMTypeRef actual   = LLVMTypeOf(arg);
-            if (LLVMGetTypeKind(actual)   == LLVMStructTypeKind &&
-                LLVMGetTypeKind(expected) == LLVMIntegerTypeKind) {
-                LLVMValueRef tmp = LLVMBuildAlloca(ctx->builder, actual, "");
-                LLVMBuildStore(ctx->builder, arg, tmp);
-                arg = LLVMBuildLoad2(ctx->builder, expected, tmp, "");
-            }
-        }
-
-        usize totalArgIndex = veclen(node->call.capabilities) + i;
-
-        /* C default argument promotions for variadic arguments:
-         *  f32         -> f64
-         *  i1/i8/i16   -> i32
-         *  The backend rely on the frontend to emit these, zinc must do it explicitly
-         *  or callers like printf read garbage.
-         */
-        if (LLVMIsFunctionVarArg(funcType) && totalArgIndex >= (usize)fixedParamCount) {
-            LLVMTypeRef argType = LLVMTypeOf(arg);
-            LLVMTypeKind kind   = LLVMGetTypeKind(argType);
-            if (kind == LLVMFloatTypeKind) {
-                arg = LLVMBuildFPExt(ctx->builder, arg, f64Type, "");
-            } else if (kind == LLVMIntegerTypeKind &&
-                       LLVMGetIntTypeWidth(argType) < 32) {
-                arg = LLVMBuildZExt(ctx->builder, arg, i32Type, "");
-            }
-        }
-
-        vecpush(args, arg);
-    }
-
-    LLVMValueRef call = LLVMBuildCall2(
-        ctx->builder,
-        funcType,
-        func,
-        args,
-        veclen(args),
-        isVoid(node->resolved) ? "" : label(ctx, NULL)
-    );
-
-    if (!fitsInRegister(call)) {
-        ZLLVMStack *stack = getStackValue(ctx, node);
-        if (stack) {
-            LLVMBuildStore(ctx->builder, call, stack->stack);
-        }
-    }
-    return call;
-}
-
-/**
  * @brief Generates the field access for an embedded field.
  */
 static LLVMValueRef genStructGEPChain(ZCodegen *ctx,
@@ -1342,6 +1194,154 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
 }
 
 /**
+ * @brief Generates a call to a function.
+ *
+ * The name of the function depends on the 'type' of the function:
+ * - Raw functions have the normal name.
+ * - Receiver functions have a mangled name.
+ * - Static functions have also a mangled name but with a different rule
+ *   to avoid conflicts with receiver functions.
+ *
+ * The parameter list is compiled as follow:
+ * - The first parameter is the receiver, if present.
+ * - The list of capabilities.
+ * - The list of normal arguments.
+ */
+static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef func   = NULL;
+    LLVMValueRef *args  = NULL;
+    ZNode *callee       = node->call.callee;
+
+    if (callee->type == NODE_MEMBER && callee->memberAccess.mangled) {
+        /* Receiver method call: look up the global function and inject self. */
+        func = getLLVMValueRef(ctx, callee->memberAccess.mangled);
+
+        if (!func) error(ctx->state,
+                    callee->tok,
+                    "Receiver function '%s' not found",
+                    callee->memberAccess.mangled);
+
+        LLVMValueRef self = genExpr(ctx, callee->memberAccess.object);
+        vecpush(args, self);
+
+    }  else {
+        /* Expression call: covers identifiers, static access, subscripts, and
+         * function-pointer fields (NODE_MEMBER without mangled). */
+        func = genExpr(ctx, callee);
+        if (!func) return NULL;
+    }
+
+    /* For indirect calls (locally-loaded function pointers) the LLVM value is
+     * not a global, so LLVMGlobalGetValueType is invalid. Derive the function
+     * type from the semantic info instead. mangled == NULL means indirect. */
+    LLVMTypeRef funcType;
+    if (callee->type == NODE_MEMBER && !callee->memberAccess.mangled) {
+        funcType = genType(ctx, callee->resolved);
+    } else if (LLVMGetValueKind(func) != LLVMFunctionValueKind) {
+        /* Indirect call through a function pointer variable. */
+        funcType = genType(ctx, callee->resolved);
+    } else {
+        funcType = LLVMGlobalGetValueType(func);
+    }
+
+
+    usize fixedParamCount = LLVMCountParamTypes(funcType);
+    LLVMTypeRef *fixedParamTypes = NULL;
+    if (fixedParamCount > 0) {
+        fixedParamTypes = znalloc(LLVMTypeRef, fixedParamCount);
+        LLVMGetParamTypes(funcType, fixedParamTypes);
+    }
+
+    for (usize i = 0; i < veclen(node->call.capabilities); i++) {
+        if (!node->call.capabilities[i]) {
+            warning(ctx->state, node->tok, "Empty capability\n");
+            continue;
+        } else if (!node->call.capabilities[i]->tok) {
+            warning(ctx->state, node->tok, "Empty tok field\n");
+            continue;
+        }
+        LLVMValueRef capability = getLLVMValueRef(
+            ctx, node->call.capabilities[i]->tok->str
+        );
+        if (!capability) {
+            error(
+                ctx->state,
+                node->call.capabilities[i]->tok,
+                "Capability '%s' not found",
+                stoken(node->call.capabilities[i]->tok)
+            );
+        } else {
+            capability = LLVMBuildLoad2(
+                ctx->builder,
+                genType(ctx, node->call.capabilities[i]->resolved),
+                capability, label(ctx, node->call.capabilities[i]->tok)
+            );
+        }
+        vecpush(args, capability);
+    }
+
+    for (usize i = 0; i < veclen(node->call.args); i++) {
+        LLVMValueRef arg = genExpr(ctx, node->call.args[i]);
+
+        /* ABI adaptation: foreign functions declare small struct params as
+         * i32/i64 (packed integer).  If the Zinc-side arg is a struct,
+         * store it to a temp slot and reload as the packed integer so the
+         * backend emits a single-register load instead of per-field loads.
+         * FIXME: Implement a specific annotation [[packed]] instead of 'understand'
+         * if the argument should be packed.
+         * */
+        if (fixedParamTypes && i < fixedParamCount) {
+            LLVMTypeRef expected = fixedParamTypes[i];
+            LLVMTypeRef actual   = LLVMTypeOf(arg);
+            if (LLVMGetTypeKind(actual)   == LLVMStructTypeKind &&
+                LLVMGetTypeKind(expected) == LLVMIntegerTypeKind) {
+                LLVMValueRef tmp = LLVMBuildAlloca(ctx->builder, actual, "");
+                LLVMBuildStore(ctx->builder, arg, tmp);
+                arg = LLVMBuildLoad2(ctx->builder, expected, tmp, "");
+            }
+        }
+
+        usize totalArgIndex = veclen(node->call.capabilities) + i;
+
+        /* C default argument promotions for variadic arguments:
+         *  f32         -> f64
+         *  i1/i8/i16   -> i32
+         *  The backend rely on the frontend to emit these, zinc must do it explicitly
+         *  or callers like printf read garbage.
+         */
+        if (LLVMIsFunctionVarArg(funcType) && totalArgIndex >= (usize)fixedParamCount) {
+            LLVMTypeRef argType = LLVMTypeOf(arg);
+            LLVMTypeKind kind   = LLVMGetTypeKind(argType);
+            if (kind == LLVMFloatTypeKind) {
+                arg = LLVMBuildFPExt(ctx->builder, arg, f64Type, "");
+            } else if (kind == LLVMIntegerTypeKind &&
+                       LLVMGetIntTypeWidth(argType) < 32) {
+                arg = LLVMBuildZExt(ctx->builder, arg, i32Type, "");
+            }
+        }
+
+        vecpush(args, arg);
+    }
+
+    LLVMValueRef call = LLVMBuildCall2(
+        ctx->builder,
+        funcType,
+        func,
+        args,
+        veclen(args),
+        isVoid(node->resolved) ? "" : label(ctx, NULL)
+    );
+
+    if (!fitsInRegister(call)) {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (stack) {
+            LLVMBuildStore(ctx->builder, call, stack->stack);
+        }
+    }
+    return call;
+}
+
+/**
  * @brief Loads the addresso of the expression.
  *
  * genLvalue is used to load the address of the expression rather than the value.
@@ -1349,7 +1349,6 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
  */
 static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     if (!node) return NULL;
-    printNode(node, 0);
     switch (node->type) {
     case NODE_ARRAY_LIT:        return genArrayLitPtr       (ctx, node);
     case NODE_SLICE:            return genSlicePtr          (ctx, node);
@@ -1358,6 +1357,15 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     case NODE_TUPLE_LIT:        return genTupleLitPtr       (ctx, node);
     case NODE_MEMBER:           return genMemberAccessPtr   (ctx, node);
     case NODE_SUBSCRIPT:        return genSubscriptPtr      (ctx, node);
+    case NODE_CALL: {
+        genCall(ctx, node);
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (!stack) {
+            error(ctx->state, node->tok, "Invalid call");
+            return NULL;
+        }
+        return stack->stack;
+    }
     case NODE_IDENTIFIER: {
         char *key = node->identNode.mangled ?
                     node->identNode.mangled :
@@ -2167,6 +2175,9 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     return LLVMBuildRet(ctx->builder, val);
 }
 
+/**
+ * @brief Generate if.
+ */
 static void genIf(ZCodegen *ctx, ZNode *node) {
     beginScope(Z_SCOPE_BLOCK, ctx);
     bool hasElse = node->ifStmt.elseBranch != NULL;
@@ -2174,9 +2185,7 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
 
     LLVMBasicBlockRef elseBranch = NULL;
 
-    if (hasElse) {
-        elseBranch = makeblock(ctx);
-    }
+    if (hasElse) elseBranch = makeblock(ctx);
 
     LLVMBasicBlockRef endif = makeblock(ctx);
     LLVMBasicBlockRef nextBlock = hasElse ? elseBranch : endif;
@@ -2209,6 +2218,16 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
     endScope(ctx);
 }
 
+/**
+ * @brief Generate while statement.
+ *
+ * The while statement generates three blocks:
+ * - The entry block: where it checks the condition and emit a conditional jump.
+ * - The body: it generates each statement of the while loop.
+ * - The end block: it is the end of the block.
+ *      it can be reached by the conditional jump of the entry block or
+ *      a break statement inside the body.
+ */
 static void genWhile(ZCodegen *ctx, ZNode *node) {
     beginScope(Z_SCOPE_LOOP, ctx);
     LLVMBasicBlockRef entry     = makeblock(ctx);
@@ -2241,6 +2260,9 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     endScope(ctx);
 }
 
+/**
+ * @brief Generates for statement.
+ */
 static void genFor(ZCodegen *ctx, ZNode *node) {
     beginScope(Z_SCOPE_LOOP, ctx);
     LLVMBasicBlockRef entry     = makeblock(ctx);
@@ -2291,6 +2313,13 @@ static void genBlock(ZCodegen *ctx, ZNode *block) {
     }
 }
 
+/**
+ * @brief Genearetes break instruction.
+ *
+ * The break statement is just a jump to the end of the block.
+ * The end of the block is a label saved in the current scope
+ * when a loop is generated.
+ */
 static void genBreak(ZCodegen *ctx, ZNode *node) {
     if (!ctx->scope->endLoop) {
         error(ctx->state, node->tok, "'break' statement is not in a loop");
@@ -2310,6 +2339,12 @@ static void genBreak(ZCodegen *ctx, ZNode *node) {
     }
 }
 
+/**
+ * @brief Generate the continue instruction.
+ *
+ * The 'continue' instruction is just a jump to the start of the loop.
+ * The start of the loop is a label saved during the loop generation.
+ */
 static void genContinue(ZCodegen *ctx, ZNode *node) {
     if (!ctx->scope->startLoop) {
         error(ctx->state, node->tok, "'continue' statement is not in a loop");
@@ -2329,7 +2364,10 @@ static void genContinue(ZCodegen *ctx, ZNode *node) {
     }
 }
 
-/* Defer statement is compiled using a per-scope stack.
+/**
+ * @brief Generate defer statement
+ *
+ * Defer statement is compiled using a per-scope stack.
  *
  * At compile-time, every scope (function body, if, loops ...)
  * owns its own defer stack. Each defer statement is pushed into the stack
@@ -2353,6 +2391,11 @@ static void genDefer(ZCodegen *ctx, ZNode *node) {
     vecpush(ctx->scope->defers, node->deferStmt.expr);
 }
 
+/**
+ * @breif Generate capability.
+ *
+ * Capabilities are compiled like normal variables.
+ */
 static void genCapability(ZCodegen *ctx, ZNode *node) {
     genStmt(ctx, node->capability.capability);
     genStmt(ctx, node->capability.block);
@@ -2385,6 +2428,9 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     }
 }
 
+/**
+ * @brief Saves the stack allocation indexed by node.
+ */
 static void addFuncVar(ZCodegen *ctx,
     LLVMValueRef stack,
     LLVMValueRef elem,
@@ -2403,7 +2449,10 @@ static void addFuncVar(ZCodegen *ctx,
     vecpush(ctx->scope->stackAlloca, item);
 }
 
-/* Saves the pointer for nested struct literals to avoi creating
+/**
+ * @brief Stores nested pointer for a given stack allocation.
+ *
+ * Saves the pointer for nested struct literals to avoi creating
  * another stack allocation.
  * Example:
  * MyStruct{
@@ -2413,6 +2462,7 @@ static void addFuncVar(ZCodegen *ctx,
  * In this case the stack allocation has the size of MyStruct.
  * For the nested struct (OtherStruct) It uses just a pointer
  * to the previous stack allocation.
+ *
  * */
 static void buildNestedFuncVar(
     ZCodegen *ctx, ZNode *node, LLVMValueRef parent) {
@@ -2481,10 +2531,18 @@ static void buildNestedFuncVar(
     }
 }
 
-/* Stores the node in a list of stack allocation such that in the second pass
+/* @brief Generates the stack allocation.
+ *
+ * Stores the node in a list of stack allocation such that in the second pass
  * the expression knows where it should be stored.
  * NOTE: this method stores always the expression that requires the stack allocation.
  * So for variable declaration always store the rvalue node and not the variable node.
+ *
+ * @param force Forces a stack allocation also when the size fits in a register.
+ *
+ * NOTE: Array literals generates two allocations:
+ * - One for the metadata {len + ptr} (saved in stack)
+ * - One for the items (saved in elem)
  * */
 static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
     if (!node) {
@@ -2517,7 +2575,9 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
     return val;
 }
 
-/* All variables of the function body are allocated at the start of the block.
+/* @brief Walks the AST of a function block to create stack allocations.
+ *
+ * All variables of the function body are allocated at the start of the block.
  * This is the first pass where it navigates the AST
  * and allocate to the stack (LLVMBuildAlloca) the variables and store the node
  * as allocated such that the function genExpr knows if the generated values
@@ -2554,10 +2614,11 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_MEMBER:
         genFuncVars(ctx, node->memberAccess.object);
         break;
+    case NODE_SUBSCRIPT:
+        genFuncVars(ctx, node->subscript.arr);
+        genFuncVars(ctx, node->subscript.index);
+        break;
     case NODE_FOR:
-        // Only allocate the stack slot  -  name binding is deferred to genFor
-        // so each loop body gets its own scope entry and avoids name collisions
-        // when two loops declare the same variable (e.g. two `for i` loops).
         if (node->forStmt.var) {
             buildFuncVar(ctx, node->forStmt.var->varDecl.rvalue, true);
         }
@@ -2576,6 +2637,9 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->capability.capability);
         genFuncVars(ctx, node->capability.block);
         break;
+    case NODE_UNARY:
+        genFuncVars(ctx, node->unary.operand);
+        break;
     case NODE_VAR_DECL: {
         LLVMValueRef ptr = buildFuncVar(ctx, node->varDecl.rvalue, true);
         putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
@@ -2590,12 +2654,17 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
             buildFuncVar(ctx, node, false);
         }
         for (usize i = 0; i < veclen(node->call.args); i++) {
-            if (!typesPrimitive(node->call.args[i]->resolved)) {
-                buildFuncVar(ctx, node->call.args[i], false);
+            ZNode *arg = node->call.args[i];
+            genFuncVars(ctx, arg);
+            if (!typesPrimitive(arg->resolved) && !getStackValue(ctx, arg)) {
+                buildFuncVar(ctx, arg, false);
             }
         }
         break;
 
+    case NODE_DEFER:
+        genFuncVars(ctx, node->deferStmt.expr);
+        break;
     case NODE_BINARY:
         genFuncVars(ctx, node->binary.left);
         genFuncVars(ctx, node->binary.right);
