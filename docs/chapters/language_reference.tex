@@ -1,161 +1,157 @@
 \chapter{Language Reference}
 
-% -----------------------------------------------------------------------------
 \section{Types}
 
-Zinc is statically typed: every expression has a type that is fully known at
-compile time.
+Zinc is statically typed: every expression has a type that is known at compile time.
 
-\subsection{Primitive Types}
-
-\begin{center}
-\begin{tabular}{ll}
-\toprule
-Type & Description \\
-\midrule
-\zn{u0}                             & Empty type (\texttt{void} equivalent) \\
-\zn{u1}                             & Boolean (\texttt{true} or \texttt{false}) \\
-\zn{u8}, \zn{u16}, \zn{u32}, \zn{u64} & Unsigned fixed-width integers \\
-\zn{i8}, \zn{i16}, \zn{i32}, \zn{i64} & Signed fixed-width integers \\
-\zn{f32}, \zn{f64}                  & Floating-point numbers \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\subsection{Compound Types}
+\zubsections{Primitive Types}
 
 \begin{center}
 \begin{tabular}{ll}
 \toprule
 Type & Description \\
 \midrule
-\texttt{*T}       & Pointer to \texttt{T} \\
-\texttt{[n]T}     & Fixed-size array of \texttt{n} elements \\
-\texttt{[]T}      & Slice (pointer + length) \\
-\texttt{(T1, T2)} & Tuple (at least 2 fields) \\
-\texttt{R(A, B)}  & Function type: returns \texttt{R}, takes args \texttt{A}, \texttt{B}, \ldots \\
+
+\zn{u0} & Empty type (equivalent to void)\\
+\zn{u1} & Boolean values\\
+\zn{u8}, \zn{u16}, \zn{u32}, \zn{u64} & Unsigned integer with specific bit-width\\
+\zn{i8}, \zn{i16}, \zn{i32}, \zn{i64} & Signed integer with specific bit-width\\
+\zn{f32}, \zn{f64} & Floating point numbers\\
 \bottomrule
+\end{tabuler}
+\end{center}
+
+\subsection{Compount Types}
+
+\begin{center}
+\begin{tabular}{ll}
+
+\toprule
+Type & Description\\
+
+\midrule
+\texttt{*T} & Pointer to \texttt{T}\\
+\texttt{[]T} & Array of \texttt{T}\\
+\texttt{[n]T} & Array of \texttt{T} with fixed size (n)\\
+\texttt{(T1, T2)} & Tuples\\
+\texttt{R (A, B)} & Function that returns \texttt{R} and takes \texttt{A}, \texttt{B}\\
+\bottomrule
+
 \end{tabular}
 \end{center}
 
-\subsection{Literals}
+\section{Literals}
+
+\begin{center}
+\begin{tabular}{ll}
+
+\toprule
+Literal type & Value\\
+
+\midrule
+Integers & Decimal: \texttt{123}, Hex: \texttt{0xDEADBEEF}, binary: \texttt{0b100010}\\
+Floats & Standard \texttt{3.14},  Scientific: \texttt{1e-10}\\
+Boolean & \zn{true}, \zn{false}\\
+Null pointer & \zn{none}\\
+Strings & \texttt{*char}, content between quotes.
+
+\bottomrule
+
+\end{tabular}
+\end{center}
+
+\subsection{String Escapes}
 
 \begin{itemize}
-    \item \textbf{Integers:} Decimal \texttt{123}, hexadecimal \texttt{0xdeadbeef},
-          binary \texttt{0b1010101}
-    \item \textbf{Floats:} Standard \texttt{3.14}, scientific \texttt{1e-10}
-    \item \textbf{Booleans:} \texttt{true}, \texttt{false}
-    \item \textbf{Null pointer:} \texttt{none}
-    \item \textbf{Chars:} Not supported.
-    \item \textbf{Strings:} \texttt{*char}, content between double quotes.
-          Supported escapes: \texttt{{\textbackslash}n \textbackslash t \textbackslash r \textbackslash" \textbackslash 0}
+    \item{n} new line
+    \item{t} tab
+    \item{r} cursor at the start of the line
+    \item{", '} These are inserted directly
+    \item{uXXXX} unicode code point of 4 hex values
+    \item{UXXXXXXXX} unicode code point of 8 hex values
 \end{itemize}
 
 \subsection{Arrays and Slices}
 
-Array sizes must be compile-time constants.
+The unique difference between arrays and slices is that arrays have a fixed size known at compile time meanhwile slices have the size assigned at runtime.
+But arrays and slices share the same memory layout and both hold the length of their elements.
+
 \begin{lstlisting}[style=zinc, caption={Arrays and slices}]
-[5]i32 nums = [1, 2, 3, 4, 5] // Typed declaration with literal
-arr := [1, 2, 3, 4, 5]        // Type inferred from literal
+[5]i32 nums = [1, 2, 3, 4, 5] // fixed-size (5)
 
-// Slicing produces a []T (pointer + length)
-mid  := arr[1:4]  // indices 1..3
-head := arr[:3]   // indices 0..2
-tail := arr[3:]   // indices 3..end
-\end{lstlisting}
+mid := nums[1:4] // from 1 to 3
+head := nums[:3] // from 0 to 3
+tail := nums[3:] // from 3 to end
 
-A slice compiles to a struct carrying a pointer and a length.
-The \texttt{.len} field is available on both arrays and slices.
-Mutations through a slice propagate to the underlying array.
-
-\begin{lstlisting}[style=zinc, caption={Iterating with .len}]
 i := 0
-for i < arr.len {
-    arr[i] = i
+for i < nums.len {
+    nums[i] = i
     i = i + 1
 }
 \end{lstlisting}
 
 \subsection{Tuples}
-
-Tuples group heterogeneous values into a single unnamed struct.
-They require at least two elements.
+Tuples group different values into a single unnamed struct.
 
 \begin{lstlisting}[style=zinc, caption={Tuple construction and access}]
-pair   := (12, "hello")
-triple := (21, "hello", 3.14)
+pair := (12, "hello")
+triple := (12, "hello", 3.14)
 
-u32 n = triple.0   // access by index
+u32 val := triple.0
 \end{lstlisting}
 
 Tuples are the idiomatic way to return multiple values:
 
 \begin{lstlisting}[style=zinc, caption={Multiple return values}]
-divmod :: (u32, u32)(u32 a, u32 b) {
-    return (a / b, a mod b)
+divmod :: (u32, u32) (u32 a, u32 b) {
+    return (a / b, a \% b)
 }
 \end{lstlisting}
-
-\subsection{Structs}
-
-\begin{lstlisting}[style=zinc, caption={Struct declaration and construction}]
-Vector2 :: struct {
-    f32 x
-    f32 y
-}
-origin := Vector2{ x: 0.0, y: 0.0 }
-\end{lstlisting}
-
-Fields are accessed with \texttt{.}. Pointer types are auto-dereferenced on
-field access, so \texttt{ptr.field} and \texttt{(*ptr).field} are equivalent.
 
 \subsection{Enums}
-
 Enums are tagged unions (sum types) that can carry per-variant data.
 Each variant is a struct prefixed by a \texttt{u8} discriminant tag.
 
 \begin{lstlisting}[style=zinc, caption={Enum declaration and construction}]
 Shape :: enum {
-    Square(f32)     // single f32 payload
-    Rect(f32, f32)  // two f32 payloads
-    None            // no payload
+    Square(f32)
+    Rect(f32, f32)
 }
-
 square := Shape::Square(10.0)
-rect   := Shape::Rect(12.0, 10.0)
+rect := Shape::Rect(10.0, 12.0)
 \end{lstlisting}
 
-% -----------------------------------------------------------------------------
 \section{Variables}
 
 Variables live on the stack and are always mutable.
-The type can be stated explicitly or inferred from the right-hand side.
+The type can be stated explicitly or inferred from the right-hand size (RHS).
 
 \begin{lstlisting}[style=zinc, caption={Variable declarations}]
-i32 val = 0   // explicit type
-other := 10   // inferred type
+i32 val = 0 // explicit type
+other := 10 // inferred type
 \end{lstlisting}
 
 \textbf{Destructuring} binds struct fields or tuple elements directly to names:
 
 \begin{lstlisting}[style=zinc, caption={Destructuring}]
-// Struct: bind fields by name, optionally with a rename
-{x, y}             := point
-{x: px, y: py}     := point
+{x, y}          := point
+{x: px, y: py}  := point // same with renaming x to px and y to py
 
-// Tuple: bind by position
-(first, second)    := pair
-\end{lstlisting}
+(first, second) := pair
 
-% -----------------------------------------------------------------------------
+// Both way combined
+({x, y}, {x: otherX, y: otherY}) := pair
+\end{lstlistng}
+
 \section{Functions}
 
 \subsection{Declarations}
-
-Functions follow C-like syntax.
-The arrow form \zn{->} is shorthand for a single-expression body.
+A normal function is composed by:
+\zninline{<name> :: Ret (Args...)[Capabilities] \{ ... \}}
+For short functions instead of declaring a block with a single return statement there is the \zn{->} operator that returns directly.
 
 \begin{lstlisting}[style=zinc, caption={Function declarations}]
+
 add :: u32 (u32 a, u32 b) {
     return a + b
 }
@@ -165,30 +161,39 @@ mul :: u32 (u32 a, u32 b) -> a * b
 main :: i32 () {
     return add(10, mul(12, 3))
 }
-\end{lstlisting}
+\end{lstlistng}
+
+\begin{note}
+This section doesn't show an exaple with capabilities argument list.
+For more information about capabilities see the section \ref{sec:capabilities}
+\end{note}
 
 \subsection{Receiver Methods}
-
 The \zn{for} block attaches methods to a type.
-The named binding after the type is the implicit \emph{self} argument.
+The named binding after the type is the implicit \emph{self} argument
 
-\begin{lstlisting}[style=zinc, caption={Receiver methods}]
+\begin{lstlisting}[style=zinc, caption{Receiver methods}]
 i32 self :: for {
-    add :: u32 (u32 b) -> self + b
+    add :: i32 (i32 other) -> return self + other
+
+    abs :: u32 () {
+        if self > 0 { return self as u32 }
+        return (-self) as u32
+    }
 }
 
 *i32 ptr :: for {
-    incr :: u0 () {
+    incr :: u0 {
         *ptr = *ptr + 1
     }
 }
 
 main :: i32 () {
     val := 10
-    val.add(5)
-    10.add(20)
+    val = val.add(5)
+    val = 10.add(val)
 
-    p := &val
+    p := \&val
     p.incr()
     return 0
 }
@@ -196,8 +201,7 @@ main :: i32 () {
 
 \subsection{Static Functions}
 
-Omitting the receiver binding creates a static (namespace-scoped) function
-called with \zn{Type::name()} syntax.
+Omitting the receiver binding creates a static (namespace-scoped) function called with \zn{Type::name()} syntax.
 
 \begin{lstlisting}[style=zinc, caption={Static functions}]
 Counter :: struct {
@@ -205,20 +209,25 @@ Counter :: struct {
 }
 
 Counter :: for {
-    new :: Counter() -> Counter{ count: 0 }
+    new :: Counter () -> Counter { count: 0 }
+    from_val :: Counter (i32 val) -> Counter { count: val }
 }
 
 main :: i32 () {
-    c := Counter::new()
+    c := counter::new()
+
+    c2 := Counter::from_val(10)
     return 0
 }
 \end{lstlisting}
 
-\subsection{Capabilities}
+Static functions are usually used as a constructors for used-defined types.
 
-A capability is a contextual dependency declared in a second parameter list
-after the main one. The caller does not pass it explicitly; instead it is
-threaded automatically from a surrounding \zn{with} block.
+\section{Capabilities}
+\label{sec:capabilities}
+
+A capability is a contextual dependency declared in a second parameter list after the main one.
+The called does not pass it explicitly, isntead it is threaded automatically from a surrounding \zn{with} block.
 
 \begin{lstlisting}[style=zinc, caption={Capability declaration and use}]
 use <core::mem>
@@ -228,23 +237,23 @@ allocBuf :: *u8 (u64 size)[Allocator alloc] {
 }
 
 main :: i32 () {
-    with heap := Allocator::heap() {
-        buf := allocBuf(1024) // alloc injected automatically
+    with _ := Allocator::heap() {
+        buf := allocBuf(1024) // the allocator is automatically injected
     }
+
+    allocBuf() // Compiler rejects this, Capability 'Allocator' doesn't exist
     return 0
 }
-\end{lstlisting}
+\end{lstlistng}
 
-Capabilities are propagated transitively: a function that calls another
-capability-requiring function inherits the requirement automatically.
+Capabilities are propagated transitibely: a function that calls another capability-requiring function inherits the requirement automatically.
 
 \begin{lstlisting}[style=zinc, caption={Transitive capability}]
-
-new :: *u8 ()[Allocator allocator] {
-    return allocator.alloc(sizeof MyStruct)
+allocBuf :: *u8 ()[Allocator allocator] {
+    return allocator.alloc(1024)
 }
 
-transitive :: *u8()[Allocator] { // Unnamed capability
+transitive :: *u8 ()[Allocator] { // Unnamed capability
     return new() // Capability is passed implicitly
 }
 
@@ -252,9 +261,11 @@ main :: i32 () {
     with _ := Allocator::heap() {
         transitive()
     }
+    return 0
 }
 \end{lstlisting}
-Transitive capabilities are often unused in the function itself but just passed to other functions (like in this example the \texttt{transitive} function doesn't use the \texttt{Allocator}). So the capability name can be omitted.
+
+Transitive capabilities are often unused in the function itself but just passed to other functions (like in this example the \texttt{transitive} function doesn't use the \texttt{Allocator}) So the capability name can be omitted.
 
 \subsection{Foreign Declarations}
 
@@ -266,24 +277,29 @@ Related functions can be grouped under a named namespace.
 foreign printf :: u0 (*char, ...)
 
 libc :: foreign {
-    malloc  :: *u8  (u64)
-    free    :: u0   (*u8)
+    malloc :: *u8 (u64)
+    free :: u0 (*u8)
 }
 
 main :: i32 () {
-    printf("Hello, world!\n")
+    printf("Hello world\n")
     buf := libc::malloc(1024)
     libc::free(buf)
-    return 0
 }
 \end{lstlisting}
 
-% -----------------------------------------------------------------------------
-\section{Control Flow}
+There's also an example of a snake game using raylib in the repo.
+
+\subsection{Control Flow}
 
 \subsection{Conditionals}
+The if/else statement can be used in three different ways:
+- As a normal if statement
+- As an expression using the \zn{->}
+- To check the enum variant
 
-\begin{lstlisting}[style=zinc, caption={if / else}]
+\begin{lstlisting}[style=zinc, caption={if/else}]
+// Normal if usage
 if x > 0 {
     // positive
 } else if x == 0 {
@@ -291,178 +307,151 @@ if x > 0 {
 } else {
     // negative
 }
+
+// Used as expression, the syntax is: if cond -> expr else -> expr
+val := if x > 0 -> x else -> -x // used as abs
+
+Expr :: enum {
+    Add(*Expr, *Expr)
+    Num(f64)
+}
+
+if Expr::Add(left, right) := myEnum {
+    // use left and right here
+} else if Option::Num(num) := myEnum {
+    // use num here
+}
 \end{lstlisting}
 
-\zn{if} is also an expression when written with \zn{->}.
-Branches must produce values of the same type.
-
-\begin{lstlisting}[style=zinc, caption={Inline if expression}]
-i32 abs = if x >= 0 -> x else -> -x
-
-// Nesting is allowed
-i32 max3 = if a > b -> if a > c -> a else -> c
-           else     -> if b > c -> b else -> c
-\end{lstlisting}
-
-\subsection{Loops}
+\subsections{Loops}
 
 Zinc uses \zn{for} for both C-style and while-style loops.
-
 \begin{lstlisting}[style=zinc, caption={Loop forms}]
 // While-style
+
 i := 0
 for i < 10 {
     i = i + 1
 }
 
-// C-style
-for j := 0; j < 10; j = j + 1 {
-    // ...
+for j := 0; i < 10; j = j + 1 {
+    // do something
 }
 \end{lstlisting}
 
-\zn{break} exits the innermost loop; \zn{continue} skips to the next iteration.
+\zn{break} exits the innermost loop and \zn{continue} skips to the next iteration.
 
 \begin{lstlisting}[style=zinc, caption={break and continue}]
 for i < 10 {
     i = i + 1
     if i == 5 { break }
-    if i mod 2 == 0 { continue }
-    // only odd values below 5 reach here
+    if i \% 2 == 0 { continue }
 }
 \end{lstlisting}
 
 \subsection{Defer}
 
-\zn{defer} schedules a statement to run when the enclosing scope exits,
-in last-in first-out order.
+\zn{defer} schedules a statement to run when the enclosing scope exits, in last=in first-out order.
 
-\begin{lstlisting}[style=zinc, caption={defer}]
-{
+\begin{lstlisting}[style=zinc, caption={Defer}]
+main :: i32 () {
     buf := libc::malloc(1024)
-    defer libc::free(buf)   // runs at end of block
+     defer libc::free(buf) // runs when the funciton returns
 
-    // ... use buf ...
+    return 0
 }
 \end{lstlisting}
 
 \section{Operators}
 
-\subsection{Arithmetic}
-
-\subsection{Comparison}
-
-\subsection{Logical}
-
-\subsection{Bitwise}
-
-\subsection{Update Operator}
-
-The update operator \zn{:} reads a mutable location, transforms its value
-through an expression, and writes the result back. It replaces the family of
-compound-assignment operators (\texttt{+=}, \texttt{-=}, \texttt{*=}, \ldots)
-with a single, uniform mechanism that also extends naturally to method calls.
+\subsection{Update operator}
+In zinc there isn't the classic \texttt{+=} or \texttt{-=} operators.
+Instead iexists the operator \zn{:}. It reads a mutable location, transform its value through an expression and writes the result back.
+So instead of having a lot of indipendent operators (\texttt{+=}, \texttt{-=}, texttt{|=} ...)
+Zinc has only one operator that groups all of them.
 
 \subsubsection*{Syntax}
 
 \begin{center}
 \begin{tabular}{ll}
+
 \toprule
-Form & Desugars to \\
+Form & Equivalent\\
+
 \midrule
-\texttt{x : \emph{op} \emph{expr}} & \texttt{x = x \emph{op} \emph{expr}} \\
-\texttt{x : \emph{unary\_op}}      & \texttt{x = \emph{unary\_op} x}      \\
-\texttt{x : f(\emph{args})}        & \texttt{x = f(x, \emph{args})}       \\
-\texttt{x : .method(\emph{args})}  & \texttt{x = x.method(\emph{args})}   \\
+\zn{x : op expr} & \zn{x = x op expr}\\
+\zn{x : unary\_op} & \zn{x = unary\_op x}\\
+\zn{x : f(args)} & \zn{x = f(x, ...args)}\\
+\zn{x : .method(args)} & \zn{x = x.method(args)}\\
+\zn{x : .member} & \zn{x = x.member}\\
+
 \bottomrule
+
 \end{tabular}
 \end{center}
 
-The left-hand side must be a mutable location: a variable, a field access, a
-pointer dereference, or a subscript. The right-hand side must be one of the
-four forms above; plain assignment uses \zn{=} instead.
+The left-hand size (LHS) must be a mutable location: a variable, a field access,  a pointer reference or a subscript.
+The right-hand side must be one of the four forms above. Plain assignment uses \zn{=} instead.
 
 \subsubsection*{Basic usage}
 
-\begin{lstlisting}[style=zinc, caption={Update operator --- arithmetic}]
-count : + 1          // count = count + 1
-price : * 1.08       // price = price * 1.08
-ratio : / total      // ratio = ratio / total
-remaining : 100 -    // ERROR: leading operand not allowed
+\begin{lstlisting}[style=zinc, caption={Update operator}]
+// Arithmetic - binary operators
+count :+ 1
+price :* 1.08
+ratio :/ total
+
+// Unary operator
+flag : not
+mask : ~
+
+// Functions and method forms
+buf     : compress()        // becomes compress(buf)
+name    : .to_lower()       // name = name.to_lower()
+value   : clamp(0, 100)     // value = clamp(value, 0, 100)
+config  : merge(defaults)   // config = merge(config, defaults)
 \end{lstlisting}
 
-For non-commutative operations where the current value must appear on the
-right-hand side, write a plain assignment instead:
-
-\begin{lstlisting}[style=zinc, caption={Non-commutative case --- use plain assignment}]
-x = 1 - x           // explicit, unambiguous
-x = 100 / x
-\end{lstlisting}
-
-\subsubsection*{Unary forms}
-
-\begin{lstlisting}[style=zinc, caption={Update operator --- unary}]
-flag  : not          // flag  = !flag
-mask  : ~            // mask  = ~mask
-\end{lstlisting}
-
-\subsubsection*{Function and method forms}
-
-When the RHS is a function call, the current value is passed as the first
-argument. When the RHS is a method call (dot form), it becomes the receiver.
-
-\begin{lstlisting}[style=zinc, caption={Update operator --- calls}]
-buf    : compress()        // buf    = compress(buf)
-name   : .to_lower()       // name   = name.to_lower()
-value  : clamp(0, 100)     // value  = clamp(value, 0, 100)
-config : merge(defaults)   // config = merge(config, defaults)
-\end{lstlisting}
-
-\subsubsection*{Evaluation guarantee}
-
-The left-hand side is evaluated exactly once, even when it contains a
-side-effecting expression such as a subscript with a computed index.
-
-\begin{lstlisting}[style=zinc, caption={Left-hand side evaluated once}]
-buf[next_slot()] : + 1
-// Equivalent to:
-//   __addr := &buf[next_slot()]   // next_slot() called once
-//   *__addr = *__addr + 1
-\end{lstlisting}
-
-\subsubsection*{Type rule}
-
-The expression produced by the RHS must have the same type as the
-left-hand side. Using \zn{:} to change a variable's type is a compile-time
-error; use a new declaration with \zn{:=} instead.
-
-\begin{lstlisting}[style=zinc, caption={Type mismatch is a compile error}]
-i32 count = 0
-count : .to_string()   // ERROR: RHS produces *char, expected i32
-\end{lstlisting}
+Since this operator is an assignment the RHS must produce the same type of the LHS.
 
 \section{Type Aliases}
 \begin{lstlisting}[style=zinc, caption={Type aliases}]
 void :: type u0
 bool :: type u1
-int :: i32
-uint :: u32
-VeryComplicatedType :: (*i32 (*char, *char), *MyStruct)
+int :: type i32
+uint :: type u32
+
+VeryComplicatedType :: (*i32(*char, *char), *MyStruct)
 \end{lstlisting}
-It doesn't require an explaination.
 
 \section{Type Casting}
+
 To cast a type zinc uses the \zn{as} keyword after the expression:
 \begin{lstlisting}[style=zinc, caption={Type casting}]
 foreign malloc :: *u8 (u64)
+
 main :: i32 () {
-    *MyStruct = malloc(sizeof MyStruct)// implicit casted from *u8 to *MyStruct
-    buff := malloc(sizeof MyStruct) as *MyStruct //explicit cast
-    myStruct := buff as *u8
+    *MyStruct obj = malloc(sizeof MyStruct) // This is casted implicitly
+    buff := malloc(sizeof MyStruct) as *MyStruct // explicitly casted from *u8 to *MyStruct
+    return 0
 }
 \end{lstlisting}
+The cast is possible only if the types are compatible.
+For example a pointer cannot be casted to a number. An invalid cast produces a compiler error.
+
+\section{Visitility}
+
+In Zinc there are two level of visibility:
+The default level means the symbol is visible everywhere in the same file.
+By adding the \zn{pub} keyword that symbol becomes global and other files can use it.
 
 \section{Imports}
+Zinc uses the \zn{use} keyword for imports. They must be declared at file-level.
 
-\section{Visibility}
-There are just two level of visibility: by default when you declare a something it is visible only in that file. by adding the \zn{pub} keyword that symbol becomes global. Other files can import that file by using the \zn{keyword} filename (A \texttt{.zn} is added at the end). To include a nested file you can use the :: to navigate into a directory and \zn{super} to go up the directory.
+\begin{lstlisting}[style=zinc, caption={Imports}]
+use myfile // imports a file in the same directory
+use submodule::myfile // imports myfile under the submodule directory
+use <core::mem> // <> means external libraries or std lib import
+use super::sharedFile // super is a special keyword to go up the directory (translated to ..)
+\end{lstlisting}
+
