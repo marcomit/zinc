@@ -9,7 +9,7 @@
 \setlength{\parskip}{0.5em}
 \setlength{\parindent}{0pt}
 
-\usepackage{dvipsnames}{xcolor}
+\usepackage[dvipsnames]{xcolor}
 \definecolor{zn-keyword}{HTML}{C678DD}
 \definecolor{zn-type}{HTML}{56B6C2}
 \definecolor{sn-string}{HTML}{98C379}
@@ -58,13 +58,13 @@
 
 \lstdefinestyle{zinc}{
     language=Zinc,
-    backgroundcolor\color{zn-bg},
+    backgroundcolor=\color{zn-bg},
     basicstyle=\ttfamily\small\color{zn-fg},
     numbers=left,
     numberstyle=\tiny\color{zn-comment},
     numbersep=8pt,
     frame=single,
-    frampesep=4pt,
+    framesep=4pt,
     rulecolor=\color{zn-comment},
     xleftmargin=1.5em,
     xrightmargin=0.5em,
@@ -83,10 +83,8 @@
 }
 
 \newcommand{\zn}[1]{\lstinlinse[style=zninline]{#1}}
-language_reference
 \newcommand{\zinc}[1]{\lstinlinse[style=zinc]{#1}}
 
-\end{document}
 \usepackage[
     colorlinks=true,
     linkcolor=linkcolor,
@@ -108,7 +106,7 @@ language_reference
 
 \usepackage{enumitem}
 \usepackage{tcolorbox}
-\usepackage{skins, breakable}
+\tcbuselibrary{skins,breakable}
 
 \newtcolorbox{note}{
     colback=yellow!8,
@@ -132,7 +130,8 @@ language_reference
 \maketitle
 \tableofcontents
 
-\input{chapter/01_intro}
-\input{chapter/language_reference}
+\input{chapters/01_intro}
+\input{chapters/language_reference}
 
 \end{document}
+
