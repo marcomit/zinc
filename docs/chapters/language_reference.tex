@@ -6,7 +6,6 @@ Zinc is statically typed: every expression has a type that is known at compile t
 
 \subsection{Primitive Types}
 
-\begin{center}
 \begin{tabular}{ll}
 \toprule
 Type & Description \\
@@ -21,11 +20,8 @@ Type & Description \\
 
 \end{tabular}
 
-\end{center}
-
 \subsection{Compound Types}
 
-\begin{center}
 \begin{tabular}{ll}
 
 \toprule
@@ -40,11 +36,9 @@ Type & Description\\
 \bottomrule
 
 \end{tabular}
-\end{center}
 
 \section{Literals}
 
-\begin{center}
 \begin{tabular}{ll}
 
 \toprule
@@ -60,7 +54,6 @@ Strings & \texttt{*char}, content between quotes.\\
 \bottomrule
 
 \end{tabular}
-\end{center}
 
 \subsection{String Escapes}
 
@@ -143,13 +136,13 @@ other := 10 // inferred type
 
 // Both way combined
 ({x, y}, {x: otherX, y: otherY}) := pair
-\end{lstlistng}
+\end{lstlisting}
 
 \section{Functions}
 
 \subsection{Declarations}
 A normal function is composed by:
-\zninline{<name> :: Ret (Args...)[Capabilities] \{ ... \}}
+\zn{<name> :: Ret (Args...)[Capabilities] \{ ... \}}
 For short functions instead of declaring a block with a single return statement there is the \zn{->} operator that returns directly.
 
 \begin{lstlisting}[style=zinc, caption={Function declarations}]
@@ -163,7 +156,7 @@ mul :: u32 (u32 a, u32 b) -> a * b
 main :: i32 () {
     return add(10, mul(12, 3))
 }
-\end{lstlistng}
+\end{lstlisting}
 
 \begin{note}
 This section doesn't show an exaple with capabilities argument list.
@@ -246,7 +239,7 @@ main :: i32 () {
     allocBuf() // Compiler rejects this, Capability 'Allocator' doesn't exist
     return 0
 }
-\end{lstlistng}
+\end{lstlisting}
 
 Capabilities are propagated transitibely: a function that calls another capability-requiring function inherits the requirement automatically.
 

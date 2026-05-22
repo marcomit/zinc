@@ -11,12 +11,12 @@
 
 \usepackage[dvipsnames]{xcolor}
 \definecolor{zn-keyword}{HTML}{C678DD}
-\definecolor{zn-type}{HTML}{56B6C2}
-\definecolor{sn-string}{HTML}{98C379}
-\definecolor{zn-comment}{HTML}{7F848E}
-\definecolor{zn-number}{HTML}{D19A66}
-\definecolor{zn-bg}{HTML}{FFFFFF}
-\definecolor{zn-fg}{HTML}{455045}
+\definecolor{zn-type}{HTML}{2D9CDB}
+\definecolor{zn-string}{HTML}{5FA04E}
+\definecolor{zn-comment}{HTML}{8A9199}
+\definecolor{zn-number}{HTML}{C97A2B}
+\definecolor{zn-bg}{HTML}{FAF8F5}
+\definecolor{zn-fg}{HTML}{2E3440}
 \definecolor{linkcolor}{HTML}{4183C4}
 
 \usepackage{listings}
@@ -60,7 +60,7 @@
     language=Zinc,
     backgroundcolor=\color{zn-bg},
     basicstyle=\ttfamily\small\color{zn-fg},
-    numbers=left,
+    numbers=none,
     numberstyle=\tiny\color{zn-comment},
     numbersep=8pt,
     frame=single,
@@ -82,8 +82,12 @@
     autogobble=true,
 }
 
-\newcommand{\zn}[1]{\lstinlinse[style=zninline]{#1}}
-\newcommand{\zinc}[1]{\lstinlinse[style=zinc]{#1}}
+\newcommand{\zn}[1]{\lstinline[style=zninline]{#1}}
+
+% -- Graphics & tables
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
 
 \usepackage[
     colorlinks=true,
@@ -131,6 +135,7 @@
 \tableofcontents
 
 \input{chapters/01_intro}
+\input{chapters/02_lexer}
 \input{chapters/language_reference}
 
 \end{document}
