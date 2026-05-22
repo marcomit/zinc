@@ -1,0 +1,81 @@
+\chapter{Lexer}
+\label{ch:lexer}
+
+\section{Overview}
+
+The lexer converts the raw source text file into a flat list of \texttt{ZToken} objects consumed by the parser.
+It's invoked once per source file and operates in a single forward pass.
+It returns a list of \texttt{ZToken *}.
+
+\section{ZLexer State}
+
+Internally the lexer holds a \texttt{ZLexer} struct:
+
+\begin{verbatim}
+typedef struct {
+	ZState *state;
+
+	/* Pointer to the entire file */
+	char *program;
+
+	/* Pointer to the current text */
+	char *current;
+
+	/* List of generated tokens */
+	ZToken **tokens;
+
+	/* Pointer to the start of the current line */
+	char *line;
+
+	/* Current position of the text */
+	usize row, col;
+
+	/* Track if newline was seen since last token */
+	bool sawNewline;
+
+} ZLexer;
+\end{verbatim}
+
+\section{Token Types}
+All token types are defined in \texttt{include/ztok.h} with the X-macro pattern and used in \texttt{include/zinc.h} to define the \texttt{ZTokenType} enum.
+
+\begin{note}
+X-macros are just a list of generic macro usage (ztok.h uses \texttt{DEF}) where the method is not defined.
+Then in other parts before importing the file the macro \texttt{DEF} is defined such that you can use the same list in ztok generating different code every time you include it.
+\end{note}
+
+They fall into different categories:
+\begin{itemize}
+    \item{\textbf{Keyqords}}: For example \zn{if}, \zn{else}, \zn{for} ...
+    \item{Literals}: integer, float, string, boolean, true, false, none
+    \item{\textbf{Identifiers}}
+    \item{\textbf{Operators \& punctuation}}: \zn{+}, \zn{-}, \zn{==} ...
+\end{itemize}
+
+To avoid a linear scan through the keyword list on every identifier, the lexer uses a fixed-size hash map.
+
+Keys are hashed with FNV-1a (32 bit). Collisions are resolved by open addressing with linear probing.
+The table is populated once at startup via \texttt{initKeywords()}.
+In standard implementation of an hashmap the length cannot be fixed. For a lexer, where the number of tokens are fixed, it can be fixed.
+
+\section{Newline Sensitivity}
+
+Zinc uses newlines as implicit statement terminators in certain contexts to avoid typing ';' at every statement.
+The \texttt{sawNewline} flag traks whether at least one newline was consumed between the previous token and the current one.
+It causes a real problem for the parser because the terminator ';' is used to skip an invalid statement and restart to parse from the beginning of a new one.
+But without an explicit terminator the parser loose the capability to restart from a new statement and it generates a chain of errors for a single invalid statement.
+
+Here is an example of the ambiguity without the terminator:
+\begin{verbatim}
+val := 10
+*MyStruct obj = none
+\end{verbatim}
+
+The parser doesn't know that \texttt{MyStruct} is a type. It sees only an identifier.
+So the parser sees \texttt{10 * MyStruct} and it can be parsed as a multiplication and it generates an error on the remaining tokens \texttt{obj = none} which is not a valid variable declaration.
+So the new line is useful for this case but it has a lot of limitations.
+
+\section{Error reporting}
+Lexical errors (unterminated strings, unkown characters) are reported through \texttt{ZState} via the shared \texttt{error()} macro.
+The lexer records the \texttt{row}/\texttt{col} of every token so that error messages caon point to the exact source location.
+

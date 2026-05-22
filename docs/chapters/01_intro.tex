@@ -3,7 +3,8 @@
 \section{Overview}
 
 Zinc is a statically-typed, compiled systems programming language designed for clarity, performance, and expressiveness.
-It compiles native binaries via LLVM and supports C interoperability through \zn{foreign} declarations.
+It compiles native binaries via LLVM and supports C interoperability through
+\zn{foreign} declarations.
 
 \section{Compiler Pipeline}
 
@@ -11,10 +12,11 @@ The Zinc compiler is a multi-phase pipeline written in C. The phases run sequent
 
 \begin{center}
 \begin{tabular}{lll}
+
 \toprule
 \textbf{Phase} & \textbf{Source file} & \textbf{Responsibility}\\
-\midrule
 
+\midrule
 Lexical analysis & \texttt{zlenx.c} & Tokenise source test into a stream od tokens.\\
 
 Syntax analysis & \texttt{zparse.c} & Build the AST from the token stream.\\
@@ -22,7 +24,9 @@ Syntax analysis & \texttt{zparse.c} & Build the AST from the token stream.\\
 Semantic analysis & \texttt{zsem.c} & Resolve types and symbol resolution\\
 
 Code generation & \texttt{zgen.c} & Emit LLVM IR and link with lld.
-\bottomrule
+
+% \bottomrule
+
 \end{tabular}
 \end{center}
 
@@ -50,3 +54,14 @@ main :: i32 () {
     return 0
 }
 \end{lstlisting}
+
+\section{ZState}
+Every phase of the compiler has a shared state \texttt{ZState} used to share cli flags through the entire pipeline and to store the logs.
+The ZState also holds other info like the compiler path, the visited files, the current file and the list of the logs the compiler prints at the end of the pipeline.
+
+\subsection{Compiler Logs}
+The compiler must have a way to show the user a warning or an error on a malformed sourcefile.
+A log contains the token that produce the log (e.g. the message 'variable not found' must show where is the undeclared variable).
+So the token is essential to map the parsed token to the source file to print the row and column.
+In some cases the compiler can generates the same error in different locations. So the methods to create a log are macros such that the compiler can capture the source file and the line where the log is produced (by the \_\_FILE\_\_ and \_\_LINE\_\_ macros defined in C).
+

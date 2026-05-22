@@ -4,7 +4,7 @@
 
 Zinc is statically typed: every expression has a type that is known at compile time.
 
-\zubsections{Primitive Types}
+\subsection{Primitive Types}
 
 \begin{center}
 \begin{tabular}{ll}
@@ -18,10 +18,12 @@ Type & Description \\
 \zn{i8}, \zn{i16}, \zn{i32}, \zn{i64} & Signed integer with specific bit-width\\
 \zn{f32}, \zn{f64} & Floating point numbers\\
 \bottomrule
-\end{tabuler}
+
+\end{tabular}
+
 \end{center}
 
-\subsection{Compount Types}
+\subsection{Compound Types}
 
 \begin{center}
 \begin{tabular}{ll}
@@ -53,7 +55,7 @@ Integers & Decimal: \texttt{123}, Hex: \texttt{0xDEADBEEF}, binary: \texttt{0b10
 Floats & Standard \texttt{3.14},  Scientific: \texttt{1e-10}\\
 Boolean & \zn{true}, \zn{false}\\
 Null pointer & \zn{none}\\
-Strings & \texttt{*char}, content between quotes.
+Strings & \texttt{*char}, content between quotes.\\
 
 \bottomrule
 
@@ -323,7 +325,7 @@ if Expr::Add(left, right) := myEnum {
 }
 \end{lstlisting}
 
-\subsections{Loops}
+\subsection{Loops}
 
 Zinc uses \zn{for} for both C-style and while-style loops.
 \begin{lstlisting}[style=zinc, caption={Loop forms}]
@@ -454,4 +456,5 @@ use submodule::myfile // imports myfile under the submodule directory
 use <core::mem> // <> means external libraries or std lib import
 use super::sharedFile // super is a special keyword to go up the directory (translated to ..)
 \end{lstlisting}
+
 
