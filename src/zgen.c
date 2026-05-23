@@ -2500,12 +2500,12 @@ static void buildNestedFuncVar(
             buildNestedFuncVar(ctx, val, ptr);
         }
     } else if (node->type == NODE_ARRAY_LIT) {
-        LLVMTypeRef arrType = genType(ctx, node->resolved);
+        LLVMTypeRef elemType = genType(ctx, node->resolved->array.base);
         for (usize i = 0; i < veclen(node->arraylit); i++) {
             ZNode *val  = node->arraylit[i];
             LLVMValueRef index = LLVMConstInt(i32Type, i, false);
             LLVMValueRef ptr = LLVMBuildGEP2(
-                ctx->builder, arrType, parent, &index, 1, "index"
+                ctx->builder, elemType, parent, &index, 1, "index"
             );
             
             LLVMTypeRef typeRef = genType(ctx, val->resolved);
