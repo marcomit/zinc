@@ -1072,7 +1072,7 @@ static ZNode *parseBlock(ZParser *parser) {
     ZNode *block = makenode(NODE_BLOCK);
     ZNode *stmt = NULL;
     do {
-        stmt = tryParse(parser, parseStmt(parser));
+        stmt = parseStmt(parser);
         if (stmt) vecpush(block->block, stmt);
     } while (stmt);
 
@@ -1210,7 +1210,7 @@ static ZNode *parseEnumDecl(ZParser *parser,
             parseEnumField, false);
 
     if (!fields || veclen(fields) < 2) {
-        error(parser->state, start, "Failed to parse enum declaration");
+        error(parser->state, start, "Expected at least 2 variants");
         return NULL;
     }
 

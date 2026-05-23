@@ -2557,6 +2557,7 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
     /* Function types are passed as pointers and fit in a register - no alloca needed. */
     if (!force && node->resolved->kind == Z_TYPE_FUNCTION) return NULL;
 
+    LLVMValueRef stackPointer = NULL;
     LLVMValueRef elem = NULL;
     LLVMTypeRef elemType = NULL;
     if (node->resolved->kind == Z_TYPE_ARRAY && node->resolved->array.size > 0) {
@@ -2565,13 +2566,15 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
             node->resolved->array.size
         );
         elem = LLVMBuildAlloca(ctx->builder, elemType, label(ctx, node->tok));
+        stackPointer = elem;
     }
 
     LLVMTypeRef type = genType(ctx, node->resolved);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
     addFuncVar(ctx, val, elem, type, elemType, node);
 
-    buildNestedFuncVar(ctx, node, val);
+    if (!stackPointer) stackPointer = val;
+    buildNestedFuncVar(ctx, node, stackPointer);
     return val;
 }
 
