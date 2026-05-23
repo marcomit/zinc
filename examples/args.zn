@@ -2,23 +2,26 @@ libc :: foreign {
     printf :: u0 (*char, ...)
 }
 
-Option :: enum {
-    Some(i32)
+Expr :: enum {
+    List([]i32)
     None
 }
 
+print :: u0 ([]i32 list) {
+    libc::printf("%zu\n", list.len)
+}
+
 main :: i32 () {
-    val := Option::Some(10)
-    
-    // match Option::Some(10) {
-    //     Option::Some(some) -> libc::printf("%d\n", some),
-    //     Option::None() -> libc::printf("none\n")
-    // }
+    e := Expr::List([
+        1, 2, 3, 4
+    ])
 
-    if Option::Some(value) := val {
-        libc::printf("%d\n", value)
+
+    match e {
+        Expr::None() -> libc::printf("none\n"),
+        _ {
+            libc::printf("unknown\n")
+        }
     }
-
-
     return 0
 }

@@ -2391,6 +2391,36 @@ static void genDefer(ZCodegen *ctx, ZNode *node) {
     vecpush(ctx->scope->defers, node->deferStmt.expr);
 }
 
+static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef cond = genExpr(ctx, node->match.cond);
+    ZType *condType = node->match.cond->resolved;
+    usize armLen = veclen(node->match.arms);
+    LLVMBasicBlockRef *blocks = znalloc(LLVMBasicBlockRef, armLen+1);
+
+    blocks[0] = LLVMGetInsertBlock(ctx->builder);
+    for (usize i = 1; i <= armLen; i++) blocks[i] = makeblock(ctx);
+
+    LLVMBasicBlockRef merge = blocks[armLen];
+
+    for (usize i = 0; i < armLen; i++) {
+        LLVMBasicBlockRef block = blocks[i];
+        LLVMPositionBuilderAtEnd(ctx->builder, block);
+        ZNode *arm = node->match.arms[i];
+        LLVMValueRef matchArm = genMatchCond(
+            ctx, condType, arm->matchArm.pattern, cond
+        );
+
+        LLVMBasicBlockRef exprBlock = makeblock(ctx);
+
+        LLVMBuildCondBr(
+            ctx->builder, matchArm, exprBlock, blocks[i+1]);
+        LLVMPositionBuilderAtEnd(ctx->builder, exprBlock);
+        genStmt(ctx, arm->matchArm.expr);
+        LLVMBuildBr(ctx->builder, merge);
+    }
+    LLVMPositionBuilderAtEnd(ctx->builder, merge);
+}
+
 /**
  * @breif Generate capability.
  *
@@ -2416,6 +2446,7 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     case NODE_DEFER:        genDefer        (ctx, stmt);    break;
     case NODE_VAR_DECL:     genVarDecl      (ctx, stmt);    break;
     case NODE_CONTINUE:     genContinue     (ctx, stmt);    break;
+    case NODE_MATCH:        genMatchStmt    (ctx, stmt);    break;
     case NODE_CAPABILITY:   genCapability   (ctx, stmt);    break;
     default: {
         LLVMValueRef compiled = genExpr(ctx, stmt);

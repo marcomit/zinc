@@ -309,6 +309,12 @@ ZNode *getStructField(ZSemantic *ctx, ZType *strct, ZToken *field) {
     return NULL;
 }
 
+/**
+ * @brief Put all the pattern identifiers in the current scope.
+ *
+ * Note: It takes the type to validate the pattern.
+ * If the pattern doesn't follow the type it emits an error.
+ */
 static void putVarPattern(
         ZSemantic *ctx, ZNode *node,
         ZType *type, ZVarDestructPattern *pattern) {
@@ -2128,6 +2134,49 @@ static void analyzeCapability(ZSemantic *ctx, ZNode *curr) {
     endScope(ctx);
 }
 
+static bool patternEq(ZVarDestructPattern *a, ZVarDestructPattern *b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    if (a->type != b->type) return false;
+
+    switch (a->type) {
+    case Z_VAR_IDENT: return true;
+    case Z_VAR_TUPLE: {
+        usize aLen = veclen(a->tuple);
+        usize bLen = veclen(b->tuple);
+        if (aLen != bLen) return false;
+
+        for (usize i = 0; i < aLen; i++) {
+            if (!patternEq(a->tuple[i], b->tuple[i])) return false;
+        }
+        return true;
+    }
+    case Z_VAR_STRUCT: {
+        usize aLen = veclen(a->fields);
+        usize bLen = veclen(b->fields);
+
+        if (aLen != bLen) return false;
+        return true;
+    }
+    }
+    return true;
+}
+
+static void analyzeMatchStmt(ZSemantic *ctx, ZNode *curr) {
+    ZType *condType = resolveType(ctx, curr->match.cond);
+    condType = resolveTypeRef(ctx, condType);
+    if (!condType) return;
+
+    for (usize i = 0; i < veclen(curr->match.arms); i++) {
+        ZNode *arm = curr->match.arms[i];
+
+        beginScope(ctx, arm);
+        putVarPattern(ctx, arm, condType, arm->matchArm.pattern);
+        analyzeBlock(ctx, arm->matchArm.expr, false);
+        endScope(ctx);
+    }
+}
+
 static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     switch (curr->type) {
     case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
@@ -2137,6 +2186,7 @@ static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     case NODE_BLOCK:        analyzeBlock(ctx, curr, false);         break;
     case NODE_DEFER:        resolveType(ctx, curr->deferStmt.expr); break;
     case NODE_RETURN:       analyzeReturn(ctx, curr);               break;
+    case NODE_MATCH:        analyzeMatchStmt(ctx, curr);            break;
     case NODE_CAPABILITY:   analyzeCapability(ctx, curr);           break;
     default:                resolveType(ctx, curr);                 break;
     }
