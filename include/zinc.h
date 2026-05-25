@@ -51,6 +51,7 @@ typedef struct ZToken {
 typedef struct ZNode ZNode;
 typedef struct ZType ZType;
 typedef struct ZScope ZScope;
+typedef struct ZAnnotation ZAnnotation;
 
 typedef enum {
     Z_ERROR,
@@ -173,26 +174,27 @@ typedef enum ZTypeKind {
 } ZTypeKind;
 
 struct ZType {
-    ZTypeKind kind;
-    ZToken *tok;
+    ZTypeKind   kind;
+    ZToken      *tok;
 
     union {
         // For PRIMITIVE (e.g. void or int)
         struct {
-            ZToken *token;
-            ZType *base;
-            ZType **generics;
+            ZToken  *token;
+            ZType   *base;
+            ZType   **generics;
         } primitive;
 
         // For POINTER (The type the pointer points to)
-        ZType *base;
+        ZType       *base;
 
         struct {
-            ZToken *name;
+            ZToken      *name;
 
             /* Array of NODE_FIELD */
-            ZNode **fields;
-            ZType **generics;
+            ZNode       **fields;
+            ZType       **generics;
+            ZAnnotation ** annotations;
         } strct;
 
         struct {
@@ -209,7 +211,7 @@ struct ZType {
         } array;
 
         /* List of Z_TYPE_FUNCTION */
-        ZType **facet;
+        ZType       **facet;
 
         struct {
             ZToken      *name;
@@ -222,12 +224,12 @@ struct ZType {
         ZType **tuple;
 
         struct {
-            ZToken *name;
+            ZToken  *name;
 
             /* A generic can extend a facets:
              * T: Display + Drop 
              * */
-            ZType **extensions;
+            ZType   **extensions;
         } generic;
     };
 
@@ -306,7 +308,6 @@ struct ZVarDestructPattern {
     };
 };
 
-typedef struct ZAnnotation ZAnnotation;
 struct ZAnnotation {
     ZToken *name;
     ZAnnotation **args;
