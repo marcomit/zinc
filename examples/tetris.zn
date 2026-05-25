@@ -1,0 +1,184 @@
+use <core::mem>
+use <core::rand>
+
+raylib :: foreign {
+    InitWindow :: u0 (i32, i32, *char)
+    CloseWindow :: u0 ()
+    SetTargetFPS :: u0 (i32)
+    WindowShouldClose :: u1 ()
+    BeginDrawing :: u0 ()
+    EndDrawing :: u0 ()
+    GetFrameTime :: f32 ()
+    IsKeyDown :: u1 (i32)
+    CheckCollisionCircleRec :: u1 (Vector2, f32, Rectangle)
+    ClearBackground :: u0 (Color)
+    DrawCircleV :: u0 (Vector2, f32, Color)
+    DrawRectangleRec :: u0 (Rectangle, Color)
+    DrawFPS :: u0 (i32, i32)
+    DrawText :: u0 (*char, i32, i32, i32, Color)
+}
+
+c :: foreign {
+    printf :: u0 (*char, ...)
+    exit :: i32 (i32)
+}
+
+Vector2 :: struct {
+    f32 x
+    f32 y
+}
+
+Rectangle :: struct {
+    ...Vector2
+    f32 width
+    f32 height
+}
+
+Color :: struct {
+    u8 r
+    u8 g
+    u8 b
+    u8 a
+}
+
+Color :: for {
+    new :: Color (u8 r, u8 g, u8 b, u8 a) -> Color{ r: r, g: g, b: b, a: a }
+}
+
+/* First 16 bit for the length, last 16 bit for the content */
+Tile :: type u32
+
+Tile :: for {
+    o :: Tile () -> (1 << 24) | (2 << 16) | 0b1111
+    l :: Tile () -> (2 << 24) | (3 << 16) | 0b100100110
+    j :: Tile () -> (3 << 24) | (3 << 16) | 0b001001011
+    t :: Tile () -> (5 << 24) | (3 << 16) | 0b010111000
+    s :: Tile () -> (6 << 24) | (3 << 16) | 0b000011110
+    z :: Tile () -> (7 << 24) | (3 << 16) | 0b000110011
+    i :: Tile () -> (4 << 24) | (4 << 16) | 0b0001000100010001
+
+    random :: Tile (*Random rand) {
+        tiles := [
+            Tile::o,
+            Tile::l,
+            Tile::j,
+            Tile::t,
+            Tile::s,
+            Tile::z,
+            Tile::i,
+        ]
+        return tiles[rand.range(0, tiles.len)]()
+    }
+}
+
+get_color :: Color (u8 t) {
+    colors := [
+        Color::new(255, 255, 0, 255), // o
+        Color::new(255, 165, 0, 255), // l
+        Color::new(0, 0, 255, 255), // j
+        Color::new(128, 0, 128, 255), // t
+        Color::new(0, 255, 0, 255), // s
+        Color::new(255, 0, 0, 255), // z
+        Color::new(0, 255, 255, 255) // i
+    ]
+    return colors[t]
+}
+
+Tile self :: for {
+    draw :: u0 (Vector2 offset) {
+        t := self >> 24
+        width := (self >> 24) & 0xFF
+        
+        y := 0
+        for y < width {
+            x := 0
+            for x < width {
+                if (self >> (y * width + x)) & 1 {
+                    rect := Rectangle{
+                        x: offset.x + x, 
+                        y: offset.y + y,
+                        width: 20.0,
+                        height: 20.0
+                    }
+                    raylib::DrawRectangleRec(rect, get_color(t % 7))
+                }
+                x :+ 1
+            }
+            y :+ 1
+        }
+    } 
+}
+
+GameState :: struct {
+    *u8 board
+    Tile current
+    Tile next
+    u1 gameover
+    u64 points
+    *Random rand
+}
+
+GameState :: for {
+    new :: *GameState()[Allocator allocator] {
+        *GameState self = allocator.alloc(sizeof GameState)
+        self.board = allocator.alloc(sizeof u8 * 10 as u64 * 20 as u64)
+        self.rand = Random::by_ref()
+
+        return self
+    }
+}
+
+*GameState self :: for {
+    draw :: u0 () {
+        y := 0
+        for y < 20 {
+            x := 0
+            for x < 10 {
+                box := self.board[y * 20 + x]
+                if not box {
+                    x :+ 1
+                    continue
+                }
+                rect := Rectangle {
+                    x: (x as f32) * 20.0,
+                    y: (y as f32) * 20.0,
+                    width: 20.0,
+                    height: 20.0
+                }
+                raylib::DrawRectangleRec(rect, get_color(box))
+                x :+ 1
+            }
+            y :+ 1
+        }
+    }
+}
+
+main :: i32 () {
+    block           := 20.0
+    screenWidth     := block as u32 * 20
+    screenHeight    := block as u32 * 20
+
+    raylib::InitWindow(screenWidth, screenHeight, "Tetris")
+    raylib::SetTargetFPS(10)
+
+    black   := Color::new(0, 0, 0, 255)
+    red     := Color::new(255, 0, 0, 255)
+    green   := Color::new(0, 255, 0, 255)
+
+    with _ := Allocator::heap() {
+        state := GameState::new()
+        for not raylib::WindowShouldClose() {
+        
+            raylib::BeginDrawing()
+            raylib::ClearBackground(black)
+
+            state.draw()
+
+            raylib::DrawFPS(10, 10)
+            raylib::EndDrawing()
+        }
+    }
+
+    raylib::CloseWindow()
+    return 0
+}

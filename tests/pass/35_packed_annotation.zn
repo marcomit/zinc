@@ -1,0 +1,33 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+#[packed]
+Color :: struct {
+    u8 r
+    u8 g
+    u8 b
+    u8 a
+}
+
+Color :: for {
+    new :: Color(u8 r, u8 g, u8 b, u8 a) {
+        return Color { r: r, g: g, b: b, a: a }
+    }
+}
+
+Color self :: for {
+    print :: u0 () {
+        c::printf("Color{r: %d, g: %d, b: %d, a: %d}\n", self.r, self.g, self.b, self.a)
+    }
+}
+main :: i32 () {
+    white   := Color::new(255, 255, 255, 255)
+    black   := Color::new(0, 0, 0, 255)
+    red     := Color::new(255, 0, 0, 255)
+
+    white.print()
+    black.print()
+    red.print()
+    return 0
+}

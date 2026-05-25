@@ -1,0 +1,33 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+printMatrix :: u0 ([][]i32 matrix) {
+    i := 0
+    for i < matrix.len {
+        j := 0
+        for j < matrix[i].len {
+            c::printf("%d\n", matrix[i][j])
+            j :+ 1
+        }
+        i :+ 1
+    }
+}
+
+main :: i32 () {
+    row0 := [1, 2, 3]
+    row1 := [4, 5, 6]
+    row2 := [7, 8, 9, 10]
+    matrix := [row0, row1, row2]
+
+    inlineMatrix := [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9]
+    ]
+
+    printMatrix(matrix)
+    printMatrix(inlineMatrix)
+
+    return 0
+}

@@ -766,13 +766,13 @@ bool typesEqual(ZType *a, ZType *b) {
     case Z_TYPE_POINTER:
         return typesEqual(a->base, b->base);
     case Z_TYPE_ARRAY:
-        if (a->array.size == 0 && b->array.size > 0) {
-            a->array.size = b->array.size;
-        } else if (b->array.size == 0 && a->array.size > 0) {
-            b->array.size = a->array.size;
-        } else if (a->array.size != b->array.size) {
-            return false;
-        }
+        // if (a->array.size == 0 && b->array.size > 0) {
+        //     a->array.size = b->array.size;
+        // } else if (b->array.size == 0 && a->array.size > 0) {
+        //     b->array.size = a->array.size;
+        // } else if (a->array.size != b->array.size) {
+        //     return false;
+        // }
         return typesEqual(a->array.base, b->array.base);
     case Z_TYPE_STRUCT:
         return a == b;
@@ -2036,6 +2036,7 @@ static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
         sym->type       = recType;
         sym->node       = curr->funcDef.receiver;
         sym->isPublic   = false;
+        sym->useCount   = 1;
         putSymbol(ctx, sym);
     }
 
