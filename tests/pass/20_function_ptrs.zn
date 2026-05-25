@@ -17,6 +17,11 @@ BinOp self :: for {
     print :: u0 (i32 x, i32 y) -> c::printf("%s(%d,%d)=%d\n", self.name, x, y, self.fn(x, y))
 }
 
+one     :: i32 () -> 1
+two     :: i32 () -> 2
+three   :: i32 () -> 3
+four    :: i32 () -> 4
+
 main :: i32 () {
     // Function stored in struct field, called directly
     BinOp bAdd = BinOp { fn: add, name: "add" }
@@ -48,6 +53,12 @@ main :: i32 () {
     BinOp a = BinOp { fn: add, name: "a" }
     BinOp b = BinOp { fn: mul, name: "b" }
     c::printf("%d %d\n", a.fn(2, 3), b.fn(2, 3))
+
+    nums := [
+        one, two, three, four
+    ]
+
+    nums[0]()
 
     return 0
 }

@@ -427,9 +427,10 @@ static ZNode *parseArrSubscript(ZParser *parser, ZNode *previous) {
     ZNode *index = tryParse(parser, parseExpr(parser));
     expect(parser, TOK_RSBRACKET);
 
-    ZNode *node = makenode(NODE_SUBSCRIPT);
-    node->subscript.index = index;
-    node->subscript.arr = previous;
+    ZNode *node             = makenode(NODE_SUBSCRIPT);
+    node->subscript.index   = index;
+    node->subscript.arr     = previous;
+    node->tok               = previous->tok;
     return node;
 }
 

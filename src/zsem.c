@@ -2030,6 +2030,7 @@ static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
         sym->type       = recType;
         sym->node       = curr->funcDef.receiver;
         sym->isPublic   = false;
+        sym->useCount   = 1;
         putSymbol(ctx, sym);
     }
 
