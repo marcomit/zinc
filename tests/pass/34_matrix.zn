@@ -1,0 +1,22 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+main :: i32 () {
+    row0 := [1, 2, 3]
+    row1 := [4, 5, 6]
+    row2 := [7, 8, 9]
+    matrix := [row0, row1, row2]
+
+    i := 0
+    for i < 3 {
+        j := 0
+        for j < 3 {
+            c::printf("%d\n", matrix[i][j])
+            j = j + 1
+        }
+        i = i + 1
+    }
+
+    return 0
+}

@@ -2507,10 +2507,21 @@ static void buildNestedFuncVar(
             LLVMValueRef ptr = LLVMBuildGEP2(
                 ctx->builder, elemType, parent, &index, 1, "index"
             );
-            
+
             LLVMTypeRef typeRef = genType(ctx, val->resolved);
-            addFuncVar(ctx, ptr, NULL, typeRef, NULL, val);
-            buildNestedFuncVar(ctx, val, ptr);
+            LLVMValueRef innerElem = NULL;
+            LLVMTypeRef innerElemType = NULL;
+            LLVMValueRef nestedParent = ptr;
+            if (val->resolved->kind == Z_TYPE_ARRAY && val->resolved->array.size > 0) {
+                innerElemType = LLVMArrayType2(
+                    genType(ctx, val->resolved->array.base),
+                    val->resolved->array.size
+                );
+                innerElem = LLVMBuildAlloca(ctx->builder, innerElemType, label(ctx, val->tok));
+                nestedParent = innerElem;
+            }
+            addFuncVar(ctx, ptr, innerElem, typeRef, innerElemType, val);
+            buildNestedFuncVar(ctx, val, nestedParent);
         }
     } else if (node->type == NODE_ENUM_LIT) {
         ZToken *variant = node->call.callee->staticAccess.prop;
