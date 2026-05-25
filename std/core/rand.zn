@@ -1,0 +1,52 @@
+use <core::mem>
+
+pub Random :: struct {
+    u64 state
+    u64 inc
+}
+
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+Random :: for {
+    pub by_value :: Random () {
+        return Random { state: 0x853c49e6748fea9b, inc: 0xda3e39cb94b95bdb }
+    }
+
+    pub by_ref :: *Random ()[Allocator allocator] {
+        self := allocator.alloc(sizeof Random) as *Random
+        self.state = 0x853c49e6748fea9b
+        self.inc = 0xda3e39cb94b95bdb
+        return self
+    }
+}
+
+*Random self :: for {
+    pub seed :: u0 (u64 new_seed) {
+        self.state = new_seed + self.inc as u64
+    }
+
+    pub uint :: u32 () {
+        u64 oldState = self.state
+        self.state = oldState * 6364136223846793005 as u64 + (self.inc | (1 as u64))
+
+        u32 xorshifted = ((oldState >> 18 as u32) ^ oldState) >> 27
+
+        u32 rot =  oldState >> 59
+
+        return (xorshifted >> rot) | (xorshifted << ((-rot) & 31))
+    }
+
+    pub int :: i32 () {
+        return self.uint() as i32
+    }
+
+    pub float :: f32 () {
+        return (self.uint() / (0xFFFFFFFF as u32))
+    }
+
+    pub range :: i32 (i32 start, i32 end) {
+        return start + (self.uint() % (end - start + 1))
+    }
+}
