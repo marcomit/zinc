@@ -2134,7 +2134,7 @@ static void analyzeCapability(ZSemantic *ctx, ZNode *curr) {
     endScope(ctx);
 }
 
-static bool patternEq(ZVarDestructPattern *a, ZVarDestructPattern *b) {
+static bool patternEq(ZState *state, ZVarDestructPattern *a, ZVarDestructPattern *b) {
     if (!a && !b) return true;
     if (!a || !b) return false;
     if (a->type != b->type) return false;
@@ -2147,7 +2147,7 @@ static bool patternEq(ZVarDestructPattern *a, ZVarDestructPattern *b) {
         if (aLen != bLen) return false;
 
         for (usize i = 0; i < aLen; i++) {
-            if (!patternEq(a->tuple[i], b->tuple[i])) return false;
+            if (!patternEq(state, a->tuple[i], b->tuple[i])) return false;
         }
         return true;
     }
@@ -2156,6 +2156,36 @@ static bool patternEq(ZVarDestructPattern *a, ZVarDestructPattern *b) {
         usize bLen = veclen(b->fields);
 
         if (aLen != bLen) return false;
+
+        for (usize i = 0; i < aLen; i++) {
+            i32 index = -1;
+            for (usize j = 0; i < bLen && index == -1; i++)
+                if (tokeneq(b->fields[j]->key, a->fields[i]->key) == 0)
+                    index = j;
+
+            if (index == -1) return false;
+
+            if (!patternEq(state,
+                    a->fields[i]->value,
+                    b->fields[index]->value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+    case Z_VAR_ENUM: {
+        if (!tokeneq(a->base, b->base)) return false;
+        if (!tokeneq(a->prop, b->prop)) return false;
+
+        usize aLen = veclen(a->args);
+        usize bLen = veclen(b->args);
+
+        if (aLen != bLen) return false;
+
+        for (usize i = 0; i < aLen; i++) {
+            if (!patternEq(state, a->args[i], b->args[i])) return false;
+        }
         return true;
     }
     }
