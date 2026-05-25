@@ -352,10 +352,11 @@ static ZToken *parseHexNumber(ZLexer *l) {
             (tolower(*l->current) >= 'a' &&
              tolower(*l->current) <= 'f')) next(l);
 
-    long long value = strtoll(start, NULL, 16);
+    errno = 0;
+    unsigned long long value = strtoull(start, NULL, 16);
 	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return makeinteger(value, start);
+	return makeinteger((i64)value, start);
 }
 
 static ZToken *parseBinNumber(ZLexer *l) {
@@ -365,10 +366,11 @@ static ZToken *parseBinNumber(ZLexer *l) {
 
     while (*l->current == '0' || *l->current == '1') next(l);
 
-    long long value = strtoll(start, NULL, 2);
+    errno = 0;
+    unsigned long long value = strtoull(start, NULL, 2);
 	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return makeinteger(value, start);
+	return makeinteger((i64)value, start);
 }
 
 static ZToken *parseNumber(ZLexer *l) {

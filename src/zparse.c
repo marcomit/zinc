@@ -1262,11 +1262,18 @@ static ZNode *parseStructDecl(ZParser *parser,
     }
 
     ZNode *node                 = makenode(NODE_STRUCT);
+    node->tok                   = start;
     node->structDef.fields      = fields;
     node->structDef.generics    = generics;
     node->structDef.ident       = start;
     node->structDef.pub         = public;
     node->structDef.annotations = annotations;
+
+    ZType *type                 = maketype(Z_TYPE_STRUCT);
+    type->strct.annotations     = annotations;
+    type->strct.name            = start;
+    type->strct.generics        = generics;
+    type->strct.fields          = fields;
 
     return node;
 }
@@ -1313,13 +1320,11 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
     ZAnnotation *annotation     = NULL;
 
     if (match(parser, TOK_LPAREN)) {
-        while (true) {
+        do {
             annotation = parseAnnotation(parser);
             if (!annotation) break;
             vecpush(annotations, annotation);
-            if (!match(parser, TOK_COMMA)) break;
-            if (check(parser, TOK_RPAREN)) break;
-        }
+        } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
         expect(parser, TOK_RPAREN);
     }
     annotation          = zalloc(ZAnnotation);
@@ -1329,21 +1334,19 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
 }
 
 static ZAnnotation **parseAnnotations(ZParser *parser) {
-    expect(parser, TOK_DBL_OPEN);
+    expect(parser, TOK_HASHTAG);
+    expect(parser, TOK_LSBRACKET);
 
     ZAnnotation **annotations   = NULL;
     ZAnnotation *annotation     = NULL;
 
-    while (true) {
+    do {
         annotation = parseAnnotation(parser);
         if (!annotation) break;
         vecpush(annotations, annotation);
+    } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
 
-        if (check(parser, TOK_DBL_CLOSE)) break;
-        if (!match(parser, TOK_COMMA)) break;
-    }
-
-    expect(parser, TOK_DBL_CLOSE);
+    expect(parser, TOK_RSBRACKET);
 
     return annotations;
 }
@@ -2174,7 +2177,7 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
         vecpush(macro->macro.captured, var);
         return self;
 
-    } else if (match(parser, TOK_MACRO_TYPE)) {
+    } else if (match(parser, TOK_HASHTAG)) {
         if (!check(parser, TOK_IDENT)) {
             return NULL;
         }
@@ -2411,7 +2414,7 @@ static ZNode *parseFuncBlock(ZParser *parser) {
     ZAnnotation **annotations   = NULL;
     while (true) {
         annotations = NULL;
-        if (check(parser, TOK_DBL_OPEN)) {
+        if (check(parser, TOK_HASHTAG) && checkAhead(parser, TOK_LSBRACKET, 1)) {
             annotations = parseAnnotations(parser);
         }
         public = match(parser, TOK_PUB);
@@ -2480,7 +2483,7 @@ static ZNode *parse(ZParser *parser) {
 
     if (t == TOK_MODULE) {
         return parseImport(parser);
-    } else if (t == TOK_DBL_OPEN) {
+    } else if (t == TOK_HASHTAG && checkAhead(parser, TOK_LSBRACKET, 1)) {
         annotations = parseAnnotations(parser);
     }
 

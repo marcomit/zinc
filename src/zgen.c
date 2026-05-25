@@ -167,6 +167,13 @@ static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
     return NULL;
 }
 
+static i32 hasAnnotation(ZAnnotation **annotations, char *name) {
+    for (usize i = 0; i < veclen(annotations); i++) {
+        if (strcmp(annotations[i]->name->str, name) == 0) return i;
+    }
+    return -1;
+}
+
 /**
  * @brief Initialize LLVM types
  *
@@ -538,7 +545,8 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
             ftypes[i] = field;
         }
 
-        LLVMStructSetBody(structType, ftypes, nfields, /*packed=*/0);
+        i32 packed = hasAnnotation(type->strct.annotations, "packed");
+        LLVMStructSetBody(structType, ftypes, nfields, packed != -1);
         return structType;
     }
 
