@@ -10,17 +10,20 @@ raylib :: foreign {
     EndDrawing :: u0 ()
     GetFrameTime :: f32 ()
     IsKeyDown :: u1 (i32)
+    IsKeyPressed :: u1 (i32)
     CheckCollisionCircleRec :: u1 (Vector2, f32, Rectangle)
     ClearBackground :: u0 (Color)
     DrawCircleV :: u0 (Vector2, f32, Color)
     DrawRectangleRec :: u0 (Rectangle, Color)
     DrawFPS :: u0 (i32, i32)
     DrawText :: u0 (*char, i32, i32, i32, Color)
+    TextFormat :: *char (*char, ...)
 }
 
 c :: foreign {
     printf :: u0 (*char, ...)
     exit :: i32 (i32)
+    memset :: *u8(*u8, i32, u64)
 }
 
 Vector2 :: struct {
@@ -45,17 +48,16 @@ Color :: for {
     new :: Color (u8 r, u8 g, u8 b, u8 a) -> Color{ r: r, g: g, b: b, a: a }
 }
 
-/* First 16 bit for the length, last 16 bit for the content */
 Tile :: type u32
 
 Tile :: for {
     o :: Tile () -> (1 << 24) | (2 << 16) | 0b1111
     l :: Tile () -> (2 << 24) | (3 << 16) | 0b100100110
     j :: Tile () -> (3 << 24) | (3 << 16) | 0b001001011
-    t :: Tile () -> (5 << 24) | (3 << 16) | 0b010111000
-    s :: Tile () -> (6 << 24) | (3 << 16) | 0b000011110
-    z :: Tile () -> (7 << 24) | (3 << 16) | 0b000110011
-    i :: Tile () -> (4 << 24) | (4 << 16) | 0b0001000100010001
+    t :: Tile () -> (4 << 24) | (3 << 16) | 0b010111000
+    s :: Tile () -> (5 << 24) | (3 << 16) | 0b000011110
+    z :: Tile () -> (6 << 24) | (3 << 16) | 0b000110011
+    i :: Tile () -> (7 << 24) | (4 << 16) | 0b0001000100010001
 
     random :: Tile (*Random rand) {
         tiles := [
@@ -67,7 +69,7 @@ Tile :: for {
             Tile::z,
             Tile::i,
         ]
-        return tiles[rand.range(0, tiles.len)]()
+        return tiles[rand.range(0, (tiles.len - 1) as i32)]()
     }
 }
 
@@ -81,60 +83,119 @@ get_color :: Color (u8 t) {
         Color::new(255, 0, 0, 255), // z
         Color::new(0, 255, 255, 255) // i
     ]
-    return colors[t]
+    return colors[(t - 1) % colors.len]
 }
 
 Tile self :: for {
-    draw :: u0 (Vector2 offset) {
-        t := self >> 24
-        width := (self >> 24) & 0xFF
-        
+    width   :: u8 () -> (self >> 16) & 0xFF
+    kind    :: u8 () -> self >> 24
+
+    draw :: u0 (i32 gx, i32 gy) {
+        kind    := self.kind()
+        width   := self.width() as i32
+
         y := 0
         for y < width {
             x := 0
             for x < width {
-                if (self >> (y * width + x)) & 1 {
+                if self.at(x as u8, y as u8) {
                     rect := Rectangle{
-                        x: offset.x + x, 
-                        y: offset.y + y,
+                        x: ((gx + x) as f32) * 20.0,
+                        y: ((gy + y) as f32) * 20.0,
                         width: 20.0,
                         height: 20.0
                     }
-                    raylib::DrawRectangleRec(rect, get_color(t % 7))
+                    raylib::DrawRectangleRec(rect, get_color(kind))
                 }
                 x :+ 1
             }
             y :+ 1
         }
-    } 
+    }
+
+    rotate :: Tile () {
+        width   := self.width() as i32
+        content := 0 as u32
+        y := 0
+        for y < width {
+            x := 0
+            for x < width {
+                if self.at(y as u8, (width - 1 - x) as u8) {
+                    content = content | ((1 as u32) << ((y * width + x) as u32))
+                }
+                x :+ 1
+            }
+            y :+ 1
+        }
+        return (self & (0xFFFF0000 as u32)) | content
+    }
+
+    at :: u1 (u8 x, u8 y) -> (self >> (y * self.width() + x)) & 1
+}
+
+Counter :: struct {
+    u64 count
+    u64 target
+}
+
+Counter :: for {
+    new :: *Counter(u64 target)[Allocator allocator] {
+        self := allocator.alloc(sizeof Counter) as *Counter
+        self.count = 0
+        self.target = target
+        return self
+    }
+}
+
+*Counter self :: for {
+    tick :: u1 () {
+        if self.count >= self.target {
+            self.count = 0
+            return true
+        }
+        self.count :+ 1
+        return false
+    }
 }
 
 GameState :: struct {
     *u8 board
     Tile current
     Tile next
+    Vector2 offset
     u1 gameover
     u64 points
     *Random rand
+    *Counter ticker
 }
 
 GameState :: for {
     new :: *GameState()[Allocator allocator] {
         *GameState self = allocator.alloc(sizeof GameState)
-        self.board = allocator.alloc(sizeof u8 * 10 as u64 * 20 as u64)
-        self.rand = Random::by_ref()
+        u64 boardSize = sizeof u8 * 10 as u64 * 20 as u64
+        self.board = allocator.alloc(boardSize)
+        c::memset(self.board, 0, boardSize)
 
+        self.rand = Random::by_ref()
+        self.offset = Vector2{ x: 3.0, y: 0.0 }
+        self.gameover = false
+        self.points = 0
+        self.current = Tile::random(self.rand)
+        self.next = Tile::random(self.rand)
+        self.ticker = Counter::new(30)
         return self
     }
 }
 
 *GameState self :: for {
+    at :: u8 (u8 x, u8 y) -> self.board[y * 10 + x]
+
     draw :: u0 () {
         y := 0
         for y < 20 {
             x := 0
             for x < 10 {
-                box := self.board[y * 20 + x]
+                box := self.board[y * 10 + x]
                 if not box {
                     x :+ 1
                     continue
@@ -150,31 +211,237 @@ GameState :: for {
             }
             y :+ 1
         }
+        self.drawGhost()
+        self.current.draw(self.offset.x as i32, self.offset.y as i32)
+    }
+
+    landing :: i32 () {
+        px := self.offset.x as i32
+        py := self.offset.y as i32
+        for not self.collides(self.current, px, py + 1) {
+            py :+ 1
+        }
+        return py
+    }
+
+    drawGhost :: u0 () {
+        width := self.current.width() as i32
+        px := self.offset.x as i32
+        gy := self.landing()
+
+        color := get_color(self.current.kind())
+        color.a = 60
+
+        y := 0
+        for y < width {
+            x := 0
+            for x < width {
+                if self.current.at(x as u8, y as u8) {
+                    rect := Rectangle{
+                        x: ((px + x) as f32) * 20.0,
+                        y: ((gy + y) as f32) * 20.0,
+                        width: 20.0,
+                        height: 20.0
+                    }
+                    raylib::DrawRectangleRec(rect, color)
+                }
+                x :+ 1
+            }
+            y :+ 1
+        }
+    }
+
+    collides :: u1 (Tile tile, i32 px, i32 py) {
+        width := tile.width() as i32
+        y := 0
+        for y < width {
+            x := 0
+            for x < width {
+                if tile.at(x as u8, y as u8) {
+                    bx := px + x
+                    by := py + y
+                    if bx < 0 or bx >= 10 or by >= 20 {
+                        return true
+                    }
+                    if by >= 0 and self.board[by * 10 + bx] {
+                        return true
+                    }
+                }
+                x :+ 1
+            }
+            y :+ 1
+        }
+        return false
+    }
+
+    lock :: u0 () {
+        width := self.current.width() as i32
+        kind  := self.current.kind()
+        px := self.offset.x as i32
+        py := self.offset.y as i32
+        y := 0
+        for y < width {
+            x := 0
+            for x < width {
+                if self.current.at(x as u8, y as u8) {
+                    bx := px + x
+                    by := py + y
+                    if by >= 0 and by < 20 and bx >= 0 and bx < 10 {
+                        self.board[by * 10 + bx] = kind
+                    }
+                }
+                x :+ 1
+            }
+            y :+ 1
+        }
+    }
+
+    clearLines :: u0 () {
+        y := 19
+        for y >= 0 {
+            full := true
+            x := 0
+            for x < 10 {
+                if not self.board[y * 10 + x] {
+                    full = false
+                }
+                x :+ 1
+            }
+            if full {
+                row := y
+                for row > 0 {
+                    col := 0
+                    for col < 10 {
+                        self.board[row * 10 + col] = self.board[(row - 1) * 10 + col]
+                        col :+ 1
+                    }
+                    row :- 1
+                }
+                top := 0
+                for top < 10 {
+                    self.board[top] = 0
+                    top :+ 1
+                }
+                self.points :+ 1
+            } else {
+                y :- 1
+            }
+        }
+    }
+
+    spawn :: u0 () {
+        self.current = self.next
+        self.next = Tile::random(self.rand)
+        self.offset = Vector2{ x: 3.0, y: 0.0 }
+        if self.collides(self.current, 3, 0) {
+            self.gameover = true
+        }
+    }
+
+    step :: u0 () {
+        px := self.offset.x as i32
+        py := self.offset.y as i32
+        if self.collides(self.current, px, py + 1) {
+            self.lock()
+            self.clearLines()
+            self.spawn()
+        } else {
+            self.offset.y :+ 1.0
+        }
+    }
+
+    moveLeft :: u0 () {
+        px := self.offset.x as i32
+        py := self.offset.y as i32
+        if not self.collides(self.current, px - 1, py) {
+            self.offset.x :- 1.0
+        }
+    }
+
+    moveRight :: u0 () {
+        px := self.offset.x as i32
+        py := self.offset.y as i32
+        if not self.collides(self.current, px + 1, py) {
+            self.offset.x :+ 1.0
+        }
+    }
+
+    softDrop :: u0 () {
+        px := self.offset.x as i32
+        py := self.offset.y as i32
+        if not self.collides(self.current, px, py + 1) {
+            self.offset.y :+ 1.0
+        }
+    }
+
+    rotate :: u0 () {
+        rotated := self.current.rotate()
+        px := self.offset.x as i32
+        py := self.offset.y as i32
+        if not self.collides(rotated, px, py) {
+            self.current = rotated
+        }
+    }
+
+    hardDrop :: u0 () {
+        self.offset.y = self.landing() as f32
+        self.lock()
+        self.clearLines()
+        self.spawn()
     }
 }
 
 main :: i32 () {
-    block           := 20.0
-    screenWidth     := block as u32 * 20
-    screenHeight    := block as u32 * 20
+    block           := 20
+    screenWidth     := block * 20
+    screenHeight    := block * 20
+
+    KEY_SPACE   := 32
+    KEY_RIGHT   := 262
+    KEY_LEFT    := 263
+    KEY_DOWN    := 264
+    KEY_UP      := 265
 
     raylib::InitWindow(screenWidth, screenHeight, "Tetris")
-    raylib::SetTargetFPS(10)
+    raylib::SetTargetFPS(60)
 
     black   := Color::new(0, 0, 0, 255)
-    red     := Color::new(255, 0, 0, 255)
-    green   := Color::new(0, 255, 0, 255)
+    white   := Color::new(255, 255, 255, 255)
+    gray    := Color::new(40, 40, 40, 255)
 
     with _ := Allocator::heap() {
         state := GameState::new()
+
         for not raylib::WindowShouldClose() {
-        
+            if not state.gameover {
+                if raylib::IsKeyPressed(KEY_LEFT)  { state.moveLeft() }
+                if raylib::IsKeyPressed(KEY_RIGHT) { state.moveRight() }
+                if raylib::IsKeyPressed(KEY_UP)    { state.rotate() }
+                if raylib::IsKeyPressed(KEY_SPACE) { state.hardDrop() }
+                if raylib::IsKeyDown(KEY_DOWN)     { state.softDrop() }
+
+                if state.ticker.tick() {
+                    state.step()
+                }
+            }
+
             raylib::BeginDrawing()
             raylib::ClearBackground(black)
 
+            separator := Rectangle{ x: 200.0, y: 0.0, width: 2.0, height: 400.0 }
+            raylib::DrawRectangleRec(separator, gray)
+
             state.draw()
 
-            raylib::DrawFPS(10, 10)
+            raylib::DrawText("NEXT", 240, 20, 20, white)
+            state.next.draw(12, 2)
+
+            raylib::DrawText(raylib::TextFormat("SCORE %d", state.points as i32), 220, 160, 20, white)
+
+            if state.gameover {
+                raylib::DrawText("GAME OVER", 210, 220, 20, white)
+            }
+
             raylib::EndDrawing()
         }
     }
