@@ -1,0 +1,32 @@
+use <core::mem>
+
+c :: foreign {
+    pthread_mutex_init      :: i32 (*u8, *u0)
+    pthread_mutex_lock      :: i32 (*u8)
+    pthread_mutex_unlock    :: i32 (*u8)
+    pthread_mutex_destroy   :: i32 (*u8)
+}
+
+pub Mutex :: struct {
+    *u8 handle
+}
+
+Mutex :: for {
+    pub new :: Mutex ()[Allocator allocator] {
+        *u8 handle = allocator.alloc(64)
+        c::pthread_mutex_init(handle, none)
+        return Mutex { handle: handle }
+    }
+}
+
+Mutex self :: for {
+    pub lock :: u0 () {
+        c::pthread_mutex_lock(self.handle)
+    }
+    pub unlock :: u0 () {
+        c::pthread_mutex_unlock(self.handle)
+    }
+    pub destroy :: u0 () {
+        c::pthread_mutex_destroy(self.handle)
+    }
+}

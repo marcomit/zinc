@@ -1,108 +1,62 @@
 use <core::mem>
 
-foreign i32 open(*char, i32, ...)
-foreign i32 close(i32)
-foreign i64 read(i32, *u8, u64)
-foreign i64 write(i32, *u8, u64)
-foreign u64 strlen(*char)
-foreign i64 lseek(i32, i64, i32)
+c :: foreign {
+    fopen :: *u8 (*char, *char)
+    fclose :: i32 (*u8)
+    fseek :: i32 (*u8, i64, i32)
+    ftell :: i64 (*u8)
+    rewind :: u0 (*u8)
+    fread :: i64 (*u8, i64, i64, *char)
+}
 
-pub struct File {
-    *Allocator allocator
+File :: struct {
+    *u8 file
     *char path
-    i32 descriptor
-    i32 mode
+    *char mode
 }
 
-for File {
-    pub *File new(*Allocator allocator, *char path, i32 mode) {
-        *File f = allocator.alloc(sizeof File)
-        f.allocator = allocator
-        f.path = path
-        f.mode = mode
-        f.descriptor = -1
-        return f
+File :: for {
+    new :: *File (*char path, *char mode)[Allocator allocator] {
+        *File self = allocator.alloc(sizeof File)
+        if not self { return none }
+        
+        self.file = none
+        self.path = path
+        self.mode = mode
+        return self
     }
 }
 
-for *File self {
-
-    pub i32 open(i32 flags) {
-        d := open(self.path, flags, self.mode)
-
-        if d == -1 {
-            return -1
-        }
-
-        self.descriptor = d
-        return d
+*File self :: for {
+    open :: u1 () {
+        self.file = c::fopen(self.path, self.mode)
+        if self.file { return true }
+        return false
     }
 
-    pub i32 close() {
-        if self.descriptor != -1 {
-            r := close(self.descriptor)
-            self.descriptor = -1
-            return r
+    close :: u0 () {
+        if self.file {
+            c::fclose(self.file)
+            self.file = none
         }
-        return 0
     }
 
-    pub u64 write(*u8 buf, u64 nbytes) {
-        if self.descriptor == -1 {
-            return 0
-        }
-        return write(self.descriptor, buf, nbytes)
-    }
+    readAll :: *char ()[Allocator allocator] {
+        if not self.file { return none }
 
-    pub u64 writeStr(*char ch) {
-        if self.descriptor == -1 {
-            return 0
-        }
-        len := strlen(ch)
-        return write(self.descriptor, ch, len)
-    }
+        c::fseek(self.file, 0, 2)
+        i64 size = c::ftell(self.file)
+        c::rewind(self.file)
 
-    pub u64 read(*u8 buf, u64 nbytes) {
-        if self.descriptor == -1 {
-            return 0
-        }
-        return read(self.descriptor, buf, nbytes)
-    }
+        if size <= 0 { return none }
 
-    pub *char readAll() {
-        if self.descriptor == -1 {
-            return none
-        }
+        *char buffer = allocator.alloc(size + 1)
+        if not buffer { return none }
 
-        // get file size
-        size := lseek(self.descriptor, 0, 2)
-        if size <= 0 {
-            return none
-        }
+        i64 bytesRead = c::fread(buffer, 1, size, self.file)
+        
+        buffer[bytesRead] = 0 
 
-        // rewind
-        lseek(self.descriptor, 0, 0)
-
-        // allocate buffer (+1 for null terminator)
-        *u8 buf = self.allocator.alloc(size + 1)
-
-        // read file
-        read_bytes := read(self.descriptor, buf, size)
-        if read_bytes <= 0 {
-            self.allocator.free(buf)
-            return none
-        }
-
-        // null terminate
-        buf[read_bytes] = 0
-
-        return buf as *char
-    }
-
-    pub u0 destroy() {
-        if self.descriptor != -1 {
-            close(self.descriptor)
-        }
-        self.allocator.free(self)
+        return buffer
     }
 }
