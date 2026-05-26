@@ -606,6 +606,20 @@ static LLVMBasicBlockRef makeblock(ZCodegen *ctx) {
     );
 }
 
+static inline void makebr(LLVMBuilderRef builder, LLVMBasicBlockRef block) {
+    if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder))) return;
+    LLVMBuildBr(builder, block);
+}
+
+static inline void makecondbr(
+    LLVMBuilderRef builder,
+    LLVMValueRef cond,
+    LLVMBasicBlockRef thenBranch,
+    LLVMBasicBlockRef elseBranch) {
+    if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder))) return;
+    LLVMBuildCondBr(builder, cond, thenBranch, elseBranch);
+}
+
 /**
  * @brief Emits all defer statements.
  *
@@ -1460,17 +1474,17 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
         LLVMConstInt(LLVMTypeOf(cond), 0, false),
         label(ctx, node->tok)
     );
-    LLVMBuildCondBr(ctx->builder, cond, tBranch, fBranch);
+    makecondbr(ctx->builder, cond, tBranch, fBranch);
 
     LLVMPositionBuilderAtEnd(ctx->builder, tBranch);
     LLVMValueRef tValue = genExpr(ctx, node->ifStmt.body);
     LLVMBasicBlockRef tExit = LLVMGetInsertBlock(ctx->builder);
-    LLVMBuildBr(ctx->builder, merge);
+    makebr(ctx->builder, merge);
 
     LLVMPositionBuilderAtEnd(ctx->builder, fBranch);
     LLVMValueRef fValue = genExpr(ctx, node->ifStmt.elseBranch);
     LLVMBasicBlockRef fExit = LLVMGetInsertBlock(ctx->builder);
-    LLVMBuildBr(ctx->builder, merge);
+    makebr(ctx->builder, merge);
 
     LLVMPositionBuilderAtEnd(ctx->builder, merge);
     LLVMTypeRef resultType = genType(ctx, node->resolved);
@@ -1510,12 +1524,12 @@ static LLVMValueRef genNullCoalescing(ZCodegen *ctx, ZNode *root) {
     LLVMBasicBlockRef rightBranch   = makeblock(ctx);
     LLVMBasicBlockRef mergeBranch   = makeblock(ctx);
 
-    LLVMBuildCondBr(ctx->builder, cond, mergeBranch, rightBranch);
+    makecondbr(ctx->builder, cond, mergeBranch, rightBranch);
 
     LLVMPositionBuilderAtEnd(ctx->builder, rightBranch);
     LLVMValueRef right  = genExpr(ctx, root->binary.right);
     rightBranch         = LLVMGetInsertBlock(ctx->builder);
-    LLVMBuildBr(ctx->builder, mergeBranch);
+    makebr(ctx->builder, mergeBranch);
 
     LLVMPositionBuilderAtEnd(ctx->builder, mergeBranch);
     LLVMValueRef phi                = LLVMBuildPhi(
@@ -1568,16 +1582,16 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         LLVMBasicBlockRef merge_bb = makeblock(ctx);
 
         if (is_and)
-            LLVMBuildCondBr(ctx->builder, lv_bool, rhs_bb, merge_bb);
+            makecondbr(ctx->builder, lv_bool, rhs_bb, merge_bb);
         else
-            LLVMBuildCondBr(ctx->builder, lv_bool, merge_bb, rhs_bb);
+            makecondbr(ctx->builder, lv_bool, merge_bb, rhs_bb);
 
         LLVMPositionBuilderAtEnd(ctx->builder, rhs_bb);
         LLVMValueRef rv = genExpr(ctx, root->binary.right);
         if (!rv) return NULL;
         LLVMValueRef rv_bool = LLVMBuildICmp(ctx->builder, LLVMIntNE, rv,
             LLVMConstInt(LLVMTypeOf(rv), 0, false), label(ctx, root->tok));
-        LLVMBuildBr(ctx->builder, merge_bb);
+        makebr(ctx->builder, merge_bb);
         LLVMBasicBlockRef rhs_end = LLVMGetInsertBlock(ctx->builder);
 
         LLVMPositionBuilderAtEnd(ctx->builder, merge_bb);
@@ -1966,7 +1980,7 @@ static void matchEnumPattern(
     );
 
     LLVMBasicBlockRef entry = makeblock(ctx);
-    LLVMBuildCondBr(ctx->builder, cond,
+    makecondbr(ctx->builder, cond,
             entry, failBranch);
 
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
@@ -2015,7 +2029,7 @@ static void matchLitPattern(
 
     LLVMValueRef cond = genEqCmp(ctx, left, right, false);
     LLVMBasicBlockRef trueBranch = makeblock(ctx);
-    LLVMBuildCondBr(ctx->builder, cond, trueBranch, failBranch);
+    makecondbr(ctx->builder, cond, trueBranch, failBranch);
     LLVMPositionBuilderAtEnd(ctx->builder, trueBranch);
 }
 
@@ -2045,15 +2059,15 @@ static LLVMValueRef genMatchCond(
     LLVMBasicBlockRef merge     = makeblock(ctx);
 
     matchPattern(ctx, type, pattern, ptr, failure);
-    LLVMBuildBr(ctx->builder, success);
+    makebr(ctx->builder, success);
 
     LLVMPositionBuilderAtEnd(ctx->builder, success);
     LLVMValueRef trueVal        = LLVMConstInt(i1Type, 1, false);
-    LLVMBuildBr(ctx->builder, merge);
+    makebr(ctx->builder, merge);
 
     LLVMPositionBuilderAtEnd(ctx->builder, failure);
     LLVMValueRef falseVal       = LLVMConstInt(i1Type, 0, false);
-    LLVMBuildBr(ctx->builder, merge);
+    makebr(ctx->builder, merge);
 
     LLVMPositionBuilderAtEnd(ctx->builder, merge);
     LLVMValueRef phi = LLVMBuildPhi(ctx->builder, i1Type, label(ctx, pattern->tok));
@@ -2264,7 +2278,7 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
 
     LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
 
-    LLVMBuildCondBr(ctx->builder, cond, then, nextBlock);
+    makecondbr(ctx->builder, cond, then, nextBlock);
 
     LLVMPositionBuilderAtEnd(ctx->builder, then);
     genStmt(ctx, node->ifStmt.body);
@@ -2272,7 +2286,7 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
     genChainDefer(ctx, ctx->scope->parent);
 
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMBuildBr(ctx->builder, endif);
+        makebr(ctx->builder, endif);
     }
 
     if (hasElse) {
@@ -2282,7 +2296,7 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
         genChainDefer(ctx, ctx->scope->parent);
         
         if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-            LLVMBuildBr(ctx->builder, endif);
+            makebr(ctx->builder, endif);
         }
     }
 
@@ -2308,11 +2322,11 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     ctx->scope->startLoop       = entry;
     ctx->scope->endLoop         = endwhile;
 
-    LLVMBuildBr             (ctx->builder, entry);
+    makebr             (ctx->builder, entry);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
     LLVMValueRef cond = genExpr(ctx, node->whileStmt.cond);
-    LLVMBuildCondBr(ctx->builder, cond, block, endwhile);
+    makecondbr(ctx->builder, cond, block, endwhile);
 
     LLVMPositionBuilderAtEnd(ctx->builder, block);
 
@@ -2324,7 +2338,7 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
 
     /* If the block contains a break or a continue this block is already terminated.*/
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMBuildBr(ctx->builder, entry);
+        makebr(ctx->builder, entry);
     }
 
     LLVMPositionBuilderAtEnd(ctx->builder, endwhile);
@@ -2357,11 +2371,11 @@ static void genFor(ZCodegen *ctx, ZNode *node) {
     }
     genVarDecl(ctx, node->forStmt.var);
 
-    LLVMBuildBr             (ctx->builder, entry);
+    makebr             (ctx->builder, entry);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
     LLVMValueRef cond = genExpr(ctx, node->forStmt.cond);
-    LLVMBuildCondBr(ctx->builder, cond, body, endfor);
+    makecondbr(ctx->builder, cond, body, endfor);
 
     LLVMPositionBuilderAtEnd(ctx->builder, body);
     genStmt(ctx, node->forStmt.block);
@@ -2372,7 +2386,7 @@ static void genFor(ZCodegen *ctx, ZNode *node) {
 
     /* If the block contains a break or a continue this block is already terminated.*/
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMBuildBr(ctx->builder, entry);
+        makebr(ctx->builder, entry);
     }
 
     LLVMPositionBuilderAtEnd(ctx->builder, endfor);
@@ -2407,7 +2421,7 @@ static void genBreak(ZCodegen *ctx, ZNode *node) {
 
     /* If the block contains a break or a continue this block is already terminated.*/
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMBuildBr(ctx->builder, ctx->scope->endLoop);
+        makebr(ctx->builder, ctx->scope->endLoop);
     }
 }
 
@@ -2432,7 +2446,7 @@ static void genContinue(ZCodegen *ctx, ZNode *node) {
 
     /* If the block contains a break or a continue this block is already terminated.*/
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        LLVMBuildBr(ctx->builder, ctx->scope->startLoop);
+        makebr(ctx->builder, ctx->scope->startLoop);
     }
 }
 
@@ -2484,7 +2498,7 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
 
         LLVMBasicBlockRef exprBlock = makeblock(ctx);
 
-        LLVMBuildCondBr(ctx->builder, matchArm, exprBlock, blocks[i+1]);
+        makecondbr(ctx->builder, matchArm, exprBlock, blocks[i+1]);
         LLVMPositionBuilderAtEnd(ctx->builder, exprBlock);
         putDestructuredPatternInStack(ctx, node->match.cond->resolved, arm->matchArm.pattern, cond);
         if (arm->matchArm.expr == NODE_BLOCK) {
@@ -2492,7 +2506,7 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
         } else {
             genExpr(ctx, arm->matchArm.expr);
         }
-        LLVMBuildBr(ctx->builder, merge);
+        makebr(ctx->builder, merge);
     }
     LLVMPositionBuilderAtEnd(ctx->builder, merge);
 }

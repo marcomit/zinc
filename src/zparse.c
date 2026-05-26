@@ -1729,7 +1729,6 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
     ZToken *tok                 = consume(parser);
 
     if (tok->type & TOK_LITERAL) {
-        printf("Literal %s\n", stoken(tok));
         cur = makeVarDestructPattern(Z_VAR_LIT);
         cur->ident = tok;
     } else if (tok->type == TOK_IDENT) {
