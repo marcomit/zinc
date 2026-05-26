@@ -602,8 +602,8 @@ static void endModule(ZSemantic *ctx, bool checkSymbols) {
 }
 
 static void beginScope(ZSemantic *ctx, ZNode *curr) {
-    ZScope *scope               = makescope(ctx->table->current, curr);
-    ctx->table->current    = scope;
+    ZScope *scope       = makescope(ctx->table->current, curr);
+    ctx->table->current = scope;
 }
 
 static void endScope(ZSemantic *ctx) {
@@ -2201,9 +2201,18 @@ static void analyzeMatchStmt(ZSemantic *ctx, ZNode *curr) {
     for (usize i = 0; i < veclen(curr->match.arms); i++) {
         ZNode *arm = curr->match.arms[i];
 
+        if (!arm->matchArm.expr) {
+            error(ctx->state, arm->tok, "Invalid match arm");
+            continue;
+        }
+
         beginScope(ctx, arm);
         putVarPattern(ctx, arm, condType, arm->matchArm.pattern);
-        analyzeBlock(ctx, arm->matchArm.expr, false);
+        if (arm->matchArm.expr->type == NODE_BLOCK) {
+            analyzeBlock(ctx, arm->matchArm.expr, false);
+        } else {
+            resolveType(ctx, arm->matchArm.expr);
+        }
         endScope(ctx);
     }
 }
