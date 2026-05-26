@@ -273,7 +273,8 @@ enum {
     Z_VAR_TUPLE,
     Z_VAR_STRUCT,
     Z_VAR_PAIR,
-    Z_VAR_ENUM
+    Z_VAR_ENUM,
+    Z_VAR_LIT
 };
 
 /* Struct representing the destructuring of a variable.
@@ -730,6 +731,7 @@ ZType *maketype(ZTypeKind);
 /* Semantic */
 ZType *resolveType(ZSemantic *, ZNode *);
 ZSymbol *resolve(ZSemantic *, ZToken *);
+ZType *resolveLiteralType(ZToken *);
 ZSemantic *zanalyze(ZState *, ZNode *);
 
 /* Code generation */

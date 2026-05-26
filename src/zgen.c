@@ -20,7 +20,6 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Analysis.h>
-#include <math.h>
 
 typedef struct ZLLVMSymbol {
     ZToken *token;
@@ -633,14 +632,10 @@ static void genChainDefer(ZCodegen *ctx, ZLLVMScope *scope) {
     }
 }
 
-/**
- * @brief Generate literals
- */
-static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
-    ZToken *tok = node->tok;
+static LLVMValueRef genLitTok(ZCodegen *ctx, ZToken *tok, ZType *type) {
     switch (tok->type) {
     case TOK_STR_LIT:
-        return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx, node->tok));
+        return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx, tok));
     case TOK_INT_LIT:
     case TOK_RUNE_LIT:
         return LLVMConstInt(i32Type, tok->integer, true);
@@ -651,11 +646,18 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
     case TOK_FLOAT_LIT:
         return LLVMConstReal(f64Type, tok->floating);
     case TOK_NONE: {
-        LLVMTypeRef type = genType(ctx, node->resolved);
-        return LLVMConstPointerNull(type);
+        LLVMTypeRef typeRef = genType(ctx, type);
+        return LLVMConstPointerNull(typeRef);
+    default : return NULL;
     }
-    default: return NULL;
     }
+}
+
+/**
+ * @brief Generate literals
+ */
+static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
+    return genLitTok(ctx, node->tok, node->resolved);
 }
 
 /**
@@ -740,7 +742,8 @@ static bool fitsInRegister(LLVMValueRef val) {
  * */
 static void putDestructuredPatternInStack(
         ZCodegen *ctx, ZType *type,
-        ZVarDestructPattern *pattern, LLVMValueRef ptr) {
+        ZVarDestructPattern *pattern,
+        LLVMValueRef ptr) {
     if (!pattern) {
         error(ctx->state, NULL, "Called 'putDestructuredPatternInStack' with null pattern");
         return;
@@ -750,6 +753,7 @@ static void putDestructuredPatternInStack(
     }
 
     switch (pattern->type) {
+    case Z_VAR_LIT: break;
     case Z_VAR_IDENT:
         putLLVMValueRef(
             ctx,
@@ -1979,6 +1983,42 @@ static void matchEnumPattern(
     }
 }
 
+static LLVMValueRef genEqCmp(
+    ZCodegen *ctx, LLVMValueRef left, LLVMValueRef right,
+    bool negate) {
+    char *l = "matchcmp";
+
+    LLVMTypeKind kind = LLVMGetTypeKind(LLVMTypeOf(left));
+
+    if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+        return LLVMBuildFCmp(
+            ctx->builder, negate ? LLVMRealONE : LLVMRealOEQ, left, right, l
+        );
+    }
+
+    return LLVMBuildICmp(
+        ctx->builder, negate ? LLVMIntNE : LLVMIntEQ, left, right, l
+    );
+}
+
+static void matchLitPattern(
+    ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
+    LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+    LLVMValueRef left       = LLVMBuildLoad2(
+        ctx->builder, genType(ctx, type), ptr, label(ctx, pattern->tok)
+    );
+
+    ZType *litType = resolveLiteralType(pattern->tok);
+
+    LLVMValueRef right = genLitTok(ctx, pattern->ident, litType);
+    right = castValue(ctx, right, litType, type);
+
+    LLVMValueRef cond = genEqCmp(ctx, left, right, false);
+    LLVMBasicBlockRef trueBranch = makeblock(ctx);
+    LLVMBuildCondBr(ctx->builder, cond, trueBranch, failBranch);
+    LLVMPositionBuilderAtEnd(ctx->builder, trueBranch);
+}
+
 static void matchPattern(
         ZCodegen *ctx,
         ZType *type,
@@ -1986,10 +2026,11 @@ static void matchPattern(
         LLVMValueRef ptr,
         LLVMBasicBlockRef failBranch) {
     switch (pattern->type) {
-    case Z_VAR_IDENT:                                                               break;
-    case Z_VAR_TUPLE:   matchTuplePattern    (ctx, type, pattern, ptr, failBranch); break;
-    case Z_VAR_STRUCT:  matchStructPattern   (ctx, type, pattern, ptr, failBranch); break;
-    case Z_VAR_ENUM:    matchEnumPattern     (ctx, type, pattern, ptr, failBranch); break;
+    case Z_VAR_IDENT:                                                              break;
+    case Z_VAR_TUPLE:   matchTuplePattern   (ctx, type, pattern, ptr, failBranch); break;
+    case Z_VAR_STRUCT:  matchStructPattern  (ctx, type, pattern, ptr, failBranch); break;
+    case Z_VAR_ENUM:    matchEnumPattern    (ctx, type, pattern, ptr, failBranch); break;
+    case Z_VAR_LIT:     matchLitPattern     (ctx, type, pattern, ptr, failBranch); break;
     default:
         error(ctx->state, pattern->tok, "Unknown pattern %d", pattern->type);
         break;

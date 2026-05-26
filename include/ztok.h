@@ -42,7 +42,7 @@ DEF(TOK_MACRO,      "macro",            TOK_FLOWS_MASK | 0x0E)
 DEF(TOK_NOT,        "not",              TOK_FLOWS_MASK | 0x0F)
 DEF(TOK_OR,         "or",               TOK_FLOWS_MASK | 0x10)
 DEF(TOK_AND,        "and",              TOK_FLOWS_MASK | 0x11)
-DEF(TOK_NONE,       "none",             TOK_FLOWS_MASK | 0x12)
+DEF(TOK_NONE,       "none",             TOK_FLOWS_MASK | TOK_LITERAL | 0x12)
 DEF(TOK_TRUE,       "true",             TOK_FLOWS_MASK | TOK_LITERAL | 0x13)
 DEF(TOK_FALSE,      "false",            TOK_FLOWS_MASK | TOK_LITERAL | 0x14)
 DEF(TOK_CAST,       "as",               TOK_FLOWS_MASK | TOK_OVERRIDABLE | 0x15)
@@ -78,7 +78,7 @@ DEF(TOK_PUB,        "pub",              TOK_TYPES_SIGNATURE_MASK                
 DEF(TOK_STR_LIT,    "string literal",   TOK_DYN_MASK | TOK_LITERAL                      | 0x40)
 DEF(TOK_INT_LIT,    "int literal",      TOK_DYN_MASK | TOK_LITERAL                      | 0x41)
 DEF(TOK_FLOAT_LIT,  "float literal",    TOK_DYN_MASK | TOK_LITERAL                      | 0x43)
-DEF(TOK_IDENT,      "identifier",       TOK_DYN_MASK | TOK_LITERAL | TOK_OVERRIDABLE    | 0x44)
+DEF(TOK_IDENT,      "identifier",       TOK_DYN_MASK | TOK_OVERRIDABLE    | 0x44)
 DEF(TOK_RUNE_LIT,   "rune literal",     TOK_DYN_MASK | TOK_LITERAL | TOK_OVERRIDABLE    | 0x45)
 #endif
 
