@@ -301,16 +301,21 @@ void printType(ZType *type) {
 void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
     indent(depth);
 
-    if (pattern->type == Z_VAR_IDENT) {
-        printf("%s\n", pattern->ident->str);
-    } else if (pattern->type == Z_VAR_PAIR) {
+    switch (pattern->type) {
+    case Z_VAR_LIT:
+    case Z_VAR_IDENT:
+        printf("%s\n", stoken(pattern->tok));
+        break;
+    case Z_VAR_PAIR:
         printf("%s:\n", pattern->key->str);
         printDestructedVar(pattern->value, depth + 1);
-    } else if (pattern->type == Z_VAR_ENUM) {
+        break;
+    case Z_VAR_ENUM:
         printf("%s::%s\n", pattern->base->str, pattern->prop->str);
         for (usize i = 0; i < veclen(pattern->args); i++)
             printDestructedVar(pattern->args[i], depth + 1);
-    } else {
+        break;
+    default: {
         bool isTuple = pattern->type == Z_VAR_TUPLE;
         ZVarDestructPattern **list = isTuple ?
             pattern->tuple :
@@ -322,6 +327,8 @@ void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
         }
         indent(depth);
         printf("%c\n", isTuple ? ')' : '}');
+        break;
+    }
     }
 }
 

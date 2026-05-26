@@ -317,12 +317,21 @@ ZNode *getStructField(ZSemantic *ctx, ZType *strct, ZToken *field) {
  */
 static void putVarPattern(
         ZSemantic *ctx, ZNode *node,
-        ZType *type, ZVarDestructPattern *pattern) {
+        ZType *type, ZVarDestructPattern *pattern, bool condition) {
     if (!type) {
         warning(ctx->state, node->tok, "No type provided for putVarPattern");
         return;
     }
-    if (pattern->type == Z_VAR_IDENT) {
+    if (pattern->type == Z_VAR_LIT && condition) {
+        ZType *literalType = resolveLiteralType(pattern->ident);
+        if (!typesCompatible(ctx->state, literalType, type)) {
+            error(ctx->state, pattern->tok,
+                "Expected '%s', got '%s'",
+                stype(type), stype(literalType)
+            );
+        }
+        return;
+    } else if (pattern->type == Z_VAR_IDENT) {
         putRawSymbol(
             ctx,
             Z_SYM_VAR,
@@ -351,7 +360,8 @@ static void putVarPattern(
             putVarPattern(ctx,
                 node,
                 type->tuple[i],
-                pattern->tuple[i]
+                pattern->tuple[i],
+                condition
             );
         }
     } else if (pattern->type == Z_VAR_STRUCT) {
@@ -381,7 +391,8 @@ static void putVarPattern(
                 putVarPattern(ctx,
                     node,
                     structField->resolved,
-                    pattern->fields[i]->value
+                    pattern->fields[i]->value,
+                    condition
                 );
             }
         }
@@ -421,7 +432,8 @@ static void putVarPattern(
 
         for (usize i = 0; i < expected; i++) {
             putVarPattern(ctx, node,
-                variant->strct.fields[i + 1]->field.type, pattern->args[i]
+                variant->strct.fields[i + 1]->field.type,
+                pattern->args[i], condition
             );
         }
         
@@ -440,9 +452,11 @@ static void putVar(ZSemantic *ctx, ZNode *node, bool isGlobal) {
     }
 
     putVarPattern(ctx,
-            node,
-            node->resolved,
-            node->varDecl.pattern);
+        node,
+        node->resolved,
+        node->varDecl.pattern,
+        false
+    );
 }
 
 static void putGeneric(ZSemantic *ctx, ZType *type) {
@@ -845,14 +859,14 @@ static ZType *derefType(ZType *t) {
     return t;
 }
 
-static ZType *resolveLiteralType(ZNode *curr) {
+ZType *resolveLiteralType(ZToken *curr) {
     // None guard
-    if (curr->literalTok->type == TOK_NONE) {
+    if (curr->type == TOK_NONE) {
         return none;
     }
 
     ZType *t = maketype(Z_TYPE_PRIMITIVE);
-    switch (curr->literalTok->type) {
+    switch (curr->type) {
     case TOK_RUNE_LIT:
     case TOK_INT_LIT: {
         t->primitive.token = maketoken(TOK_I32, NULL);
@@ -880,7 +894,7 @@ static ZType *resolveLiteralType(ZNode *curr) {
         break;
     }
     }
-    t->tok  = curr->tok;
+    t->tok  = curr;
     return t;
 }
 
@@ -1674,7 +1688,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
     case NODE_UNARY:        result = resolveUnary       (ctx, curr);    break;
     case NODE_BINARY:       result = resolveBinary      (ctx, curr);    break;
     case NODE_MEMBER:       result = resolveMemberAccess(ctx, curr);    break;
-    case NODE_LITERAL:      result = resolveLiteralType (curr);         break;
+    case NODE_LITERAL:      result = resolveLiteralType (curr->literalTok);         break;
     case NODE_ARRAY_LIT:    result = resolveArrayLiteral(ctx, curr);    break;
     case NODE_SUBSCRIPT:    result = resolveArrSubscript(ctx, curr);    break;
     case NODE_ARRAY_INIT:   result = resolveArrayInit   (ctx, curr);    break;
@@ -1691,7 +1705,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
         } else if (curr->varDecl.rvalue) {
             result = resolveType(ctx, curr->varDecl.rvalue);
         }
-        putVarPattern(ctx, curr, result, curr->varDecl.pattern);
+        putVarPattern(ctx, curr, result, curr->varDecl.pattern, false);
         break;
 
     case NODE_CAST: {
@@ -1871,7 +1885,8 @@ static void analyzeVar(ZSemantic *ctx, ZNode *curr, bool isGlobal) {
         ctx,
         curr,
         curr->resolved,
-        curr->varDecl.pattern
+        curr->varDecl.pattern,
+        false
     );
 }
 
@@ -2207,7 +2222,7 @@ static void analyzeMatchStmt(ZSemantic *ctx, ZNode *curr) {
         }
 
         beginScope(ctx, arm);
-        putVarPattern(ctx, arm, condType, arm->matchArm.pattern);
+        putVarPattern(ctx, arm, condType, arm->matchArm.pattern, true);
         if (arm->matchArm.expr->type == NODE_BLOCK) {
             analyzeBlock(ctx, arm->matchArm.expr, false);
         } else {
