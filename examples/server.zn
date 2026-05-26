@@ -1,0 +1,41 @@
+use <core::mem>
+use <io::net>
+
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+main :: i32 () {
+    with allocator := Allocator::heap() {
+        listener := TcpListener::bind(8080)
+        if not listener.valid() {
+            c::printf("error: failed to bind on :8080\n")
+            return 1
+        }
+        c::printf("server: listening on :8080\n")
+
+        for {
+            conn := listener.accept()
+            if not conn.valid() {
+                c::printf("error: accept failed\n")
+            listener.close()
+                return 1
+            }
+            c::printf("server: client connected\n")
+
+            *u8 buf = allocator.alloc(1025)
+            n := conn.recv(buf, 1024)
+
+            if n > 0 {
+                buf[n] = 0
+                c::printf("%s\n", buf as *char)
+                conn.send(buf, n as u64)
+            }
+
+            conn.close()
+        }
+        listener.close()
+        c::printf("server: done\n")
+    }
+    return 0
+}

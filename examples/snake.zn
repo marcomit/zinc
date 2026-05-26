@@ -1,4 +1,5 @@
 use <core::mem>
+use <core::rand>
 
 raylib :: foreign {
     InitWindow :: u0 (i32, i32, *char)
@@ -19,14 +20,17 @@ raylib :: foreign {
 
 c :: foreign {
     printf :: u0 (*char, ...)
+    sprintf :: i32 (*char, *char, ...)
     exit :: i32 (i32)
 }
 
+#[packed]
 Vector2 :: struct {
     f32 x
     f32 y
 }
 
+#[packed]
 Rectangle :: struct {
     // f32 x
     // f32 y
@@ -154,8 +158,9 @@ main :: i32 () {
     black   := Color::new(0, 0, 0, 255)
     red     := Color::new(255, 0, 0, 255)
     green   := Color::new(0, 255, 0, 255)
+    white   := Color::new(255, 255, 255, 255)
 
-    with _ := Allocator::heap() {
+    with allocator := Allocator::heap() {
 
         snake   := Snake::new(block)
         snake.add(Rectangle::new(7.0 * block, 10.0 * block, block, block))
@@ -163,6 +168,10 @@ main :: i32 () {
         snake.add(Rectangle::new(5.0 * block, 10.0 * block, block, block))
 
         apple   := Rectangle::new(15.0 * block, 15.0 * block, block, block)
+        points := 0
+        rand := Random::by_ref()
+
+        label := allocator.alloc(sizeof char * 3)
 
         for not raylib::WindowShouldClose() {
             if raylib::IsKeyDown(262) and snake.direction != 2 { snake.direction = 0 }
@@ -180,8 +189,9 @@ main :: i32 () {
             if snake.checkAppleCollision(apple) {
                 lastIdx := snake.len - 1
                 snake.add(Rectangle::new(snake.tail[lastIdx].x, snake.tail[lastIdx].y, block, block))
-                apple.x = (apple.x + 100.0) % screenWidth as f32
-                apple.y = (apple.y + 60.0) % screenHeight as f32
+                apple.x = (rand.range(0, 20) * 20) as f32
+                apple.y = (rand.range(0, 20) * 20) as f32
+                points :+ 1
             }
 
             if snake.tail[0].x >= screenWidth as f32 { snake.tail[0].x = 0.0 }
@@ -193,7 +203,8 @@ main :: i32 () {
             raylib::ClearBackground(black)
             apple.draw(red)
             snake.draw(green)
-            raylib::DrawFPS(10, 10)
+            c::sprintf(label, "%d", points)
+            raylib::DrawText(label, 20, 20, 20, white)
             raylib::EndDrawing()
         }
     }

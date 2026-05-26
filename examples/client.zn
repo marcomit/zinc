@@ -1,0 +1,35 @@
+use <core::mem>
+use <io::net>
+
+c :: foreign {
+    printf :: u0 (*char, ...)
+    strlen :: u64 (*char)
+}
+
+main :: i32 (i32 argc, **char argv) {
+    if argc != 2 { return 1 }
+    with allocator := Allocator::heap() {
+
+        stream := TcpStream::connect("127.0.0.1", 8080)
+
+        if not stream.valid() {
+            c::printf("error: could not connect to 127.0.0.1:8080\n")
+            return 1
+        }
+
+        msg := argv[1]
+        stream.send(msg as *u8, c::strlen(msg))
+        c::printf("client: message sent\n")
+
+        *u8 buf = allocator.alloc(1025)
+        n := stream.recv(buf, 1024)
+
+        if n > 0 {
+            buf[n] = 0
+            c::printf("client: received: %s\n", buf as *char)
+        }
+
+        stream.close()
+    }
+    return 0
+}

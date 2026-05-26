@@ -2496,5 +2496,9 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     
     analyze(ctx, root);
 
+    if (!ctx->main) {
+        error(ctx->state, root->tok, "Missing 'main' declaration");
+    }
+
     return ctx;
 }

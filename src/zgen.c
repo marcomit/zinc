@@ -913,6 +913,12 @@ static LLVMValueRef genStructGEPChain(ZCodegen *ctx,
  * @brief store the array metadata into the compiled struct.
  */
 static void storeArray(ZCodegen *ctx, ZLLVMStack *stack, LLVMValueRef length) {
+    if (!stack->stackType) {
+        error(ctx->state, NULL, "Missing stack type");
+        return;
+    } else if (!stack->elemType) {
+        error(ctx->state, NULL, "Missing stack elem type");
+    }
     LLVMValueRef lenField = LLVMBuildStructGEP2(
         ctx->builder, stack->stackType, stack->stack, 0, "len");
 
@@ -2500,12 +2506,14 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
 
         makecondbr(ctx->builder, matchArm, exprBlock, blocks[i+1]);
         LLVMPositionBuilderAtEnd(ctx->builder, exprBlock);
+        beginScope(Z_SCOPE_BLOCK, ctx);
         putDestructuredPatternInStack(ctx, node->match.cond->resolved, arm->matchArm.pattern, cond);
         if (arm->matchArm.expr == NODE_BLOCK) {
             genBlock(ctx, arm->matchArm.expr);
         } else {
             genExpr(ctx, arm->matchArm.expr);
         }
+        endScope(ctx);
         makebr(ctx->builder, merge);
     }
     LLVMPositionBuilderAtEnd(ctx->builder, merge);

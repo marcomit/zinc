@@ -28,7 +28,7 @@
         return NULL;                                                            \
     }
 
-#define tryParse(p, func) ({                                                          \
+#define tryParse(p, func) ({                                                    \
     ZParserSnapshot *saved = store(p);                                          \
     pushErrorCheckpoint(p);                                                     \
     let res = (func);                                                           \
