@@ -309,6 +309,12 @@ ZNode *getStructField(ZSemantic *ctx, ZType *strct, ZToken *field) {
     return NULL;
 }
 
+/**
+ * @brief Put all the pattern identifiers in the current scope.
+ *
+ * Note: It takes the type to validate the pattern.
+ * If the pattern doesn't follow the type it emits an error.
+ */
 static void putVarPattern(
         ZSemantic *ctx, ZNode *node,
         ZType *type, ZVarDestructPattern *pattern) {
@@ -596,8 +602,8 @@ static void endModule(ZSemantic *ctx, bool checkSymbols) {
 }
 
 static void beginScope(ZSemantic *ctx, ZNode *curr) {
-    ZScope *scope               = makescope(ctx->table->current, curr);
-    ctx->table->current    = scope;
+    ZScope *scope       = makescope(ctx->table->current, curr);
+    ctx->table->current = scope;
 }
 
 static void endScope(ZSemantic *ctx) {
@@ -2129,6 +2135,88 @@ static void analyzeCapability(ZSemantic *ctx, ZNode *curr) {
     endScope(ctx);
 }
 
+static bool patternEq(ZState *state, ZVarDestructPattern *a, ZVarDestructPattern *b) {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    if (a->type != b->type) return false;
+
+    switch (a->type) {
+    case Z_VAR_IDENT: return true;
+    case Z_VAR_TUPLE: {
+        usize aLen = veclen(a->tuple);
+        usize bLen = veclen(b->tuple);
+        if (aLen != bLen) return false;
+
+        for (usize i = 0; i < aLen; i++) {
+            if (!patternEq(state, a->tuple[i], b->tuple[i])) return false;
+        }
+        return true;
+    }
+    case Z_VAR_STRUCT: {
+        usize aLen = veclen(a->fields);
+        usize bLen = veclen(b->fields);
+
+        if (aLen != bLen) return false;
+
+        for (usize i = 0; i < aLen; i++) {
+            i32 index = -1;
+            for (usize j = 0; i < bLen && index == -1; i++)
+                if (tokeneq(b->fields[j]->key, a->fields[i]->key) == 0)
+                    index = j;
+
+            if (index == -1) return false;
+
+            if (!patternEq(state,
+                    a->fields[i]->value,
+                    b->fields[index]->value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+    case Z_VAR_ENUM: {
+        if (!tokeneq(a->base, b->base)) return false;
+        if (!tokeneq(a->prop, b->prop)) return false;
+
+        usize aLen = veclen(a->args);
+        usize bLen = veclen(b->args);
+
+        if (aLen != bLen) return false;
+
+        for (usize i = 0; i < aLen; i++) {
+            if (!patternEq(state, a->args[i], b->args[i])) return false;
+        }
+        return true;
+    }
+    }
+    return true;
+}
+
+static void analyzeMatchStmt(ZSemantic *ctx, ZNode *curr) {
+    ZType *condType = resolveType(ctx, curr->match.cond);
+    condType = resolveTypeRef(ctx, condType);
+    if (!condType) return;
+
+    for (usize i = 0; i < veclen(curr->match.arms); i++) {
+        ZNode *arm = curr->match.arms[i];
+
+        if (!arm->matchArm.expr) {
+            error(ctx->state, arm->tok, "Invalid match arm");
+            continue;
+        }
+
+        beginScope(ctx, arm);
+        putVarPattern(ctx, arm, condType, arm->matchArm.pattern);
+        if (arm->matchArm.expr->type == NODE_BLOCK) {
+            analyzeBlock(ctx, arm->matchArm.expr, false);
+        } else {
+            resolveType(ctx, arm->matchArm.expr);
+        }
+        endScope(ctx);
+    }
+}
+
 static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     switch (curr->type) {
     case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
@@ -2138,6 +2226,7 @@ static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     case NODE_BLOCK:        analyzeBlock(ctx, curr, false);         break;
     case NODE_DEFER:        resolveType(ctx, curr->deferStmt.expr); break;
     case NODE_RETURN:       analyzeReturn(ctx, curr);               break;
+    case NODE_MATCH:        analyzeMatchStmt(ctx, curr);            break;
     case NODE_CAPABILITY:   analyzeCapability(ctx, curr);           break;
     default:                resolveType(ctx, curr);                 break;
     }

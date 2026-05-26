@@ -14,11 +14,13 @@
 #include "zcolors.h"
 #include "zinc.h"
 #include "zlink.h"
+#include "zvec.h"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Analysis.h>
+#include <math.h>
 
 typedef struct ZLLVMSymbol {
     ZToken *token;
@@ -739,7 +741,13 @@ static bool fitsInRegister(LLVMValueRef val) {
 static void putDestructuredPatternInStack(
         ZCodegen *ctx, ZType *type,
         ZVarDestructPattern *pattern, LLVMValueRef ptr) {
-    if (!pattern || !type) return;
+    if (!pattern) {
+        error(ctx->state, NULL, "Called 'putDestructuredPatternInStack' with null pattern");
+        return;
+    } else if (!type) {
+        error(ctx->state, pattern->tok, "Called 'putDestructuredPatternInStack' with null type");
+        return;
+    }
 
     switch (pattern->type) {
     case Z_VAR_IDENT:
@@ -910,8 +918,11 @@ static void storeArray(ZCodegen *ctx, ZLLVMStack *stack, LLVMValueRef length) {
 static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack = getStackValue(ctx, node);
 
-    if (!stack || !stack->elem) {
+    if (!stack) {
         error(ctx->state, node->tok, "Missing stack value");
+        return NULL;
+    } else if (!stack->elem) {
+        error(ctx->state, node->tok, "Missing 'elem' field");
         return NULL;
     }
 
@@ -1858,7 +1869,7 @@ static LLVMValueRef genStructLitInto(
 
 static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
     if (!node || !node->resolved || node->resolved->kind != Z_TYPE_FUNCTION) {
-        error(ctx->state, node->tok, "Invalid genStaticAccess");
+        error(ctx->state, node ? node->tok : NULL, "Invalid genStaticAccess");
         return NULL;
     }
 
@@ -2052,6 +2063,12 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_IDENTIFIER:       return genIdent         (ctx, node);
         case NODE_STATIC_ACCESS:    return genStaticAccess  (ctx, node);
         case NODE_VAR_DECL:         return genVarDestruct   (ctx, node);
+        case NODE_BLOCK: {
+            for (usize i = 0; i < veclen(node->block); i++) {
+                genStmt(ctx, node->block[i]);
+            }
+            return NULL;
+        }
 
         case NODE_MEMBER:
         case NODE_SUBSCRIPT:
@@ -2405,6 +2422,40 @@ static void genDefer(ZCodegen *ctx, ZNode *node) {
     vecpush(ctx->scope->defers, node->deferStmt.expr);
 }
 
+static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef cond = genLvalue(ctx, node->match.cond);
+    ZType *condType = node->match.cond->resolved;
+    usize armLen = veclen(node->match.arms);
+    LLVMBasicBlockRef *blocks = znalloc(LLVMBasicBlockRef, armLen+1);
+
+    blocks[0] = LLVMGetInsertBlock(ctx->builder);
+    for (usize i = 1; i <= armLen; i++) blocks[i] = makeblock(ctx);
+
+    LLVMBasicBlockRef merge = blocks[armLen];
+
+    for (usize i = 0; i < armLen; i++) {
+        ZNode *arm = node->match.arms[i];
+        LLVMBasicBlockRef block = blocks[i];
+        LLVMPositionBuilderAtEnd(ctx->builder, block);
+        LLVMValueRef matchArm = genMatchCond(
+            ctx, condType, arm->matchArm.pattern, cond
+        );
+
+        LLVMBasicBlockRef exprBlock = makeblock(ctx);
+
+        LLVMBuildCondBr(ctx->builder, matchArm, exprBlock, blocks[i+1]);
+        LLVMPositionBuilderAtEnd(ctx->builder, exprBlock);
+        putDestructuredPatternInStack(ctx, node->match.cond->resolved, arm->matchArm.pattern, cond);
+        if (arm->matchArm.expr == NODE_BLOCK) {
+            genBlock(ctx, arm->matchArm.expr);
+        } else {
+            genExpr(ctx, arm->matchArm.expr);
+        }
+        LLVMBuildBr(ctx->builder, merge);
+    }
+    LLVMPositionBuilderAtEnd(ctx->builder, merge);
+}
+
 /**
  * @breif Generate capability.
  *
@@ -2430,6 +2481,7 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     case NODE_DEFER:        genDefer        (ctx, stmt);    break;
     case NODE_VAR_DECL:     genVarDecl      (ctx, stmt);    break;
     case NODE_CONTINUE:     genContinue     (ctx, stmt);    break;
+    case NODE_MATCH:        genMatchStmt    (ctx, stmt);    break;
     case NODE_CAPABILITY:   genCapability   (ctx, stmt);    break;
     default: {
         LLVMValueRef compiled = genExpr(ctx, stmt);
@@ -2480,7 +2532,8 @@ static void addFuncVar(ZCodegen *ctx,
  * */
 static void buildNestedFuncVar(
     ZCodegen *ctx, ZNode *node, LLVMValueRef parent) {
-    if (node->type == NODE_STRUCT_LIT) {
+    switch (node->type) {
+    case NODE_STRUCT_LIT: {
         ZNode **fields      = node->structlit.fields;
 
         for (usize i = 0; i < veclen(fields); i++) {
@@ -2513,7 +2566,26 @@ static void buildNestedFuncVar(
             addFuncVar(ctx, ptr, NULL, typeRef, NULL, val);
             buildNestedFuncVar(ctx, val, ptr);
         }
-    } else if (node->type == NODE_ARRAY_LIT) {
+        break;
+    }
+    case NODE_TUPLE_LIT: {
+        ZNode **fields          = node->tuplelit;
+        LLVMTypeRef tupleRef     = genType(ctx, node->resolved);
+        
+        for (usize i = 0; i < veclen(fields); i++) {
+            ZNode *val = node->tuplelit[i];
+            LLVMValueRef ptr    = LLVMBuildStructGEP2(
+                ctx->builder, tupleRef, parent,
+                i, label(ctx, val->tok)
+            );
+
+            LLVMTypeRef typeRef = genType(ctx, val->resolved);
+            addFuncVar(ctx, ptr, NULL, typeRef, NULL, val);
+            buildNestedFuncVar(ctx, val, ptr);
+        }
+        break;
+    }
+    case NODE_ARRAY_LIT: {
         LLVMTypeRef elemType = genType(ctx, node->resolved->array.base);
         for (usize i = 0; i < veclen(node->arraylit); i++) {
             ZNode *val  = node->arraylit[i];
@@ -2537,7 +2609,9 @@ static void buildNestedFuncVar(
             addFuncVar(ctx, ptr, innerElem, typeRef, innerElemType, val);
             buildNestedFuncVar(ctx, val, nestedParent);
         }
-    } else if (node->type == NODE_ENUM_LIT) {
+        break;
+    }
+    case NODE_ENUM_LIT: {
         ZToken *variant = node->call.callee->staticAccess.prop;
         i32 variantIndex = enumIndexField(
             node->resolved, variant
@@ -2553,6 +2627,9 @@ static void buildNestedFuncVar(
             addFuncVar(ctx, ptr, NULL, fieldType, NULL, val);
             buildNestedFuncVar(ctx, val, ptr);
         }
+        break;
+    }
+    default: break;
     }
 }
 
@@ -2700,6 +2777,15 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_BLOCK:
         for (usize i = 0; i < veclen(node->block); i++) {
             genFuncVars(ctx, node->block[i]);
+        }
+        break;
+    case NODE_MATCH_ARM:
+        genFuncVars(ctx, node->matchArm.expr);
+        break;
+    case NODE_MATCH:
+        genFuncVars(ctx, node->match.cond);
+        for (usize i = 0; i < veclen(node->match.arms); i++) {
+            genFuncVars(ctx, node->match.arms[i]);
         }
         break;
     default:
