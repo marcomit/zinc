@@ -1,0 +1,65 @@
+use <core::mem>
+
+pthread_t :: type u64
+
+ThreadFunc :: type *u8 (*u8)
+
+timespec :: struct {
+    i64 tv_sec
+    i64 tv_nsec
+}
+
+c :: foreign {
+    pthread_create :: i32 (*pthread_t, *u8, ThreadFunc, *u8)
+    pthread_join :: i32 (pthread_t, **u8)
+    pthread_exit :: u0 (*u8)
+
+    nanosleep :: i32 (*timespec, *timespec)
+
+    printf :: u0 (*char, ...)
+}
+
+ThreadContext :: struct {
+    ThreadFunc func
+    *u8 data
+}
+
+pub Thread :: struct {
+    pthread_t handle
+}
+
+thread_trampoline :: *u8 (*u8 arg) {
+    ctx := arg as *ThreadContext
+    ctx.func(ctx.data)
+    return none
+}
+
+Thread :: for {
+    pub spawn :: Thread (ThreadFunc func, *u8 data)[Allocator allocator] {
+        *ThreadContext ctx = allocator.alloc(sizeof ThreadContext)
+        ctx.func = func
+        ctx.data = data
+
+        t := Thread { handle: 0 }
+
+        c::pthread_create(&t.handle, none, thread_trampoline, ctx)
+        return t
+    }
+
+    pub sleep :: u0 (i64 millis) {
+        req := timespec {
+            tv_sec: millis / 1000,
+            tv_nsec: (millis % 1000) * 1000000
+        }
+
+        rem := timespec { tv_sec: 0, tv_nsec: 0 }
+
+        c::nanosleep(&req, &rem)
+    }
+}
+
+Thread self :: for {
+    pub join :: u0 () {
+        c::pthread_join(self.handle, none)
+    }
+}
