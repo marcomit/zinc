@@ -416,6 +416,10 @@ struct ZNode {
             /* It is a list of references to the capabilites' definition.
              * This list MUST be set in the semantic analysis. */
             ZNode   **capabilities;
+
+            /* The semantic analyzer attach the reference to the called function
+             */
+            ZNode   *func;
         } call;
 
         struct {
@@ -462,6 +466,7 @@ struct ZNode {
         struct {
             ZToken      *base;
             ZToken      *prop;
+            ZNode       *func;
             char        *mangled;
         } staticAccess;
 

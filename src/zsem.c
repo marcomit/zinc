@@ -821,6 +821,8 @@ bool typesEqual(ZType *a, ZType *b) {
     }
 }
 
+
+
 ZNode *implicitCast(ZNode *node, ZType *type) {
     if (!node) return node;
     if (node->resolved && typesEqual(node->resolved, type)) {
@@ -1026,44 +1028,40 @@ static ZType *resolveTypeRef(ZSemantic *ctx, ZType *type) {
 static ZType *resolveMemberAccess(ZSemantic *, ZNode *);
 static ZType *resolveArrSubscript(ZSemantic *, ZNode *);
 
-static ZType *resolveStaticFuncTable(ZSemantic *ctx,
+static ZNode *resolveStaticFuncTable(ZSemantic *ctx,
     ZToken *base, ZToken *prop) {
     ZNode **staticFuncs = NULL;
     for (usize i = 0; i < veclen(ctx->table->funcs); i++) {
         ZFuncTable *table = ctx->table->funcs[i];
-        if (table->base->kind != Z_TYPE_PRIMITIVE) {
-            continue;
-        }
-        if (!tokeneq(table->base->primitive.token, base)) continue;
+        if (table->base->kind != Z_TYPE_PRIMITIVE       ||
+            !tokeneq(table->base->primitive.token, base)) continue;
 
-        if (!hashset_has(table->seenStaticFuncs, prop->str)) {
-            return NULL;
-        }
+        if (!hashset_has(table->seenStaticFuncs, prop->str)) return NULL;
         staticFuncs = table->staticFuncDef;
     }
     if (!staticFuncs) return NULL;
 
-    ZType *res = NULL;
-    for (usize i = 0; i < veclen(staticFuncs) && !res; i++) {
+    ZNode *node     = NULL;
+    for (usize i = 0; i < veclen(staticFuncs) && !node; i++) {
         ZNode *func = staticFuncs[i];
         if (tokeneq(func->funcDef.base->primitive.token, base) &&
             tokeneq(func->funcDef.name, prop)) {
-            res = func->resolved;
+            node    = func;
         }
     }
 
-    if (!res) return NULL;
+    if (!node) return NULL;
 
-    for (usize i = 0; i < veclen(res->func.args); i++) {
-        ZType *resolved = resolveTypeRef(ctx, res->func.args[i]);
+    for (usize i = 0; i < veclen(node->resolved->func.args); i++) {
+        ZType *resolved = resolveTypeRef(ctx, node->resolved->func.args[i]);
         if (!resolved) {
-            error(ctx->state, res->func.args[i]->tok,
+            error(ctx->state, node->resolved->func.args[i]->tok,
                 "Unresolved type");
         } else {
-            res->func.args[i] = resolved;
+            node->resolved->func.args[i] = resolved;
         }
     }
-    return res;
+    return node;
 }
 
 static ZNode *resolveFuncCallEmbedded(ZSemantic *ctx,
@@ -1153,6 +1151,7 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                         expectedFunc->func.args[i]
                     );
                 }
+                curr->call.func = sym->node;
                 callee->resolved = expectedFunc;
             } else {
                 error(ctx->state, callee->identNode.tok,
@@ -1548,18 +1547,21 @@ static ZType *resolveUnary(ZSemantic *ctx, ZNode *curr) {
 }
 
 static ZType *resolveStaticAccess(ZSemantic *ctx, ZNode *curr) {
-    ZToken *base = curr->staticAccess.base;
-    ZToken *prop = curr->staticAccess.prop;
+    ZToken *base            = curr->staticAccess.base;
+    ZToken *prop            = curr->staticAccess.prop;
+    curr->staticAccess.func = NULL;
+
     ZSymbol *baseSym = resolve(ctx, base);
     if (!baseSym) {
         error(ctx->state, base, "Base not found");
         return NULL;
     }
 
-    ZType *staticMethod = resolveStaticFuncTable(ctx, base, prop);
+    ZNode *staticMethod = resolveStaticFuncTable(ctx, base, prop);
 
     if (staticMethod) {
-        return staticMethod;
+        curr->staticAccess.func = staticMethod;
+        return staticMethod->resolved;
     }
     if (baseSym->kind == Z_SYM_TYPEDEF) {
         baseSym->type = resolveTypeRef(ctx, baseSym->type);
