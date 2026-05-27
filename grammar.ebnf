@@ -1,274 +1,488 @@
-(* Zinc Programming Language Grammar *)
-(* EBNF Notation: { } = repetition, [ ] = optional, | = alternation *)
+source_file = { declaration } ;
 
-program = { declaration } ;
+declaration =
+    { attribute } [ "pub" ]
+    (
+        struct_declaration  |
+        enum_declaration    |
+        type_alias          |
+        foreign_block       |
+        func_block          |
+        func_decl           |
+        foreign_func        |
+        import_decl         ) ;
 
-declaration = function_declaration
-            | foreign_function_declaration
-            | variable_declaration
-            | struct_declaration
-            | typedef_declaration
-            | interface_declaration
-            | import_declaration
-            | macro_declaration ;
+attribute = "#" "[" identifier, { "," identifier} [ "," ] "]"
 
-(* ============ Generics ============ *)
+import_declaration =
+    [ identifier "::" ] "use" (
+        "<" module_path ">" | module_path
+    ) ;
 
-(* Generic parameter list: [T] or [T, U] *)
-generic_params = "[", identifier, { ",", identifier }, "]" ;
+module_path = identifier { "::" identifier } ;
 
-(* Generic argument list: [i32] or [i32, Error] *)
-generic_args = "[", type, { ",", type }, "]" ;
+struct_declaration = identifier "::" "struct" "{" { struct_member } "}" ;
 
-(* ============ Imports ============ *)
+struct_member = field_declaration | struct_embed ;
 
-import_declaration = "use", string_literal ;
+field_declaration = field_type identifier ;
 
-(* ============ Functions ============ *)
+struct_embed = "..." type ;
 
-(* Optional 'pub'. Optional 'base::' prefix for namespace. Optional receiver
-   field (type ident) after params for method syntax. *)
-function_declaration = [ "pub" ], return_type, [ identifier, "::", ], identifier,
-                       [ generic_params ], "(", [ parameter_list ], ")",
-                       [ receiver ], block ;
+enum_declaration = identifier "::" "enum" "{" { enum_variant } "}"
 
-receiver = type, identifier ;
+enum_variant = 
+    { attribute } identifier
+    [ "(" [ field_type { "," field_type } ] ")" ] ;
 
-return_type = type ;
-
-foreign_function_declaration = "foreign", type, identifier, "(", [ foreign_parameter_list ], ")" ;
-
-foreign_parameter_list = type, { ",", type } ;
-
-parameter_list = parameter, { ",", parameter } ;
-
-parameter = type, identifier ;
-
-(* ============ Macros ============ *)
-
-(* Macro body uses '->' as separator between pattern and block. *)
-macro_declaration = [ "pub" ], "macro", macro_pattern, "->", block ;
-
-(* Pattern: sequence of literal tokens and capture variables.
-   Terminated by '->' in the parser. *)
-macro_pattern = { macro_pattern_element }+ ;
-
-macro_pattern_element = overridable_token                          (* literal keyword or symbol *)
-                      | "'", token                                 (* quoted token: forces literal match *)
-                      | "$", identifier                            (* expr capture: $cond *)
-                      | "@", identifier                            (* ident capture: @name *)
-                      | "#", identifier                            (* type capture: #T *)
-                      | macro_repetition ;                         (* repetition: $(...)* *)
-
-(* Repetition: $(pattern)* or $(pattern)+ *)
-macro_repetition = "$", "(", { macro_pattern_element }, ")", ( "*" | "+" ) ;
-
-(* ============ Variables ============ *)
-
-(* Destructiring variable (does not support aliases for now) *)
-(* Tuple destructuring: (first, second) := expression *)
-(* Struct destructuring: {len, cap} := expression *)
-variable_identifier = identifier 
-                    | "(", variable_identifier, [ ",", variable_identifier ], ")"
-                    | "{", identifier, [ ",", identifier ], "}"
-
-(* Inferred: identifier := expression *)
-(* Typed with optional initializer: type identifier [= expression] *)
-variable_declaration = identifier, ":=", expression
-                    | type, variable_identifier, [ "=", expression ] ;
-
-(* ============ Interfaces ============ *)
-
-(* Interface declaration: interface Shape { f32 area() } *)
-interface_declaration = [ "pub" ], "interface", identifier, "{", { interface_method }, "}" ;
-
-(* Method signature only - no body, no receiver *)
-interface_method = type, identifier, "(", [ parameter_list ], ")" ;
-
-(* List of interfaces a type implements: (Shape, Debug) *)
-interface_list = "(", identifier, { ",", identifier }, ")" ;
-
-(* ============ Structs ============ *)
-
-(* Optional 'pub', optional generics, optional interface list:
-   [pub] struct Vec[T] { *T data }
-   [pub] struct Rect(Shape, Debug) { f32 width  f32 height } *)
-struct_declaration = [ "pub" ], "struct", identifier, [ generic_params ], [ interface_list ], "{", { struct_field }, "}" ;
-
-struct_field = type, identifier ;
-
-(* ============ Type Aliases ============ *)
-
-typedef_declaration = "type", identifier, type ;
-
-(* ============ Types ============ *)
-
-type = [ "const" ], { "*" }, base_type, [ function_suffix | generic_args ] ;
-
-base_type = basic_type
-          | array_type
-          | tuple_type
-          | identifier ;
-
-basic_type = "char"
-           | "u0"                                                  (* void *)
-           | "u1"                                                  (* bool *)
-           | "u8" | "u16" | "u32" | "u64"
-           | "i8" | "i16" | "i32" | "i64"
-           | "f32" | "f64" ;
-
-(* Pointer type: *T, **T - handled by { "*" } prefix in type rule *)
-
-(* Array type: [i32] or [u8; 16] (sized) *)
-array_type = "[", [ integer_constant ], "]", type;
-
-(* Tuple type: (i32, bool) - requires at least 2 types *)
-tuple_type = "(", type, ",", type, { ",", type }, ")" ;
-
-(* Function type suffix: i32(i32, i32) *)
-function_suffix = "(", [ type, { ",", type } ], ")" ;
-
-(* ============ Statements ============ *)
-
-block = "{", { statement }, "}" ;
-
-statement = variable_declaration
-          | expression_statement
-          | if_statement
-          | for_statement
-          | while_statement
-          | match_statement
-          | return_statement
-          | defer_statement
-          | goto_statement
-          | label_statement
-          | break_statement
-          | continue_statement
-          | block ;
-
-expression_statement = expression ;
-
-if_statement = "if", expression, block, [ "else", ( if_statement | block ) ] ;
-
-(* C-style for loop: for vardef; cond; incr { } *)
-for_statement = "for", variable_declaration, ";", expression, ";", expression, block ;
-
-(* While loop uses 'for' keyword: for expr { } *)
-while_statement = "for", expression, block ;
-
-(* match is a stub: parses but generates no code *)
-match_statement = "match", expression, "{", "}" ;
-
-return_statement = "return", [ expression ] ;
-
-defer_statement = "defer", expression ;
-
-goto_statement = "goto", identifier ;
-
-label_statement = identifier, ":" ;
-
-break_statement = "break" ;
-
-continue_statement = "continue" ;
-
-(* ============ Expressions ============ *)
-
-expression = assignment_expression
-           | struct_literal
-           | array_literal
-           | tuple_literal
-           | array_initializer;
-
-array_initializer = [ integer_constant ] arra_type ;
-
-assignment_expression = logical_or_expression, [ "=", assignment_expression ] ;
-
-logical_or_expression = logical_and_expression, { ( "or" | "||" ), logical_and_expression } ;
-
-logical_and_expression = bitwise_or_expression, { ( "and" | "&&" ), bitwise_or_expression } ;
-
-bitwise_or_expression = bitwise_xor_expression, { "|", bitwise_xor_expression } ;
-
-bitwise_xor_expression = bitwise_and_expression, { "^", bitwise_and_expression } ;
-
-bitwise_and_expression = equality_expression, { "&", equality_expression } ;
-
-equality_expression = relational_expression, { ( "==" | "!=" ), relational_expression } ;
-
-relational_expression = shift_expression, { ( "<" | ">" | "<=" | ">=" ), shift_expression } ;
-
-shift_expression = additive_expression, { ( "<<" | ">>" ), additive_expression } ;
-
-additive_expression = multiplicative_expression, { ( "+" | "-" ), multiplicative_expression } ;
-
-multiplicative_expression = unary_expression, { ( "*" | "/" ), unary_expression } ;
-
-unary_expression = postfix_expression
-                 | ( "+" | "-" | "!" | "not" | "~" | "*" | "&" ), unary_expression ;
-
-postfix_expression = primary_expression, { postfix_operator } ;
-
-postfix_operator = "[", expression, "]"                            (* subscript *)
-                 | "(", [ argument_list ], ")"                     (* call *)
-                 | ".", identifier ;                               (* member access *)
-
-primary_expression = identifier
-                   | constant
-                   | string_literal
-                   | "(", expression, ")" ;
-
-argument_list = expression, { ",", expression } ;
-
-(* Array literal: [1, 2, 3] *)
-array_literal = "[", [ expression, { ",", expression } ], "]" ;
-
-(* Struct literal: Point { x: 3.0, y: 4.0 } or Point[T] { x: val } *)
-struct_literal = identifier, [ generic_args ], "{", [ struct_field_list ], "}" ;
-
-struct_field_list = struct_field_init, { ",", struct_field_init } ;
-
-struct_field_init = identifier, ":", expression ;
-
-(* Tuple literal: (a, b) - requires at least 2 elements *)
-tuple_literal = "(", expression, ",", expression, { ",", expression }, ")" ;
-
-(* ============ Lexical Elements ============ *)
-
-identifier = letter, { letter | digit | "_" } ;
-
-constant = integer_constant
-         | float_constant
-         | boolean_constant
-         | none_constant ;
-
-integer_constant = digit, { digit }
-                 | "0x", hex_digit, { hex_digit }                  (* hex: 0xFF *)
-                 | "0b", binary_digit, { binary_digit } ;          (* binary: 0b1010 *)
-
-float_constant = digit, { digit }, ".", { digit }
-               | digit, { digit }, ".", { digit }, "e", [ "+" | "-" ], digit, { digit } ;
-
-boolean_constant = "true" | "false" ;
-
-none_constant = "none" ;
-
-string_literal = '"', { string_char }, '"' ;
-
-string_char = ? any character except " and \ ?
-            | escape_sequence ;
-
-escape_sequence = "\", ( "n" | "t" | "r" | "\" | '"' | "0" | "x", hex_digit, hex_digit ) ;
-
-comment = line_comment | block_comment ;
-
-line_comment = "//", { ? any character except newline ? } ;
-
-block_comment = "/*", { ? any character ? }, "*/" ;
-
-letter = "a" | ... | "z" | "A" | ... | "Z" ;
-
-digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
-
-hex_digit = digit | "a" | ... | "f" | "A" | ... | "F" ;
-
-binary_digit = "0" | "1" ;
+type_alias = identifier "::" "type" field_type ;
+
+foreign_block = identifier "::" "foreign" "{" { foreign_signature } "}" ;
+
+foreign_signature = identifier "::" type parameter_list ;
+
+foreign_function = "foreign" identifier "::" type parameter_list ;
+
+func_block = type [ identifier ] "::" "for" "{" { func_decl } "}" ;
+
+func_decl = [ "pub" ] identifier "::" type parameter_list [ capability_list ] func_body ;
+
+func_body = block | "->" (expression) ;
+
+parameter_list = "(" [
+        parameter_or_variadic
+        { "," parameter_or_variadic }
+        [ "," ]
+    ] ")" ;
+
+parameter_or_variadic = parameter | "..." ;
+
+parameter = field_type identifier ;
+
+capability_list = "[" field_type [ identifier ] { "," field_tye [ identifier ] } "]" ;
+
+type =
+    primitive_type  |
+    pointer_type    |
+    slice_type      |
+    tuple_type      |
+    generic_type    |
+    type_identifier |
+    func_type       ;
+
+func_type = type "(" [ type { "," type } ] ")" ;
+
+primitive_type =
+    "u0"    |
+    "u1"    |
+    "u8"    |
+    "i8"    |
+    "u16"   |
+    "i16"   |
+    "u32"   |
+    "i32"   |
+    "u64"   |
+    "i64"   |
+    "f32"   |
+    "f64"   |
+    "char"  |
+    "rune"  ;
+
+pointer_type = "*" type
+
+slice_type = "[" [ expression ] "]" type ;
+
+tuple_type = "(" type "," type { "," type } ")" ;
+
+generic_type =
+    type_identifier
+    "["
+    type
+    { "," type }
+    "]" ;
+
+type_identifier = identifier ;
+
+block = "{" { statement } "}" ;
+
+statement
+    = variable_declaration
+    | update_statement
+    | for_statement
+    | match_statement
+    | with_statement
+    | return_statement
+    | defer_statement
+    | break_statement
+    | continue_statement
+    | expression_statement
+    | block ;
+
+variable_declaration
+    =
+      (
+          field_type identifier [ "=" expression ]
+      )
+    |
+      (
+          binding ":=" expression
+      ) ;
+
+binding
+    = identifier
+    | tuple_destructure
+    | struct_destructure ;
+
+tuple_destructure
+    = "("
+        binding ","
+        binding
+        { "," binding }
+        [ "," ]
+      ")" ;
+
+struct_destructure
+    = "{"
+        struct_destructure_field
+        { "," struct_destructure_field }
+        [ "," ]
+      "}" ;
+
+struct_destructure_field
+    = identifier [ ":" identifier ] ;
+
+update_statement
+    = expression ":" update_tail ;
+
+update_tail
+    = "." identifier
+    | ( "not" | "!" | "~" )
+    | expression ;
+
+expression_statement
+    = expression ;
+
+if_expression
+    = "if"
+      condition
+      if_branch
+      [ "else" ( if_expression | if_branch ) ] ;
+
+if_branch
+    = block
+    | "->" expression ;
+
+condition
+    = let_condition
+    | expression ;
+
+let_condition
+    = match_pattern ":=" expression ;
+
+for_statement
+    = "for"
+      [ c_style_for_header | condition ]
+      block ;
+
+c_style_for_header
+    = ( variable_declaration | expression )
+      ";"
+      expression
+      ";"
+      expression ;
+
+match_statement
+    = "match"
+      expression
+      "{"
+        { match_arm }
+      "}" ;
+
+match_arm
+    = match_pattern
+      (
+          "->" expression
+        | block
+      )
+      [ "," ] ;
+
+with_statement
+    = "with"
+      ( let_condition | expression )
+      block ;
+
+return_statement
+    = "return" [ expression ] ;
+
+defer_statement
+    = "defer" expression ;
+
+break_statement
+    = "break" ;
+
+continue_statement
+    = "continue" ;
+
+match_pattern
+    = enum_pattern
+    | tuple_pattern
+    | literal
+    | identifier ;
+
+enum_pattern
+    = scoped_identifier
+      [ "("
+            [
+                match_pattern
+                { "," match_pattern }
+                [ "," ]
+            ]
+        ")" ] ;
+
+tuple_pattern
+    = "("
+        match_pattern ","
+        match_pattern
+        { "," match_pattern }
+        [ "," ]
+      ")" ;
+
+expression
+    = assignment_expression ;
+
+assignment_expression
+    = coalesce_expression
+    | coalesce_expression "=" assignment_expression ;
+
+coalesce_expression
+    = logical_or_expression
+    | logical_or_expression "??" coalesce_expression ;
+
+logical_or_expression
+    = logical_and_expression
+    | logical_or_expression
+      ( "or" | "||" )
+      logical_and_expression ;
+
+logical_and_expression
+    = bitwise_or_expression
+    | logical_and_expression
+      ( "and" | "&&" )
+      bitwise_or_expression ;
+
+bitwise_or_expression
+    = bitwise_xor_expression
+    | bitwise_or_expression "|"
+      bitwise_xor_expression ;
+
+bitwise_xor_expression
+    = bitwise_and_expression
+    | bitwise_xor_expression "^"
+      bitwise_and_expression ;
+
+bitwise_and_expression
+    = equality_expression
+    | bitwise_and_expression "&"
+      equality_expression ;
+
+equality_expression
+    = relational_expression
+    | equality_expression
+      ( "==" | "!=" )
+      relational_expression ;
+
+relational_expression
+    = shift_expression
+    | relational_expression
+      ( "<" | ">" | "<=" | ">=" )
+      shift_expression ;
+
+shift_expression
+    = additive_expression
+    | shift_expression
+      ( "<<" | ">>" )
+      additive_expression ;
+
+additive_expression
+    = multiplicative_expression
+    | additive_expression
+      ( "+" | "-" )
+      multiplicative_expression ;
+
+multiplicative_expression
+    = cast_expression
+    | multiplicative_expression
+      ( "*" | "/" | "%" )
+      cast_expression ;
+
+cast_expression
+    = unary_expression
+    | unary_expression "as" type ;
+
+unary_expression
+    = postfix_expression
+    | ( "-" | "+" | "!" | "not" | "~" | "*" | "&" )
+      unary_expression
+    | sizeof_expression ;
+
+sizeof_expression
+    = "sizeof" field_type ;
+
+postfix_expression
+    = primary_expression
+      {
+          argument_list
+        | "[" ( expression | slice ) "]"
+        | "." identifier
+        | "?"
+      } ;
+
+primary_expression
+    = identifier
+    | scoped_identifier
+    | literal
+    | if_expression
+    | struct_literal
+    | array_literal
+    | tuple_literal
+    | parenthesized_expression ;
+
+scoped_identifier
+    = identifier "::"
+      identifier
+      { "::" identifier } ;
+
+parenthesized_expression
+    = "(" expression ")" ;
+
+tuple_literal
+    = "("
+        expression ","
+        expression
+        { "," expression }
+        [ "," ]
+      ")" ;
+
+array_literal
+    = "["
+        [
+            expression
+            { "," expression }
+            [ "," ]
+        ]
+      "]" ;
+
+struct_literal
+    = ( identifier | generic_type )
+      field_initializer_list ;
+
+field_initializer_list
+    = "{"
+        [
+            field_initializer
+            { "," field_initializer }
+            [ "," ]
+        ]
+      "}" ;
+
+field_initializer
+    = identifier ":" expression ;
+
+argument_list
+    = "("
+        [
+            expression
+            { "," expression }
+            [ "," ]
+        ]
+      ")" ;
+
+slice
+    = [ expression ]
+      ":"
+      [ expression ] ;
+
+
+literal
+    = int_literal
+    | float_literal
+    | string_literal
+    | rune_literal
+    | bool_literal
+    | none_literal ;
+
+bool_literal
+    = "true"
+    | "false" ;
+
+none_literal
+    = "none" ;
+
+identifier
+    = letter { letter | digit | "_" } ;
+
+int_literal
+    = decimal_literal
+    | hexadecimal_literal
+    | binary_literal ;
+
+float_literal
+    = digit { digit }
+      "."
+      { digit }
+      [ exponent ] ;
+
+decimal_literal
+    = digit { digit } ;
+
+hexadecimal_literal
+    = "0x"
+      hexadecimal_digit
+      { hexadecimal_digit } ;
+
+binary_literal
+    = "0b"
+      binary_digit
+      { binary_digit } ;
+
+string_literal
+    = "\""
+      { string_character }
+      "\"" ;
+
+rune_literal
+    = "'"
+      { rune_character }
+      "'" ;
+
+exponent
+    = ( "e" | "E" )
+      [ "+" | "-" ]
+      digit
+      { digit } ;
+
+letter
+    = "a"…"z"
+    | "A"…"Z"
+    | "_" ;
+
+digit
+    = "0"…"9" ;
+
+binary_digit
+    = "0" | "1" ;
+
+hexadecimal_digit
+    = digit
+    | "a"…"f"
+    | "A"…"F" ;
+
+string_character
+    = ? any non-quote character or escaped sequence ? ;
+
+rune_character
+    = ? any non-quote character or escaped sequence ? ;
+
+comment
+    = "//" { ? any character except newline ? }
+    | "/*" { ? comment content ? } "*/" ;
