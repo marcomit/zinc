@@ -1,0 +1,112 @@
+@startuml
+title Class Diagram - AST Declarations & Literals
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+hide circle
+
+abstract class ZNode {
+    type : ZNodeType
+    resolved : ZType*
+    tok : ZToken*
+}
+
+class ZNodeFuncDef {
+    ret : ZType*
+    name : ZToken*
+    mangled : char*
+    base : ZType*
+    args : ZNode**
+    body : ZNode*
+    receiver : ZNode*
+    generics : ZType**
+    annotations : ZAnnotation**
+    capabilities : ZNode**
+    pub : bool
+}
+class ZNodeForeignFunc {
+    ret : ZType*
+    tok : ZToken*
+    args : ZType**
+    pub : bool
+}
+class ZNodeStructDef {
+    ident : ZToken*
+    fields : ZNode**
+    generics : ZType**
+    annotations : ZAnnotation**
+    pub : bool
+}
+class ZNodeEnumDef {
+    name : ZToken*
+    fields : ZNode**
+    annotations : ZAnnotation**
+    pub : bool
+}
+class ZNodeEnumField {
+    name : ZToken*
+    captured : ZType**
+}
+class ZNodeField {
+    type : ZType*
+    identifier : ZToken*
+}
+class ZNodeTypedef {
+    alias : ZToken*
+    type : ZType*
+    pub : bool
+}
+class ZNodeModule {
+    name : char*
+    root : ZNode**
+    scope : ZScope*
+}
+class ZNodeMacro {
+    pattern : ZMacroPattern*
+    startBody : usize
+    endBody : usize
+    captured : ZMacroVar**
+    start : ZToken*
+    consumed : usize
+    sourceTokens : ZToken**
+    pub : bool
+}
+class ZNodeStructlit {
+    ident : ZToken*
+    fields : ZNode**
+    generics : ZType**
+}
+class ZNodeTuplelit {
+    tuplelit : ZNode**
+}
+class ZNodeArraylit {
+    arraylit : ZNode**
+}
+class ZNodeArrayInit {
+    arrayinit : ZType*
+}
+
+ZNodeFuncDef     --|> ZNode
+ZNodeForeignFunc --|> ZNode
+ZNodeStructDef   --|> ZNode
+ZNodeEnumDef     --|> ZNode
+ZNodeEnumField   --|> ZNode
+ZNodeField       --|> ZNode
+ZNodeTypedef     --|> ZNode
+ZNodeModule      --|> ZNode
+ZNodeMacro       --|> ZNode
+ZNodeStructlit   --|> ZNode
+ZNodeTuplelit    --|> ZNode
+ZNodeArraylit    --|> ZNode
+ZNodeArrayInit   --|> ZNode
+
+ZNodeFuncDef   *--> ZNode : args / body / receiver / capabilities
+ZNodeStructDef *--> ZNode : fields
+ZNodeEnumDef   *--> ZNode : fields
+ZNodeModule    *--> ZNode : root
+ZNodeStructlit *--> ZNode : fields
+ZNodeTuplelit  *--> ZNode : tuplelit
+ZNodeArraylit  *--> ZNode : arraylit
+
+note bottom of ZNodeMacro : 'pattern' -> ZMacroPattern ; 'captured' -> ZMacroVar\n'annotations' -> ZAnnotation (see AST Helpers diagram)
+@enduml

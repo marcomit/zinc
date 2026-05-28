@@ -1,0 +1,45 @@
+@startuml
+title Class Diagram - Parser
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+hide circle
+
+class ZParser {
+    state : ZState*
+    source : ZTokenStream*
+    tokenIndex : usize
+    errstack : usize*
+    macroParser : ZMacroParser
+    depth : u8
+    noStructLit : bool
+    noFuncType : bool
+}
+
+class ZMacroParser {
+    macros : ZNode**
+    currentMacro : ZNode*
+    expandingMacros : ZNode**
+    currentList : ZMacroPattern*
+    currentIndex : usize
+}
+
+class ZTokenStream {
+    list : ZToken**
+    current : usize
+    end : usize
+    prev : ZTokenStream*
+}
+
+ZParser      *--> ZTokenStream : source
+ZParser      *--> ZMacroParser : macroParser
+ZTokenStream --> ZTokenStream  : prev
+
+note as N1
+  Cross-layer references (see other diagrams):
+  - ZParser.state -> ZState (Driver)
+  - ZTokenStream.list -> ZToken (Tokens)
+  - ZMacroParser.macros / currentMacro / expandingMacros -> ZNode (AST)
+  - ZMacroParser.currentList -> ZMacroPattern (AST Helpers)
+end note
+@enduml
