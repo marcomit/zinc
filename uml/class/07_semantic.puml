@@ -1,0 +1,92 @@
+@startuml
+title Class Diagram - Semantic Analysis
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+hide circle
+
+enum ZSymType {
+    Z_SYM_VAR
+    Z_SYM_FUNC
+    Z_SYM_ENUM
+    Z_SYM_STRUCT
+    Z_SYM_TYPEDEF
+    Z_SYM_GENERIC
+    Z_SYM_NAMESPACE
+}
+
+class ZSemantic {
+    state : ZState*
+    root : ZNode*
+    main : ZSymbol*
+    table : ZSymTable*
+    scopes : ZScopeTable**
+    seen : hashset_t
+    currentFuncRet : ZType*
+    currentFunc : ZNode*
+    loopDepth : u32
+}
+
+class ZSymTable {
+    global : ZScope*
+    current : ZScope*
+    module : ZScope*
+    funcs : ZFuncTable**
+}
+
+class ZScope {
+    symbols : ZSymbol**
+    parent : ZScope*
+    node : ZNode*
+    capabilities : ZCapability**
+    depth : u32
+    seen : hashset_t
+}
+
+class ZSymbol {
+    kind : ZSymType
+    name : ZToken*
+    type : ZType*
+    node : ZNode*
+    generics : ZType***
+    useCount : usize
+    isPublic : bool
+    reachable : bool
+}
+
+class ZFuncTable {
+    base : ZType*
+    funcDef : ZNode**
+    seenReceiverFuncs : hashset_t
+    staticFuncDef : ZNode**
+    seenStaticFuncs : hashset_t
+}
+
+class ZCapability {
+    type : ZType*
+    nodes : ZNode**
+}
+
+class ZScopeTable {
+    module : ZNode*
+    scope : ZScope*
+}
+
+ZSemantic   *--> ZSymTable   : table
+ZSemantic   *--> ZScopeTable : scopes
+ZSemantic   --> ZSymbol      : main
+ZSymTable   *--> ZScope      : global / current / module
+ZSymTable   *--> ZFuncTable  : funcs
+ZScope      *--> ZSymbol     : symbols
+ZScope      --> ZScope       : parent
+ZScope      *--> ZCapability : capabilities
+ZScopeTable --> ZScope       : scope
+ZSymbol     --> ZSymType     : kind
+
+note as N1
+  Cross-layer references (see other diagrams):
+  - ZSemantic.state -> ZState (Driver)
+  - root / currentFunc / node / funcDef / nodes -> ZNode (AST)
+  - type / base / currentFuncRet / generics -> ZType (Type System)
+end note
+@enduml

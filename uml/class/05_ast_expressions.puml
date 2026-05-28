@@ -1,0 +1,84 @@
+@startuml
+title Class Diagram - AST Expressions
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+hide circle
+
+abstract class ZNode {
+    type : ZNodeType
+    resolved : ZType*
+    tok : ZToken*
+}
+
+class ZNodeBinary {
+    op : ZToken*
+    left : ZNode*
+    right : ZNode*
+}
+class ZNodeUnary {
+    operat : ZToken*
+    operand : ZNode*
+}
+class ZNodeCall {
+    callee : ZNode*
+    args : ZNode**
+    capabilities : ZNode**
+}
+class ZNodeSubscript {
+    arr : ZNode*
+    index : ZNode*
+}
+class ZNodeSlice {
+    start : ZNode*
+    end : ZNode*
+    base : ZNode*
+}
+class ZNodeCast {
+    toType : ZType*
+    expr : ZNode*
+}
+class ZNodeSizeof {
+    expr : ZType*
+}
+class ZNodeMemberAccess {
+    object : ZNode*
+    field : ZToken*
+    mangled : char*
+    path : u32*
+}
+class ZNodeStaticAccess {
+    base : ZToken*
+    prop : ZToken*
+    mangled : char*
+}
+class ZNodeIdent {
+    tok : ZToken*
+    mangled : char*
+}
+class ZNodeLiteral {
+    literalTok : ZToken*
+}
+
+ZNodeBinary       --|> ZNode
+ZNodeUnary        --|> ZNode
+ZNodeCall         --|> ZNode
+ZNodeSubscript    --|> ZNode
+ZNodeSlice        --|> ZNode
+ZNodeCast         --|> ZNode
+ZNodeSizeof       --|> ZNode
+ZNodeMemberAccess --|> ZNode
+ZNodeStaticAccess --|> ZNode
+ZNodeIdent        --|> ZNode
+ZNodeLiteral      --|> ZNode
+
+ZNodeBinary       *--> ZNode : left / right
+ZNodeUnary        *--> ZNode : operand
+ZNodeCall         *--> ZNode : callee / args / capabilities
+ZNodeSubscript    *--> ZNode : arr / index
+ZNodeSlice        *--> ZNode : start / end / base
+ZNodeCast         *--> ZNode : expr
+ZNodeMemberAccess *--> ZNode : object
+
+note bottom of ZNode : 'toType' / 'expr' (sizeof) -> ZType (see Type System diagram)
+@enduml

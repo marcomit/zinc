@@ -1,0 +1,66 @@
+@startuml
+title Class Diagram - AST Helpers
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+hide circle
+
+enum ZMacroType {
+    Z_MACRO_KEY
+    Z_MACRO_EXPR
+    Z_MACRO_IDENT
+    Z_MACRO_TYPE
+    Z_MACRO_ZM
+    Z_MACRO_OM
+    Z_MACRO_SEQ
+}
+
+enum ZVarDestructKind {
+    Z_VAR_IDENT
+    Z_VAR_TUPLE
+    Z_VAR_STRUCT
+    Z_VAR_PAIR
+    Z_VAR_ENUM
+}
+
+class ZAnnotation {
+    name : ZToken*
+    args : ZAnnotation**
+}
+ZAnnotation *--> ZAnnotation : args
+
+class ZMacroPattern {
+    kind : ZMacroType
+    ident : ZToken*
+    zeroOrMore : ZMacroPattern*
+    oneOrMore : ZMacroPattern*
+    sequence : ZMacroPattern**
+}
+ZMacroPattern --> ZMacroType : kind
+ZMacroPattern *--> ZMacroPattern : sub-patterns
+
+class ZMacroVar {
+    name : ZToken*
+    startIndex : usize
+    endIndex : usize
+    captured : ZNode*
+    useCount : usize
+}
+
+class ZVarDestructPattern {
+    type : int
+    tok : ZToken*
+    ident : ZToken*
+    tuple : ZVarDestructPattern**
+    base : ZToken*
+    prop : ZToken*
+    args : ZVarDestructPattern**
+    fields : ZVarDestructPattern**
+    key : ZToken*
+    value : ZVarDestructPattern*
+}
+ZVarDestructPattern --> ZVarDestructKind : type
+ZVarDestructPattern *--> ZVarDestructPattern : tuple / fields / args / value
+
+note bottom of ZMacroVar : 'captured' references ZNode (see AST diagrams)
+@enduml
