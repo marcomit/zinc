@@ -86,6 +86,7 @@
 
 % -- Graphics & tables
 \usepackage{graphicx}
+\graphicspath{{../uml/}{../uml/class/}}
 \usepackage{booktabs}
 \usepackage{tabularx}
 
@@ -134,9 +135,12 @@
 \maketitle
 \tableofcontents
 
+\input{chapters/00_requirements}
 \input{chapters/01_intro}
 \input{chapters/02_lexer}
 \input{chapters/03_parser}
+\input{chapters/04_semantic}
+\input{chapters/05_codegen}
 \input{chapters/language_reference}
 
 \end{document}
