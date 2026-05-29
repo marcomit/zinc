@@ -1065,11 +1065,38 @@ static ZNode *resolveStaticFuncTable(ZSemantic *ctx,
     return node;
 }
 
+static bool funcTableBaseMatches(ZSemantic *ctx, ZType *tableBase, ZType *obj) {
+    if (!tableBase || !obj) return false;
+    if (typesEqual(tableBase, obj)) return true;
+
+    if (tableBase->kind == Z_TYPE_PRIMITIVE &&
+        tableBase->primitive.token->type == TOK_IDENT) {
+        if (obj->kind == Z_TYPE_STRUCT &&
+            strcmp(tableBase->primitive.token->str, obj->strct.name->str) == 0) {
+            return true;
+        }
+        ZSymbol *sym = resolve(ctx, tableBase->primitive.token);
+        if (sym) {
+            ZType *resolved = sym->type;
+            if (sym->kind == Z_SYM_TYPEDEF && sym->node) {
+                resolved = sym->node->resolved
+                    ? sym->node->resolved
+                    : sym->node->typeDef.type;
+            }
+            if (resolved && typesEqual(resolved, obj)) return true;
+        }
+    }
+
+    if (tableBase->kind == Z_TYPE_POINTER && obj->kind == Z_TYPE_POINTER) {
+        return funcTableBaseMatches(ctx, tableBase->base, obj->base);
+    }
+    return false;
+}
+
 static ZFuncTable *resolveFuncTable(ZSemantic *ctx, ZType *obj) {
     ZFuncTable **table = ctx->table->funcs;
     for (usize i = 0; i < veclen(table); i++) {
-        ZType *base = resolveTypeRef(ctx, table[i]->base);
-        if (typesEqual(base, obj)) return table[i];
+        if (funcTableBaseMatches(ctx, table[i]->base, obj)) return table[i];
     }
     return NULL;
 }

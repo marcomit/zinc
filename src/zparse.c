@@ -2079,9 +2079,6 @@ static ZType *parseFuncType(ZParser *parser) {
         }
     } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
 
-    if (!check(parser, TOK_RPAREN)) {
-        printf("Error )\n");
-    }
     expect(parser, TOK_RPAREN);
 
     ZType *func         = maketype(Z_TYPE_FUNCTION);
