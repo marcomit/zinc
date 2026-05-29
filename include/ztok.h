@@ -46,7 +46,7 @@ DEF(TOK_AND,        "and",              TOK_FLOWS_MASK | 0x11)
 DEF(TOK_NONE,       "none",             TOK_FLOWS_MASK | TOK_LITERAL | 0x12)
 DEF(TOK_TRUE,       "true",             TOK_FLOWS_MASK | TOK_LITERAL | 0x13)
 DEF(TOK_FALSE,      "false",            TOK_FLOWS_MASK | TOK_LITERAL | 0x14)
-DEF(TOK_CAST,       "as",               TOK_FLOWS_MASK | TOK_EXPANDABLE | 0x15)
+DEF(TOK_CAST,       "as",               TOK_FLOWS_MASK | TOK_EXPANDABLE | TOK_OVERRIDABLE | 0x15)
 DEF(TOK_SIZEOF,     "sizeof",           TOK_FLOWS_MASK | TOK_EXPANDABLE | 0x16)
 DEF(TOK_WHERE,      "where",            TOK_FLOWS_MASK | 0x18)
 DEF(TOK_WITH,       "with",             TOK_FLOWS_MASK | 0x19)
@@ -85,7 +85,7 @@ DEF(TOK_RUNE_LIT,   "rune literal",     TOK_DYN_MASK | TOK_LITERAL | TOK_EXPANDA
 
 #ifdef TOK_SYMBOLS
 DEF(TOK_ARROW,          "->",           TOK_SYMBOLS_MASK | 0x50)
-DEF(TOK_EQEQ,           "==",           TOK_SYMBOLS_MASK | 0x51)
+DEF(TOK_EQEQ,           "==",           TOK_SYMBOLS_MASK | TOK_OVERRIDABLE | 0x51)
 DEF(TOK_NOTEQ,          "!=",           TOK_SYMBOLS_MASK | 0x52)
 DEF(TOK_ASSIGN,         ":=",           TOK_SYMBOLS_MASK | 0x55)
 DEF(TOK_DOUBLE_COLON,   "::",           TOK_SYMBOLS_MASK | 0x73)

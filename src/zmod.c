@@ -415,11 +415,10 @@ void printNode(ZNode *node, u8 depth) {
     case NODE_BINARY:
         printf("Op: ");
         printToken(node->binary.op);
+        if (node->binary.overload) printf(" overloaded");
         printf("\n");
         printNode(node->binary.left, depth);
         printNode(node->binary.right, depth);
-        printf("Overridden\n");
-        printNode(node->binary.override, depth);
         return; // Return early to avoid the double newline
 
     case NODE_VAR_DECL:

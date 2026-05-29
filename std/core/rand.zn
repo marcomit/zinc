@@ -15,7 +15,7 @@ Random :: for {
     }
 
     pub by_ref :: *Random ()[Allocator allocator] {
-        self := allocator.alloc(sizeof Random) as *Random
+        self := alloc(sizeof Random) as *Random
         self.state = 0x853c49e6748fea9b
         self.inc = 0xda3e39cb94b95bdb
         return self
