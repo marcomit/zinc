@@ -44,13 +44,13 @@ Color :: struct {
     u8 a
 }
 
-Color :: for {
+Color :: impl {
     new :: Color (u8 r, u8 g, u8 b, u8 a) -> Color{ r: r, g: g, b: b, a: a }
 }
 
 Tile :: type u32
 
-Tile :: for {
+Tile :: impl {
     o :: Tile () -> (1 << 24) | (2 << 16) | 0b1111
     l :: Tile () -> (2 << 24) | (3 << 16) | 0b100100110
     j :: Tile () -> (3 << 24) | (3 << 16) | 0b001001011
@@ -86,7 +86,7 @@ get_color :: Color (u8 t) {
     return colors[(t - 1) % colors.len]
 }
 
-Tile self :: for {
+Tile self :: impl {
     width   :: u8 () -> (self >> 16) & 0xFF
     kind    :: u8 () -> self >> 24
 
@@ -138,7 +138,7 @@ Counter :: struct {
     u64 target
 }
 
-Counter :: for {
+Counter :: impl {
     new :: *Counter(u64 target)[Allocator allocator] {
         self := allocator.alloc(sizeof Counter) as *Counter
         self.count = 0
@@ -147,7 +147,7 @@ Counter :: for {
     }
 }
 
-*Counter self :: for {
+*Counter self :: impl {
     tick :: u1 () {
         if self.count >= self.target {
             self.count = 0
@@ -169,7 +169,7 @@ GameState :: struct {
     *Counter ticker
 }
 
-GameState :: for {
+GameState :: impl {
     new :: *GameState()[Allocator allocator] {
         *GameState self = allocator.alloc(sizeof GameState)
         u64 boardSize = sizeof u8 * 10 as u64 * 20 as u64
@@ -187,7 +187,7 @@ GameState :: for {
     }
 }
 
-*GameState self :: for {
+*GameState self :: impl {
     at :: u8 (u8 x, u8 y) -> self.board[y * 10 + x]
 
     draw :: u0 () {
