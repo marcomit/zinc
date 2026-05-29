@@ -134,6 +134,6 @@ String self :: for {
     }
 
     pub drop :: u0 ()[Allocator] {
-        free(self.data as *u8)
+        destroy(self.data as *u8)
     }
 }
