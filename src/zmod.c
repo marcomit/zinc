@@ -418,6 +418,8 @@ void printNode(ZNode *node, u8 depth) {
         printf("\n");
         printNode(node->binary.left, depth);
         printNode(node->binary.right, depth);
+        printf("Overridden\n");
+        printNode(node->binary.override, depth);
         return; // Return early to avoid the double newline
 
     case NODE_VAR_DECL:

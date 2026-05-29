@@ -1064,6 +1064,16 @@ static ZNode *resolveStaticFuncTable(ZSemantic *ctx,
     return node;
 }
 
+static ZFuncTable *resolveFuncTable(ZSemantic *ctx, ZType *obj) {
+    ZFuncTable **table = ctx->table->funcs;
+    for (usize i = 0; i < veclen(table); i++) {
+        ZType *base = resolveTypeRef(ctx, table[i]->base);
+        if (typesEqual(base, obj)) return table[i];
+    }
+    return NULL;
+}
+
+
 static ZNode *resolveFuncCallEmbedded(ZSemantic *ctx,
     ZNode *curr, ZType *obj, ZToken *prop) {
     ZFuncTable **table = ctx->table->funcs;
@@ -1085,11 +1095,7 @@ static ZNode *resolveFuncCallEmbedded(ZSemantic *ctx,
         }
     }
 
-    ZFuncTable *funcs = NULL;
-    for (usize i = 0; i < veclen(table) && !funcs; i++) {
-        ZType *base = resolveTypeRef(ctx, table[i]->base);
-        if (typesEqual(base, obj)) funcs = table[i];
-    }
+    ZFuncTable *funcs = resolveFuncTable(ctx, obj);
 
     if (funcs) {
         for (usize i = 0; i < veclen(funcs->funcDef); i++) {
@@ -1405,6 +1411,47 @@ static ZType* resolveIdentifier(ZSemantic *ctx, ZNode *node) {
     return sym->type;
 }
 
+static bool hasOverrideAnnotation(ZSemantic *ctx, ZAnnotation **annotations, ZTokenType op) {
+    for (usize i = 0; i < veclen(annotations); i++) {
+        ZAnnotation *annotation = annotations[i];
+        printf("annotation: %s\n", stoken(annotation->name));
+        if (strcmp(annotation->name->str, "override") != 0) continue;
+        if (veclen(annotation->args) != 1) {
+            error(ctx->state, annotation->name,
+                "Annotation 'override' must contain 1 argument"
+            );
+        } else if (!(annotation->args[0]->name->type & TOK_OVERRIDABLE)) {
+            error(ctx->state, annotation->name,
+                "'%s' is not an overridable operator",
+                stoken(annotation->args[0]->name)
+            );
+        } else {
+            return true;
+        }
+    }
+    return false;
+}
+
+static ZNode *resolveOverrideOperator(ZSemantic *ctx, ZNode *curr) {
+    if (!(curr->binary.op->type & TOK_OVERRIDABLE)) return NULL;
+    ZFuncTable *table = resolveFuncTable(ctx, curr->resolved);
+
+    if (!table) return NULL;
+
+    for (usize i = 0; i < veclen(table->funcDef); i++) {
+        ZNode *func = table->funcDef[i];
+        printf("Annotations: %zu\n", veclen(func->funcDef.annotations));
+        if (hasOverrideAnnotation(ctx,
+                func->funcDef.annotations,
+                curr->binary.op->type
+            )) {
+            return func;
+        }
+    }
+
+    return NULL;
+}
+
 static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
     ZTokenType op       = curr->binary.op->type;
     ZType     *left     = resolveType(ctx, curr->binary.left);
@@ -1416,6 +1463,16 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
             error(ctx->state, curr->binary.op, "Bit operators can be used only with integers");
             return NULL;
         }
+    }
+
+    if (op & TOK_OVERRIDABLE) {
+        printf("overridable\n");
+        ZNode *override = resolveOverrideOperator(ctx, curr);
+        if (override) {
+            printf("overrided\n");
+        }
+        curr->binary.override = override;
+        if (override) return override->resolved;
     }
 
     /* Auto promotion rules should be handled by typesCompatible. */

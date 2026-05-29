@@ -1325,7 +1325,8 @@ static ZNode *parseReturn(ZParser *parser) {
 }
 
 static ZAnnotation *parseAnnotation(ZParser *parser) {
-    guard(check(parser, TOK_IDENT));
+    guard(canPeek(parser));
+    guard(check(parser, TOK_IDENT) || peek(parser)->type & TOK_OVERRIDABLE);
 
     ZToken *name                = consume(parser);
     ZAnnotation **annotations   = NULL;
@@ -2240,7 +2241,7 @@ static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
         self->kind = Z_MACRO_KEY;
         self->ident = consume(parser);
         return self;
-    } else if (checkMask(parser, TOK_OVERRIDABLE)) {
+    } else if (checkMask(parser, TOK_EXPANDABLE)) {
         self->kind = Z_MACRO_KEY;
         self->ident = consume(parser);
         return self;
@@ -2274,7 +2275,7 @@ static ZNode *parseMacro(ZParser *parser) {
     bool public = match(parser, TOK_PUB);
     expect(parser, TOK_MACRO);
 
-    if (!checkMask(parser, TOK_OVERRIDABLE)) {
+    if (!checkMask(parser, TOK_EXPANDABLE)) {
         error(parser->state,
                     peek(parser),
                     "Expected overridable keyword after 'macro', got '%s'",
