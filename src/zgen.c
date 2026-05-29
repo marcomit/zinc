@@ -1554,11 +1554,31 @@ static LLVMValueRef genNullCoalescing(ZCodegen *ctx, ZNode *root) {
  * @brief Generates all binary operators.
  *
  * Binary operators are divided into:
+ * - Overrided operations
  * - Integer operations.
  * - Boolean operations.
- * A special case is the assign that generates the assignment.
+ * - Assignment operations.
  */
 static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
+    if (root->binary.overload) {
+        ZNode *fn = root->binary.overload;
+        LLVMValueRef func = getLLVMValueRef(ctx, fn->funcDef.mangled);
+        if (!func) return NULL;
+        LLVMTypeRef funcType = LLVMGlobalGetValueType(func);
+        LLVMValueRef *args = NULL;
+        vecpush(args, genExpr(ctx, root->binary.left));
+        vecpush(args, genExpr(ctx, root->binary.right));
+        LLVMValueRef call = LLVMBuildCall2(
+            ctx->builder, funcType, func,
+            args, veclen(args),
+            isVoid(root->resolved) ? "" : label(ctx, NULL)
+        );
+        if (!fitsInRegister(call)) {
+            ZLLVMStack *stack = getStackValue(ctx, root);
+            if (stack) LLVMBuildStore(ctx->builder, call, stack->stack);
+        }
+        return call;
+    }
     if (root->binary.op->type == TOK_EQ) {
         LLVMValueRef ptr = genLvalue(ctx, root->binary.left);
         LLVMValueRef val = genExpr(ctx, root->binary.right);

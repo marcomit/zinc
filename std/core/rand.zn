@@ -15,7 +15,7 @@ Random :: for {
     }
 
     pub by_ref :: *Random ()[Allocator allocator] {
-        self := allocator.alloc(sizeof Random) as *Random
+        self := alloc(sizeof Random) as *Random
         self.state = 0x853c49e6748fea9b
         self.inc = 0xda3e39cb94b95bdb
         return self
@@ -43,10 +43,11 @@ Random :: for {
     }
 
     pub float :: f32 () {
-        return (self.uint() / (0xFFFFFFFF as u32))
+        return self.uint() as f32 / ((0xFFFFFFFF as u32) as f32)
     }
 
     pub range :: i32 (i32 start, i32 end) {
-        return start + (self.uint() % (end - start + 1))
+        span := (end - start + 1) as u32
+        return start + (self.uint() % span) as i32
     }
 }

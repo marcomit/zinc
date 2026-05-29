@@ -24,9 +24,6 @@
 #include "zvec.h"
 #include "zarena.h"
 
-#include <stdatomic.h>
-#include <stdbool.h>
-
 /* The semantic analyzer has 2 phases.
  * 1. Analyze only the declarations such that every
  *  module knows the other declarations and they don't need
@@ -823,7 +820,7 @@ bool typesEqual(ZType *a, ZType *b) {
 
 
 
-ZNode *implicitCast(ZNode *node, ZType *type) {
+ZNode *implicitCast(ZSemantic *ctx, ZNode *node, ZType *type) {
     if (!node) return node;
     if (node->resolved && typesEqual(node->resolved, type)) {
         return node;
@@ -1064,10 +1061,45 @@ static ZNode *resolveStaticFuncTable(ZSemantic *ctx,
     return node;
 }
 
+static bool funcTableBaseMatches(ZSemantic *ctx, ZType *tableBase, ZType *obj) {
+    if (!tableBase || !obj) return false;
+    if (typesEqual(tableBase, obj)) return true;
+
+    if (tableBase->kind == Z_TYPE_PRIMITIVE &&
+        tableBase->primitive.token->type == TOK_IDENT) {
+        if (obj->kind == Z_TYPE_STRUCT &&
+            strcmp(tableBase->primitive.token->str, obj->strct.name->str) == 0) {
+            return true;
+        }
+        ZSymbol *sym = resolve(ctx, tableBase->primitive.token);
+        if (sym) {
+            ZType *resolved = sym->type;
+            if (sym->kind == Z_SYM_TYPEDEF && sym->node) {
+                resolved = sym->node->resolved
+                    ? sym->node->resolved
+                    : sym->node->typeDef.type;
+            }
+            if (resolved && typesEqual(resolved, obj)) return true;
+        }
+    }
+
+    if (tableBase->kind == Z_TYPE_POINTER && obj->kind == Z_TYPE_POINTER) {
+        return funcTableBaseMatches(ctx, tableBase->base, obj->base);
+    }
+    return false;
+}
+
+static ZFuncTable *resolveFuncTable(ZSemantic *ctx, ZType *obj) {
+    ZFuncTable **table = ctx->table->funcs;
+    for (usize i = 0; i < veclen(table); i++) {
+        if (funcTableBaseMatches(ctx, table[i]->base, obj)) return table[i];
+    }
+    return NULL;
+}
+
+
 static ZNode *resolveFuncCallEmbedded(ZSemantic *ctx,
     ZNode *curr, ZType *obj, ZToken *prop) {
-    ZFuncTable **table = ctx->table->funcs;
-
     ZNode *ptr = NULL;
     if (obj && obj->kind == Z_TYPE_STRUCT) {
         for (usize i = 0; i < veclen(obj->strct.fields); i++) {
@@ -1085,11 +1117,7 @@ static ZNode *resolveFuncCallEmbedded(ZSemantic *ctx,
         }
     }
 
-    ZFuncTable *funcs = NULL;
-    for (usize i = 0; i < veclen(table) && !funcs; i++) {
-        ZType *base = resolveTypeRef(ctx, table[i]->base);
-        if (typesEqual(base, obj)) funcs = table[i];
-    }
+    ZFuncTable *funcs = resolveFuncTable(ctx, obj);
 
     if (funcs) {
         for (usize i = 0; i < veclen(funcs->funcDef); i++) {
@@ -1284,7 +1312,7 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
                 stype(expected)
             );
         }
-        curr->call.args[i] = implicitCast(args[i], expected);
+        curr->call.args[i] = implicitCast(ctx, args[i], expected);
     }
 
     for (usize i = 0; i < veclen(expectedFunc->func.capabilities); i++) {
@@ -1405,6 +1433,43 @@ static ZType* resolveIdentifier(ZSemantic *ctx, ZNode *node) {
     return sym->type;
 }
 
+static bool hasOverloadAnnotation(
+    ZSemantic *ctx, ZAnnotation **annotations, ZTokenType op) {
+    for (usize i = 0; i < veclen(annotations); i++) {
+        ZAnnotation *annotation = annotations[i];
+        if (strcmp(annotation->name->str, "overload") != 0) continue;
+        if (veclen(annotation->args) != 1) {
+            error(ctx->state, annotation->name,
+                "Annotation 'overload' must contain 1 argument"
+            );
+        } else if (!(annotation->args[0]->name->type & TOK_OVERRIDABLE)) {
+            error(ctx->state, annotation->name,
+                "'%s' is not an overridable operator",
+                stoken(annotation->args[0]->name)
+            );
+        } else if (annotation->args[0]->name->type == op) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static ZNode *resolveOverloadOperator(ZSemantic *ctx, ZType *type, ZTokenType op) {
+    if (!(op & TOK_OVERRIDABLE)) return NULL;
+    ZFuncTable *table = resolveFuncTable(ctx, type);
+
+    if (!table) return NULL;
+
+    for (usize i = 0; i < veclen(table->funcDef); i++) {
+        ZNode *func = table->funcDef[i];
+        if (hasOverloadAnnotation(ctx, func->funcDef.annotations, op)) {
+            return func;
+        }
+    }
+
+    return NULL;
+}
+
 static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
     ZTokenType op       = curr->binary.op->type;
     ZType     *left     = resolveType(ctx, curr->binary.left);
@@ -1413,8 +1478,17 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
     if (op & TOK_BITOPERATOR_MASK) {
         if (isPrimitive(left)   &&  !isInteger(left->primitive.token->type) &&
             isPrimitive(right)  &&  !isInteger(right->primitive.token->type)) {
-            error(ctx->state, curr->binary.op, "Bit operators can be used only with integers");
+            error(ctx->state, curr->binary.op,
+                "Bit operators can be used only with integers");
             return NULL;
+        }
+    }
+
+    if (op & TOK_OVERRIDABLE) {
+        ZNode *overload = resolveOverloadOperator(ctx, left, op);
+        curr->binary.overload = overload;
+        if (overload) {
+            return overload->resolved->func.ret;
         }
     }
 
@@ -1436,12 +1510,12 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
             error(ctx->state, curr->binary.left->tok,
                     "is not a valid lvalue");
         }
-        curr->binary.right = implicitCast(curr->binary.right, left);
+        curr->binary.right = implicitCast(ctx, curr->binary.right, left);
         return left;
     }
 
-    curr->binary.left = implicitCast(curr->binary.left, promoted);
-    curr->binary.right = implicitCast(curr->binary.right, promoted);
+    curr->binary.left = implicitCast(ctx, curr->binary.left, promoted);
+    curr->binary.right = implicitCast(ctx, curr->binary.right, promoted);
 
     /* Comparison / logical operators always produce a bool. */
     if (op == TOK_EQEQ  || op == TOK_NOTEQ  ||
@@ -1540,7 +1614,7 @@ static ZType *resolveUnary(ZSemantic *ctx, ZNode *curr) {
         return operand->base;
 
     case TOK_NOT:
-        curr->unary.operand = implicitCast(curr->unary.operand, u1Type);
+        curr->unary.operand = implicitCast(ctx, curr->unary.operand, u1Type);
         return u1Type;
     default: return operand;
     }
@@ -1656,8 +1730,8 @@ static ZType *resolveSlice(ZSemantic *ctx, ZNode *curr) {
         error(ctx->state, curr->slice.end->tok, "Must be an integer");
     }
 
-    curr->slice.start   = implicitCast(curr->slice.start, u64Type);
-    curr->slice.end     = implicitCast(curr->slice.end, u64Type);
+    curr->slice.start   = implicitCast(ctx, curr->slice.start, u64Type);
+    curr->slice.end     = implicitCast(ctx, curr->slice.end, u64Type);
 
     return res;
 }
@@ -1908,7 +1982,7 @@ static void analyzeIf(ZSemantic *ctx, ZNode *curr) {
     }
 
     if (curr->ifStmt.cond->type != NODE_VAR_DECL) {
-        curr->ifStmt.cond = implicitCast(curr->ifStmt.cond, u1Type);
+        curr->ifStmt.cond = implicitCast(ctx, curr->ifStmt.cond, u1Type);
     }
 
     analyzeBlock(ctx, curr->ifStmt.body, true);
@@ -1931,7 +2005,7 @@ static void analyzeWhile(ZSemantic *ctx, ZNode *curr) {
                 "Is not a comparable value");
     }
 
-    curr->whileStmt.cond = implicitCast(curr->whileStmt.cond, u1Type);
+    curr->whileStmt.cond = implicitCast(ctx, curr->whileStmt.cond, u1Type);
 
     ctx->loopDepth++;
     analyzeBlock(ctx, curr->whileStmt.branch, true);
@@ -1950,7 +2024,7 @@ static void analyzeFor(ZSemantic *ctx, ZNode *curr) {
         error(ctx->state, f.cond->tok, "Is not a comparable value");
     }
 
-    curr->forStmt.cond = implicitCast(curr->forStmt.cond, u1Type);
+    curr->forStmt.cond = implicitCast(ctx, curr->forStmt.cond, u1Type);
 
     resolveType(ctx, f.incr);
 
@@ -2019,12 +2093,6 @@ static bool satisfyReturn(ZSemantic *ctx, ZNode *node) {
 
 
 static void analyzeFunc(ZSemantic *ctx, ZNode *curr) {
-    if (veclen(curr->funcDef.annotations) > 0) {
-        warning(ctx->state,
-            curr->funcDef.annotations[0]->name,
-            "Annotations are not supported"
-        );
-    }
     for (usize i = 0; i < veclen(curr->funcDef.generics); i++) {
         putGeneric(ctx, curr->funcDef.generics[i]);
     }
@@ -2137,7 +2205,7 @@ static void analyzeReturn(ZSemantic *ctx, ZNode *curr) {
             );
         } else {
             /* Implicit casting. */
-            curr->returnStmt.expr = implicitCast(
+            curr->returnStmt.expr = implicitCast(ctx, 
                 curr->returnStmt.expr, ctx->currentFuncRet
             );
         }

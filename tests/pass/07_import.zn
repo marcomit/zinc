@@ -1,19 +1,22 @@
 use <core::string>
+use <core::mem>
 
-c :: foreign {
+libc :: foreign {
     printf :: u0 (*char, ...)
 }
 
 main :: i32 () {
-    hello := String::from("Ciao")
-    cap := String::withCapacity(64)
+    with _ := Allocator::heap() {
+        hello := String::from("Ciao")
+        cap := String::withCapacity(64)
 
-    hello2 := String::from("Ciao")
-    
-    hello.println()
+        hello2 := String::from("Ciao")
+        
+        hello.println()
 
-    if hello.eq(hello2.data) {
-        c::printf("ok\n")
+        if hello == hello2 {
+            libc::printf("ok\n")
+        }
     }
 
     return 0

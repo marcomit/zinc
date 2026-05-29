@@ -352,6 +352,7 @@ struct ZNode {
             ZToken  *op;
             ZNode   *left;
             ZNode   *right;
+            ZNode   *overload;
         } binary;
 
         struct {
