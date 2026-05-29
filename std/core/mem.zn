@@ -11,7 +11,7 @@ pub Allocator :: struct {
     u0(*u8)         free
 }
 
-Allocator :: for {
+Allocator :: impl {
     pub heap :: Allocator() {
         return Allocator{
             bytes: 0,

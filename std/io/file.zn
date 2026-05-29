@@ -9,13 +9,13 @@ c :: foreign {
     fread :: i64 (*u8, i64, i64, *char)
 }
 
-File :: struct {
+pub File :: struct {
     *u8 file
     *char path
     *char mode
 }
 
-File :: for {
+File :: impl {
     new :: *File (*char path, *char mode)[Allocator allocator] {
         *File self = allocator.alloc(sizeof File)
         if not self { return none }
@@ -27,21 +27,21 @@ File :: for {
     }
 }
 
-*File self :: for {
-    open :: u1 () {
+*File self :: impl {
+    pub open :: u1 () {
         self.file = c::fopen(self.path, self.mode)
         if self.file { return true }
         return false
     }
 
-    close :: u0 () {
+    pub close :: u0 () {
         if self.file {
             c::fclose(self.file)
             self.file = none
         }
     }
 
-    readAll :: *char ()[Allocator allocator] {
+    pub readAll :: *char ()[Allocator allocator] {
         if not self.file { return none }
 
         c::fseek(self.file, 0, 2)

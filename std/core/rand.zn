@@ -9,7 +9,7 @@ c :: foreign {
     printf :: u0 (*char, ...)
 }
 
-Random :: for {
+Random :: impl {
     pub by_value :: Random () {
         return Random { state: 0x853c49e6748fea9b, inc: 0xda3e39cb94b95bdb }
     }
@@ -22,7 +22,7 @@ Random :: for {
     }
 }
 
-*Random self :: for {
+*Random self :: impl {
     pub seed :: u0 (u64 new_seed) {
         self.state = new_seed + self.inc as u64
     }

@@ -34,7 +34,7 @@ thread_trampoline :: *u8 (*u8 arg) {
     return none
 }
 
-Thread :: for {
+Thread :: impl {
     pub spawn :: Thread (ThreadFunc func, *u8 data)[Allocator allocator] {
         *ThreadContext ctx = allocator.alloc(sizeof ThreadContext)
         ctx.func = func
@@ -58,7 +58,7 @@ Thread :: for {
     }
 }
 
-Thread self :: for {
+Thread self :: impl {
     pub join :: u0 () {
         c::pthread_join(self.handle, none)
     }

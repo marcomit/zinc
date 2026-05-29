@@ -12,7 +12,7 @@ BinOp :: struct  {
     *char name
 }
 
-BinOp self :: for {
+BinOp self :: impl {
     invoke :: i32 (i32 x, i32 y) -> self.fn(x, y)
     print :: u0 (i32 x, i32 y) -> c::printf("%s(%d,%d)=%d\n", self.name, x, y, self.fn(x, y))
 }

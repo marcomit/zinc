@@ -818,8 +818,6 @@ bool typesEqual(ZType *a, ZType *b) {
     }
 }
 
-
-
 ZNode *implicitCast(ZSemantic *ctx, ZNode *node, ZType *type) {
     if (!node) return node;
     if (node->resolved && typesEqual(node->resolved, type)) {

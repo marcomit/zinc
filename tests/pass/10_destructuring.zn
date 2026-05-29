@@ -7,7 +7,7 @@ Vec :: struct {
     i32 y
 }
 
-Vec :: for {
+Vec :: impl {
     new :: Vec () -> Vec{ x: 10, y: 20 }
 }
 

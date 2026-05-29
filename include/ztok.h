@@ -50,7 +50,7 @@ DEF(TOK_CAST,       "as",               TOK_FLOWS_MASK | TOK_EXPANDABLE | TOK_OV
 DEF(TOK_SIZEOF,     "sizeof",           TOK_FLOWS_MASK | TOK_EXPANDABLE | 0x16)
 DEF(TOK_WHERE,      "where",            TOK_FLOWS_MASK | 0x18)
 DEF(TOK_WITH,       "with",             TOK_FLOWS_MASK | 0x19)
-DEF(TOK_USING,      "using",            TOK_FLOWS_MASK | 0x1A)
+DEF(TOK_IMPL,       "impl",             TOK_FLOWS_MASK | 0x1A)
 #endif
 
 #ifdef TOK_TYPES

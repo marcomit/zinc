@@ -11,7 +11,7 @@ pub Mutex :: struct {
     *u8 handle
 }
 
-Mutex :: for {
+Mutex :: impl {
     pub new :: Mutex ()[Allocator allocator] {
         *u8 handle = allocator.alloc(64)
         c::pthread_mutex_init(handle, none)
@@ -19,7 +19,7 @@ Mutex :: for {
     }
 }
 
-Mutex self :: for {
+Mutex self :: impl {
     pub lock :: u0 () {
         c::pthread_mutex_lock(self.handle)
     }

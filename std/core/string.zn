@@ -21,7 +21,7 @@ copyinto :: u0 (*char dst, u64 off, *char src, u64 n) {
     }
 }
 
-String :: for {
+String :: impl {
     pub from :: String (*char s) -> String { data: s, len: c::strlen(s) }
 
     pub withCapacity :: String (u64 cap)[Allocator] {
@@ -44,7 +44,7 @@ String :: for {
     }
 }
 
-String self :: for {
+String self :: impl {
     pub isEmpty :: u1 () -> self.len == 0
 
     pub print :: u0 () -> c::printf("%s", self.data)

@@ -10,13 +10,13 @@ Color :: struct {
     u8 a
 }
 
-Color :: for {
+Color :: impl {
     new :: Color(u8 r, u8 g, u8 b, u8 a) {
         return Color { r: r, g: g, b: b, a: a }
     }
 }
 
-Color self :: for {
+Color self :: impl {
     print :: u0 () {
         c::printf("Color{r: %d, g: %d, b: %d, a: %d}\n", self.r, self.g, self.b, self.a)
     }

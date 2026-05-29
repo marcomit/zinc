@@ -12,11 +12,11 @@ Vec :: struct { i32 len }
 
 Counter :: struct { i32 count }
 
-Vec :: for {
+Vec :: impl {
     create :: u0 () -> printf("Vec:new\n")
 }
 
-Counter :: for {
+Counter :: impl {
     say :: u0 (*char msg) -> printf(msg)
     value :: i32 () -> 65
 }
