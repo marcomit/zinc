@@ -24,10 +24,6 @@
 #include "zvec.h"
 #include "zarena.h"
 
-#include <execinfo.h>
-#include <stdatomic.h>
-#include <stdbool.h>
-
 /* The semantic analyzer has 2 phases.
  * 1. Analyze only the declarations such that every
  *  module knows the other declarations and they don't need
