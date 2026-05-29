@@ -1,0 +1,97 @@
+use <core::mem>
+use <io::thread>
+use <io::mutex>
+use <io::net>
+
+inc :: i32 (Mutex mutex, *i32 val) {
+    mutex.lock()
+    *val = *val + 1
+    i32 res = *val
+    mutex.unlock()
+    return res
+}
+
+worker :: *u8 (*u8 arg) {
+    ctx := arg as *Context
+    with _ := ctx.allocator {
+        buf := alloc(1025)
+
+        defer destroy(buf)
+    }
+    return none
+}
+
+Client :: struct {
+    *TcpStream stream
+    i32 id
+}
+
+Client :: impl {
+    new :: *Client (TcpStream stream, i32 id)[Allocator] {
+        *Client self    = alloc(sizeof Client)
+        self.stream     = alloc(sizeof TcpStream)
+        *self.stream    = stream
+        self.id         = id
+        return self
+    }
+}
+
+Context :: struct {
+    **Client clients
+    Mutex mutex
+    Allocator allocator
+    i32 counter
+    u32 len
+    u32 cap
+}
+
+Context :: impl {
+    new :: *Context (Mutex mutex)[Allocator allocator] {
+        self := alloc(sizeof Context) as *Context
+        self.allocator = allocator
+        self.mutex = mutex
+        self.counter = 0
+        return self
+    }
+}
+
+*Context self :: impl {
+    inc :: i32 () {
+        self.mutex.lock()
+        res := self.counter
+        self.counter :+ 1
+        self.mutex.unlock()
+        return res
+    }
+
+    append :: u0 (TcpStream stream)[Allocator] {
+        self.mutex.lock()
+
+        client := Client::new(stream, self.inc())
+
+        if self.len >= self.cap {
+            self.cap :* 2   
+            self.clients = resize(self.clients, self.cap)
+        }
+
+        self.clients[self.len] = client
+        self.len :+ 1
+
+        self.mutex.unlock()
+    }
+}
+
+main :: i32 () {
+    with _ := Allocator::heap() {
+        listener := TcpListener::bind(8080)
+        ctx := Context::new(Mutex::new())
+
+        for {
+            conn := listener.accept()
+          
+            ctx.append(conn)
+            Thread::spawn(worker, ctx)
+        }
+    }
+    return 0
+}
