@@ -26,7 +26,7 @@ Expr :: struct {
     Variant variant
 }
 
-Expr :: for {
+Expr :: impl {
     new :: *Expr(Variant variant)[Allocator allocator] {
         *Expr self = allocator.alloc(sizeof Expr)
         self.variant = variant
@@ -42,7 +42,7 @@ Expr :: for {
     pow :: *Expr(*Expr base, *Expr exp)[Allocator _]    -> Expr::new(Variant::Pow(base.retain(), exp.retain()))
 }
 
-*Expr self :: for {
+*Expr self :: impl {
     retain :: *Expr() {
         if not self { return none }
         self.ref :+ 1
@@ -209,7 +209,7 @@ Scanner :: struct {
     u64 cap
 }
 
-Scanner :: for {
+Scanner :: impl {
     new :: *Scanner(*char source)[Allocator allocator] {
         *Scanner self = allocator.alloc(sizeof Scanner)
         self.cursor = 0
@@ -223,7 +223,7 @@ Scanner :: for {
     }
 }
 
-*Scanner self :: for {
+*Scanner self :: impl {
     skipspaces :: u0 () {
         for self.cursor < self.source_len and libc::isspace(self.source[self.cursor]) {
             self.cursor :+ 1
@@ -336,7 +336,7 @@ Parser :: struct {
     u64 curr
 }
 
-Parser :: for {
+Parser :: impl {
     new :: *Parser(*Scanner scanner)[Allocator allocator] {
         *Parser self = allocator.alloc(sizeof Parser)
         self.scanner = scanner
@@ -345,7 +345,7 @@ Parser :: for {
     }
 }
 
-*Parser self :: for {
+*Parser self :: impl {
     can_peek :: u1 () -> self.curr < self.scanner.len
 
     peek :: Token () {

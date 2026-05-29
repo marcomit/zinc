@@ -55,7 +55,7 @@ Snake :: struct {
     i32 direction
 }
 
-Rectangle :: for {
+Rectangle :: impl {
     new :: *Rectangle (f32 x, f32 y, f32 width, f32 height)[Allocator allocator] {
         *Rectangle self = allocator.alloc(sizeof Rectangle)
         self.x = x
@@ -66,17 +66,17 @@ Rectangle :: for {
     }
 }
 
-*Rectangle self :: for {
+*Rectangle self :: impl {
     draw :: u0 (Color color) -> raylib::DrawRectangleRec(*self, color)
 }
 
-Color :: for {
+Color :: impl {
     new :: Color (u8 r, u8 g, u8 b, u8 a) {
         return Color {r: r, g: g, b: b, a: a}
     }
 }
 
-Snake :: for {
+Snake :: impl {
     new :: *Snake (f32 block)[Allocator allocator] {
         *Snake self = allocator.alloc(sizeof Snake)
         self.cap = 16
@@ -88,7 +88,7 @@ Snake :: for {
     }
 }
 
-*Snake self :: for {
+*Snake self :: impl {
     add :: u0 (*Rectangle item)[Allocator allocator] {
         if self.len >= self.cap {
             self.cap: * 2

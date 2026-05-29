@@ -1,0 +1,125 @@
+use <core::mem>
+use <io::thread>
+use <io::mutex>
+use <io::net>
+
+c :: foreign {
+    printf   :: u0  (*char, ...)
+    snprintf :: i32 (*char, u64, *char, ...)
+    fflush   :: i32 (*u8)
+}
+
+Client :: struct {
+    TcpStream stream
+    u64 id
+    u1 alive
+}
+
+Context :: struct {
+    *Client clients
+    Mutex mutex
+    u64 len
+}
+
+Context :: impl {
+    new :: *Context (Mutex mutex)[Allocator allocator] {
+        self := alloc(sizeof Context) as *Context
+        self.mutex = mutex
+        self.len = 0
+        self.clients = alloc(sizeof Client * 64) as *Client
+        return self
+    }
+}
+
+*Context self :: impl {
+    add :: u64 (TcpStream stream) {
+        self.mutex.lock()
+        id := self.len
+        self.clients[id].stream = stream
+        self.clients[id].id     = id
+        self.clients[id].alive  = true
+        self.len = self.len + 1
+        self.mutex.unlock()
+        return id
+    }
+
+    broadcast :: u0 (u64 from, *u8 buf, u64 sz) {
+        self.mutex.lock()
+        i := 0 as u64
+        for i < self.len {
+            if i != from {
+                if self.clients[i].alive {
+                    res := self.clients[i].stream.send(buf, sz)
+                    if res < 0 { self.clients[i].alive = false }
+                }
+            }
+            i :+ 1
+        }
+        self.mutex.unlock()
+    }
+}
+
+WorkerArg :: struct {
+    *Context ctx
+    u64 id
+}
+
+worker :: *u8 (*u8 arg) {
+    w   := arg as *WorkerArg
+    ctx := w.ctx
+    id  := w.id
+
+    with _ := Allocator::heap() {
+        buf := alloc(1024)
+        out := alloc(1024)
+
+        for {
+            stream := ctx.clients[id].stream
+            n := stream.recv(buf, 1023)
+            if n <= 0 { break }
+            buf[n] = 0
+
+            m := c::snprintf(out as *char, 1024, "[user %llu] %s", id, buf as *char)
+            c::printf("%s\n", out as *char)
+            c::fflush(none)
+
+            ctx.broadcast(id, out, m as u64)
+        }
+
+        ctx.clients[id].alive = false
+        ctx.clients[id].stream.close()
+        c::printf("server: client %llu disconnected\n", id)
+        c::fflush(none)
+    }
+    return none
+}
+
+main :: i32 () {
+    with _ := Allocator::heap() {
+        listener := TcpListener::bind(8080)
+        if not listener.valid() {
+            c::printf("server: failed to bind on :8080\n")
+            return 1
+        }
+        c::printf("server: listening on :8080\n")
+        c::fflush(none)
+
+        ctx := Context::new(Mutex::new())
+
+        for {
+            conn := listener.accept()
+            if not conn.valid() { continue }
+
+            id := ctx.add(conn)
+            c::printf("server: client %llu connected\n", id)
+            c::fflush(none)
+
+            arg := alloc(sizeof WorkerArg) as *WorkerArg
+            arg.ctx = ctx
+            arg.id  = id
+
+            Thread::spawn(worker, arg as *u8)
+        }
+    }
+    return 0
+}

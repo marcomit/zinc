@@ -26,7 +26,7 @@ pub alloc :: *u8 (u64 size)[Allocator allocator] {
     return allocator.alloc(size)
 }
 
-pub realloc :: *u8 (*u8 ptr, u64 size)[Allocator allocator] {
+pub resize :: *u8 (*u8 ptr, u64 size)[Allocator allocator] {
     return allocator.realloc(ptr, size)
 }
 
