@@ -1,0 +1,59 @@
+use <core::mem>
+use <io::net>
+use <io::thread>
+
+c :: foreign {
+    printf :: u0  (*char, ...)
+    strcmp :: i32 (*char, *char)
+    strlen :: u64 (*char)
+}
+
+foreign readline :: *char (*char)
+
+*char self :: impl {
+    #[overload(==)]
+    eq :: u1 (*char other) {
+        return c::strcmp(self, other) == 0
+    }
+}
+
+reader :: *u8 (*u8 arg) {
+    stream := *(arg as *TcpStream)
+    with _ := Allocator::heap() {
+        buf := alloc(1024)
+        for {
+            n := stream.recv(buf, 1023)
+            if n <= 0 { break }
+            buf[n] = 0
+            c::printf("\r%s\n>> ", buf as *char)
+        }
+    }
+    return none
+}
+
+main :: i32 () {
+    with _ := Allocator::heap() {
+        stream := TcpStream::connect("127.0.0.1", 8080)
+        if not stream.valid() {
+            c::printf("client: could not connect to 127.0.0.1:8080\n")
+            return 1
+        }
+
+        sp := &stream
+        Thread::spawn(reader, sp as *u8)
+
+        for {
+            input := readline(">> ")
+            if not input { break }
+            if input == "exit" { break }
+
+            length := c::strlen(input)
+            if length == 0 { continue }
+
+            stream.send(input as *u8, length)
+        }
+
+        stream.close()
+    }
+    return 0
+}
