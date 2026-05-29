@@ -46,7 +46,7 @@ pub TcpStream :: struct {
     i32 fd
 }
 
-TcpStream :: for {
+TcpStream :: impl {
     pub connect :: TcpStream (*char host, u16 port) {
         fd := c::socket(2, 1, 6)
         if fd == -1 {
@@ -75,7 +75,7 @@ TcpStream :: for {
     pub fromFd :: TcpStream (i32 fd) -> TcpStream { fd: fd }
 }
 
-TcpStream self :: for {
+TcpStream self :: impl {
     pub valid  :: u1  ()               -> self.fd != -1
     pub send   :: i64 (*u8 buf, u64 n) -> c::send(self.fd, buf, n, 0)
     pub recv   :: i64 (*u8 buf, u64 n) -> c::recv(self.fd, buf, n, 0)
@@ -88,7 +88,7 @@ pub TcpListener :: struct {
     i32 fd
 }
 
-TcpListener :: for {
+TcpListener :: impl {
     pub bind :: TcpListener (u16 port) {
         fd := c::socket(2, 1, 6)
         if fd == -1 {
@@ -122,7 +122,7 @@ TcpListener :: for {
     }
 }
 
-TcpListener self :: for {
+TcpListener self :: impl {
     pub valid :: u1 () -> self.fd != -1
 
     pub accept :: TcpStream () {
@@ -147,7 +147,7 @@ pub UdpSocket :: struct {
     i32 fd
 }
 
-UdpSocket :: for {
+UdpSocket :: impl {
     pub new :: UdpSocket () {
         fd := c::socket(2, 2, 17)
         return UdpSocket { fd: fd }
@@ -177,7 +177,7 @@ UdpSocket :: for {
     }
 }
 
-UdpSocket self :: for {
+UdpSocket self :: impl {
     pub valid :: u1 () -> self.fd != -1
 
     pub sendTo :: i64 (*u8 buf, u64 n, *char host, u16 port) {

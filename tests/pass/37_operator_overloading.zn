@@ -7,11 +7,11 @@ Vec2 :: struct {
     i32 y
 }
 
-Vec2 :: for {
+Vec2 :: impl {
     new :: Vec2 (i32 x, i32 y) -> Vec2{ x: x, y: y}
 }
 
-Vec2 self :: for {
+Vec2 self :: impl {
     #[overload(+)]
     add :: Vec2 (Vec2 other) {
         return Vec2 {

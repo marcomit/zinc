@@ -12,17 +12,17 @@ Outer :: struct {
     Inner b
 }
 
-Inner self :: for {
+Inner self :: impl {
     get :: i32 () -> self.value
     add :: i32 (i32 n) -> self.value + n
 }
 
-Outer self :: for {
+Outer self :: impl {
     sum :: i32 () -> self.a.get() + self.b.get()
     addToA :: i32 (i32 n) -> self.a.add(n)
 }
 
-i32 self :: for {
+i32 self :: impl {
     print :: u0 () -> c::printf("%d\n", self)
 }
 addInner :: i32 (i32 val) -> val

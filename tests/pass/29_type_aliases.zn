@@ -28,7 +28,7 @@ print_point :: void (V2ptr p) {
 
 is_positive :: bool (int n) -> n > 0
 
-V2 self :: for {
+V2 self :: impl {
     len :: float () -> self.x * self.x + self.y * self.y
     scale :: V2 (scalar factor) -> V2{x: self.x * factor, y: self.y * factor}
 }

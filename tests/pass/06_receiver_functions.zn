@@ -12,7 +12,7 @@ Rect :: struct {
     i32 h
 }
 
-Counter self :: for {
+Counter self :: impl {
     print :: u0() -> c::printf("%d\n", self.count)
     get :: i32 () -> self.count
     add :: i32 (i32 n) -> self.count + n
@@ -24,13 +24,13 @@ Counter self :: for {
     }
 }
 
-Rect self :: for {
+Rect self :: impl {
     area :: i32 () -> self.w * self.h
     describe :: u0 () -> c::printf("%d %d\n", self.w, self.h)
     scaledArea :: i32 (i32 factor) -> self.w * self.h * factor
 }
 
-i32 self :: for {
+i32 self :: impl {
     sum :: i32 (i32 other) -> other + self
     print :: u0 () -> c::printf("%d\n", self)
 }

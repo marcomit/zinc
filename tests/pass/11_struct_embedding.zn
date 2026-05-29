@@ -39,7 +39,7 @@ Player :: struct  {
     ...Stats
 }
 
-Player self :: for {
+Player self :: impl {
     update :: u0 () {
         self.vx = self.vx + self.ax
         self.vy = self.vy + self.ay

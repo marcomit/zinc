@@ -2389,7 +2389,7 @@ static ZNode *parseFuncBlock(ZParser *parser) {
 
     if (check(parser, TOK_IDENT)) rec = consume(parser);
     expect(parser, TOK_DOUBLE_COLON);
-    expect(parser, TOK_FOR);
+    expect(parser, TOK_IMPL);
 
     /* Declare facets this block must implement. */
     guard(type);
@@ -2525,7 +2525,7 @@ static ZNode *parse(ZParser *parser) {
 
     switch (t) {
     case TOK_FOREIGN:   return parseForeignBlock(parser);
-    case TOK_FOR:       return parseFuncBlock   (parser);
+    case TOK_IMPL:      return parseFuncBlock   (parser);
     case TOK_TYPEDEF:   return parseTypedef     (parser, public);
     case TOK_MACRO:     return skipMacro        (parser, public);
     case TOK_STRUCT:    return parseStructDecl  (parser, annotations, public);
