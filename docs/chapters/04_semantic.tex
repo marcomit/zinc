@@ -15,6 +15,8 @@ The semantic pass walks the AST produced by the parser and performs the followin
 
 The pass is conceptually split in two phases. The first phase (\texttt{discoverGlobalScope}) registers every top-level declaration (funcs, structs, enums, typedefs, namespaces, globals, foreign funcs) into the global scope, so that modules can refer to each other without ordering constraints. The second phase (\texttt{analyze}) walks each module and type-checks function bodies, statements and expressions.
 
+\umlfig{07_semantic}{Class diagram: the semantic analysis structures (symbol tables, scopes, capabilities).}{fig:semantic}
+
 \section{Symbol Tables}
 A \texttt{ZSymTable} owns the global scope and the per-module scopes.
 Each \texttt{ZScope} carries:
@@ -43,6 +45,10 @@ main :: i32 () {
 In the example above, \texttt{sum} and \texttt{main} are registered in the file (module) scope during phase one. When \texttt{main}'s body is analyzed in phase two, \texttt{beginScope} opens a fresh child scope for its parameters and locals; \texttt{endScope} pops it on exit and triggers the unused symbol check for that frame.
 
 \section{Type Checking}
+The type system is built around the \texttt{ZType} value shown in Figure~\ref{fig:types}.
+
+\umlfig{01_types}{Class diagram: the type system (\texttt{ZType}).}{fig:types}
+
 Every expression node is passed through \texttt{resolveType}, which dispatches on \texttt{ZNodeType} and caches the result in \texttt{node->resolved} so each node is typed at most once.
 I created a function \texttt{typesCompatible} which checks if two types can be compatible and returns the promoted type.
 This function is used everywhere to permit implici cast. For example a functino accepts \zn{i32} bit the user passes \zn{i8} without that function the compiler will reject it because their types are not the same.

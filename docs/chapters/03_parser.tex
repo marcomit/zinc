@@ -16,6 +16,20 @@ struct ZNode {
 }
 \end{verbatim}
 
+The \texttt{ZNode} variants are grouped into four families. Helper nodes
+(Figure~\ref{fig:ast-helpers}), statements and control flow
+(Figure~\ref{fig:ast-statements}), expressions
+(Figure~\ref{fig:ast-expressions}) and declarations and literals
+(Figure~\ref{fig:ast-declarations}).
+
+\umlfig{03_ast_helpers}{Class diagram: AST helper nodes.}{fig:ast-helpers}
+
+\umlfig{04_ast_statements}{Class diagram: AST statements and control flow.}{fig:ast-statements}
+
+\umlfig{05_ast_expressions}{Class diagram: AST expressions.}{fig:ast-expressions}
+
+\umlfig{06_ast_declarations}{Class diagram: AST declarations and literals.}{fig:ast-declarations}
+
 \section{Parsing Strategy}
 The parser is hand-written recursive descent parser. Operator precedence is handled via the standard technique of one parsing function per precedence level, from lowest (\texttt{parseExpr}) to highest (\texttt{parsePrimary}).
 The parser also has some helpers to handle the token stream:
@@ -38,6 +52,9 @@ The parser starts parsing file-level statements calling one of the following fun
 \end{itemize}
 
 Inside a block, \texttt{parseBlock} dispatches to statement-level parser including \texttt{parseIf,parseLoops,parseMatch,parseReturn,parseDefer,parseVarDef}.
+
+\umlfig{08_parser}{Class diagram: the parser (\texttt{ZParser}) and its entry points.}{fig:parser}
+
 \section{Inline blocks (\zn{->})}
 A function body may be written as a signel inline expression with \texttt{->}:
 \zn{square :: i32 (i32 x) -> x * x}

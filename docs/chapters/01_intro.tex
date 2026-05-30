@@ -30,6 +30,20 @@ Code generation & \texttt{zgen.c} & Emit LLVM IR and link with lld.
 \end{tabular}
 \end{center}
 
+The structural view of the same pipeline is shown in the component diagram
+(Figure~\ref{fig:component}): how the front-end, middle-end and embedded
+back-end libraries are wired together and which artifacts flow between them.
+
+\umlfig{component_diagram}{Component diagram: compiler internals and the
+artifacts exchanged between phases.}{fig:component}
+
+The control flow that drives these phases, including the error check performed
+after each phase, is modelled in the activity diagram
+(Figure~\ref{fig:activity}).
+
+\umlfig[0.6\linewidth]{activity_diagram}{Activity diagram: the Zinc
+compilation pipeline from CLI parsing to the linked executable.}{fig:activity}
+
 Supporting components:
 
 \begin{description}
@@ -58,6 +72,9 @@ main :: i32 () {
 \section{ZState}
 Every phase of the compiler has a shared state \texttt{ZState} used to share cli flags through the entire pipeline and to store the logs.
 The ZState also holds other info like the compiler path, the visited files, the current file and the list of the logs the compiler prints at the end of the pipeline.
+Figure~\ref{fig:driver} shows the driver and the compiler state that ties the phases together.
+
+\umlfig{09_driver}{Class diagram: driver and compiler state (\texttt{ZState}).}{fig:driver}
 
 \subsection{Compiler Logs}
 The compiler must have a way to show the user a warning or an error on a malformed sourcefile.

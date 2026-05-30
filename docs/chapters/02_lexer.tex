@@ -58,6 +58,8 @@ Keys are hashed with FNV-1a (32 bit). Collisions are resolved by open addressing
 The table is populated once at startup via \texttt{initKeywords()}.
 In standard implementation of an hashmap the length cannot be fixed. For a lexer, where the number of tokens are fixed, it can be fixed.
 
+\umlfig{02_tokens}{Class diagram: the \texttt{ZToken} type and its categories.}{fig:tokens}
+
 \section{Newline Sensitivity}
 
 Zinc uses newlines as implicit statement terminators in certain contexts to avoid typing ';' at every statement.
