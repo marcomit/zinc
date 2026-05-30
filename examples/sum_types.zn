@@ -1,0 +1,8 @@
+maybeCrash :: i32 | *char (i32 age) {
+    return  if age < 18 -> "invalid"
+            else        -> age
+}
+
+main :: i32 () {
+    return 0
+}

@@ -61,7 +61,7 @@ This function is used everywhere to permit implici cast. For example a functino 
 \end{itemize}
 
 After promotion the operands are wrapped in \texttt{NODE\_CAST} nodes through \texttt{implicitCast} when needed.
-Comparison and logical operators (\zn{==}, \zn{!=}, \zn{<}, \zn{>}, \zn{<=}, \zn{>=}, \zn{and}, \zn{or}) always yield \zn{u1}. Assignment (\zm{=}) requires the LHS to be an lvalue (identifier, subscript, member or pointer dereference) and yields the LHS type.
+Comparison and logical operators (\zn{==}, \zn{!=}, \zn{<}, \zn{>}, \zn{<=}, \zn{>=}, \zn{and}, \zn{or}) always yield \zn{u1}. Assignment (\zn{=}) requires the LHS to be an lvalue (identifier, subscript, member or pointer dereference) and yields the LHS type.
 
 \subsection{Unary expressions}
 \texttt{resolveUnary} handles threee operators specially:
@@ -111,7 +111,7 @@ Each \texttt{ZScope} carries a \texttt{capabilities} vector of \texttt{ZCapabili
 
 \texttt{resolveFuncCall} iterates the callee's declared capability list and runs \texttt{lookupScopedCapability}, which walks from the current scope outward loooking for a matching entry. The most recently pushed instance is selected and recorded in \texttt{call.capabilities} for codegen. A missing capability raises \texttt{Capability 'CapabilityName' not found in the current scope}.
 
-\sectino{Struct, Enum and Embedding Checks}
+\section{Struct, Enum and Embedding Checks}
 In addition to per-expression typing, the pass enforces several structural invariants:
 \begin{itemize}
     \item \texttt{analyzeStruct} resolved every field type and runs \texttt{isInfiniteSize} to reject by-value cycles such as \zn{struct Node \{ Node next \}}. The user is told to use a poibnter instead. Duplicate field names within a struct, and conflicts between a struct's own field and a field inherited through an embedded struct, are also reported.

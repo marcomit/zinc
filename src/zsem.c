@@ -762,6 +762,21 @@ bool typesPrimitive(ZType *t) {
     return false;
 }
 
+int compareTypes(const void *a, const void *b) {
+    ZType *typeA = (ZType *)a;
+    ZType *typeB = (ZType *)b;
+
+    int sizeA = (int)typeSize(typeA) << 2;
+    int sizeB = (int)typeSize(typeB) << 2;
+
+    // return sizeB - sizeA;
+    return sizeA - sizeB;
+}
+
+inline void typesSort(ZType **types) {
+    qsort(types, veclen(types), sizeof(ZType *), compareTypes);
+}
+
 /* Note: this function works only for non-aliased types.
  * Aliases are resolved through the ctx table.
  *
@@ -813,6 +828,29 @@ bool typesEqual(ZType *a, ZType *b) {
     case Z_TYPE_GENERIC:
         if (!tokeneq(a->generic.name, b->generic.name)) return false;
         return true;
+    case Z_TYPE_SUM: {
+        usize aLen = veclen(a->sumType);
+        usize bLen = veclen(b->sumType);
+
+        if (aLen != bLen) return false;
+
+        bool seen[bLen];
+        memset(seen, 0, sizeof(bool) * aLen);
+
+        for (usize i = 0; i < aLen; i++) {
+            bool res = false;
+            for (usize j = 0; j < bLen; j++) {
+                if (seen[j]) continue;
+
+                if (typesEqual(a->sumType[i], b->sumType[j])) {
+                    res = true;
+                    seen[j] = true;
+                }
+            }
+            if (!res) return false;
+        }
+        return true;
+    }
     default:
         return false;
     }
@@ -1744,7 +1782,16 @@ static ZType *resolveInlineIf(ZSemantic *ctx, ZNode *node) {
             "is not a comparable value");
         return NULL;
     }
-    return typesCompatible(ctx->state, trueBranch, falseBranch);
+    if (typesEqual(trueBranch, falseBranch)) {
+        return trueBranch;
+    }
+
+    ZType *sum = maketype(Z_TYPE_SUM);
+    sum->sumType = NULL;
+
+    vecpush(sum->sumType, trueBranch);
+    vecpush(sum->sumType, falseBranch);
+    return sum;
 }
 
 /*
@@ -2168,7 +2215,7 @@ static void analyzeReturn(ZSemantic *ctx, ZNode *curr) {
     if (curr->returnStmt.expr) {
         retType     = resolveType(ctx, curr->returnStmt.expr);
         if (!retType) {
-            error(ctx->state, curr->tok, "Invalid expression");
+            error(ctx->state, curr->tok, "Return type not resolved");
             return;
         }
         retType     = resolveTypeRef(ctx, retType);

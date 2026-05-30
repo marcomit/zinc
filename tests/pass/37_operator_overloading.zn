@@ -74,7 +74,7 @@ main :: i32 () {
     quot := p / q
     quot.print()
 
-    if v1 == v1 {
+    if v1 == Vec2::new(1, 2) {
         c::printf("equal\n")
     }
 

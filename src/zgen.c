@@ -87,6 +87,7 @@ typedef struct {
     LLVMTypeRef     *structTypes;
 
     LLVMValueRef    currentFunc;
+    ZNode           *currentFuncNode;
 
     /* all operations are named with an incremental number
      * and converted to hex format. */
@@ -258,8 +259,6 @@ char *label(ZCodegen *ctx, ZToken *tok) {
     return ctx->str;
 }
 
-usize typeSize(ZCodegen *, ZType *);
-
 /**
  * @brief Calculates padding of types.
  *
@@ -269,11 +268,11 @@ usize typeSize(ZCodegen *, ZType *);
  * @param iter used to take the type from the current field.
  * @param fields must be a dynamic array because it uses veclen.
  */
-static usize alignFields(ZCodegen *ctx, void **fields, ZType *(*iter)(void *)) {
+static usize alignFields(void **fields, ZType *(*iter)(void *)) {
     usize cur = 0;
     usize res = 0;
     for (usize i = 0; i < veclen(fields); i++) {
-        cur = typeSize(ctx, iter(fields[i]));
+        cur = typeSize(iter(fields[i]));
         if (cur) res = (res + cur - 1) / cur * cur;
         res += cur;
     }
@@ -286,6 +285,16 @@ static inline ZType *alignStructFieldIter(void *item) {
 }
 static inline ZType *alignTupleFieldIter(void *item) { return (ZType *)item; }
 
+
+static usize typeLargestType(ZType **types) {
+    usize largest = 0;
+
+    for (usize i = 0; i < veclen(types); i++) {
+        usize cur = typeSize(types[i]);
+        if (cur > largest) largest = cur;
+    }
+    return largest;
+}
 /**
  * @brief Calculates the size of the type.
  *
@@ -297,7 +306,7 @@ static inline ZType *alignTupleFieldIter(void *item) { return (ZType *)item; }
  * - The flag that indicates the active variant and it is u8
  * - The buffer where its size is the size of the largest variant.
  */
-usize typeSize(ZCodegen *ctx, ZType *type) {
+usize typeSize(ZType *type) {
     usize res = 0;
     switch (type->kind) {
     case Z_TYPE_PRIMITIVE:
@@ -315,10 +324,7 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
         case TOK_I64:
         case TOK_U64:
         case TOK_F64:   return 8;
-        default:
-            error(ctx->state, type->tok,
-                "Unknown type (zsem didn't resolve this type)");
-            return 0;
+        default:        return 0;
         }
     case Z_TYPE_POINTER:    return 8; /* 64-bit pointer */
     case Z_TYPE_FUNCTION:   return 8; /* function pointer */
@@ -326,34 +332,21 @@ usize typeSize(ZCodegen *ctx, ZType *type) {
 
     case Z_TYPE_STRUCT: {
         res = alignFields(
-            ctx,
             (void **)type->strct.fields,
             alignStructFieldIter
         );
-
         return res;
-    }
-
-    case Z_TYPE_ENUM: {
-        usize max = 0;
-        usize cur = 0;
-        
-        for (usize i = 0; i < veclen(type->enm.fields); i++) {
-            cur = typeSize(ctx, type->enm.fields[i]);
-            if (cur > max) max = cur;
-        }
-        if (max == 0) {
-            error(ctx->state, type->tok, "Invalid enum size");
-        }
-        return max + 1;
     }
 
     case Z_TYPE_TUPLE:
         return alignFields(
-            ctx,
             (void **)type->tuple,
             alignTupleFieldIter
         );
+
+    case Z_TYPE_ENUM:   return typeLargestType(type->enm.fields) + 1;
+    case Z_TYPE_SUM:    return typeLargestType(type->sumType) + 1;
+    
     default: return 0;
     }
 }
@@ -546,6 +539,16 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         return structType;
     }
 
+    case Z_TYPE_TUPLE: {
+        usize len = veclen(type->tuple);
+        LLVMTypeRef *elems = znalloc(LLVMTypeRef, len ? len : 1);
+        for (usize i = 0; i < len; i++) {
+            elems[i] = genType(ctx, type->tuple[i]);
+            if (!elems[i]) return NULL;
+        }
+        return LLVMStructTypeInContext(ctx->ctx, elems, len, /*packed=*/ 0);
+    }
+
     /* Enums are generated like tagged unions in c.
      * They are simpy a struct with an integer also called flag
      * that represents the active field of the enum
@@ -566,7 +569,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
             genType(ctx, type->enm.fields[i]);
         }
 
-        usize largest = typeSize(ctx, type);
+        usize largest = typeSize(type);
         LLVMStructSetBody(enumType,
                 (LLVMTypeRef[]){
             // Flag integer
@@ -579,16 +582,14 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         return enumType;
     }
 
-    case Z_TYPE_TUPLE: {
-        usize len = veclen(type->tuple);
-        LLVMTypeRef *elems = znalloc(LLVMTypeRef, len ? len : 1);
-        for (usize i = 0; i < len; i++) {
-            elems[i] = genType(ctx, type->tuple[i]);
-            if (!elems[i]) return NULL;
-        }
-        return LLVMStructTypeInContext(ctx->ctx, elems, len, /*packed=*/ 0);
+    case Z_TYPE_SUM: {
+        usize largest = typeSize(type);
+        LLVMTypeRef elems[] = {
+            i8Type,
+            LLVMArrayType(i8Type, largest - 1)
+        };
+        return LLVMStructTypeInContext(ctx->ctx, elems, 2, 0);
     }
-
 
     case Z_TYPE_NONE:
         /* none literal - represent as i8* null */
@@ -2173,7 +2174,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         }
 
         case NODE_SIZEOF: {
-            usize size = typeSize(ctx, node->sizeofExpr.type);
+            usize size = typeSize(node->sizeofExpr.type);
             return LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
         }
 
@@ -2224,7 +2225,7 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
             /* C ABI on all supported targets (x86-64, AArch64) passes small
              * non-HFA structs as a packed integer of the same size.  HFAs use
              * SIMD/FP registers and LLVM handles them correctly as-is. */
-            usize sz = typeSize(ctx, at);
+            usize sz = typeSize(at);
             if      (sz <= 4) paramTypes[i] = i32Type;
             else if (sz <= 8) paramTypes[i] = i64Type;
         }
@@ -2271,6 +2272,10 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     }
 
     LLVMValueRef val = genExpr(ctx, ret->returnStmt.expr);
+
+    if (ctx->currentFuncNode->resolved->func.ret->kind == Z_TYPE_SUM) {
+        
+    }
 
     /* If the expression produced i1 (e.g. a comparison) but the
        function's declared return type is a wider integer, zero-extend. */
@@ -2924,11 +2929,12 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
         vecpush(args, arg);
     }
 
-    LLVMTypeRef funcType = LLVMFunctionType(ret, args, veclen(args), false);
-    LLVMValueRef func = LLVMGetNamedFunction(ctx->mod, f->funcDef.mangled);
+    LLVMTypeRef funcType    = LLVMFunctionType(ret, args, veclen(args), false);
+    LLVMValueRef func       = LLVMGetNamedFunction(ctx->mod, f->funcDef.mangled);
     if (!func)
         func = LLVMAddFunction(ctx->mod, f->funcDef.mangled, funcType);
-    ctx->currentFunc = func;
+    ctx->currentFunc        = func;
+    ctx->currentFuncNode    = f;
 
     putLLVMValueRef(ctx, f->funcDef.mangled, func);
     beginScope(Z_SCOPE_FUNC, ctx);
