@@ -462,20 +462,20 @@ exponent
       { digit } ;
 
 letter
-    = "a"…"z"
-    | "A"…"Z"
+    = "a"..."z"
+    | "A"..."Z"
     | "_" ;
 
 digit
-    = "0"…"9" ;
+    = "0"..."9" ;
 
 binary_digit
     = "0" | "1" ;
 
 hexadecimal_digit
     = digit
-    | "a"…"f"
-    | "A"…"F" ;
+    | "a"..."f"
+    | "A"..."F" ;
 
 string_character
     = ? any non-quote character or escaped sequence ? ;

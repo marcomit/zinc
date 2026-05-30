@@ -217,6 +217,16 @@ static void _stype(ZType *type, char **buff) {
         }
         vecpush(*buff, ')');
         break;
+    case Z_TYPE_SUM:
+        for (usize i = 0; i < veclen(type->sumType); i++) {
+            _stype(type->sumType[i], buff);
+            if (i != veclen(type->sumType) - 1) {
+                vecpush(*buff, ' ');
+                vecpush(*buff, '|');
+                vecpush(*buff, ' ');
+            }
+        }
+        break;
     // case Z_TYPE_GENERIC:
     //     vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
     //     vecpush(*buff, '[');
@@ -291,6 +301,14 @@ void printType(ZType *type) {
         break;
     case Z_TYPE_ENUM:
         printf("enum %s\n", type->enm.name->str);
+        break;
+    case Z_TYPE_SUM:
+        for (usize i = 0; i < veclen(type->sumType); i++) {
+            printType(type->sumType[i]);
+            if (i != veclen(type->sumType) - 1) {
+                printf(" | ");
+            }
+        }
         break;
     default:
         printf("(details not implemented for type %d)", type->kind);

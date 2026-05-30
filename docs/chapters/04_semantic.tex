@@ -15,6 +15,8 @@ The semantic pass walks the AST produced by the parser and performs the followin
 
 The pass is conceptually split in two phases. The first phase (\texttt{discoverGlobalScope}) registers every top-level declaration (funcs, structs, enums, typedefs, namespaces, globals, foreign funcs) into the global scope, so that modules can refer to each other without ordering constraints. The second phase (\texttt{analyze}) walks each module and type-checks function bodies, statements and expressions.
 
+\umlfig{07_semantic}{Class diagram: the semantic analysis structures (symbol tables, scopes, capabilities).}{fig:semantic}
+
 \section{Symbol Tables}
 A \texttt{ZSymTable} owns the global scope and the per-module scopes.
 Each \texttt{ZScope} carries:
@@ -43,6 +45,10 @@ main :: i32 () {
 In the example above, \texttt{sum} and \texttt{main} are registered in the file (module) scope during phase one. When \texttt{main}'s body is analyzed in phase two, \texttt{beginScope} opens a fresh child scope for its parameters and locals; \texttt{endScope} pops it on exit and triggers the unused symbol check for that frame.
 
 \section{Type Checking}
+The type system is built around the \texttt{ZType} value shown in Figure~\ref{fig:types}.
+
+\umlfig{01_types}{Class diagram: the type system (\texttt{ZType}).}{fig:types}
+
 Every expression node is passed through \texttt{resolveType}, which dispatches on \texttt{ZNodeType} and caches the result in \texttt{node->resolved} so each node is typed at most once.
 I created a function \texttt{typesCompatible} which checks if two types can be compatible and returns the promoted type.
 This function is used everywhere to permit implici cast. For example a functino accepts \zn{i32} bit the user passes \zn{i8} without that function the compiler will reject it because their types are not the same.
@@ -61,7 +67,7 @@ This function is used everywhere to permit implici cast. For example a functino 
 \end{itemize}
 
 After promotion the operands are wrapped in \texttt{NODE\_CAST} nodes through \texttt{implicitCast} when needed.
-Comparison and logical operators (\zn{==}, \zn{!=}, \zn{<}, \zn{>}, \zn{<=}, \zn{>=}, \zn{and}, \zn{or}) always yield \zn{u1}. Assignment (\zm{=}) requires the LHS to be an lvalue (identifier, subscript, member or pointer dereference) and yields the LHS type.
+Comparison and logical operators (\zn{==}, \zn{!=}, \zn{<}, \zn{>}, \zn{<=}, \zn{>=}, \zn{and}, \zn{or}) always yield \zn{u1}. Assignment (\zn{=}) requires the LHS to be an lvalue (identifier, subscript, member or pointer dereference) and yields the LHS type.
 
 \subsection{Unary expressions}
 \texttt{resolveUnary} handles threee operators specially:
@@ -111,7 +117,7 @@ Each \texttt{ZScope} carries a \texttt{capabilities} vector of \texttt{ZCapabili
 
 \texttt{resolveFuncCall} iterates the callee's declared capability list and runs \texttt{lookupScopedCapability}, which walks from the current scope outward loooking for a matching entry. The most recently pushed instance is selected and recorded in \texttt{call.capabilities} for codegen. A missing capability raises \texttt{Capability 'CapabilityName' not found in the current scope}.
 
-\sectino{Struct, Enum and Embedding Checks}
+\section{Struct, Enum and Embedding Checks}
 In addition to per-expression typing, the pass enforces several structural invariants:
 \begin{itemize}
     \item \texttt{analyzeStruct} resolved every field type and runs \texttt{isInfiniteSize} to reject by-value cycles such as \zn{struct Node \{ Node next \}}. The user is told to use a poibnter instead. Duplicate field names within a struct, and conflicts between a struct's own field and a field inherited through an embedded struct, are also reported.

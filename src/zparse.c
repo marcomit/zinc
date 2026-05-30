@@ -105,6 +105,7 @@ ZNode *makenode(ZNodeType type) {
 
 ZType *maketype(ZTypeKind kind) {
     ZType *self = zalloc(ZType);
+    *self = (ZType){ 0 };
     self->kind = kind;
     return self;
 }
@@ -901,7 +902,7 @@ static ZType *parseAtom(ZParser *parser) {
     return NULL;
 }
 
-ZType *parseType(ZParser *parser) {
+static ZType *parseBaseType(ZParser *parser) {
     ZToken *start   = peek(parser);
     bool constant   = match(parser, TOK_CONST);
 
@@ -924,6 +925,32 @@ ZType *parseType(ZParser *parser) {
     }
     base->tok = start;
     return base;
+}
+
+static ZType *parseSumType(ZParser *parser) {
+    ZType *curr     = parseBaseType(parser);
+    ZType **types   = NULL;
+    vecpush(types, curr);
+    while (match(parser, TOK_BITOR)) {
+        curr = tryParse(parser, parseBaseType(parser));
+
+        if (!curr) break;
+        vecpush(types, curr);
+    }
+
+    if (veclen(types) == 1) {
+        return types[0];
+    }
+
+    ZType *sumType      = maketype(Z_TYPE_SUM);
+    typesSort(types);
+    sumType->sumType    = types;
+
+    return sumType;
+}
+
+ZType *parseType(ZParser *parser) {
+    return parseSumType(parser);
 }
 
 static ZNode *parseDefer(ZParser *parser) {

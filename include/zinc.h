@@ -170,7 +170,8 @@ typedef enum ZTypeKind {
     Z_TYPE_FACET,
     Z_TYPE_ENUM,
     Z_TYPE_NONE,
-    Z_TYPE_NAMESPACE
+    Z_TYPE_NAMESPACE,
+    Z_TYPE_SUM
 } ZTypeKind;
 
 struct ZType {
@@ -231,6 +232,8 @@ struct ZType {
              * */
             ZType   **extensions;
         } generic;
+
+        ZType   **sumType;
     };
 
     /* Future implementation:
@@ -743,6 +746,8 @@ ZSemantic *zanalyze(ZState *, ZNode *);
 /* Code generation */
 void zcompile(ZState *, ZNode *, const char *output, ZSemantic *);
 
+usize typeSize(ZType *);
+void typesSort(ZType **);
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
 bool typesPrimitive(ZType *);

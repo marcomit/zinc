@@ -87,6 +87,16 @@
 % -- Graphics & tables
 \usepackage{graphicx}
 \graphicspath{{../uml/}{../uml/class/}}
+
+% UML figure helper: \umlfig[width]{file}{caption}{label}. Caps height so tall
+% diagrams (e.g. the activity diagram) never overflow the page.
+\newcommand{\umlfig}[4][\linewidth]{%
+    \begin{figure}[htbp]
+        \centering
+        \includegraphics[width=#1, height=0.85\textheight, keepaspectratio]{#2}%
+        \caption{#3}\label{#4}
+    \end{figure}%
+}
 \usepackage{booktabs}
 \usepackage{tabularx}
 
