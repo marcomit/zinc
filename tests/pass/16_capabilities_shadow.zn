@@ -7,20 +7,20 @@ c :: foreign {
 }
 
 Tag :: struct {
-    i32 val
+    val: i32
 }
 
-getVal :: i32 ()[Tag t] -> t.val
+getVal :: i32 ()[t: Tag] -> t.val
 
 main :: i32 () {
     with ta := Tag { val: 10 } {
-        c::printf("%d\n", getVal())    // 10 — outer active
+        c::printf("%d\n", getVal())    // 10  -  outer active
 
         with tb := Tag { val: 20 } {
-            c::printf("%d\n", getVal())  // 20 — inner shadows outer
+            c::printf("%d\n", getVal())  // 20  -  inner shadows outer
         }
 
-        c::printf("%d\n", getVal())    // 10 — outer restored
+        c::printf("%d\n", getVal())    // 10  -  outer restored
     }
     return 0
 }

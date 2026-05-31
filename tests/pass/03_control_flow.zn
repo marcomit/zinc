@@ -1,8 +1,8 @@
 foreign printf :: u0(*char)
 
-main :: i32(i32 argc) {
+main :: i32(argc: i32) {
 
-    i32 x = 5
+    x: i32 = 5
     if x == 5  { printf("eq\n")  }
     if x != 4  { printf("neq\n") }
     if x > 4   { printf("gt\n")  }
@@ -23,7 +23,7 @@ main :: i32(i32 argc) {
         printf("for\n")
     }
 
-    for i32 j = 0; j < 3; j = j + 1 {
+    for j: i32 = 0; j < 3; j = j + 1 {
         printf("for typed\n")
     }
 

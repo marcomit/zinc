@@ -4,19 +4,19 @@ c :: foreign {
 
 
 Counter :: struct {
-    i32 count
+    count: i32
 }
 
 Rect :: struct {
-    i32 w
-    i32 h
+    w: i32
+    h: i32
 }
 
 Counter self :: impl {
     print :: u0() -> c::printf("%d\n", self.count)
     get :: i32 () -> self.count
-    add :: i32 (i32 n) -> self.count + n
-    between :: i32 (i32 lo, i32 hi) {
+    add :: i32 (n: i32) -> self.count + n
+    between :: i32 (lo: i32, hi: i32) {
         if self.count > lo and self.count < hi {
             return 1
         }
@@ -27,42 +27,42 @@ Counter self :: impl {
 Rect self :: impl {
     area :: i32 () -> self.w * self.h
     describe :: u0 () -> c::printf("%d %d\n", self.w, self.h)
-    scaledArea :: i32 (i32 factor) -> self.w * self.h * factor
+    scaledArea :: i32 (factor: i32) -> self.w * self.h * factor
 }
 
 i32 self :: impl {
-    sum :: i32 (i32 other) -> other + self
+    sum :: i32 (other: i32) -> other + self
     print :: u0 () -> c::printf("%d\n", self)
 }
 
 main :: i32 () {
-    Counter c = Counter { count: 3 }
+    c: Counter = Counter { count: 3 }
 
     c.print()
 
-    i32 v = c.get()
+    v: i32 = c.get()
     v.print()
 
-    i32 sum = c.add(4)
+    sum: i32 = c.add(4)
     sum.print()
 
-    i32 inside = c.between(1, 5)
+    inside: i32 = c.between(1, 5)
     inside.print()
 
-    i32 outside = c.between(4, 9)
+    outside: i32 = c.between(4, 9)
     outside.print()
 
-    Rect r = Rect { w: 3, h: 4 }
+    r: Rect = Rect { w: 3, h: 4 }
     r.describe()
 
-    i32 area = r.area()
+    area: i32 = r.area()
     area.print()
 
-    i32 scaled = r.scaledArea(2)
+    scaled: i32 = r.scaledArea(2)
     scaled.print()
 
-    Counter a = Counter { count: 1 }
-    Counter b = Counter { count: 2 }
+    a: Counter = Counter { count: 1 }
+    b: Counter = Counter { count: 2 }
     a.print()
     b.print()
 

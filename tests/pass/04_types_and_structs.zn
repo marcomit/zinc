@@ -4,42 +4,42 @@ c :: foreign {
 }
 
 Vec2 :: struct {
-    f32 x
-    f32 y
+    x: f32
+    y: f32
 }
 
 Color :: struct {
-    u8 r
-    u8 g
-    u8 b
+    r: u8
+    g: u8
+    b: u8
 }
 
 Point :: struct {
-    i32 x
-    i32 y
+    x: i32
+    y: i32
 }
 
 Linked :: struct {
-    i32 val
-    *Linked next
+    val: i32
+    next: *Linked 
 }
 
-sum :: f32 (f64 x, f64 y) {
+sum :: f32 (x: f64, y: f64) {
     return x + y
 }
 
 main :: i32 () {
-    Point p = Point { x: 10, y: 20 }
-    i32 val = p.x
+    p: Point = Point { x: 10, y: 20 }
+    val: i32 = p.x
     c::printf("member ok\n")
 
-    i32 ival = 10
+    ival: i32 = 10
     v := Vec2 { x: ival, y: 10 }
 
-    i32 res = sum(v.x, v.y)
+    res: i32 = sum(v.x, v.y)
     c::printf("%d\n", res)
 
-    *Point ptr = c::malloc(sizeof Point)
+    ptr: *Point = c::malloc(sizeof Point)
 
     return res - res
 }

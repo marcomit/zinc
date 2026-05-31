@@ -3,31 +3,31 @@ c :: foreign {
 }
 
 Position :: struct {
-    i32 x
-    i32 y
-    i32 z
+    x: i32
+    y: i32
+    z: i32
 }
 
 Velocity :: struct {
-    i32 vx
-    i32 vy
-    i32 vz
+    vx: i32
+    vy: i32
+    vz: i32
 }
 
 Acceleration :: struct {
-    i32 ax
-    i32 ay
-    i32 az
+    ax: i32
+    ay: i32
+    az: i32
 }
 
 Metadata :: struct {
-    u32 flags
-    *char name
+    flags: u32
+    name: *char
 }
 
 Stats :: struct {
-    i32 health
-    i32 stamina
+    health: i32
+    stamina: i32
 }
 
 // Flatten-safe composition

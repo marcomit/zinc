@@ -9,11 +9,11 @@ c :: foreign {
 }
 
 pub String :: struct {
-    *char data
-    u64   len
+    data: *char
+    len: u64
 }
 
-copyinto :: u0 (*char dst, u64 off, *char src, u64 n) {
+copyinto :: u0 (dst: *char, off: u64, src: *char, n: u64) {
     i := 0 as u64
     for i < n {
         dst[off + i] = src[i]
@@ -22,15 +22,15 @@ copyinto :: u0 (*char dst, u64 off, *char src, u64 n) {
 }
 
 String :: impl {
-    pub from :: String (*char s) -> String { data: s, len: c::strlen(s) }
+    pub from :: String (s: *char) -> String { data: s, len: c::strlen(s) }
 
-    pub withCapacity :: String (u64 cap)[Allocator] {
+    pub withCapacity :: String (cap: u64)[Allocator] {
         buf := alloc(cap + 1) as *char
         buf[0] = 0 as char
         return String { data: buf, len: 0 }
     }
 
-    pub concat :: String (*char a, *char b)[Allocator] {
+    pub concat :: String (a: *char, b: *char)[Allocator] {
         alen  := c::strlen(a)
         blen  := c::strlen(b)
         total := alen + blen
@@ -51,12 +51,12 @@ String self :: impl {
 
     pub println :: u0 () -> c::printf("%s\n", self.data)
 
-    pub at :: char (u64 index) {
+    pub at :: char (index: u64) {
         if index >= self.len { return 0 as char }
         return self.data[index]
     }
 
-    pub indexOf :: i64 (char c) {
+    pub indexOf :: i64 (c: char) {
         i := 0 as u64
         for i < self.len {
             if self.data[i] == c { return i as i64 }
@@ -65,15 +65,15 @@ String self :: impl {
         return -1
     }
 
-    pub contains :: u1 (*char other) -> c::strstr(self.data, other) != none
+    pub contains :: u1 (other: *char) -> c::strstr(self.data, other) != none
 
-    pub startsWith :: u1 (*char prefix) {
+    pub startsWith :: u1 (prefix: *char) {
         plen := c::strlen(prefix)
         if plen > self.len { return false }
         return c::strncmp(self.data, prefix, plen) == 0
     }
 
-    pub endsWith :: u1 (*char suffix) {
+    pub endsWith :: u1 (suffix: *char) {
         slen := c::strlen(suffix)
         if slen > self.len { return false }
 
@@ -86,16 +86,16 @@ String self :: impl {
         return true
     }
 
-    pub equals :: u1 (*char other) -> c::strcmp(self.data, other) == 0
+    pub equals :: u1 (other: *char) -> c::strcmp(self.data, other) == 0
 
     #[overload(==)]
-    pub eq :: u1 (String other) {
+    pub eq :: u1 (other: String) {
         if self.len != other.len { return false }
         return c::strncmp(self.data, other.data, self.len) == 0
     }
 
     #[overload(+)]
-    pub append :: String (*char other)[Allocator] {
+    pub append :: String (other: *char)[Allocator] {
         olen  := c::strlen(other)
         total := self.len + olen
 
@@ -107,7 +107,7 @@ String self :: impl {
         return String { data: buf, len: total }
     }
 
-    pub substring :: String (u64 start, u64 end)[Allocator] {
+    pub substring :: String (start: u64, end: u64)[Allocator] {
         s := start
         e := end
         if s > self.len { s = self.len }

@@ -1,10 +1,10 @@
 foreign printf :: u0 (*char, ...)
 main :: i32 () {
-    i32 x = 5
-    i32 y = 4
-    i32 z = 3
+    x := 5
+    y := 4
+    z := 3
 
-    i32 nested =
+    nested: i32 =
             if x > z -> if x > y -> x else -> y
             else -> if z > y -> z else -> y
 

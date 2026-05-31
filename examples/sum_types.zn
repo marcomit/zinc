@@ -4,5 +4,6 @@ maybeCrash :: i32 | *char (i32 age) {
 }
 
 main :: i32 () {
+    val: Data | Err = maybeCrash(18)
     return 0
 }

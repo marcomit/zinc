@@ -2,7 +2,7 @@ c :: foreign {
     printf :: u0 (*char, ...)
 }
 
-printMatrix :: u0 ([][]i32 matrix) {
+printMatrix :: u0 (matrix: [][]i32) {
     i := 0
     for i < matrix.len {
         j := 0

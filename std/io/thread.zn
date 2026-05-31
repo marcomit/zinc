@@ -5,8 +5,8 @@ pthread_t :: type u64
 ThreadFunc :: type *u8 (*u8)
 
 timespec :: struct {
-    i64 tv_sec
-    i64 tv_nsec
+    tv_sec: i64
+    tv_nsec: i64
 }
 
 c :: foreign {
@@ -20,23 +20,23 @@ c :: foreign {
 }
 
 ThreadContext :: struct {
-    ThreadFunc func
-    *u8 data
+    func: ThreadFunc
+    data: *u8
 }
 
 pub Thread :: struct {
-    pthread_t handle
+    handle: pthread_t
 }
 
-thread_trampoline :: *u8 (*u8 arg) {
+thread_trampoline :: *u8 (arg: *u8) {
     ctx := arg as *ThreadContext
     ctx.func(ctx.data)
     return none
 }
 
 Thread :: impl {
-    pub spawn :: Thread (ThreadFunc func, *u8 data)[Allocator allocator] {
-        *ThreadContext ctx = allocator.alloc(sizeof ThreadContext)
+    pub spawn :: Thread (func: ThreadFunc, data: *u8)[Allocator] {
+        ctx: *ThreadContext = alloc(sizeof ThreadContext)
         ctx.func = func
         ctx.data = data
 
@@ -46,7 +46,7 @@ Thread :: impl {
         return t
     }
 
-    pub sleep :: u0 (i64 millis) {
+    pub sleep :: u0 (millis: i64) {
         req := timespec {
             tv_sec: millis / 1000,
             tv_nsec: (millis % 1000) * 1000000

@@ -1128,13 +1128,13 @@ static ZNode *parseBlock(ZParser *parser) {
 }
 
 static ZNode *parseField(ZParser *parser) {
-    ZType *type = tryParse(parser, parseType(parser));
-
-    guard(type);
     ensure(check(parser, TOK_IDENT), "Expected an identifier");
-
     ZToken *ident = consume(parser);
 
+    expect(parser, TOK_COLON);
+
+    ZType *type = tryParse(parser, parseType(parser));
+    guard(type);
 
     ZNode *node             = makenode(NODE_FIELD);
     node->field.type        = type;
@@ -1145,15 +1145,18 @@ static ZNode *parseField(ZParser *parser) {
 }
 
 static ZNode *parseFieldOptName(ZParser *parser) {
-    ZType *type = tryParse(parser, parseType(parser));
-    guard(type);
     ZToken *ident = NULL;
-    if (check(parser, TOK_IDENT)) ident = consume(parser);
-    else {
+    if (check(parser, TOK_IDENT) && checkAhead(parser, TOK_COLON, 1)) {
+        ident = consume(parser);
+        expect(parser, TOK_COLON);
+    } else {
         ZToken *tok = peek(parser);
         if (!tok) return NULL;
         ident = makeident("_", tok->start);
     }
+
+    ZType *type = tryParse(parser, parseType(parser));
+    guard(type);
 
     ZNode *node             = makenode(NODE_FIELD);
     node->field.type        = type;
@@ -1851,14 +1854,8 @@ static ZNode *parseVarInferred(ZParser *parser) {
 
 static ZNode *parseVarDefTyped(ZParser *parser) {
     ZToken *start = peek(parser);
-    parser->noFuncType = true;
-    ZType *type = parseType(parser);
-    parser->noFuncType = false;
 
-    if (!type) {
-        error(parser->state, start, "Failed to parse type");
-        return NULL;
-    } else if (!check(parser, TOK_IDENT) && !check(parser, TOK_LPAREN) && !check(parser, TOK_LBRACKET)) {
+    if (!check(parser, TOK_IDENT) && !check(parser, TOK_LPAREN) && !check(parser, TOK_LBRACKET)) {
         error(parser->state, start, "Expected an identifier or destructure pattern");
         return NULL;
     }
@@ -1868,6 +1865,12 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
     // }
 
     ZVarDestructPattern *var = parseDestructVar(parser, false);
+
+    expect(parser, TOK_COLON);
+
+    ZType *type = parseType(parser);
+    guard(type);
+
     ZNode *expr = NULL;
 
     expect(parser, TOK_EQ);

@@ -12,12 +12,12 @@ foreign readline :: *char (*char)
 
 *char self :: impl {
     #[overload(==)]
-    eq :: u1 (*char other) {
+    eq :: u1 (other: *char) {
         return c::strcmp(self, other) == 0
     }
 }
 
-reader :: *u8 (*u8 arg) {
+reader :: *u8 (arg: *u8) {
     stream := *(arg as *TcpStream)
     with _ := Allocator::heap() {
         buf := alloc(1024)

@@ -4,43 +4,43 @@ c :: foreign {
 
 main :: i32 () {
     // Integer literals
-    i32 zero = 0
-    i32 pos = 42
-    i32 large = 1000000
+    zero := 0
+    pos := 42
+    large := 1000000
     c::printf("%d\n", zero)
     c::printf("%d\n", pos)
     c::printf("%d\n", large)
 
     // Negative (unary minus on literal)
-    i32 neg = -1
-    i32 neg2 = -100
+    neg := -1
+    neg2 := -100
     c::printf("%d\n", neg)
     c::printf("%d\n", neg2)
 
     // Float literals
-    f64 f1 = 3.14
-    f64 f2 = 0.0
-    f64 f3 = 1.0
-    f64 f4 = 100.5
+    f1: f64 = 3.14
+    f2: f64 = 0.0
+    f3: f64 = 1.0
+    f4: f64 = 100.5
     c::printf("%.2f\n", f1)
     c::printf("%.1f\n", f2)
     c::printf("%.1f\n", f3)
     c::printf("%.1f\n", f4)
 
     // f32 assignment (implicit narrowing)
-    f32 g1 = 2.5
-    f32 g2 = 0.0
+    g1: f32 = 2.5
+    g2: f32 = 0.0
     c::printf("%.1f\n", g1)
     c::printf("%.1f\n", g2)
 
     // Float arithmetic
-    f64 pi = 3.14
-    f64 two = 2.0
+    pi: f64 = 3.14
+    two: f64 = 2.0
     c::printf("%.2f\n", pi * two)
 
     // Boolean literals
-    u1 tval = true
-    u1 fval = false
+    tval: u1 = true
+    fval: u1 = false
     if tval { c::printf("true\n") }
     if not fval { c::printf("false_inverted\n") }
     c::printf("%d\n", tval)
@@ -52,19 +52,19 @@ main :: i32 () {
     c::printf("quote:\"\n")
 
     // none as null
-    *i32 p = none
+    p: *i32 = none
     if p == none { c::printf("null_ok\n") }
 
     // Large integer values
-    i32 maxval = 2147483647
+    maxval: i32 = 2147483647
     c::printf("%d\n", maxval)
 
     // Various integer types
-    u8  u8val  = 255
-    u16 u16val = 65535
-    u32 u32val = 4294967295
-    i8  i8val  = 127
-    i16 i16val = 32767
+    u8val:  u8  = 255
+    u16val: u16 = 65535
+    u32val: u32 = 4294967295
+    i8val:  i8  = 127
+    i16val: i16 = 32767
     c::printf("%u\n", u8val)
     c::printf("%u\n", u16val)
     c::printf("%u\n", u32val)

@@ -95,16 +95,16 @@ char *stoken(ZToken *token) {
     bool istype = token->type & TOK_TYPES_MASK;
 
     if (istype) {
-        sprintf(tok, "type(");
+        snprintf(tok, 6, "type(");
     }
 
     
     switch(token->type) {
     case TOK_STR_LIT:
-    case TOK_IDENT:     sprintf(tok, "%s", token->str);                         break;
-    case TOK_INT_LIT:   sprintf(tok, "%lld", (long long)token->integer);                   break;
-    case TOK_FLOAT_LIT: sprintf(tok, "%g", token->floating);                    break;
-    #define DEF(id, str, _) case id: sprintf(tok, "%s", str);                   break;
+    case TOK_IDENT:     snprintf(tok, 64, "%s", token->str);                    break;
+    case TOK_INT_LIT:   snprintf(tok, 64, "%lld", (long long)token->integer);   break;
+    case TOK_FLOAT_LIT: snprintf(tok, 64, "%g", token->floating);               break;
+    #define DEF(id, str, _) case id: snprintf(tok, 64, "%s", str);              break;
 
     #define TOK_FLOWS
     #define TOK_TYPES
@@ -128,7 +128,7 @@ char *tokname(ZTokenType type) {
     char *tok = allocator.alloc(32);
 
     switch (type) {
-#define DEF(id, str, _) case id: sprintf(tok, "%s", str); break; 
+#define DEF(id, str, _) case id: snprintf(tok, 32, "%s", str); break;
 
     #define TOK_FLOWS
     #define TOK_TYPES
@@ -794,7 +794,7 @@ void printScope(ZScope *scope) {
 
 ZState *makestate() {
     ZState *self                = zalloc(ZState);
-                                
+
     self->output                = NULL;
     self->currentPhase          = Z_PHASE_LEXICAL;
     self->filename              = NULL;
@@ -810,6 +810,7 @@ ZState *makestate() {
     self->unusedStruct          = false;
     self->unusedVar             = false;
                                 
+    self->emitLLVM              = false;
     self->visitedFiles          = NULL;
     self->skipLLVMValidation    = false;
     self->optimizationLevel     = 0;
@@ -991,7 +992,7 @@ static void printLineHighlight(ZToken *tok, const char *color) {
     
     char num[32];
 
-    sprintf(num, "%zu", tok->row);
+    snprintf(num, sizeof(num), "%zu", tok->row);
     usize numlen = strlen(num);
     
     u8 padding = 0;

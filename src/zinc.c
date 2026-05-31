@@ -87,7 +87,7 @@ ZState *loadState(int argc, char **argv) {
         case 'L': {
             usize len = 3 + strlen(optarg);
             char *lib = znalloc(char, len);
-            sprintf(lib, "-L%s", optarg);
+            snprintf(lib, len, "-L%s", optarg);
             lib[len-1] = '\0';
             vecpush(state->extraArgs, lib);
             break;
@@ -95,7 +95,7 @@ ZState *loadState(int argc, char **argv) {
         case 'l': {
             usize len = 3 + strlen(optarg);
             char *lib = znalloc(char, len);
-            sprintf(lib, "-l%s", optarg);
+            snprintf(lib, len, "-l%s", optarg);
             lib[len-1] = '\0';
             vecpush(state->extraArgs, lib);
             break;

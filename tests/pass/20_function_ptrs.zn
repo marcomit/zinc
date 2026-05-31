@@ -2,19 +2,19 @@ c :: foreign {
     printf :: u0 (*char, ...)
 }
 
-add :: i32 (i32 a, i32 b) -> a + b
-sub :: i32 (i32 a, i32 b) -> a - b
-mul :: i32 (i32 a, i32 b) -> a * b
-square :: i32 (i32 n, i32 ignored) -> n * n
+add :: i32 (a: i32, b: i32) -> a + b
+sub :: i32 (a: i32, b: i32) -> a - b
+mul :: i32 (a: i32, b: i32) -> a * b
+square :: i32 (n: i32, ignored: i32) -> n * n
 
 BinOp :: struct  {
-    i32(i32, i32) fn
-    *char name
+    fn:     i32(i32, i32)
+    name:   *char
 }
 
 BinOp self :: impl {
-    invoke :: i32 (i32 x, i32 y) -> self.fn(x, y)
-    print :: u0 (i32 x, i32 y) -> c::printf("%s(%d,%d)=%d\n", self.name, x, y, self.fn(x, y))
+    invoke :: i32 (x: i32, y: i32) -> self.fn(x, y)
+    print :: u0 (x: i32, y: i32) -> c::printf("%s(%d,%d)=%d\n", self.name, x, y, self.fn(x, y))
 }
 
 one     :: i32 () -> 1
@@ -24,13 +24,13 @@ four    :: i32 () -> 4
 
 main :: i32 () {
     // Function stored in struct field, called directly
-    BinOp bAdd = BinOp { fn: add, name: "add" }
+    bAdd := BinOp { fn: add, name: "add" }
     c::printf("%d\n", bAdd.fn(10, 3))
 
-    BinOp bSub = BinOp { fn: sub, name: "sub" }
+    bSub := BinOp { fn: sub, name: "sub" }
     c::printf("%d\n", bSub.fn(10, 3))
 
-    BinOp bMul = BinOp { fn: mul, name: "mul" }
+    bMul := BinOp { fn: mul, name: "mul" }
     c::printf("%d\n", bMul.fn(10, 3))
 
     // Call through receiver method
@@ -45,13 +45,13 @@ main :: i32 () {
     c::printf("%d\n", bAdd.fn(4, 5))
 
     // Different functions via struct fields
-    BinOp sq = BinOp { fn: square, name: "sq" }
-    i32 s = sq.fn(7, 0)
+    sq := BinOp { fn: square, name: "sq" }
+    s := sq.fn(7, 0)
     c::printf("%d\n", s)
 
     // Multiple structs independent of each other
-    BinOp a = BinOp { fn: add, name: "a" }
-    BinOp b = BinOp { fn: mul, name: "b" }
+    a := BinOp { fn: add, name: "a" }
+    b := BinOp { fn: mul, name: "b" }
     c::printf("%d %d\n", a.fn(2, 3), b.fn(2, 3))
 
     nums := [

@@ -3,39 +3,39 @@ c :: foreign {
 }
 
 // Factorial: direct self-recursion
-factorial :: i32 (i32 n) {
+factorial :: i32 (n: i32) {
     if n <= 1 { return 1 }
     return n * factorial(n - 1)
 }
 
 // Fibonacci: two self-recursive calls
-fib :: i32 (i32 n) {
+fib :: i32 (n: i32) {
     if n <= 1 { return n }
     return fib(n - 1) + fib(n - 2)
 }
 
 // Accumulator-style: pass running total as argument
-sumTo :: i32 (i32 n, i32 acc) {
+sumTo :: i32 (n: i32, acc: i32) {
     if n == 0 { return acc }
     return sumTo(n - 1, acc + n)
 }
 
 // Descending print
-countDown :: u0 (i32 n) {
+countDown :: u0 (n: i32) {
     if n < 0 { return }
     c::printf("%d\n", n)
     countDown(n - 1)
 }
 
 // Ascending print
-countUp :: u0 (i32 start, i32 limit) {
+countUp :: u0 (start: i32, limit: i32) {
     if start > limit { return }
     c::printf("%d\n", start)
     countUp(start + 1, limit)
 }
 
 // Power: x ^ n
-power :: i32 (i32 x, i32 n) {
+power :: i32 (x: i32, n: i32) {
     if n == 0 { return 1 }
     return x * power(x, n - 1)
 }

@@ -2,8 +2,8 @@ c :: foreign {
     printf :: u0 (*char, ...)
 }
 
-sumAndPrint :: u0 ([]i32 s) {
-    i32 total = 0
+sumAndPrint :: u0 (s: []i32) {
+    total: i32 = 0
     i := 0
     for i < s.len {
         total = total + s[i]
@@ -12,7 +12,7 @@ sumAndPrint :: u0 ([]i32 s) {
     c::printf("%d\n", total)
 }
 
-printSlice :: u0 ([]i32 s) {
+printSlice :: u0 (s: []i32) {
     i := 0
     for i < s.len {
         c::printf("%d\n", s[i])

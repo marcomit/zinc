@@ -8,15 +8,15 @@ c :: foreign {
     printf :: u0 (*char, ...)
 }
 
-allocate :: i32 (u64 size)[Allocator alloc] {
-    *u8 buf = alloc.alloc(size)
+allocate :: i32 (size: u64)[alloc: Allocator] {
+    buf: *u8 = alloc.alloc(size)
     return 1
 }
 
 main :: i32 () {
     with heap := Allocator::heap() {
-        i32 sum = 0
-        for i32 i = 0; i < 3; i = i + 1 {
+        sum: i32 = 0
+        for i: i32 = 0; i < 3; i = i + 1 {
             sum = sum + allocate(16)
         }
         c::printf("%d\n", sum)

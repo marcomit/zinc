@@ -4,14 +4,14 @@ c :: foreign {
 
 #[packed]
 Color :: struct {
-    u8 r
-    u8 g
-    u8 b
-    u8 a
+    r: u8
+    g: u8
+    b: u8
+    a: u8
 }
 
 Color :: impl {
-    new :: Color(u8 r, u8 g, u8 b, u8 a) {
+    new :: Color(r: u8, g: u8, b: u8, a: u8) {
         return Color { r: r, g: g, b: b, a: a }
     }
 }

@@ -10,14 +10,14 @@ c :: foreign {
 }
 
 pub File :: struct {
-    *u8 file
-    *char path
-    *char mode
+    file: *u8
+    path: *char
+    mode: *char
 }
 
 File :: impl {
-    new :: *File (*char path, *char mode)[Allocator allocator] {
-        *File self = allocator.alloc(sizeof File)
+    new :: *File (path: *char, mode: *char)[Allocator] {
+        *File self = alloc(sizeof File)
         if not self { return none }
         
         self.file = none
@@ -41,7 +41,7 @@ File :: impl {
         }
     }
 
-    pub readAll :: *char ()[Allocator allocator] {
+    pub readAll :: *char ()[Allocator] {
         if not self.file { return none }
 
         c::fseek(self.file, 0, 2)
@@ -50,7 +50,7 @@ File :: impl {
 
         if size <= 0 { return none }
 
-        *char buffer = allocator.alloc(size + 1)
+        *char buffer = alloc(size + 1)
         if not buffer { return none }
 
         i64 bytesRead = c::fread(buffer, 1, size, self.file)
