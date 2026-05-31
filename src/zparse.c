@@ -88,6 +88,9 @@ static ZParser *makeparser(ZState *state, ZToken **tokens) {
     self->errstack                      = NULL;
     self->depth                         = 0;
     self->state                         = state;
+    self->noFuncType                    = false;
+    self->noStructLit                   = false;
+
     self->macroParser.currentMacro      = NULL;
     self->macroParser.expandingMacros   = NULL;
     self->macroParser.currentIndex      = 0;
@@ -1071,13 +1074,14 @@ ZNode *parseStmt(ZParser *parser) {
     case TOK_CONTINUE:  return parseContinue        (parser);
     case TOK_WITH:      return parseCapabilityBlock (parser);
     default: {
-        return parseOrGrammar(parser, (ZParseFunc[]){
+        ZParseFunc funcs[] = {
             parseVarInferred,
             parseVarDefTyped,
             parseBlock,
-            parseUpdate,
+            // parseUpdate,
             parseExpr
-        }, 5);
+        };
+        return parseOrGrammar(parser, funcs, arrlen(funcs));
     }
     }
 }
@@ -1356,7 +1360,7 @@ static ZNode *parseReturn(ZParser *parser) {
 
 static ZAnnotation *parseAnnotation(ZParser *parser) {
     guard(canPeek(parser));
-    guard(check(parser, TOK_IDENT) || peek(parser)->type & TOK_OVERRIDABLE);
+    guard(check(parser, TOK_IDENT) || peek(parser)->type & TOK_OVERLOADABLE);
 
     ZToken *name                = consume(parser);
     ZAnnotation **annotations   = NULL;
@@ -1373,6 +1377,7 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
     annotation          = zalloc(ZAnnotation);
     annotation->name    = name;
     annotation->args    = annotations;
+    annotation->used    = false;
     return annotation;
 }
 
@@ -1676,10 +1681,10 @@ static ZNode *parseFuncDecl(ZParser *parser,
 
     expect(parser, TOK_DOUBLE_COLON);
 
-    bool savedNoFuncType = parser->noFuncType;
+    bool prev = parser->noFuncType;
     parser->noFuncType = true;
     ZType *ret = tryParse(parser, parseType(parser));
-    parser->noFuncType = savedNoFuncType;
+    parser->noFuncType = prev;
 
     if (!ret) {
         error(parser->state, start, "Expected return type after '::'");
