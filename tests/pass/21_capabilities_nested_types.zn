@@ -9,18 +9,18 @@ c :: foreign {
 }
 
 Logger :: struct  {
-    i32 level
+    level: i32
 }
 
-allocAndLog :: i32 (u64 size)[Allocator alloc, Logger log] {
-    *u8 buf = alloc.alloc(size)
+allocAndLog :: i32 (size: u64)[alloc: Allocator, log: Logger] {
+    buf: *u8 = alloc.alloc(size)
     return log.level
 }
 
 main :: i32 () {
     with log := Logger { level: 42 } {
         with heap := Allocator::heap() {
-            i32 r = allocAndLog(16)
+            r := allocAndLog(16)
             c::printf("%d\n", r)
         }
     }

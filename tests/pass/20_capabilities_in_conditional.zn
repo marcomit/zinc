@@ -7,15 +7,15 @@ c :: foreign {
     printf :: u0 (*char, ...)
 }
 
-allocate :: i32 (u64 size)[Allocator alloc] {
-    *u8 buf = alloc.alloc(size)
+allocate :: i32 (size: u64)[alloc: Allocator] {
+    buf: *u8 = alloc.alloc(size)
     return 1
 }
 
 main :: i32 () {
-    i32 flag = 1
+    flag: i32 = 1
     with heap := Allocator::heap() {
-        i32 r = 0
+        r: i32 = 0
         if flag == 1 {
             r = allocate(16)
         } else {

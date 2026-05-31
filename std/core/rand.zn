@@ -1,8 +1,8 @@
 use <core::mem>
 
 pub Random :: struct {
-    u64 state
-    u64 inc
+    state:  u64
+    inc:    u64
 }
 
 c :: foreign {
@@ -23,17 +23,17 @@ Random :: impl {
 }
 
 *Random self :: impl {
-    pub seed :: u0 (u64 new_seed) {
+    pub seed :: u0 (new_seed: u64) {
         self.state = new_seed + self.inc as u64
     }
 
     pub uint :: u32 () {
-        u64 oldState = self.state
+        oldState := self.state
         self.state = oldState * 6364136223846793005 as u64 + (self.inc | (1 as u64))
 
-        u32 xorshifted = ((oldState >> 18 as u32) ^ oldState) >> 27
+        xorshifted: u32 = ((oldState >> 18 as u32) ^ oldState) >> 27
 
-        u32 rot =  oldState >> 59
+        rot: u32 =  oldState >> 59
 
         return (xorshifted >> rot) | (xorshifted << ((-rot) & 31))
     }
@@ -46,7 +46,7 @@ Random :: impl {
         return self.uint() as f32 / ((0xFFFFFFFF as u32) as f32)
     }
 
-    pub range :: i32 (i32 start, i32 end) {
+    pub range :: i32 (start: i32, end: i32) {
         span := (end - start + 1) as u32
         return start + (self.uint() % span) as i32
     }

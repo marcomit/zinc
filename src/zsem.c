@@ -949,7 +949,7 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
 
         vecpush(seen, type);
         for (usize i = 0; i < veclen(type->strct.fields); i++)
-            if (isInfiniteSize(type->strct.fields[i]->field.type, root, seen))
+            if (isInfiniteSize(type->strct.fields[i]->resolved, root, seen))
                 return true;
         return false;
 
@@ -1837,6 +1837,13 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
         if (expr && expr->kind == Z_TYPE_ARRAY &&
             result->kind == Z_TYPE_ARRAY) {
             result->array.size = expr->array.size;
+        }
+
+        if (!typesCompatible(ctx->state, expr, result)) {
+            error(ctx->state, curr->tok,
+                "'%s' can't be casted to '%s'",
+                stype(expr), stype(result)
+            );
         }
 
         curr->castExpr.toType = result;

@@ -1,10 +1,10 @@
 foreign printf :: u0 (*char, ...)
 
-Logger :: struct { i32 level }
-Context :: struct { i32 val }
+Logger :: struct { level: i32 }
+Context :: struct { val: i32 }
 
-print_ctx :: u0 ()[Context c] -> printf("%d\n", c.val)
-print_logger :: u0 ()[Logger l] -> printf("%d\n", l.level)
+print_ctx :: u0 ()[c: Context] -> printf("%d\n", c.val)
+print_logger :: u0 ()[l: Logger] -> printf("%d\n", l.level)
 
 transitive :: u0 ()[Context, Logger] -> print_logger()
 

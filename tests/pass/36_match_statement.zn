@@ -19,7 +19,7 @@ doubleCond :: (Option, Option) () {
     return (Option::Some("message 1"), Option::None())
 }
 
-printDoubleCond :: u0 ((Option, Option) cond) {
+printDoubleCond :: u0 (cond: (Option, Option)) {
     match cond {
         (Option::Some(msg1), Option::Some(msg2))    -> c::printf("%s, %s\n", msg1, msg2),
         (Option::Some(msg), Option::None())         -> c::printf("1:%s\n", msg),

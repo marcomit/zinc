@@ -4,20 +4,20 @@ greet :: u0 () -> printf("greet\n")
 
 say_bye :: u0 () -> printf("bye\n")
 
-print_msg :: u0 (*char msg) -> printf(msg)
+print_msg :: u0 (msg: *char) -> printf(msg)
 
-add :: i32 (i32 a, i32 b) -> a + b
+add :: i32 (a: i32, b: i32) -> a + b
 
-Vec :: struct { i32 len }
+Vec :: struct { len: i32 }
 
-Counter :: struct { i32 count }
+Counter :: struct { count: i32 }
 
 Vec :: impl {
     create :: u0 () -> printf("Vec:new\n")
 }
 
 Counter :: impl {
-    say :: u0 (*char msg) -> printf(msg)
+    say :: u0 (msg: *char) -> printf(msg)
     value :: i32 () -> 65
 }
 
@@ -26,7 +26,7 @@ main :: i32 () {
     say_bye()
     print_msg("msg\n")
 
-    i32 r = add(3, 4)
+    r: i32 = add(3, 4)
     printf("add\n")
 
     Vec::create()
@@ -34,7 +34,7 @@ main :: i32 () {
     Counter::say("world\n")
 
     v   := Counter::value()
-    i32 val = Counter::value()
+    val: i32 = Counter::value()
 
     return 0
 }

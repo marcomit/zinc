@@ -3,8 +3,8 @@ c :: foreign {
 }
 
 Vec :: struct {
-    i32 x
-    i32 y
+    x: i32
+    y: i32
 }
 
 Vec :: impl {

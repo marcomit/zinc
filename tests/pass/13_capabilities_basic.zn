@@ -4,14 +4,14 @@ c :: foreign {
     printf :: u0 (*char, ...)
 }
 
-fill :: i32 (u64 size)[Allocator alloc] {
+fill :: i32 (size: u64)[alloc: Allocator] {
     _ := alloc.alloc(size)
     return 42
 }
 
 main :: i32 () {
     with _ := Allocator::heap() {
-        i32 result = fill(64)
+        result: i32 = fill(64)
         c::printf("%d\n", result)
     }
     return 0

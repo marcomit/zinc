@@ -10,19 +10,19 @@ c :: foreign {
 }
 
 Client :: struct {
-    TcpStream stream
-    u64 id
-    u1 alive
+    stream: TcpStream
+    id: u64
+    alive: u1
 }
 
 Context :: struct {
-    *Client clients
-    Mutex mutex
-    u64 len
+    clients: *Client
+    mutex: Mutex
+    len: u64
 }
 
 Context :: impl {
-    new :: *Context (Mutex mutex)[Allocator allocator] {
+    new :: *Context (mutex: Mutex)[Allocator] {
         self := alloc(sizeof Context) as *Context
         self.mutex = mutex
         self.len = 0
@@ -32,7 +32,7 @@ Context :: impl {
 }
 
 *Context self :: impl {
-    add :: u64 (TcpStream stream) {
+    add :: u64 (stream: TcpStream) {
         self.mutex.lock()
         id := self.len
         self.clients[id].stream = stream
@@ -43,7 +43,7 @@ Context :: impl {
         return id
     }
 
-    broadcast :: u0 (u64 from, *u8 buf, u64 sz) {
+    broadcast :: u0 (from: u64, buf: *u8, sz: u64) {
         self.mutex.lock()
         i := 0 as u64
         for i < self.len {
@@ -60,11 +60,11 @@ Context :: impl {
 }
 
 WorkerArg :: struct {
-    *Context ctx
-    u64 id
+    ctx: *Context
+    id: u64
 }
 
-worker :: *u8 (*u8 arg) {
+worker :: *u8 (arg: *u8) {
     w   := arg as *WorkerArg
     ctx := w.ctx
     id  := w.id

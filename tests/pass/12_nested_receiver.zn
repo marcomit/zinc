@@ -3,41 +3,40 @@ c :: foreign {
 }
 
 Inner :: struct {
-    i32 value
-    i32(i32) add
+    value:  i32
+    add:    i32(i32)
 }
 
 Outer :: struct {
-    Inner a
-    Inner b
+    a: Inner
+    b: Inner
 }
 
 Inner self :: impl {
     get :: i32 () -> self.value
-    add :: i32 (i32 n) -> self.value + n
+    add :: i32 (n: i32) -> self.value + n
 }
 
 Outer self :: impl {
     sum :: i32 () -> self.a.get() + self.b.get()
-    addToA :: i32 (i32 n) -> self.a.add(n)
+    addToA :: i32 (n: i32) -> self.a.add(n)
 }
 
 i32 self :: impl {
     print :: u0 () -> c::printf("%d\n", self)
 }
-addInner :: i32 (i32 val) -> val
+addInner :: i32 (val: i32) -> val
 
 main :: i32 () {
     
-    Inner x = Inner { value: 3, add: addInner }
-    Inner y = Inner { value: 4 }
-    Outer o = Outer { a: x, b: y }
+    x: Inner = Inner { value: 3, add: addInner }
+    y: Inner = Inner { value: 4 }
+    o: Outer = Outer { a: x, b: y }
 
     x.get().print()
     o.a.get().print()
     o.b.get().print()
     o.a.add(2).print()
-
 
     o.sum().print()
 

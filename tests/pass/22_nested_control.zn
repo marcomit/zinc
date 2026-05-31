@@ -40,14 +40,14 @@ main :: i32 () {
     }
 
     // Nested C-style for loops
-    for i32 x = 0; x < 3; x = x + 1 {
-        for i32 y = 0; y < 3; y = y + 1 {
+    for x: i32 = 0; x < 3; x = x + 1 {
+        for y: i32 = 0; y < 3; y = y + 1 {
             if x == y { c::printf("diag%d\n", x) }
         }
     }
 
     // Nested if-else chains
-    i32 score = 75
+    score: i32 = 75
     if score >= 90 {
         c::printf("A\n")
     } else {
@@ -64,7 +64,7 @@ main :: i32 () {
 
     // break in nested for loop (C-style)
     found := -1
-    for i32 idx = 0; idx < 10; idx = idx + 1 {
+    for idx: i32 = 0; idx < 10; idx = idx + 1 {
         if idx * idx > 20 {
             found = idx
             break
@@ -73,7 +73,7 @@ main :: i32 () {
     c::printf("found=%d\n", found)
 
     // Loop with multiple continues and break
-    i32 cnt = 0
+    cnt: i32 = 0
     k := 0
     for k < 20 {
         k = k + 1
@@ -84,7 +84,7 @@ main :: i32 () {
     c::printf("cnt=%d\n", cnt)
 
     // Many conditions chained
-    i32 v = 5
+    v: i32 = 5
     if v == 1      { c::printf("one\n") }
     else { if v == 5 { c::printf("five\n") }
     else { c::printf("other\n") } }

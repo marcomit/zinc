@@ -4,19 +4,19 @@ c :: foreign {
 }
 
 Node :: struct  {
-    i32 val
-    i32 extra
+    val: i32
+    extra: i32
 }
 
 main :: i32 () {
     // Read through a pointer
-    i32 x = 42
-    *i32 ptr = &x
+    x := 42
+    ptr := &x
     c::printf("%d\n", *ptr)
 
     // Pointer to struct: field read
-    Node n = Node { val: 10, extra: 20 }
-    *Node np = &n
+    n := Node { val: 10, extra: 20 }
+    np := &n
     c::printf("%d\n", np.val)
     c::printf("%d\n", np.extra)
 
@@ -25,13 +25,13 @@ main :: i32 () {
     c::printf("%d\n", n.val)
 
     // Heap-allocated struct with pointer receiver
-    *Node hp = c::malloc(sizeof Node)
+    hp: *Node = c::malloc(sizeof Node)
     hp.val = 5
     hp.extra = 6
     c::printf("%d %d\n", hp.val, hp.extra)
 
     // none comparison
-    *i32 nptr = none
+    nptr: *i32 = none
     if nptr == none { c::printf("is_null\n") }
     if nptr != none { c::printf("FAIL\n") }
 
@@ -41,10 +41,10 @@ main :: i32 () {
     if nptr == none { c::printf("FAIL\n") }
 
     // Pointer to pointer: read outer value
-    *i32 a = &x
-    **i32 pp = &a
+    a: *i32 = &x
+    pp: **i32 = &a
     // Load the inner pointer value
-    *i32 inner = *pp
+    inner: *i32 = *pp
     c::printf("%d\n", *inner)
 
     // Pointer as function argument

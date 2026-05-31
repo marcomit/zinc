@@ -8,12 +8,12 @@ c :: foreign {
 }
 
 pub Mutex :: struct {
-    *u8 handle
+    handle: *u8
 }
 
 Mutex :: impl {
-    pub new :: Mutex ()[Allocator allocator] {
-        *u8 handle = allocator.alloc(64)
+    pub new :: Mutex ()[Allocator] {
+        handle := alloc(64)
         c::pthread_mutex_init(handle, none)
         return Mutex { handle: handle }
     }

@@ -7,12 +7,12 @@ c :: foreign {
 }
 
 LinkedList :: struct {
-    i32 val
-    *LinkedList next
+    val: i32
+    next: *LinkedList
 }
 LinkedList :: impl {
-    new :: *LinkedList(*LinkedList next, i32 val)[Allocator allocator] {
-        *LinkedList self = allocator.alloc(sizeof LinkedList)
+    new :: *LinkedList(next: *LinkedList, val: i32)[Allocator] {
+        self: *LinkedList = alloc(sizeof LinkedList)
         self.next = next
         self.val = val
         return self

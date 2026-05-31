@@ -12,46 +12,46 @@ scalar :: type float   // alias of an alias
 index  :: type uint    // alias of an alias
 
 Point :: struct {
-    float x
-    float y
+    x: float
+    y: float
 }
 
 V2     :: type Point    // struct alias
 V2ptr  :: type *Point   // pointer-to-struct alias
 byteptr :: type *byte   // pointer alias of aliased primitive
 
-add_scalar :: float (scalar a, scalar b) -> a + b
+add_scalar :: float (a: scalar, b: scalar) -> a + b
 
-print_point :: void (V2ptr p) {
+print_point :: void (p: V2ptr) {
     printf("(%.0f, %.0f)\n", p.x, p.y)
 }
 
-is_positive :: bool (int n) -> n > 0
+is_positive :: bool (n: int) -> n > 0
 
 V2 self :: impl {
     len :: float () -> self.x * self.x + self.y * self.y
-    scale :: V2 (scalar factor) -> V2{x: self.x * factor, y: self.y * factor}
+    scale :: V2 (factor: scalar) -> V2{x: self.x * factor, y: self.y * factor}
 }
 
 main :: int () {
-    V2 a = Point{x: 3.0, y: 4.0}
+    a: V2 = Point{x: 3.0, y: 4.0}
 
-    Point b = V2{x: 1.0, y: 2.0}
+    b: Point = V2{x: 1.0, y: 2.0}
 
-    scalar s = 2.0
-    index  i = 0
+    s: scalar = 2.0
+    i: index = 0
     
-    V2ptr pa = &a
+    pa: V2ptr = &a
     
     print_point(pa)
     
-    float l = b.len()
+    l: float = b.len()
     printf("len sq: %.0f\n", l)
     
-    Point scaled = a.scale(s)
+    scaled: Point = a.scale(s)
     printf("scaled: %.0f %.0f\n", scaled.x, scaled.y)
     
-    bool pos = is_positive(-5)
+    pos: bool = is_positive(-5)
     if pos -> printf("positive\n")
     else   -> printf("not positive\n")
 

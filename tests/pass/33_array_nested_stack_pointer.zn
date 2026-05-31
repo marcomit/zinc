@@ -1,6 +1,6 @@
 c :: foreign { printf :: u0 (*char, ...) }
 
-Pt :: struct { i32 x i32 y }
+Pt :: struct { x: i32 y: i32 }
 
 main :: i32 () {
     arr := [

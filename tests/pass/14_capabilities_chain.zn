@@ -6,17 +6,17 @@ c :: foreign {
 
 // allocInner requires the same capability as its caller.
 // The capability is threaded automatically - no explicit passing.
-allocInner :: *u8 (u64 size)[Allocator alloc] -> alloc.alloc(size)
+allocInner :: *u8 (size: u64)[alloc: Allocator] -> alloc.alloc(size)
 
-allocOuter :: i32 (u64 size)[Allocator alloc] {
-    *u8 buf = allocInner(size)
+allocOuter :: i32 (size: u64)[alloc: Allocator] {
+    buf := allocInner(size)
     return 7
 }
 
 main :: i32 () {
     with heap := Allocator::heap() {
-        i32 a = allocOuter(32)
-        i32 b = allocOuter(64)
+        a: i32 = allocOuter(32)
+        b: i32 = allocOuter(64)
         c::printf("%d %d\n", a, b)
     }
     return 0

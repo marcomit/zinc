@@ -26,38 +26,36 @@ c :: foreign {
 
 #[packed]
 Vector2 :: struct {
-    f32 x
-    f32 y
+    x: f32
+    y: f32
 }
 
 #[packed]
 Rectangle :: struct {
-    // f32 x
-    // f32 y
     ...Vector2
-    f32 width
-    f32 height
+    width: f32
+    height: f32
 }
 
 Color :: struct {
-    u8 r
-    u8 g
-    u8 b
-    u8 a
+    r: u8
+    g: u8
+    b: u8
+    a: u8
 }
 
 Snake :: struct {
-    **Rectangle tail
-    u64 len
-    u64 cap
-    f32 block
+    tail: **Rectangle
+    len: u64
+    cap: u64
+    block: f32
     // 0: right, 1: up, 2: left, 3: down
-    i32 direction
+    direction: i32
 }
 
 Rectangle :: impl {
-    new :: *Rectangle (f32 x, f32 y, f32 width, f32 height)[Allocator allocator] {
-        *Rectangle self = allocator.alloc(sizeof Rectangle)
+    new :: *Rectangle (x: f32, y: f32, width: f32, height: f32)[Allocator] {
+        self: *Rectangle = alloc(sizeof Rectangle)
         self.x = x
         self.y = y
         self.width = width
@@ -67,21 +65,21 @@ Rectangle :: impl {
 }
 
 *Rectangle self :: impl {
-    draw :: u0 (Color color) -> raylib::DrawRectangleRec(*self, color)
+    draw :: u0 (color: Color) -> raylib::DrawRectangleRec(*self, color)
 }
 
 Color :: impl {
-    new :: Color (u8 r, u8 g, u8 b, u8 a) {
+    new :: Color (r: u8, g: u8, b: u8, a: u8) {
         return Color {r: r, g: g, b: b, a: a}
     }
 }
 
 Snake :: impl {
-    new :: *Snake (f32 block)[Allocator allocator] {
-        *Snake self = allocator.alloc(sizeof Snake)
+    new :: *Snake (block: f32)[Allocator] {
+        self: *Snake = alloc(sizeof Snake)
         self.cap = 16
         self.len = 0
-        self.tail = allocator.alloc(sizeof *Rectangle * self.cap)
+        self.tail = alloc(sizeof *Rectangle * self.cap)
         self.direction = 0
         self.block = block
         return self
@@ -89,16 +87,16 @@ Snake :: impl {
 }
 
 *Snake self :: impl {
-    add :: u0 (*Rectangle item)[Allocator allocator] {
+    add :: u0 (item: *Rectangle)[Allocator] {
         if self.len >= self.cap {
             self.cap: * 2
-            self.tail = allocator.realloc(self.tail, self.cap * sizeof *Rectangle)
+            self.tail = resize(self.tail, self.cap * sizeof *Rectangle)
         }
         self.tail[self.len] = item
         self.len: + 1
     }
 
-    draw :: u0 (Color color) {
+    draw :: u0 (color: Color) {
         i := 0
         for i < self.len {
             self.tail[i].draw(color)
@@ -128,7 +126,7 @@ Snake :: impl {
         else if self.direction == 3 { self.tail[0].y: + self.block }
     }
 
-    checkAppleCollision :: u1 (*Rectangle apple) {
+    checkAppleCollision :: u1 (apple: *Rectangle) {
         headCenter := Vector2 { 
             x: self.tail[0].x + (self.block / 2.0), 
             y: self.tail[0].y + (self.block / 2.0) 
