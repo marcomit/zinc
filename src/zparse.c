@@ -1078,7 +1078,7 @@ ZNode *parseStmt(ZParser *parser) {
             parseVarInferred,
             parseVarDefTyped,
             parseBlock,
-            // parseUpdate,
+            parseUpdate,
             parseExpr
         };
         return parseOrGrammar(parser, funcs, arrlen(funcs));

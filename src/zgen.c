@@ -264,6 +264,7 @@ char *label(ZCodegen *ctx, ZToken *tok) {
     if (ctx->state->debug && tok) {
         char *str = stoken(tok);
         vecunion(ctx->str, str, strlen(str));
+        vecpush(ctx->str, 0);
     } else {
         snprintf(ctx->str, 6, "zn%.3zx", ctx->count);
 
@@ -551,7 +552,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         return LLVMPointerType(i8Type, 0);
     }
 
-    case Z_TYPE_STRUCT: genStructType(ctx, type);
+    case Z_TYPE_STRUCT: return genStructType(ctx, type);
 
     case Z_TYPE_TUPLE: {
         usize len = veclen(type->tuple);
