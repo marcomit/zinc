@@ -313,8 +313,9 @@ struct ZVarDestructPattern {
 };
 
 struct ZAnnotation {
-    ZToken *name;
+    ZToken      *name;
     ZAnnotation **args;
+    bool        used;
 };
 
 struct ZNode {

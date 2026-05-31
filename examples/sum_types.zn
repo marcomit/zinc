@@ -1,9 +1,21 @@
-maybeCrash :: i32 | *char (i32 age) {
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+maybeCrash :: i32 | *char | f32 (age: i32) {
     return  if age < 18 -> "invalid"
-            else        -> age
+            else        ->
+                if age < 1  -> 0.0 as f32
+                else        -> age
 }
 
 main :: i32 () {
-    val: Data | Err = maybeCrash(18)
+    val: i32 | *char | f32 = maybeCrash(18)
+
+    match val {
+        i32(num)    -> c::printf("%d\n", num),
+        *char(msg)  -> c::printf("%s\n", msg),
+        f32(f)      -> c::printf("%f\n", f)
+    }
     return 0
 }

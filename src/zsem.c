@@ -23,6 +23,7 @@
 #include "zinc.h"
 #include "zvec.h"
 #include "zarena.h"
+#include <stdbool.h>
 
 /* The semantic analyzer has 2 phases.
  * 1. Analyze only the declarations such that every
@@ -1478,7 +1479,7 @@ static bool hasOverloadAnnotation(
             error(ctx->state, annotation->name,
                 "Annotation 'overload' must contain 1 argument"
             );
-        } else if (!(annotation->args[0]->name->type & TOK_OVERRIDABLE)) {
+        } else if (!(annotation->args[0]->name->type & TOK_OVERLOADABLE)) {
             error(ctx->state, annotation->name,
                 "'%s' is not an overridable operator",
                 stoken(annotation->args[0]->name)
@@ -1491,7 +1492,7 @@ static bool hasOverloadAnnotation(
 }
 
 static ZNode *resolveOverloadOperator(ZSemantic *ctx, ZType *type, ZTokenType op) {
-    if (!(op & TOK_OVERRIDABLE)) return NULL;
+    if (!(op & TOK_OVERLOADABLE)) return NULL;
     ZFuncTable *table = resolveFuncTable(ctx, type);
 
     if (!table) return NULL;
@@ -1520,7 +1521,7 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
         }
     }
 
-    if (op & TOK_OVERRIDABLE) {
+    if (op & TOK_OVERLOADABLE) {
         ZNode *overload = resolveOverloadOperator(ctx, left, op);
         curr->binary.overload = overload;
         if (overload) {
@@ -1789,8 +1790,21 @@ static ZType *resolveInlineIf(ZSemantic *ctx, ZNode *node) {
     ZType *sum = maketype(Z_TYPE_SUM);
     sum->sumType = NULL;
 
-    vecpush(sum->sumType, trueBranch);
-    vecpush(sum->sumType, falseBranch);
+    if (trueBranch->kind == Z_TYPE_SUM) {
+        for (usize i = 0; i < veclen(trueBranch->sumType); i++) {
+            vecpush(sum->sumType, trueBranch->sumType[i]);
+        }
+    } else {
+        vecpush(sum->sumType, trueBranch);
+    }
+
+    if (falseBranch->kind == Z_TYPE_SUM) {
+        for (usize i = 0; i < veclen(falseBranch->sumType); i++) {
+            vecpush(sum->sumType, falseBranch->sumType[i]);
+        }
+    } else {
+        vecpush(sum->sumType, falseBranch);
+    }
     return sum;
 }
 
