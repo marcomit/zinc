@@ -49,7 +49,11 @@ SRC_DIR = src
 LIB_DIR = lib
 INCLUDES = -I include -I lib
 
-SANITIZE = -fsanitize=address,undefined
+ifeq ($(UNAME), Windows)
+  SANITIZE =
+else
+  SANITIZE = -fsanitize=address,undefined
+endif
 CFLAGS   = -g -Wall -Wextra -Wdeprecated-declarations -O2 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS)
 CXXFLAGS = -g -O2 -std=c++17 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS) $(LLD_INCLUDES)
 LDFLAGS  = $(SANITIZE) $(LLD_LIBS) $(_LLVM_LDFLAGS)
