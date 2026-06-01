@@ -505,6 +505,16 @@ static void putTypedef(ZSemantic *ctx, ZNode *node) {
     );
 }
 
+static void putFacet(ZSemantic *ctx, ZNode *node) {
+    putRawSymbol(ctx,
+        Z_SYM_FACET,
+        node->facet.name,
+        node->resolved,
+        node,
+        node->facet.pub
+    );
+}
+
 static void putNamespace(ZSemantic *ctx, ZNode *node) {
     putRawSymbol(ctx,
         Z_SYM_NAMESPACE,
@@ -1943,6 +1953,23 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
         ZType *pointer = maketype(Z_TYPE_POINTER);
         pointer->base = base->array.base;
         return pointer;
+    } else if (objType->kind == Z_TYPE_FACET) {
+        ZType *func = NULL;
+        for (usize i = 0; i < veclen(objType->facet.funcs); i++) {
+            ZNode *funcField = objType->facet.funcs[i];
+            if (tokeneq(field, funcField->field.identifier)) {
+                func = funcField->resolved;
+                break;
+            }
+        }
+
+        if (!func) {
+            error(ctx->state, curr->tok,
+                "%s has no function called %s",
+                stype(objType), stoken(field)
+            );
+        }
+        return func;
     } else {
         ZNode *resolved = resolveFuncCallEmbedded(ctx, curr, objType, field);
         if (!resolved) {
@@ -1989,6 +2016,10 @@ static ZType *resolveArrSubscript(ZSemantic *ctx, ZNode *curr) {
         return arrType->array.base;
     }
     return arrType->base;
+}
+
+static bool satisfyFacet(ZSemantic *ctx, ZType *type, ZType *facet) {
+
 }
 
 /* ================== Statement analysis ================== */
@@ -2418,6 +2449,13 @@ static void discoverGlobalScope(ZSemantic *ctx, ZNode *root) {
         case NODE_ENUM:         putEnum(ctx, child);        break;
         case NODE_NAMESPACE:    putNamespace(ctx, child);   break;
         case NODE_TYPEDEF:      putTypedef(ctx, child);     break;
+        case NODE_FACET:        putFacet(ctx, child);       break;
+        case NODE_FUNC_BLOCK:
+            for (usize i = 0; i < veclen(child->funcblock.funcs); i++) {
+                ZNode *func = child->funcblock.funcs[i];
+                putFunc(ctx, func);
+            }
+            break;
 
         case NODE_FOREIGN: {
             /* Foreign functions are callable like regular functions.
@@ -2579,6 +2617,10 @@ static void analyzeTypedef(ZSemantic *ctx, ZNode *node) {
     node->resolved = resolved;
 }
 
+static void analyzeFacet(ZSemantic *ctx, ZNode *node) {
+
+}
+
 /* ================== Main analysis pass ================== */
 
 static void analyze(ZSemantic *ctx, ZNode *root) {
@@ -2594,6 +2636,7 @@ static void analyze(ZSemantic *ctx, ZNode *root) {
         case NODE_STRUCT:       analyzeStruct(ctx, child);      break;
         case NODE_ENUM:         analyzeEnum(ctx, child);        break;
         case NODE_NAMESPACE:    analyzeNamespace(ctx, child);   break;
+        case NODE_FACET:        analyzeFacet(ctx, child);       break;
         case NODE_MACRO:    /* does't require any validation*/  break;
 
         case NODE_MODULE:
@@ -2601,6 +2644,13 @@ static void analyze(ZSemantic *ctx, ZNode *root) {
                 registerModule(ctx, child);
                 analyze(ctx, child);
                 endModule(ctx, true);
+            }
+            break;
+
+        case NODE_FUNC_BLOCK:
+            for (usize i = 0; i < veclen(child->funcblock.funcs); i++) {
+                ZNode *func = child->funcblock.funcs[i];
+                analyzeFunc(ctx, func);
             }
             break;
 

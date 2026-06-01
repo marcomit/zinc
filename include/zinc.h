@@ -156,7 +156,9 @@ typedef enum {
     NODE_CAPABILITY,
     NODE_MATCH,
     NODE_MATCH_ARM,
-    NODE_ENUM_LIT
+    NODE_ENUM_LIT,
+    NODE_FACET,
+    NODE_FUNC_BLOCK
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -211,8 +213,18 @@ struct ZType {
             usize   size;
         } array;
 
-        /* List of Z_TYPE_FUNCTION */
-        ZType       **facet;
+        struct {
+            ZToken  *name;
+
+            /* List of NODE_FIELD */
+            ZNode   **funcs;
+
+            /* List of satisfied types.
+             * Types are added in this list during the semantic pass
+             * and only when a type tries to convert into a facet
+             * */
+            ZType   **satisfied;
+        } facet;
 
         struct {
             ZToken      *name;
@@ -556,6 +568,22 @@ struct ZNode {
             ZNode *capability;
             ZNode *block;
         } capability;
+
+        struct {
+            ZToken  *name;
+            bool    pub;
+
+            /* Array of NODE_FIELD */
+            ZNode   **funcs;
+        } facet;
+
+        struct {
+            ZType   **facets;
+            ZType   **generics;
+            ZType   *base;
+            ZToken  *self;
+            ZNode   **funcs;
+        } funcblock;
     };
 };
 
@@ -616,7 +644,8 @@ typedef enum {
     Z_SYM_STRUCT,
     Z_SYM_TYPEDEF,
     Z_SYM_GENERIC,
-    Z_SYM_NAMESPACE
+    Z_SYM_NAMESPACE,
+    Z_SYM_FACET
 } ZSymType;
 
 typedef struct ZSymbol {

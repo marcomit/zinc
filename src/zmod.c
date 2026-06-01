@@ -227,6 +227,10 @@ static void _stype(ZType *type, char **buff) {
             }
         }
         break;
+    case Z_TYPE_FACET:
+        vecunion(*buff, "facet ", 6);
+        vecunion(*buff, type->facet.name->str, strlen(type->facet.name->str));
+        break;
     // case Z_TYPE_GENERIC:
     //     vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
     //     vecpush(*buff, '[');
@@ -309,6 +313,9 @@ void printType(ZType *type) {
                 printf(" | ");
             }
         }
+        break;
+    case Z_TYPE_FACET:
+        printf("facet %s\n", type->facet.name->str);
         break;
     default:
         printf("(details not implemented for type %d)", type->kind);
