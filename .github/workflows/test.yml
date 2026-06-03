@@ -48,7 +48,7 @@ jobs:
           echo "clang:       $(clang --version | head -1)"
           echo "lld prefix:  $(brew --prefix lld)"
 
-      # The choco LLVM package ships the compiler only — no headers, no llvm-config.
+      # The choco LLVM package ships the compiler only - no headers, no llvm-config.
       # MSYS2's mingw-w64-x86_64-llvm is a full dev distribution that includes all of
       # those, and is the standard approach for LLVM development on Windows CI.
       - name: Install LLVM via MSYS2 (Windows)

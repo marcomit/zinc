@@ -141,8 +141,6 @@ typedef enum {
     NODE_ARRAY_LIT,
     NODE_ARRAY_INIT,
     NODE_MACRO,
-    NODE_GOTO,
-    NODE_LABEL,
     NODE_TYPE,
     NODE_ENUM,
     NODE_BREAK,
@@ -158,7 +156,7 @@ typedef enum {
     NODE_MATCH_ARM,
     NODE_ENUM_LIT,
     NODE_FACET,
-    NODE_FUNC_BLOCK
+    NODE_IMPL
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -538,16 +536,14 @@ struct ZNode {
          **/
         struct {
             ZMacroPattern   *pattern;
-            usize           startBody;        // Index of first token after {
-            usize           endBody;          // Index of } (exclusive)
+            usize           startBody;      // Index of first token after {
+            usize           endBody;        // Index of } (exclusive)
             ZMacroVar       **captured;
-            ZToken          *start;          // First token of macro definition
-            usize           consumed;         // Tokens consumed by pattern + body
-            ZToken          **sourceTokens;  // Original token array where the macro was defined
+            ZToken          *start;         // First token of macro definition
+            usize           consumed;       // Tokens consumed by pattern + body
+            ZToken          **sourceTokens; // Original token array where the macro was defined
             bool            pub;
         } macro;
-
-        ZToken              *gotoLabel;  // For NODE_GOTO and NODE_LABEL
 
         ZToken              *literalTok;
         struct {
@@ -583,7 +579,7 @@ struct ZNode {
             ZType   *base;
             ZToken  *self;
             ZNode   **funcs;
-        } funcblock;
+        } impl;
     };
 };
 
@@ -697,6 +693,8 @@ typedef struct ZFuncTable {
      */
     ZNode           **staticFuncDef;
     hashset_t       seenStaticFuncs;
+
+    ZType           **facets;
 } ZFuncTable;
 
 typedef struct ZSymTable {
@@ -781,13 +779,14 @@ void typesSort(ZType **);
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
 bool typesPrimitive(ZType *);
-ZType *typesCompatible(ZState *, ZType *, ZType *);
+ZType *typesCompatible(ZSemantic *, ZType *, ZType *);
 
 /* ================== Zinc state ================== */
 ZState *makestate();
 
 char *readfile(char *);
 
+void encodeType(ZType *, char **);
 char *mangler(ZToken **);
 char *manglerM(ZType *, ZToken *);
 
