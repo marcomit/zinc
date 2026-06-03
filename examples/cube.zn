@@ -1,0 +1,147 @@
+use <core::mem>
+
+VERTS           :: 8
+SCREEN_WIDTH    :: 640
+SCREEN_HEIGHT   :: 480
+
+raylib :: foreign {
+    InitWindow :: u0 (i32, i32, *char)
+    CloseWindow :: u0 ()
+    SetTargetFPS :: u0 (i32)
+    WindowShouldClose :: u1 ()
+    BeginDrawing :: u0 ()
+    EndDrawing :: u0 ()
+    ClearBackground :: u0 (Color)
+    DrawLineV :: u0 (Vec2, Vec2, Color)
+}
+
+math :: foreign {
+    sin :: f64 (f64)
+    cos :: f64 (f64)
+}
+
+#[packed]
+Vec2 :: struct {
+    x: f32
+    y: f32
+}
+
+#[packed]
+Color :: struct {
+    r: u8
+    g: u8
+    b: u8
+    a: u8
+}
+
+Vec3 :: struct {
+    ...Vec2
+    z: f32
+}
+
+Context :: struct {
+    w: u64
+    h: u64
+    verts: *Vec3
+    proj: *Vec3
+    angle_a: f32
+    angle_b: f32
+}
+
+Color :: impl {
+    new :: Color (r: u8, g: u8, b: u8, a: u8) -> Color{r:r,g:g,b:b,a:a}
+}
+
+Context :: impl {
+    new :: *Context(width: u64, height: u64)[Allocator] {
+        self: *Context = alloc(sizeof Context)
+        self.verts     = alloc(sizeof Vec3 * VERTS as u64)
+        self.proj      = alloc(sizeof Vec3 * VERTS as u64)
+        self.w         = width
+        self.h         = height
+        self.angle_a   = 0.3
+        self.angle_b   = 0.2
+        return self
+    }
+}
+
+*Context self :: impl {
+    init :: u0 () {
+        self.verts[0].x = -100.0   self.verts[0].y = -100.0   self.verts[0].z = -100.0
+        self.verts[1].x =  100.0   self.verts[1].y = -100.0   self.verts[1].z = -100.0
+        self.verts[2].x =  100.0   self.verts[2].y =  100.0   self.verts[2].z = -100.0
+        self.verts[3].x = -100.0   self.verts[3].y =  100.0   self.verts[3].z = -100.0
+        self.verts[4].x = -100.0   self.verts[4].y = -100.0   self.verts[4].z =  100.0
+        self.verts[5].x =  100.0   self.verts[5].y = -100.0   self.verts[5].z =  100.0
+        self.verts[6].x =  100.0   self.verts[6].y =  100.0   self.verts[6].z =  100.0
+        self.verts[7].x = -100.0   self.verts[7].y =  100.0   self.verts[7].z =  100.0
+    }
+
+    edge :: u0 (i: i32, j: i32) {
+        za: f32 = self.proj[i].z
+        zb: f32 = self.proj[j].z
+        norm: f32 = 1.0 - ((za + zb) / 2.0 + 175.0) / 350.0
+        if norm < 0.0 { norm = 0.0 }
+        if norm > 1.0 { norm = 1.0 }
+        v: u8 = (60.0 + norm * 195.0) as u8
+        a := Vec2{x: self.proj[i].x, y: self.proj[i].y}
+        b := Vec2{x: self.proj[j].x, y: self.proj[j].y}
+        raylib::DrawLineV(a, b, Color::new(v, v, v, 255))
+    }
+
+    draw :: u0 () {
+        cx: f32    = self.w as f32 / 2.0
+        cy: f32    = self.h as f32 / 2.0
+        alpha: f32 = self.angle_a
+        beta: f32  = self.angle_b
+        cos_a: f32 = math::cos(alpha as f64)
+        sin_a: f32 = math::sin(alpha as f64)
+        cos_b: f32 = math::cos(beta as f64)
+        sin_b: f32 = math::sin(beta as f64)
+
+        i := 0
+        for i < VERTS {
+            x: f32 = self.verts[i].x
+            y: f32 = self.verts[i].y
+            z: f32 = self.verts[i].z
+
+            x1: f32 = x * cos_a + z * sin_a
+            z1: f32 = -x * sin_a + z * cos_a
+            y2: f32 = y * cos_b - z1 * sin_b
+            z2: f32 = y * sin_b + z1 * cos_b
+
+            zfactor: f32 = 1.0 + (z2 / 400.0)
+            self.proj[i].x = cx + (x1 / zfactor)
+            self.proj[i].y = cy + (y2 / zfactor)
+            self.proj[i].z = z2
+            i :+ 1
+        }
+
+        self.edge(0, 1)   self.edge(1, 2)   self.edge(2, 3)   self.edge(3, 0)
+        self.edge(4, 5)   self.edge(5, 6)   self.edge(6, 7)   self.edge(7, 4)
+        self.edge(0, 4)   self.edge(1, 5)   self.edge(2, 6)   self.edge(3, 7)
+    }
+}
+
+main :: i32 () {
+    with _ := Allocator::heap() {
+        ctx := Context::new(SCREEN_WIDTH, SCREEN_HEIGHT)
+        ctx.init()
+
+        raylib::InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Rotating Cube")
+        raylib::SetTargetFPS(60)
+
+        bg := Color::new(15, 15, 15, 0xFF)
+
+        for not raylib::WindowShouldClose() {
+            raylib::BeginDrawing()
+            raylib::ClearBackground(bg)
+            ctx.draw()
+            raylib::EndDrawing()
+            ctx.angle_a :+ 0.02
+            ctx.angle_b :+ 0.013
+        }
+        raylib::CloseWindow()
+    }
+    return 0
+}
