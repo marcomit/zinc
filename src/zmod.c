@@ -862,7 +862,8 @@ ZState *makestate() {
     self->emitLLVM              = false;
     self->visitedFiles          = NULL;
     self->skipLLVMValidation    = false;
-    self->optimizationLevel     = 0;
+    self->optimizationLevel     = '2';
+    self->ltoMode               = Z_LTO_OFF;
     self->extraArgs             = NULL;
 
     return self;

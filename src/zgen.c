@@ -20,6 +20,9 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 #include <llvm-c/Analysis.h>
+#include <llvm-c/BitWriter.h>
+#include <llvm-c/Error.h>
+#include <llvm-c/Transforms/PassBuilder.h>
 
 typedef struct ZLLVMSymbol {
     ZToken *token;
@@ -1547,6 +1550,31 @@ static bool typeIsUnsigned(ZType *type) {
     return (bool)(type->primitive.token->type & TOK_UNSIGNED);
 }
 
+static i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
+    for (usize i = 0; i < veclen(sum->sumType); i++) {
+        if (typesEqual(sum->sumType[i], concrete))
+            return (i32)i;
+    }
+    return -1;
+}
+
+static void storeSumVariant(ZCodegen *ctx, LLVMValueRef alloca, LLVMTypeRef sumLLVMType,
+                            i32 tag, LLVMValueRef val, ZType *valType) {
+    LLVMBuildStore(
+        ctx->builder,
+        LLVMConstInt(i8Type, (u32)tag, false),
+        alloca
+    );
+    LLVMTypeRef valLLVMType = genType(ctx, valType);
+    LLVMValueRef bufPtr = LLVMBuildStructGEP2(
+        ctx->builder, sumLLVMType, alloca, 1, "sum.buf"
+    );
+    LLVMValueRef typedPtr = LLVMBuildBitCast(
+        ctx->builder, bufPtr, LLVMPointerType(valLLVMType, 0), "sum.buf.typed"
+    );
+    LLVMBuildStore(ctx->builder, val, typedPtr);
+}
+
 /**
  * @brief Generates inline if.
  *
@@ -1565,12 +1593,14 @@ static bool typeIsUnsigned(ZType *type) {
  */
 static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack = NULL;
+    LLVMTypeRef sumLLVMType = NULL;
     if (node->resolved && node->resolved->kind == Z_TYPE_SUM) {
         stack = getStackValue(ctx, node);
         if (!stack) {
             error(ctx->state, node->tok, "Missing stack value");
             return NULL;
         }
+        sumLLVMType = genType(ctx, node->resolved);
     }
     LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
     LLVMBasicBlockRef tBranch = makeblock(ctx);
@@ -1586,11 +1616,19 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
 
     LLVMPositionBuilderAtEnd(ctx->builder, tBranch);
     LLVMValueRef tValue = genExpr(ctx, node->ifStmt.body);
+    if (stack) {
+        i32 tTag = sumTypeIndexOf(node->resolved, node->ifStmt.body->resolved);
+        storeSumVariant(ctx, stack->stack, sumLLVMType, tTag, tValue, node->ifStmt.body->resolved);
+    }
     LLVMBasicBlockRef tExit = LLVMGetInsertBlock(ctx->builder);
     makebr(ctx->builder, merge);
 
     LLVMPositionBuilderAtEnd(ctx->builder, fBranch);
     LLVMValueRef fValue = genExpr(ctx, node->ifStmt.elseBranch);
+    if (stack) {
+        i32 fTag = sumTypeIndexOf(node->resolved, node->ifStmt.elseBranch->resolved);
+        storeSumVariant(ctx, stack->stack, sumLLVMType, fTag, fValue, node->ifStmt.elseBranch->resolved);
+    }
     LLVMBasicBlockRef fExit = LLVMGetInsertBlock(ctx->builder);
     makebr(ctx->builder, merge);
 
@@ -1950,6 +1988,23 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
 static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
     ZType *from = node->castExpr.expr->resolved;
     ZType *to   = node->castExpr.toType;
+
+    if (to->kind == Z_TYPE_SUM && from->kind != Z_TYPE_SUM) {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (!stack) {
+            error(ctx->state, node->tok, "Missing stack value for sum type cast");
+            return NULL;
+        }
+        LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
+        i32 tag = sumTypeIndexOf(to, from);
+        if (tag == -1) {
+            error(ctx->state, node->tok, "Type is not a variant of the sum type");
+            return NULL;
+        }
+        LLVMTypeRef sumLLVMType = genType(ctx, to);
+        storeSumVariant(ctx, stack->stack, sumLLVMType, tag, val, from);
+        return LLVMBuildLoad2(ctx->builder, sumLLVMType, stack->stack, label(ctx, node->tok));
+    }
 
     if (to->kind == Z_TYPE_FACET && from->kind != Z_TYPE_FACET) {
         ZLLVMStack *stack = getStackValue(ctx, node);
@@ -2410,7 +2465,19 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
     LLVMValueRef val = genExpr(ctx, ret->returnStmt.expr);
 
     if (ctx->currentFuncNode->resolved->func.ret->kind == Z_TYPE_SUM) {
-        
+        ZType *retSumType = ctx->currentFuncNode->resolved->func.ret;
+        ZType *exprType   = ret->returnStmt.expr->resolved;
+        if (exprType->kind != Z_TYPE_SUM) {
+            i32 tag = sumTypeIndexOf(retSumType, exprType);
+            if (tag == -1) {
+                error(ctx->state, ret->tok, "Return type is not a variant of the sum type");
+                return NULL;
+            }
+            LLVMTypeRef sumLLVMType = genType(ctx, retSumType);
+            LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, sumLLVMType, "sum.ret");
+            storeSumVariant(ctx, alloca, sumLLVMType, tag, val, exprType);
+            val = LLVMBuildLoad2(ctx->builder, sumLLVMType, alloca, "sum.ret.val");
+        }
     }
 
     /* If the expression produced i1 (e.g. a comparison) but the
@@ -2937,6 +3004,8 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_ENUM_LIT:
         buildFuncVar(ctx, node, false);
     case NODE_CAST:
+        if (node->resolved && node->resolved->kind == Z_TYPE_SUM)
+            buildFuncVar(ctx, node, false);
         genFuncVars(ctx, node->castExpr.expr);
         break;
     case NODE_ARRAY_LIT:
@@ -3306,6 +3375,24 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
     }
 }
 
+static LLVMCodeGenOptLevel toCodeGenLevel(char level) {
+    switch (level) {
+    case '0': return LLVMCodeGenLevelNone;
+    case '1': return LLVMCodeGenLevelLess;
+    case '3': return LLVMCodeGenLevelAggressive;
+    case 's':
+    case 'z': return LLVMCodeGenLevelAggressive;
+    default:  return LLVMCodeGenLevelDefault;
+    }
+}
+
+static void buildOptPipeline(char level, char *buf, usize bufsize) {
+    char lvl = level ? level : '2';
+    if      (lvl == 's') snprintf(buf, bufsize, "default<Os>");
+    else if (lvl == 'z') snprintf(buf, bufsize, "default<Oz>");
+    else                 snprintf(buf, bufsize, "default<O%c>", lvl);
+}
+
 static bool emitObjectFile(ZCodegen *ctx, const char *filename) {
     LLVMInitializeAllTargetInfos();
     LLVMInitializeAllTargets();
@@ -3325,25 +3412,52 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename) {
         return false;
     }
 
+    char optlvl = ctx->state->optimizationLevel ? ctx->state->optimizationLevel : '2';
     LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
         target, triple, "generic", "",
-        LLVMCodeGenLevelDefault,
+        toCodeGenLevel(optlvl),
         LLVMRelocPIC,
         LLVMCodeModelDefault
     );
 
-    if (LLVMTargetMachineEmitToFile(machine, ctx->mod, (char *)filename,
-                                     LLVMObjectFile, &errmsg)) {
-        error(ctx->state, NULL, "Failed to emit object file: %s", errmsg);
-        LLVMDisposeMessage(errmsg);
-        LLVMDisposeTargetMachine(machine);
-        LLVMDisposeMessage(triple);
-        return false;
+    LLVMTargetDataRef layout = LLVMCreateTargetDataLayout(machine);
+    char *layout_str = LLVMCopyStringRepOfTargetData(layout);
+    LLVMSetDataLayout(ctx->mod, layout_str);
+    LLVMDisposeMessage(layout_str);
+    LLVMDisposeTargetData(layout);
+
+    if (optlvl != '0') {
+        char pipeline[32];
+        buildOptPipeline(optlvl, pipeline, sizeof(pipeline));
+        LLVMPassBuilderOptionsRef pb_opts = LLVMCreatePassBuilderOptions();
+        LLVMErrorRef err = LLVMRunPasses(ctx->mod, pipeline, machine, pb_opts);
+        LLVMDisposePassBuilderOptions(pb_opts);
+        if (err) {
+            char *msg = LLVMGetErrorMessage(err);
+            error(ctx->state, NULL, "Optimization failed: %s", msg);
+            LLVMDisposeErrorMessage(msg);
+            LLVMDisposeTargetMachine(machine);
+            LLVMDisposeMessage(triple);
+            return false;
+        }
+    }
+
+    bool ok;
+    if (ctx->state->ltoMode != Z_LTO_OFF) {
+        ok = (LLVMWriteBitcodeToFile(ctx->mod, filename) == 0);
+        if (!ok) error(ctx->state, NULL, "Failed to write bitcode to %s", filename);
+    } else {
+        ok = !LLVMTargetMachineEmitToFile(machine, ctx->mod, (char *)filename,
+                                          LLVMObjectFile, &errmsg);
+        if (!ok) {
+            error(ctx->state, NULL, "Failed to emit object file: %s", errmsg);
+            LLVMDisposeMessage(errmsg);
+        }
     }
 
     LLVMDisposeTargetMachine(machine);
     LLVMDisposeMessage(triple);
-    return true;
+    return ok;
 }
 
 static void freeCodegen(ZCodegen *ctx) {
@@ -3378,7 +3492,7 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
         return;
     }
 
-    const char *objfile = "output.o";
+    const char *objfile = (state->ltoMode != Z_LTO_OFF) ? "output.bc" : "output.o";
     if (!emitObjectFile(ctx, objfile)) {
         freeCodegen(ctx);
         return;

@@ -678,6 +678,15 @@ ZType *typesCompatible(ZSemantic *ctx, ZType *a, ZType *b) {
 
     if (typesEqual(a, b)) return b;
 
+    if (b->kind == Z_TYPE_SUM) {
+        for (usize i = 0; i < veclen(b->sumType); i++)
+            if (typesEqual(a, b->sumType[i])) return b;
+    }
+    if (a->kind == Z_TYPE_SUM) {
+        for (usize i = 0; i < veclen(a->sumType); i++)
+            if (typesEqual(b, a->sumType[i])) return a;
+    }
+
     if (a->kind != Z_TYPE_PRIMITIVE || b->kind != Z_TYPE_PRIMITIVE)
         return NULL;
 
@@ -2051,10 +2060,8 @@ static void analyzeVar(ZSemantic *ctx, ZNode *curr, bool isGlobal) {
 
     curr->resolved = declaredType;
 
-    if (curr->resolved->kind == Z_TYPE_FACET && curr->varDecl.rvalue) {
-        curr->varDecl.rvalue = implicitCast(
-            ctx, curr->varDecl.rvalue, curr->resolved
-        );
+    if (curr->varDecl.rvalue && rvalueType && !typesEqual(declaredType, rvalueType)) {
+        curr->varDecl.rvalue = implicitCast(ctx, curr->varDecl.rvalue, curr->resolved);
     }
 
     putVarPattern(
@@ -2327,6 +2334,21 @@ static bool patternEq(ZState *state, ZVarDestructPattern *a, ZVarDestructPattern
 
     switch (a->type) {
     case Z_VAR_IDENT: return true;
+    case Z_VAR_LIT: {
+        ZToken *ta = a->ident;
+        ZToken *tb = b->ident;
+        if (!ta || !tb) return ta == tb;
+        if (ta->type != tb->type) return false;
+        if (ta->type == TOK_INT_LIT || ta->type == TOK_RUNE_LIT)
+            return ta->integer == tb->integer;
+        if (ta->type == TOK_FLOAT_LIT)
+            return ta->floating == tb->floating;
+        if (!ta->str || !tb->str) return ta->str == tb->str;
+        return strcmp(ta->str, tb->str) == 0;
+    }
+    case Z_VAR_PAIR:
+        return tokeneq(a->key, b->key) &&
+               patternEq(state, a->value, b->value);
     case Z_VAR_TUPLE: {
         usize aLen = veclen(a->tuple);
         usize bLen = veclen(b->tuple);

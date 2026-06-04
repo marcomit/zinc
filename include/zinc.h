@@ -77,6 +77,12 @@ typedef struct {
     int             src_line;
 } ZLog;
 
+typedef enum {
+    Z_LTO_OFF = 0,
+    Z_LTO_THIN,
+    Z_LTO_FULL
+} ZLTOMode;
+
 typedef struct {
     char        *output;
     ZLog        **logs;
@@ -97,10 +103,10 @@ typedef struct {
 
     bool        emitLLVM;   /* --emit-llvm: write .ll IR file instead of native binary */
     bool        skipLLVMValidation;
-
-    /* Not yet implemented */
     bool        verbose;
-    u8          optimizationLevel;
+
+    char        optimizationLevel;
+    ZLTOMode    ltoMode;
     ZNode       *root;
 
     /* Extra arguments should be passed in the linker. */
