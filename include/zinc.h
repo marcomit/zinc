@@ -77,6 +77,12 @@ typedef struct {
     int             src_line;
 } ZLog;
 
+typedef enum {
+    Z_LTO_OFF = 0,
+    Z_LTO_THIN,
+    Z_LTO_FULL
+} ZLTOMode;
+
 typedef struct {
     char        *output;
     ZLog        **logs;
@@ -97,10 +103,10 @@ typedef struct {
 
     bool        emitLLVM;   /* --emit-llvm: write .ll IR file instead of native binary */
     bool        skipLLVMValidation;
-
-    /* Not yet implemented */
     bool        verbose;
-    u8          optimizationLevel;
+
+    char        optimizationLevel;
+    ZLTOMode    ltoMode;
     ZNode       *root;
 
     /* Extra arguments should be passed in the linker. */
@@ -141,8 +147,6 @@ typedef enum {
     NODE_ARRAY_LIT,
     NODE_ARRAY_INIT,
     NODE_MACRO,
-    NODE_GOTO,
-    NODE_LABEL,
     NODE_TYPE,
     NODE_ENUM,
     NODE_BREAK,
@@ -156,7 +160,9 @@ typedef enum {
     NODE_CAPABILITY,
     NODE_MATCH,
     NODE_MATCH_ARM,
-    NODE_ENUM_LIT
+    NODE_ENUM_LIT,
+    NODE_FACET,
+    NODE_IMPL
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -211,8 +217,18 @@ struct ZType {
             usize   size;
         } array;
 
-        /* List of Z_TYPE_FUNCTION */
-        ZType       **facet;
+        struct {
+            ZToken  *name;
+
+            /* List of NODE_FIELD */
+            ZNode   **funcs;
+
+            /* List of satisfied types.
+             * Types are added in this list during the semantic pass
+             * and only when a type tries to convert into a facet
+             * */
+            ZType   **satisfied;
+        } facet;
 
         struct {
             ZToken      *name;
@@ -526,16 +542,14 @@ struct ZNode {
          **/
         struct {
             ZMacroPattern   *pattern;
-            usize           startBody;        // Index of first token after {
-            usize           endBody;          // Index of } (exclusive)
+            usize           startBody;      // Index of first token after {
+            usize           endBody;        // Index of } (exclusive)
             ZMacroVar       **captured;
-            ZToken          *start;          // First token of macro definition
-            usize           consumed;         // Tokens consumed by pattern + body
-            ZToken          **sourceTokens;  // Original token array where the macro was defined
+            ZToken          *start;         // First token of macro definition
+            usize           consumed;       // Tokens consumed by pattern + body
+            ZToken          **sourceTokens; // Original token array where the macro was defined
             bool            pub;
         } macro;
-
-        ZToken              *gotoLabel;  // For NODE_GOTO and NODE_LABEL
 
         ZToken              *literalTok;
         struct {
@@ -556,6 +570,22 @@ struct ZNode {
             ZNode *capability;
             ZNode *block;
         } capability;
+
+        struct {
+            ZToken  *name;
+            bool    pub;
+
+            /* Array of NODE_FIELD */
+            ZNode   **funcs;
+        } facet;
+
+        struct {
+            ZType   **facets;
+            ZType   **generics;
+            ZType   *base;
+            ZToken  *self;
+            ZNode   **funcs;
+        } impl;
     };
 };
 
@@ -616,7 +646,8 @@ typedef enum {
     Z_SYM_STRUCT,
     Z_SYM_TYPEDEF,
     Z_SYM_GENERIC,
-    Z_SYM_NAMESPACE
+    Z_SYM_NAMESPACE,
+    Z_SYM_FACET
 } ZSymType;
 
 typedef struct ZSymbol {
@@ -668,6 +699,8 @@ typedef struct ZFuncTable {
      */
     ZNode           **staticFuncDef;
     hashset_t       seenStaticFuncs;
+
+    ZType           **facets;
 } ZFuncTable;
 
 typedef struct ZSymTable {
@@ -752,13 +785,14 @@ void typesSort(ZType **);
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
 bool typesPrimitive(ZType *);
-ZType *typesCompatible(ZState *, ZType *, ZType *);
+ZType *typesCompatible(ZSemantic *, ZType *, ZType *);
 
 /* ================== Zinc state ================== */
 ZState *makestate();
 
 char *readfile(char *);
 
+void encodeType(ZType *, char **);
 char *mangler(ZToken **);
 char *manglerM(ZType *, ZToken *);
 

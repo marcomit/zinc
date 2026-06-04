@@ -1,0 +1,34 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+// Inline-if producing a sum type: branches have different types
+classify :: (*char | i32) (flag: i32) {
+    return if flag != 0 -> "str" else -> 42
+}
+
+// Direct return of a concrete variant
+pick_str :: (*char | i32) () {
+    return "hello"
+}
+
+pick_int :: (*char | i32) () {
+    return 99
+}
+
+// Sum type via conditional branches (statement if)
+describe :: (*char | i32) (n: i32) {
+    if n > 0 { return "positive" }
+    return 0
+}
+
+main :: i32 () {
+    classify(1)
+    classify(0)
+    pick_str()
+    pick_int()
+    describe(5)
+    describe(0)
+    c::printf("sum types ok\n")
+    return 0
+}

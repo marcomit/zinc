@@ -27,25 +27,25 @@ c :: foreign {
 }
 
 Vector2 :: struct {
-    f32 x
-    f32 y
+    x: f32
+    y: f32
 }
 
 Rectangle :: struct {
     ...Vector2
-    f32 width
-    f32 height
+    width: f32
+    height: f32
 }
 
 Color :: struct {
-    u8 r
-    u8 g
-    u8 b
-    u8 a
+    r: u8
+    g: u8
+    b: u8
+    a: u8
 }
 
 Color :: impl {
-    new :: Color (u8 r, u8 g, u8 b, u8 a) -> Color{ r: r, g: g, b: b, a: a }
+    new :: Color (r: u8, g: u8, b: u8, a: u8) -> Color{ r: r, g: g, b: b, a: a }
 }
 
 Tile :: type u32
@@ -59,7 +59,7 @@ Tile :: impl {
     z :: Tile () -> (6 << 24) | (3 << 16) | 0b000110011
     i :: Tile () -> (7 << 24) | (4 << 16) | 0b0001000100010001
 
-    random :: Tile (*Random rand) {
+    random :: Tile (rand: *Random) {
         tiles := [
             Tile::o,
             Tile::l,
@@ -73,7 +73,7 @@ Tile :: impl {
     }
 }
 
-get_color :: Color (u8 t) {
+get_color :: Color (t: u8) {
     colors := [
         Color::new(255, 255, 0, 255), // o
         Color::new(255, 165, 0, 255), // l
@@ -90,7 +90,7 @@ Tile self :: impl {
     width   :: u8 () -> (self >> 16) & 0xFF
     kind    :: u8 () -> self >> 24
 
-    draw :: u0 (i32 gx, i32 gy) {
+    draw :: u0 (gx: i32, gy: i32) {
         kind    := self.kind()
         width   := self.width() as i32
 
@@ -130,17 +130,20 @@ Tile self :: impl {
         return (self & (0xFFFF0000 as u32)) | content
     }
 
-    at :: u1 (u8 x, u8 y) -> (self >> (y * self.width() + x)) & 1
+    #[inline(always)]
+    at :: u1 (x: u8, y: u8) {
+        return (self >> (y * self.width() + x)) & 1
+    }
 }
 
 Counter :: struct {
-    u64 count
-    u64 target
+    count: u64
+    target: u64
 }
 
 Counter :: impl {
-    new :: *Counter(u64 target)[Allocator allocator] {
-        self := allocator.alloc(sizeof Counter) as *Counter
+    new :: *Counter(target: u64)[Allocator] {
+        self := alloc(sizeof Counter) as *Counter
         self.count = 0
         self.target = target
         return self
@@ -159,21 +162,21 @@ Counter :: impl {
 }
 
 GameState :: struct {
-    *u8 board
-    Tile current
-    Tile next
-    Vector2 offset
-    u1 gameover
-    u64 points
-    *Random rand
-    *Counter ticker
+    board: *u8
+    current: Tile
+    next: Tile
+    offset: Vector2
+    gameover: u1
+    points: u64
+    rand: *Random
+    ticker: *Counter
 }
 
 GameState :: impl {
-    new :: *GameState()[Allocator allocator] {
-        *GameState self = allocator.alloc(sizeof GameState)
-        u64 boardSize = sizeof u8 * 10 as u64 * 20 as u64
-        self.board = allocator.alloc(boardSize)
+    new :: *GameState()[Allocator] {
+        self: *GameState = alloc(sizeof GameState)
+        boardSize: u64 = sizeof u8 * 10 as u64 * 20 as u64
+        self.board = alloc(boardSize)
         c::memset(self.board, 0, boardSize)
 
         self.rand = Random::by_ref()
@@ -188,7 +191,8 @@ GameState :: impl {
 }
 
 *GameState self :: impl {
-    at :: u8 (u8 x, u8 y) -> self.board[y * 10 + x]
+    #[inline(always)]
+    at :: u8 (x: u8, y: u8) -> self.board[y * 10 + x]
 
     draw :: u0 () {
         y := 0
@@ -227,7 +231,7 @@ GameState :: impl {
     drawGhost :: u0 () {
         width := self.current.width() as i32
         px := self.offset.x as i32
-        gy := self.landing()
+        py := self.landing()
 
         color := get_color(self.current.kind())
         color.a = 60
@@ -239,7 +243,7 @@ GameState :: impl {
                 if self.current.at(x as u8, y as u8) {
                     rect := Rectangle{
                         x: ((px + x) as f32) * 20.0,
-                        y: ((gy + y) as f32) * 20.0,
+                        y: ((py + y) as f32) * 20.0,
                         width: 20.0,
                         height: 20.0
                     }
@@ -251,7 +255,7 @@ GameState :: impl {
         }
     }
 
-    collides :: u1 (Tile tile, i32 px, i32 py) {
+    collides :: u1 (tile: Tile, px: i32, py: i32) {
         width := tile.width() as i32
         y := 0
         for y < width {

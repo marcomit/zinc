@@ -378,7 +378,8 @@ static ZNode *parsePrimary(ZParser *parser) {
             return node;
         }
         if (!parser->noStructLit && checkAhead(parser, TOK_LBRACKET, 1)) {
-            return parseStructLit(parser);
+            ZNode *structlit = tryParse(parser, parseStructLit(parser));
+            if (structlit) return structlit;
         }
         ZNode *node         = makenode(NODE_IDENTIFIER);
         node->identNode.tok = consume(parser);
@@ -1045,7 +1046,8 @@ ZNode *expandListMacro(ZParser *parser) {
 
 static ZNode *parseCapabilityBlock(ZParser *parser) {
     expect(parser, TOK_WITH);
-    ZNode *capability = parseVarDef(parser);
+
+    ZNode *capability   = parseVarDef(parser);
     if (!capability) {
         error(parser->state, peek(parser), "Invalid expression");
         return NULL;
@@ -2416,7 +2418,7 @@ static ZNode *parseModule(ZParser *parser) {
     return root;
 }
 
-static ZNode *parseFuncBlock(ZParser *parser) {
+static ZNode *parseImpl(ZParser *parser) {
     ZType *type = parseType(parser);
     ZToken *rec = NULL;
 
@@ -2427,23 +2429,15 @@ static ZNode *parseFuncBlock(ZParser *parser) {
     expect(parser, TOK_IMPL);
 
     /* Declare facets this block must implement. */
-    guard(type);
     ZType **facets = NULL;
-    if (match(parser, TOK_WITH)) {
-        ZType *type = tryParse(parser, parseGenericDecl(parser));
-        if (!type) {
-            error(parser->state, peek(parser),
-                    "Unespected token");
-            return NULL;
-        }
+    if (check(parser, TOK_IDENT)) {
+        do {
 
-        vecpush(facets, type);
-
-        while (match(parser, TOK_PLUS)) {
-            type = tryParse(parser, parseGenericDecl(parser));
-            if (!type) break;
-            vecpush(facets, type);
-        }
+        ZType *facet            = maketype(Z_TYPE_PRIMITIVE);
+        facet->primitive.token  = consume(parser);
+        facet->tok              = facet->primitive.token;
+        vecpush(facets, facet);
+        } while (!check(parser, TOK_LBRACKET) && match(parser, TOK_PLUS));
     }
 
     /* Declare generics that every function in this block inherit. */
@@ -2460,8 +2454,14 @@ static ZNode *parseFuncBlock(ZParser *parser) {
 
     ZNode *func                 = NULL;
     bool public                 = false;
-    ZNode *block                = makenode(NODE_BLOCK);
-    block->block                = NULL;
+
+    ZNode *block                = makenode(NODE_IMPL);
+    block->impl.base            = NULL;
+    block->impl.self            = NULL;
+    block->impl.funcs           = NULL;
+    block->impl.facets          = facets;
+    block->impl.generics        = generics;
+
     ZAnnotation **annotations   = NULL;
     while (true) {
         annotations = NULL;
@@ -2478,14 +2478,14 @@ static ZNode *parseFuncBlock(ZParser *parser) {
             }
             break;
         }
-        vecpush(block->block, func);
+        vecpush(block->impl.funcs, func);
 
         if (check(parser, TOK_RBRACKET)) break;
     }
 
     expect(parser, TOK_RBRACKET);
 
-    usize len = veclen(block->block);
+    usize len = veclen(block->impl.funcs);
 
     if (len == 0) return block;
 
@@ -2496,34 +2496,94 @@ static ZNode *parseFuncBlock(ZParser *parser) {
     while (baseType->kind == Z_TYPE_POINTER) baseType = baseType->base;
     ZToken *typeNameTok = baseType->primitive.token;
 
+    block->impl.base = type;
+    block->impl.self = rec;
     if (rec) { // receiver functions
         ZNode *receiver = makenode(NODE_FIELD);
         receiver->field.identifier = rec;
         receiver->field.type = type;
+
         for (usize i = 0; i < len; i++) {
             /* manglerM encodes the full receiver type (pointer or not), so
              * `for String self` and `for *String self` get distinct names. */
-            block->block[i]->funcDef.mangled = manglerM(
+            block->impl.funcs[i]->funcDef.mangled = manglerM(
                 type,
-                block->block[i]->funcDef.name
+                block->impl.funcs[i]->funcDef.name
             );
-            block->block[i]->funcDef.receiver = receiver;
+            block->impl.funcs[i]->funcDef.receiver = receiver;
         }
     } else { // static functions
         for (usize i = 0; i < len; i++) {
-            block->block[i]->funcDef.mangled = mangler((ZToken*[]) {
+            block->impl.funcs[i]->funcDef.mangled = mangler((ZToken*[]) {
                 typeNameTok,
-                block->block[i]->funcDef.name,
+                block->impl.funcs[i]->funcDef.name,
                 NULL
             });
-            block->block[i]->funcDef.base = type;
+            block->impl.funcs[i]->funcDef.base = type;
 
-            vecunion(block->block[i]->funcDef.generics,
+            vecunion(block->impl.funcs[i]->funcDef.generics,
                     generics, veclen(generics));
         }
     }
 
     return block;
+}
+
+static ZNode *parseFacet(ZParser *parser, bool public) {
+    ZToken *start = peek(parser);
+
+    expect(parser, TOK_IDENT);
+    expect(parser, TOK_DOUBLE_COLON);
+    expect(parser, TOK_FACET);
+    expect(parser, TOK_LBRACKET);
+
+    ZNode *facet        = makenode(NODE_FACET);
+    facet->facet.name   = start;
+    facet->facet.pub    = public;
+    facet->facet.funcs  = NULL;
+
+    do {
+        if (!check(parser, TOK_IDENT)) break;
+        ZToken *name = consume(parser);
+
+        if (!match(parser, TOK_DOUBLE_COLON)) break;
+
+        ZType *func = parseFuncType(parser);
+
+        ZNode *field = makenode(NODE_FIELD);
+
+        field->field.identifier = name;
+        field->field.type       = func;
+        field->resolved         = func;
+
+        vecpush(facet->facet.funcs, field);
+    } while (!check(parser, TOK_RBRACKET));
+    
+    expect(parser, TOK_RBRACKET);
+
+    if (veclen(facet->facet.funcs) == 0) {
+        error(parser->state, start, "Expected at least one function");
+    }
+
+    ZType *type         = maketype(Z_TYPE_FACET);
+    type->tok           = start;
+    type->facet.name    = start;
+    type->facet.funcs   = facet->facet.funcs;
+    facet->resolved     = type;
+
+    return facet;
+}
+
+static ZNode *parseConst(ZParser *parser) {
+    ZToken *start = peek(parser);
+
+    expect(parser, TOK_IDENT);
+    expect(parser, TOK_DOUBLE_COLON);
+
+    ZNode *expr = parseExpr(parser);
+
+    ZVarDestructPattern *pattern = makeDestructIdent(start);
+    return makenodevar(pattern, NULL, expr);
 }
 
 static ZNode *parse(ZParser *parser) {
@@ -2550,7 +2610,7 @@ static ZNode *parse(ZParser *parser) {
     guard(base);
     if (check(parser, TOK_IDENT)) {
         undo(parser, snap);
-        return parseFuncBlock(parser);
+        return parseImpl(parser);
     }
     expect(parser, TOK_DOUBLE_COLON);
     guard(canPeek(parser));
@@ -2559,24 +2619,23 @@ static ZNode *parse(ZParser *parser) {
     undo(parser, snap);
 
     switch (t) {
+    case TOK_FACET:     return parseFacet       (parser, public);
     case TOK_FOREIGN:   return parseForeignBlock(parser);
-    case TOK_IMPL:      return parseFuncBlock   (parser);
+    case TOK_IMPL:      return parseImpl   (parser);
     case TOK_TYPEDEF:   return parseTypedef     (parser, public);
     case TOK_MACRO:     return skipMacro        (parser, public);
     case TOK_STRUCT:    return parseStructDecl  (parser, annotations, public);
     case TOK_ENUM:      return parseEnumDecl    (parser, annotations, public);
     default: {
-        ZParserSnapshot *snap = store(parser);
-        ZNode *res = parseFuncDecl(parser, annotations, public);
 
+        ZNode *res = tryParse(
+            parser, parseFuncDecl(parser, annotations, public)
+        );
         if (res) return res;
 
-        undo(parser, snap);
-        res = parseVarDef(parser);
-
+        res = parseConst(parser);
         if (res) return res;
-        
-        undo(parser, snap);
+
         error(parser->state,
             peek(parser),
             "Unexpected token '%s', expected a top-level declaration",

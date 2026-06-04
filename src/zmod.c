@@ -18,10 +18,10 @@ static char *nodeLabels[] = {
     "LITERAL",      "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
     "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
-    "MACRO",        "GOTO",         "LABEL",        "TYPE",         "ENUM",
-    "BREAK",        "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",
-    "STATICACCESS", "NAMESPACE",    "SLICE",        "CAPABILITY",   "MATCH",
-    "MATCH_ARM",    "ENUM_LIT"
+    "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
+    "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATICACCESS", "NAMESPACE",
+    "SLICE",        "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",
+    "FACET",        "IMPL"
 };
 
 static char *levels[] = {
@@ -227,6 +227,10 @@ static void _stype(ZType *type, char **buff) {
             }
         }
         break;
+    case Z_TYPE_FACET:
+        vecunion(*buff, "facet ", 6);
+        vecunion(*buff, type->facet.name->str, strlen(type->facet.name->str));
+        break;
     // case Z_TYPE_GENERIC:
     //     vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
     //     vecpush(*buff, '[');
@@ -309,6 +313,9 @@ void printType(ZType *type) {
                 printf(" | ");
             }
         }
+        break;
+    case Z_TYPE_FACET:
+        printf("facet %s\n", type->facet.name->str);
         break;
     default:
         printf("(details not implemented for type %d)", type->kind);
@@ -611,9 +618,6 @@ void printNode(ZNode *node, u8 depth) {
             printNode(fields[i], depth);
         }
         break;
-    case NODE_LABEL:
-        printf("Label: %s", stoken(node->gotoLabel));
-        break;
     case NODE_CAST:
         printf("\n");
         printNode(node->castExpr.expr, depth);
@@ -695,6 +699,20 @@ void printNode(ZNode *node, u8 depth) {
         printDestructedVar(node->matchArm.pattern, depth);
         printNode(node->matchArm.expr, depth);
         break;
+    case NODE_FACET:
+        printf("%s\n", stoken(node->facet.name));
+        for (usize i = 0; i < veclen(node->facet.funcs); i++) {
+            printNode(node->facet.funcs[i], depth);
+        }
+        break;
+    case NODE_IMPL:
+        printType(node->impl.base);
+        printf("\n");
+
+        for (usize i = 0; i < veclen(node->impl.funcs); i++) {
+            printNode(node->impl.funcs[i], depth);
+        }
+        break;
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
@@ -726,19 +744,50 @@ char *mangler(ZToken *segments[]) {
 /* Encode a ZType into a mangled name buffer.
  * Pointer types get a 'P' prefix; primitives get a length-prefixed name.
  * e.g. String -> "6String", *String -> "P6String" */
-static void encodeType(ZType *type, char **buf) {
-    if (type->kind == Z_TYPE_POINTER) {
+void encodeType(ZType *type, char **buf) {
+    switch (type->kind) {
+    case Z_TYPE_POINTER:
         vecpush(*buf, 'P');
         encodeType(type->base, buf);
-    } else if (type->kind == Z_TYPE_PRIMITIVE) {
+        break;
+    case Z_TYPE_TUPLE:
+        vecpush(*buf, 'T');
+        for (usize i = 0; i < veclen(type->tuple); i++) {
+            encodeType(type->tuple[i], buf);
+        }
+        break;
+    case Z_TYPE_PRIMITIVE: {
         const char *name = type->primitive.token->str;
-        int len = strlen(name);
+        usize len = strlen(name);
         int tmp = len;
         while (tmp) {
             vecpush(*buf, '0' + tmp % 10);
             tmp /= 10;
         }
-        vecunion(*buf, name, (usize)len);
+        vecunion(*buf, name, len);
+    }
+    case Z_TYPE_ARRAY:
+        vecpush(*buf, 'A');
+        encodeType(type->array.base, buf);
+        break;
+    case Z_TYPE_FUNCTION:
+        vecpush(*buf, 'F');
+        encodeType(type->func.ret, buf);
+        for (usize i = 0; i < veclen(type->func.args); i++) {
+            encodeType(type->func.args[i], buf);
+        }
+        break;
+    case Z_TYPE_STRUCT:
+        vecpush(*buf, 'S');
+        for (usize i = 0; i < veclen(type->strct.fields); i++) {
+            encodeType(type->strct.fields[i]->resolved, buf);
+        }
+        break;
+        break;
+    case Z_TYPE_FACET:
+        vecpush(*buf, 'I');
+        break;
+    default: break;
     }
 }
 
@@ -813,7 +862,8 @@ ZState *makestate() {
     self->emitLLVM              = false;
     self->visitedFiles          = NULL;
     self->skipLLVMValidation    = false;
-    self->optimizationLevel     = 0;
+    self->optimizationLevel     = '2';
+    self->ltoMode               = Z_LTO_OFF;
     self->extraArgs             = NULL;
 
     return self;

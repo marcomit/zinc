@@ -11,6 +11,8 @@ Vec2 :: impl {
     new :: Vec2 (x: i32, y: i32) -> Vec2{ x: x, y: y}
 }
 
+GLOBAL :: 100
+
 Vec2 self :: impl {
     #[overload(+)]
     add :: Vec2 (other: Vec2) {
