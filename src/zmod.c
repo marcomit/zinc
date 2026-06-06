@@ -1037,7 +1037,7 @@ void undoVisit(ZState *state) {
 }
 
 static void printLineHighlight(ZToken *tok, const char *color) {
-    if (!tok || !tok->start) return;
+    if (!tok || !tok->start || !tok->sourceLinePtr) return;
     char *lineStart = tok->sourceLinePtr;
     
     char num[32];
