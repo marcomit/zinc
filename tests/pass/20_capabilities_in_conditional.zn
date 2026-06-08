@@ -1,7 +1,7 @@
 // Capability-requiring function called in both branches of an if.
 // The if-body is a child scope; lookupScopedCapability walks up to find the capability.
 
-use <core::mem>
+use <std::core::mem>
 
 c :: foreign {
     printf :: u0 (*char, ...)

@@ -1,7 +1,7 @@
-use <core::mem>
-use <io::thread>
-use <io::mutex>
-use <io::net>
+use <std::core::mem>
+use <std::io::thread>
+use <std::io::mutex>
+use <std::io::net>
 
 c :: foreign {
     printf   :: u0  (*char, ...)

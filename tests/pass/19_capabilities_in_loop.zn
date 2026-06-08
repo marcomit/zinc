@@ -2,7 +2,7 @@
 // The for-body is a child scope of the `with` scope;
 // lookupScopedCapability walks parent scopes so the capability is found.
 
-use <core::mem>
+use <std::core::mem>
 
 c :: foreign {
     printf :: u0 (*char, ...)

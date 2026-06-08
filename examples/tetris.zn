@@ -1,5 +1,5 @@
-use <core::mem>
-use <core::rand>
+use <std::core::mem>
+use <std::core::rand>
 
 raylib :: foreign {
     InitWindow :: u0 (i32, i32, *char)

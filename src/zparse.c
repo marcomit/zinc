@@ -2008,25 +2008,43 @@ static ZNode *parseStructLit(ZParser *parser) {
     return structlit;
 }
 
-static ZNode *getModuleByName(ZParser *parser, ZToken **module, bool isStd) {
+static ZNode *getModuleByName(ZParser *parser, ZToken **module, bool external) {
     char *filename = NULL;
-    if (isStd) {
-        usize len = strlen(parser->state->compilerPath);
-        vecunion(filename, parser->state->compilerPath, len);
-        vecpush(filename, sep);
-        vecunion(filename, "std", 3);
-        vecpush(filename, sep);
-    }
-
     usize len = veclen(module);
-    for (usize i = 0; i < len; i++) {
-        const char *seg = strcmp(module[i]->str, "super") == 0 ?
-            ".." :
-            module[i]->str;
-        for (usize j = 0; j < strlen(seg); j++) {
-            vecpush(filename, seg[j]);
+    if (len == 0) return NULL;
+
+    if (external) {
+        const char *home = parser->state->homePath;
+        if (!home) home = "";
+
+        vecunion(filename, home, strlen(home));
+        vecpush(filename, sep);
+        vecunion(filename, ".zinc", 5);
+        vecpush(filename, sep);
+        vecunion(filename, "packages", 8);
+        vecpush(filename, sep);
+
+        const char *pkg = module[0]->str;
+        vecunion(filename, pkg, strlen(pkg));
+        vecpush(filename, sep);
+
+        if (len > 1) {
+            for (usize i = 1; i < len; i++) {
+                const char *seg = module[i]->str;
+                vecunion(filename, seg, strlen(seg));
+                if (i < len - 1) vecpush(filename, sep);
+            }
+        } else {
+            vecunion(filename, pkg, strlen(pkg));
         }
-        if (i < len - 1) vecpush(filename, sep);
+    } else {
+        for (usize i = 0; i < len; i++) {
+            const char *seg = strcmp(module[i]->str, "super") == 0 ?
+                ".." :
+                module[i]->str;
+            vecunion(filename, seg, strlen(seg));
+            if (i < len - 1) vecpush(filename, sep);
+        }
     }
     vecunion(filename, ".zn", 3);
     vecpush(filename, '\0');

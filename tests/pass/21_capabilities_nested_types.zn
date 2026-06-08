@@ -2,7 +2,7 @@
 // Each type is provided by a separate nested `with` block;
 // lookupScopedCapability walks parent scopes so both are found at the call site.
 
-use <core::mem>
+use <std::core::mem>
 
 c :: foreign {
     printf :: u0 (*char, ...)
