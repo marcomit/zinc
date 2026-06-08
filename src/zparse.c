@@ -2145,7 +2145,7 @@ static ZType *parseFuncType(ZParser *parser) {
     return func;
 }
 
-static ZNode *parseForeignBlock(ZParser *parser) {
+static ZNode *parseForeignBlock(ZParser *parser, bool public) {
     ZToken *start = peek(parser);
     ZToken *lib = start;
 
@@ -2155,10 +2155,10 @@ static ZNode *parseForeignBlock(ZParser *parser) {
     expect(parser, TOK_LBRACKET);
 
     ZType *func         = NULL;
-    bool public         = false;
     ZNode *namespace    = makenode(NODE_NAMESPACE);
     namespace->tok      = lib;
     namespace->block    = NULL;
+    namespace->pub      = public;
     ZNode *node         = NULL;
 
 
@@ -2436,7 +2436,7 @@ static ZNode *parseModule(ZParser *parser) {
     return root;
 }
 
-static ZNode *parseImpl(ZParser *parser) {
+static ZNode *parseImpl(ZParser *parser, bool public) {
     ZType *type = parseType(parser);
     ZToken *rec = NULL;
 
@@ -2471,7 +2471,6 @@ static ZNode *parseImpl(ZParser *parser) {
     expect(parser, TOK_LBRACKET);
 
     ZNode *func                 = NULL;
-    bool public                 = false;
 
     ZNode *block                = makenode(NODE_IMPL);
     block->impl.base            = NULL;
@@ -2479,6 +2478,7 @@ static ZNode *parseImpl(ZParser *parser) {
     block->impl.funcs           = NULL;
     block->impl.facets          = facets;
     block->impl.generics        = generics;
+    block->impl.pub             = public;
 
     ZAnnotation **annotations   = NULL;
     while (true) {
@@ -2628,7 +2628,7 @@ static ZNode *parse(ZParser *parser) {
     guard(base);
     if (check(parser, TOK_IDENT)) {
         undo(parser, snap);
-        return parseImpl(parser);
+        return parseImpl(parser, public);
     }
     expect(parser, TOK_DOUBLE_COLON);
     guard(canPeek(parser));
@@ -2638,8 +2638,8 @@ static ZNode *parse(ZParser *parser) {
 
     switch (t) {
     case TOK_FACET:     return parseFacet       (parser, public);
-    case TOK_FOREIGN:   return parseForeignBlock(parser);
-    case TOK_IMPL:      return parseImpl   (parser);
+    case TOK_FOREIGN:   return parseForeignBlock(parser, public);
+    case TOK_IMPL:      return parseImpl        (parser, public);
     case TOK_TYPEDEF:   return parseTypedef     (parser, public);
     case TOK_MACRO:     return skipMacro        (parser, public);
     case TOK_STRUCT:    return parseStructDecl  (parser, annotations, public);

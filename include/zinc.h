@@ -393,7 +393,10 @@ struct ZNode {
              * */
             ZScope  *scope;
             /* The list of statements. */
-            ZNode   **block;
+            struct {
+                bool    pub;
+                ZNode   **block;
+            };
         };
         struct {
             ZType   *type;
@@ -580,6 +583,7 @@ struct ZNode {
         } facet;
 
         struct {
+            bool    pub;
             ZType   **facets;
             ZType   **generics;
             ZType   *base;

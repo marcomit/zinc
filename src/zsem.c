@@ -494,7 +494,7 @@ static void putNamespace(ZSemantic *ctx, ZNode *node) {
         node->tok,
         node->resolved,
         node,
-        false
+        node->pub
     );
 }
 
