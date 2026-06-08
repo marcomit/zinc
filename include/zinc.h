@@ -89,7 +89,7 @@ typedef struct {
     ZPhase      currentPhase;
     char        *currentPath;
     char        *filename;
-    char        *compilerPath;
+    char        *homePath;
 
     char        **pathFiles;
     char        **visitedFiles;

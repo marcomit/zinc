@@ -1,5 +1,5 @@
-use <core::string>
-use <core::mem>
+use <std::core::string>
+use <std::core::mem>
 
 libc :: foreign {
     printf :: u0 (*char, ...)

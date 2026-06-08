@@ -1,4 +1,4 @@
-use <core::mem>
+use <std::core::mem>
 void :: type u0
 bool :: type u1
 

@@ -1,7 +1,7 @@
 // Early return from inside a capability block.
 // The function returns before the `with` scope ends normally.
 
-use <core::mem>
+use <std::core::mem>
 
 c :: foreign {
     printf :: u0 (*char, ...)

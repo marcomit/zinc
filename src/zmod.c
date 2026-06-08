@@ -37,54 +37,35 @@ static char *colors[] = {
 
 static void printLog(ZState *, ZLog *);
 
-static char *getCompilerPath();
+static char *getHomePath();
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
-#include <linux/limits.h>
+#include <libgen.h>
+#include <pwd.h>
 
-static char *getCompilerPath() {
-    char *buf[PATH_MAX];
-    usize len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len == -1) return NULL;
-    buf[len] = '\0';
-    return strdup(dirname(buf));
-}
-
-#elif __APPLE__
-#include <mach-o/dyld.h>
-#include <sys/syslimits.h>
-
-static char *getCompilerPath() {
-    char buf[PATH_MAX];
-    u32 size = sizeof(buf);
-
-    if (_NSGetExecutablePath(buf, &size) != 0)  return NULL;
-
-    char *real = realpath(buf, NULL);
-    if (!real) return NULL;
-
-    char *dir = strdup(dirname(real));
-
-    free(real);
-    return dir;
+static char *getHomePath() {
+    const char *home = getenv("HOME");
+    if (!home || !*home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) home = pw->pw_dir;
+    }
+    if (!home) return NULL;
+    return strdup(home);
 }
 
 #elif _WIN32
 #include <windows.h>
 
-static char *getCompilerPath() {
-    char buf[MAX_PATH];
-    DWORD len = GetModuleFileNameA(NULL, buf, MAX_PATH);
+static char *getHomePath() {
+    const char *home = getenv("USERPROFILE");
+    if (!home || !*home) home = getenv("HOME");
+    if (!home) return NULL;
 
-    if (len == 0) return NULL;
-
-    // Normalize to forward slashes first, then strip the filename.
-    for (DWORD i = 0; i < len; i++) if (buf[i] == '\\') buf[i] = '/';
-
-    char *last = strrchr(buf, '/');
-    if (last) *last = '\0';
-    return strdup(buf);
+    char *out = strdup(home);
+    // Normalize to forward slashes to match the rest of the path handling.
+    for (char *p = out; *p; p++) if (*p == '\\') *p = '/';
+    return out;
 }
 
 #endif
@@ -847,12 +828,13 @@ ZState *makestate() {
     self->output                = NULL;
     self->currentPhase          = Z_PHASE_LEXICAL;
     self->filename              = NULL;
+    self->homePath              = getHomePath();
+    printf("HOME PATH: %s\n", self->homePath);
     self->logs                  = NULL;
     self->verbose               = false;
     self->pathFiles             = NULL;
     self->debug                 = false;
     self->canAdvance            = true;
-    self->compilerPath          = getCompilerPath();
     self->currentPath           = NULL;
                                 
     self->unusedFunc            = false;

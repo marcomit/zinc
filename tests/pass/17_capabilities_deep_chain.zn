@@ -2,7 +2,7 @@
 // Verifies that the capability threads correctly through all levels
 // without being passed explicitly.
 
-use <core::mem>
+use <std::core::mem>
 
 c :: foreign {
     printf :: u0 (*char, ...)
