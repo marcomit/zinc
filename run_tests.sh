@@ -40,8 +40,6 @@ xpassed=0
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# ── helpers ──────────────────────────────────────────────────────────────────
-
 binary_was_produced() {
     local bin="$1"
     [ -f "$bin" ] && [ -x "$bin" ]
@@ -54,12 +52,6 @@ compile() {
     COMPILE_EXIT=0
     "$ZINC" "$src" -o "$bin" > "$log" 2>&1 || COMPILE_EXIT=$?
 }
-
-# ── pass tests ───────────────────────────────────────────────────────────────
-# A pass test must:
-#   1. Produce an executable
-#   2. Run without crashing (exit 0)
-#   3. Produce output matching <test>.expected (if the file exists)
 
 run_pass_test() {
     local src="$1"
@@ -112,9 +104,6 @@ run_pass_test() {
     fi
 }
 
-# ── fail tests ───────────────────────────────────────────────────────────────
-# A fail test must NOT produce an executable.
-
 run_fail_test() {
     local src="$1"
     local name
@@ -135,10 +124,6 @@ run_fail_test() {
         passed=$((passed + 1))
     fi
 }
-
-# ── xfail tests ──────────────────────────────────────────────────────────────
-# Expected to fail for now (unimplemented features).
-# Counts as xfailed if it fails, xpassed (bonus) if it succeeds.
 
 run_xfail_test() {
     local src="$1"
@@ -178,14 +163,28 @@ run_xfail_test() {
     fi
 }
 
-# ── main ─────────────────────────────────────────────────────────────────────
-
-# Check zinc binary
 if [ ! -x "$ZINC" ]; then
     echo -e "${RED}error:${NC} zinc binary not found at '$ZINC'"
     echo "       Run 'make' first, or set ZINC=/path/to/zinc"
     exit 1
 fi
+
+install_stdlib() {
+    [ -d std ] || return 0
+    local home_dir="$HOME"
+    case "${OSTYPE:-}" in
+        msys*|cygwin*)
+            [ -n "${USERPROFILE:-}" ] && home_dir=$(cygpath -u "$USERPROFILE")
+            ;;
+    esac
+    local registry="$home_dir/.zinc/packages/std"
+    rm -rf "$registry"
+    mkdir -p "$registry"
+    cp -R std/. "$registry/"
+    echo -e "  ${CYAN}installed stdlib${NC} -> $registry"
+}
+
+install_stdlib
 
 echo -e "${BOLD}Zinc test suite${NC}  (zinc: $ZINC)"
 [ -n "$TEST_FILTER" ] && echo -e "  filter: tests starting with ${BOLD}${TEST_FILTER}${NC}"

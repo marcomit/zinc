@@ -94,8 +94,20 @@ test: $(TARGET)
 	make
 	./run_tests.sh
 
+# Install the std library inside the global package registry
+install: $(TARGET)
+ifeq ($(UNAME), Windows)
+	@registry="$$(cygpath -u "$$USERPROFILE")/.zinc/packages/std"; \
+	  rm -rf "$$registry" && mkdir -p "$$registry" && cp -R std/. "$$registry/"; \
+	  echo "installed stdlib -> $$registry"
+else
+	@registry="$$HOME/.zinc/packages/std"; \
+	  rm -rf "$$registry" && mkdir -p "$$registry" && cp -R std/. "$$registry/"; \
+	  echo "installed stdlib -> $$registry"
+endif
+
 clean:
 	rm -f $(TARGET)
 	rm -rf $(BUILD_DIR)
 
-.PHONY: all clean
+.PHONY: all clean install
