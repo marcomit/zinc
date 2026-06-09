@@ -829,7 +829,6 @@ ZState *makestate() {
     self->currentPhase          = Z_PHASE_LEXICAL;
     self->filename              = NULL;
     self->homePath              = getHomePath();
-    printf("HOME PATH: %s\n", self->homePath);
     self->logs                  = NULL;
     self->verbose               = false;
     self->pathFiles             = NULL;
@@ -841,7 +840,7 @@ ZState *makestate() {
     self->unusedStruct          = false;
     self->unusedVar             = false;
                                 
-    self->emitLLVM              = false;
+    self->emit                  = Z_EMIT_EXE;
     self->visitedFiles          = NULL;
     self->skipLLVMValidation    = false;
     self->optimizationLevel     = '2';
@@ -855,7 +854,7 @@ char *readfile(char *filename) {
     FILE *fd = fopen(filename, "r");
     
     if (!fd) {
-        perror("Error");
+        perror(filename);
         return NULL;
     }
 
@@ -1000,13 +999,15 @@ static char *resolvePath(ZState *state, char *filename) {
     return out;
 }
 
-bool visit(ZState *state, char *filename) {
+bool visit(ZState *state, char *filename, bool external) {
     filename = resolvePath(state, filename);
     for (usize i = 0; i < veclen(state->visitedFiles); i++) {
         if (strcmp(state->visitedFiles[i], filename) == 0) return false;
     }
 
-    printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", filename);
+    if (!external) {
+        printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", filename);
+    }
     vecpush(state->visitedFiles,     filename);
     vecpush(state->pathFiles,         filename);
     state->filename = filename;

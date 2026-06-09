@@ -83,6 +83,13 @@ typedef enum {
     Z_LTO_FULL
 } ZLTOMode;
 
+typedef enum {
+    Z_EMIT_EXE,
+    Z_EMIT_OBJ,
+    Z_EMIT_IR,
+    Z_EMIT_ASM
+} ZEmitMode;
+
 typedef struct {
     char        *output;
     ZLog        **logs;
@@ -101,12 +108,12 @@ typedef struct {
     bool        unusedFunc;
     bool        unusedStruct;
 
-    bool        emitLLVM;   /* --emit-llvm: write .ll IR file instead of native binary */
     bool        skipLLVMValidation;
     bool        verbose;
 
     char        optimizationLevel;
     ZLTOMode    ltoMode;
+    ZEmitMode   emit;
     ZNode       *root;
 
     /* Extra arguments should be passed in the linker. */
@@ -813,7 +820,7 @@ void _debug  (ZState *, ZToken *, const char *, int, const char *, ...);
 void printLogs(ZState *);
 bool canAdvance(ZState *);
 
-bool visit(ZState *, char *);
+bool visit(ZState *, char *, bool);
 void undoVisit(ZState *);
 
 char *stoken(ZToken *);
