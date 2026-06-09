@@ -1,4 +1,4 @@
-use <core::mem>
+use <std::core::mem>
 
 i32 fill(u64 size)(Allocator alloc) {
     *u8 buf = alloc.alloc(size)

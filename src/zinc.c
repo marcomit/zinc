@@ -30,7 +30,7 @@ static void usage(char *program) {
     printf("Usage: %s <filename> [options]\n", program);
     printf("Options:\n");
     printf("\t -d --debug               Enable debug mode (sets -O0)\n");
-    printf("\t --emit-llvm              Emit LLVM IR (.ll) instead of a native binary\n");
+    printf("\t --emit=exe|obj|ir|asm    Select output type (default: exe)\n");
     printf("\t --unused-variable        Suppress 'unused variable' warnings\n");
     printf("\t --unused-function        Suppress 'unused function' warnings\n");
     printf("\t --unused-struct          Suppress 'unused struct' warnings\n");
@@ -61,7 +61,7 @@ static void usage(char *program) {
 } while (0)
 
 enum {
-    OPT_EMIT_LLVM = 1 << 8,
+    OPT_EMIT = 1 << 8,
     OPT_UNUSED_FUNC,
     OPT_UNUSED_VAR,
     OPT_UNUSED_STRUCT,
@@ -74,7 +74,7 @@ enum {
 
 static struct option long_options[] = {
     {"debug",                   no_argument,        NULL,   'd'                     },
-    {"emit-llvm",               no_argument,        NULL,   OPT_EMIT_LLVM           },
+    {"emit",                    required_argument,  NULL,   OPT_EMIT                },
     {"unused-function",         no_argument,        NULL,   OPT_UNUSED_FUNC         },
     {"unused-variable",         no_argument,        NULL,   OPT_UNUSED_VAR          },
     {"unused-struct",           no_argument,        NULL,   OPT_UNUSED_STRUCT       },
@@ -129,7 +129,12 @@ ZState *loadState(int argc, char **argv) {
             state->optimizationLevel = lvl;
             break;
         }
-        case OPT_EMIT_LLVM:             SET_FLAG(state->emitLLVM,           "emit-llvm");               break;
+        case OPT_EMIT:
+            if      (strcmp(optarg, "ir")   == 0) state->emit = Z_EMIT_IR;
+            else if (strcmp(optarg, "obj")  == 0) state->emit = Z_EMIT_OBJ;
+            else if (strcmp(optarg, "asm")  == 0) state->emit = Z_EMIT_ASM;
+            else if (strcmp(optarg, "exe")  == 0) state->emit = Z_EMIT_EXE;
+            break;
         case OPT_UNUSED_FUNC:           SET_FLAG(state->unusedFunc,         "Unused function flag");    break;
         case OPT_UNUSED_VAR:            SET_FLAG(state->unusedVar,          "Unused variable flag");    break;
         case OPT_UNUSED_STRUCT:         SET_FLAG(state->unusedStruct,       "Unused struct flag");      break;
@@ -160,7 +165,7 @@ ZState *loadState(int argc, char **argv) {
         state->output = base;
     }
 
-    visit(state, filename);
+    visit(state, filename, false);
 
     return state;
 

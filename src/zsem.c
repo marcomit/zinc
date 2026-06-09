@@ -713,10 +713,10 @@ ZType *typesCompatible(ZSemantic *ctx, ZType *a, ZType *b) {
 
     if (signedRank > unsignedRank) return signedType;
 
-    if (signedRank == 4) {
-        warning(ctx->state, signedType->tok,
-                "Cannot promote a 64-bits integer, try with an explicit cast");
-    }
+    // if (signedRank == 4) {
+    //     warning(ctx->state, signedType->tok,
+    //             "Cannot promote a 64-bits integer, try with an explicit cast");
+    // }
 
     ZType *promoted             = maketype(Z_TYPE_PRIMITIVE);
     promoted->primitive.token   = maketoken(toSigned(signedRank + 1), NULL);
@@ -1478,6 +1478,8 @@ static bool hasOverloadAnnotation(
                 stoken(annotation->args[0]->name)
             );
         } else if (annotation->args[0]->name->type == op) {
+            annotation->used = true;
+            printf("used %s\n", stoken(annotation->name));
             return true;
         }
     }
@@ -2002,6 +2004,12 @@ static ZType *resolveArrSubscript(ZSemantic *ctx, ZNode *curr) {
 }
 
 static bool satisfyFacet(ZSemantic *ctx, ZType *type, ZType *facet) {
+    if (!type) return false;
+    if (type->kind != Z_TYPE_POINTER) {
+        error(ctx->state, type->tok,
+            "Facets must be implemented only for pointer types"
+        );
+    }
     ZFuncTable *table = resolveFuncTable(ctx, type);
 
     if (!table) return false;

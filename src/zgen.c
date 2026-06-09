@@ -3393,7 +3393,7 @@ static void buildOptPipeline(char level, char *buf, usize bufsize) {
     else                 snprintf(buf, bufsize, "default<O%c>", lvl);
 }
 
-static bool emitObjectFile(ZCodegen *ctx, const char *filename) {
+static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileType fileType) {
     LLVMInitializeAllTargetInfos();
     LLVMInitializeAllTargets();
     LLVMInitializeAllTargetMCs();
@@ -3448,7 +3448,7 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename) {
         if (!ok) error(ctx->state, NULL, "Failed to write bitcode to %s", filename);
     } else {
         ok = !LLVMTargetMachineEmitToFile(machine, ctx->mod, (char *)filename,
-                                          LLVMObjectFile, &errmsg);
+                                          fileType, &errmsg);
         if (!ok) {
             error(ctx->state, NULL, "Failed to emit object file: %s", errmsg);
             LLVMDisposeMessage(errmsg);
@@ -3480,20 +3480,34 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
     }
     LLVMDisposeMessage(errmsg);
 
-    if (state->emitLLVM) {
+    if (state->emit == Z_EMIT_IR) {
         const char *llfile = output ? output : "output.ll";
         if (LLVMPrintModuleToFile(ctx->mod, llfile, &errmsg)) {
             error(state, NULL, "Failed to write IR file: %s", errmsg);
             LLVMDisposeMessage(errmsg);
-        } else {
-            printf("LLVM IR written to %s\n", llfile);
         }
         freeCodegen(ctx);
         return;
     }
 
+    if (state->emit == Z_EMIT_ASM) {
+        const char *asmfile = output ? output : "output.s";
+        if (emitObjectFile(ctx, asmfile, LLVMAssemblyFile))
+            printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", asmfile);
+        freeCodegen(ctx);
+        return;
+    }
+
     const char *objfile = (state->ltoMode != Z_LTO_OFF) ? "output.bc" : "output.o";
-    if (!emitObjectFile(ctx, objfile)) {
+    if (state->emit == Z_EMIT_OBJ) {
+        const char *out = output ? output : "output.o";
+        if (emitObjectFile(ctx, out, LLVMObjectFile))
+            printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", out);
+        freeCodegen(ctx);
+        return;
+    }
+
+    if (!emitObjectFile(ctx, objfile, LLVMObjectFile)) {
         freeCodegen(ctx);
         return;
     }

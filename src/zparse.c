@@ -12,6 +12,8 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#define ENTRY_IMPORT_FILE "lib"
+
 #define arrlen(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 #define ensure(c, msg) do {                                                     \
@@ -2035,7 +2037,7 @@ static ZNode *getModuleByName(ZParser *parser, ZToken **module, bool external) {
                 if (i < len - 1) vecpush(filename, sep);
             }
         } else {
-            vecunion(filename, pkg, strlen(pkg));
+            vecunion(filename, ENTRY_IMPORT_FILE, strlen(ENTRY_IMPORT_FILE));
         }
     } else {
         for (usize i = 0; i < len; i++) {
@@ -2049,7 +2051,7 @@ static ZNode *getModuleByName(ZParser *parser, ZToken **module, bool external) {
     vecunion(filename, ".zn", 3);
     vecpush(filename, '\0');
 
-    bool canVisit = visit(parser->state, filename);
+    bool canVisit = visit(parser->state, filename, external);
     ZNode *node = makenode(NODE_MODULE);
 
     if (!canVisit) {
