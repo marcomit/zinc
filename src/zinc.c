@@ -4,7 +4,6 @@
 #include "zinc.h"
 #include "zcolors.h"
 
-#include <getopt.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
