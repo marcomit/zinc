@@ -318,7 +318,6 @@ static void putVarPattern(
                 stype(type), stype(literalType)
             );
         }
-        return;
     } else if (pattern->type == Z_VAR_IDENT) {
         putRawSymbol(
             ctx,
@@ -425,6 +424,19 @@ static void putVarPattern(
             );
         }
         
+    } else if (pattern->type == Z_VAR_SUM) {
+        if (type->kind != Z_TYPE_SUM) {
+            error(ctx->state, pattern->tok,
+                "Expected a sum type with '%s', got %s",
+                stype(pattern->sum.type), stype(type)
+            );
+            return;
+        }
+        putVarPattern(ctx, node,
+            pattern->sum.type,
+            pattern->sum.child,
+            condition
+        );
     } else {
         error(ctx->state, pattern->tok, "Unhandled destructure pattern");
     }
@@ -2404,8 +2416,8 @@ static bool patternEq(ZState *state, ZVarDestructPattern *a, ZVarDestructPattern
         }
         return true;
     }
+    default: return false;
     }
-    return true;
 }
 
 static void analyzeMatchStmt(ZSemantic *ctx, ZNode *curr) {

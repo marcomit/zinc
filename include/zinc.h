@@ -300,7 +300,8 @@ enum {
     Z_VAR_STRUCT,
     Z_VAR_PAIR,
     Z_VAR_ENUM,
-    Z_VAR_LIT
+    Z_VAR_LIT,
+    Z_VAR_SUM
 };
 
 /* Struct representing the destructuring of a variable.
@@ -332,6 +333,11 @@ struct ZVarDestructPattern {
             ZToken *key;
             ZVarDestructPattern *value;
         };
+
+        struct {
+            ZType *type;
+            ZVarDestructPattern *child;
+        } sum;
     };
 };
 

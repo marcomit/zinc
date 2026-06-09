@@ -321,6 +321,12 @@ void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
         for (usize i = 0; i < veclen(pattern->args); i++)
             printDestructedVar(pattern->args[i], depth + 1);
         break;
+    case Z_VAR_SUM:
+        printf("%s(\n", stype(pattern->sum.type));
+        printDestructedVar(pattern->sum.child, depth + 1);
+        indent(depth);
+        printf(")\n");
+        break;
     default: {
         bool isTuple = pattern->type == Z_VAR_TUPLE;
         ZVarDestructPattern **list = isTuple ?

@@ -1766,6 +1766,31 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
 
     ZVarDestructPattern *cur    = NULL;
     ZVarDestructPattern **list  = NULL;
+
+    if (conditional) {
+        bool isSumPattern =
+            checkMask(parser, TOK_TYPES_MASK) ||
+            check(parser, TOK_STAR) ||
+            (check(parser, TOK_IDENT) && checkAhead(parser, TOK_LPAREN, 1));
+
+        if (isSumPattern) {
+            ZToken *start       = peek(parser);
+            parser->noFuncType  = true;
+            ZType *sumType      = parseType(parser);
+            parser->noFuncType  = false;
+
+            expect(parser, TOK_LPAREN);
+            ZVarDestructPattern *child = parseDestructVar(parser, conditional);
+            expect(parser, TOK_RPAREN);
+
+            cur         = makeVarDestructPattern(Z_VAR_SUM);
+            cur->tok    = start;
+            cur->sum.type  = sumType;
+            cur->sum.child = child;
+            return cur;
+        }
+    }
+
     ZToken *tok                 = consume(parser);
 
     if (tok->type & TOK_LITERAL) {
@@ -1837,6 +1862,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
         } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
 
         expect(parser, TOK_RPAREN);
+
         cur = makeVarDestructPattern(Z_VAR_TUPLE);
         cur->tuple = list;
     } else {

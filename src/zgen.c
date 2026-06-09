@@ -912,6 +912,12 @@ static void putDestructuredPatternInStack(
         }
         break;
     }
+    case Z_VAR_SUM: {
+        putDestructuredPatternInStack(
+            ctx, pattern->sum.type, pattern->sum.child, ptr
+        );
+        break;
+    }
     default:
         error(ctx->state, pattern->tok, "Unhandled destruct pattern");
         break;
