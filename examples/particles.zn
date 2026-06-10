@@ -1,0 +1,158 @@
+use <std::core::mem>
+use <std::core::rand>
+use <std::core::math>
+
+use <raylib::raylib>
+
+WIDTH   :: 640
+HEIGHT  :: 480
+
+BLACK   :: 0xFF000000
+WHITE   :: 0xFFFFFFFF
+
+GRAVITY     :: 0.2
+BOUNCINESS  :: 0.4
+MAX_PARTICLES :: 50
+
+Particle :: struct {
+    position:   Vec2
+    radius:     f32
+    direction:  Vec2
+    mass:       f32
+}
+
+Particle :: impl {
+    new :: *Particle (rand: *Random)[Allocator] {
+        self: *Particle     = alloc(sizeof Particle)
+        self.position       = Vec2{ x: WIDTH as f32 / 2.0, y: HEIGHT as f32 / 4.0 }
+        self.radius         = rand.range(6, 14) as f32
+        self.direction.x    = (rand.float() - 0.5) * 8
+        self.direction.y    = (rand.float() - 5) * 4
+        self.mass           = self.radius
+        return self
+    }
+}
+
+*Particle self :: impl {
+    draw :: u0 () {
+        raylib::DrawCircleV(self.position, self.radius, WHITE)
+    }
+
+    collide :: u1 (other: *Particle) {
+        dx := self.position.x - other.position.x
+        dy := self.position.y - other.position.y
+
+        distance := math::sqrtf(dx * dx + dy * dy)
+
+        return distance < (self.radius + other.radius)
+    }
+
+    update :: u0 () {
+        self.direction.y :+ GRAVITY
+
+        self.position.x :+ self.direction.x
+        self.position.y :+ self.direction.y
+
+        if self.position.x - self.radius < 0 {
+            self.position.x = self.radius
+            self.direction.x = -self.direction.x * BOUNCINESS
+        } else if self.position.x + self.radius >= WIDTH as f32 {
+            self.position.x = WIDTH as f32 - self.radius
+            self.direction.x = -self.direction.x * BOUNCINESS
+        }
+
+        if self.position.y - self.radius < 0 {
+            self.position.y = self.radius
+            self.direction.y = -self.direction.y * BOUNCINESS
+        } else if self.position.y + self.radius >= HEIGHT as f32 {
+            self.position.y = HEIGHT as f32 - self.radius
+            self.direction.y = -self.direction.y * BOUNCINESS
+        }
+    }
+}
+
+handleCollisions :: u0 (length: i32, particles: **Particle) {
+    i := 0
+    for i < length {
+        j := i + 1
+        for j < length {
+            a := particles[i]
+            b := particles[j]
+            if a.collide(b) {
+                dx := a.position.x - b.position.x
+                dy := a.position.y - b.position.y
+                dist := math::sqrtf(dx * dx + dy * dy)
+
+                if dist > 0.0001 {
+                    nx := dx / dist
+                    ny := dy / dist
+
+                    overlap := (a.radius + b.radius) - dist
+                    totalMass := a.mass + b.mass
+                    a.position.x :+ nx * overlap * (b.mass / totalMass)
+                    a.position.y :+ ny * overlap * (b.mass / totalMass)
+                    b.position.x :- nx * overlap * (a.mass / totalMass)
+                    b.position.y :- ny * overlap * (a.mass / totalMass)
+
+                    dvx := a.direction.x - b.direction.x
+                    dvy := a.direction.y - b.direction.y
+                    dot := dvx * nx + dvy * ny
+
+                    if dot < 0.0 {
+                        impulse := 2.0 * dot / totalMass
+                        a.direction.x :- impulse * b.mass * nx
+                        a.direction.y :- impulse * b.mass * ny
+                        b.direction.x :+ impulse * a.mass * nx
+                        b.direction.y :+ impulse * a.mass * ny
+                    }
+                }
+            }
+            j :+ 1
+        }
+        i :+ 1
+    }
+}
+
+main :: i32 () {
+    raylib::InitWindow(WIDTH, HEIGHT, "Particles")
+    raylib::SetTargetFPS(60)
+
+    defer raylib::CloseWindow()
+
+    origin := Vec2{ x: WIDTH as f32 / 2.0, y: 50.0 }
+    length := 0
+
+    with _ := Allocator::heap() {
+        rand := Random::by_ref()
+
+        particles: **Particle = alloc(sizeof *Particle * MAX_PARTICLES as u64)
+
+        for not raylib::WindowShouldClose() {
+            if length < MAX_PARTICLES {
+                particles[length] = Particle::new(rand)
+                length :+ 1
+            }
+
+            i := 0
+            for i < length {
+                particles[i].update()
+                i :+ 1
+            }
+
+            handleCollisions(length, particles)
+
+            raylib::BeginDrawing()
+            raylib::ClearBackground(BLACK)
+
+            j := 0
+            for j < length {
+                particles[j].draw()
+                j :+ 1
+            }
+
+            raylib::EndDrawing()
+        }
+    }
+
+    return 0
+}

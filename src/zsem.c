@@ -2126,41 +2126,23 @@ static void analyzeIf(ZSemantic *ctx, ZNode *curr) {
 }
 
 static void analyzeWhile(ZSemantic *ctx, ZNode *curr) {
+    bool isForLet = curr->whileStmt.cond->type == NODE_VAR_DECL;
+    if (isForLet) beginScope(ctx, curr);
     ZType *cond = resolveType(ctx, curr->whileStmt.cond);
 
-    if (!isComparable(ctx, cond)) {
-        error(ctx->state, curr->whileStmt.cond->tok,
-                "Is not a comparable value");
+    if (!isForLet) {
+        if (!isComparable(ctx, cond)) {
+            error(ctx->state, curr->whileStmt.cond->tok,
+                    "Is not a comparable value");
+        }
+
+        curr->whileStmt.cond = implicitCast(ctx, curr->whileStmt.cond, u1Type);
     }
 
-    curr->whileStmt.cond = implicitCast(ctx, curr->whileStmt.cond, u1Type);
-
     ctx->loopDepth++;
-    analyzeBlock(ctx, curr->whileStmt.branch, true);
+    analyzeBlock(ctx, curr->whileStmt.branch, isForLet);
     ctx->loopDepth--;
-}
-
-static void analyzeFor(ZSemantic *ctx, ZNode *curr) {
-    beginScope(ctx, curr);
-    let f = curr->forStmt;
-    analyzeVar(ctx, f.var, false);
-
-    ZType *cond = resolveType(ctx, f.cond);
-    curr->forStmt.cond->resolved = cond;
-
-    if (!isComparable(ctx, cond)) {
-        error(ctx->state, f.cond->tok, "Is not a comparable value");
-    }
-
-    curr->forStmt.cond = implicitCast(ctx, curr->forStmt.cond, u1Type);
-
-    resolveType(ctx, f.incr);
-
-    ctx->loopDepth++;
-    analyzeBlock(ctx, curr->forStmt.block, false);
-    ctx->loopDepth--;
-
-    endScope(ctx);
+    if (isForLet) endScope(ctx);
 }
 
 static void analyzeForeign(ZSemantic *ctx, ZNode *curr) {
@@ -2462,7 +2444,6 @@ static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
     case NODE_IF:           analyzeIf(ctx, curr);                   break;
     case NODE_WHILE:        analyzeWhile(ctx, curr);                break;
-    case NODE_FOR:          analyzeFor(ctx, curr);                  break;
     case NODE_BLOCK:        analyzeBlock(ctx, curr, false);         break;
     case NODE_DEFER:        resolveType(ctx, curr->deferStmt.expr); break;
     case NODE_RETURN:       analyzeReturn(ctx, curr);               break;

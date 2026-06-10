@@ -2586,52 +2586,6 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     endScope(ctx);
 }
 
-/**
- * @brief Generates for statement.
- */
-static void genFor(ZCodegen *ctx, ZNode *node) {
-    beginScope(Z_SCOPE_LOOP, ctx);
-    LLVMBasicBlockRef entry     = makeblock(ctx);
-    LLVMBasicBlockRef body      = makeblock(ctx);
-    LLVMBasicBlockRef endfor    = makeblock(ctx);
-
-    /* Save the labels for the continue and break statement. */
-    ctx->scope->startLoop       = entry;
-    ctx->scope->endLoop         = endfor;
-
-    // Bind the loop variable in the loop scope so it shadows any stale
-    // function-scope entry that was inserted by the pre-pass (genFuncVars).
-    if (node->forStmt.var) {
-        ZNode *varDecl = node->forStmt.var;
-        ZLLVMStack *loopSlot = getStackValue(ctx, varDecl->varDecl.rvalue);
-        if (loopSlot) {
-            putDestructuredPatternInStack(
-                ctx, varDecl->resolved, varDecl->varDecl.pattern, loopSlot->stack);
-        }
-    }
-    genVarDecl(ctx, node->forStmt.var);
-
-    makebr             (ctx->builder, entry);
-    LLVMPositionBuilderAtEnd(ctx->builder, entry);
-
-    LLVMValueRef cond = genExpr(ctx, node->forStmt.cond);
-    makecondbr(ctx->builder, cond, body, endfor);
-
-    LLVMPositionBuilderAtEnd(ctx->builder, body);
-    genStmt(ctx, node->forStmt.block);
-    genStmt(ctx, node->forStmt.incr);
-
-    // Fire all defer statements
-    genChainDefer(ctx, ctx->scope->parent);
-
-    /* If the block contains a break or a continue this block is already terminated.*/
-    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        makebr(ctx->builder, entry);
-    }
-
-    LLVMPositionBuilderAtEnd(ctx->builder, endfor);
-    endScope(ctx);
-}
 
 static void genBlock(ZCodegen *ctx, ZNode *block) {
     for (usize i = 0; i < veclen(block->block); i++) {
@@ -2769,7 +2723,6 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
     case NODE_IF:           genIf           (ctx, stmt);    break;
-    case NODE_FOR:          genFor          (ctx, stmt);    break;
     case NODE_RETURN:       genRet          (ctx, stmt);    break;
     case NODE_CALL:         genCall         (ctx, stmt);    break;
     case NODE_BLOCK:        genBlock        (ctx, stmt);    break;
@@ -3026,12 +2979,6 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_SUBSCRIPT:
         genFuncVars(ctx, node->subscript.arr);
         genFuncVars(ctx, node->subscript.index);
-        break;
-    case NODE_FOR:
-        if (node->forStmt.var) {
-            buildFuncVar(ctx, node->forStmt.var->varDecl.rvalue, true);
-        }
-        genFuncVars(ctx, node->forStmt.block);
         break;
     case NODE_WHILE:
         genFuncVars(ctx, node->whileStmt.cond);
