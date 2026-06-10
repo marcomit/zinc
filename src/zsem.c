@@ -678,6 +678,7 @@ static bool isComparable(ZSemantic *ctx, ZType *type) {
  * Note: this function does not work if a primitive type is aliased.
  * */
 ZType *typesCompatible(ZSemantic *ctx, ZType *a, ZType *b) {
+    (void)ctx;
     if (!a || !b) return NULL;
     
     if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
@@ -1331,7 +1332,7 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
         error(ctx->state, curr->tok,
                 "Expected %zu argument(s), got %zu",
                 expectedArgsLen, veclen(args));
-        return NULL;
+        return expectedFunc->func.ret;
     }
 
     for (usize i = 0; i < expectedArgsLen; i++) {

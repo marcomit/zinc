@@ -1,0 +1,9 @@
+pub io :: foreign {
+    printf  :: u0 (*char, ...)
+    putchar :: i32 (i32)
+}
+
+pub mem :: foreign {
+    memset :: *u8 (*u8, i32, u64)
+    memcpy :: *u8 (*u8, *u8, u64)
+}

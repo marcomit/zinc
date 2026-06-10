@@ -17,7 +17,7 @@ pub File :: struct {
 
 File :: impl {
     new :: *File (path: *char, mode: *char)[Allocator] {
-        *File self = alloc(sizeof File)
+        self: *File = alloc(sizeof File)
         if not self { return none }
         
         self.file = none
@@ -45,15 +45,15 @@ File :: impl {
         if not self.file { return none }
 
         c::fseek(self.file, 0, 2)
-        i64 size = c::ftell(self.file)
+        size: i64 = c::ftell(self.file)
         c::rewind(self.file)
 
         if size <= 0 { return none }
 
-        *char buffer = alloc(size + 1)
+        buffer: *char = alloc(size + 1)
         if not buffer { return none }
 
-        i64 bytesRead = c::fread(buffer, 1, size, self.file)
+        bytesRead: i64 = c::fread(buffer, 1, size, self.file)
         
         buffer[bytesRead] = 0 
 
