@@ -2505,39 +2505,47 @@ static void putImpl(ZSemantic *ctx, ZNode *node) {
         hashset_insert(&funcs, func->funcDef.name->str);
     }
 
-    for (usize i = 0; i < veclen(node->impl.facets); i++) {
-        ZType *facet = resolveTypeRef(ctx, node->impl.facets[i]);
+    if (veclen(node->impl.facets) > 0 &&
+        node->impl.base->kind != Z_TYPE_POINTER) {
+        error(ctx->state, node->impl.base->tok,
+            "Facets must be implemented only by pointers"
+        );
+    } else {
+        for (usize i = 0; i < veclen(node->impl.facets); i++) {
+            ZToken *facetRef = node->impl.facets[i]->tok;
+            ZType *facet = resolveTypeRef(ctx, node->impl.facets[i]);
 
-        if (!facet) continue;
-        node->impl.facets[i] = facet;
+            if (!facet) continue;
+            node->impl.facets[i] = facet;
 
-        if (facet->kind != Z_TYPE_FACET) {
-            error(ctx->state,
-                node->impl.facets[i]->tok,
-                "Expected a facet, got '%s'", stype(facet)
-            );
-            continue;
-        }
-
-        usize facetFuncs = veclen(facet->facet.funcs);
-        for (usize j = 0; j < facetFuncs; j++) {
-            ZNode *func = facet->facet.funcs[j];
-            char *name  = func->field.identifier->str;
-            if (!hashset_insert(&seen, name)) {
-                error(ctx->state, node->tok,
-                    "'%s' conflicts with another facet",
-                    name
+            if (facet->kind != Z_TYPE_FACET) {
+                error(ctx->state,
+                    node->impl.facets[i]->tok,
+                    "Expected a facet, got '%s'", stype(facet)
                 );
                 continue;
             }
 
-            if (!hashset_has(funcs, name)) {
-                error(ctx->state, node->impl.facets[i]->tok,
-                    "%s requires '%s' but is not implemented",
-                    stype(facet), name
-                );
+            usize facetFuncs = veclen(facet->facet.funcs);
+            for (usize j = 0; j < facetFuncs; j++) {
+                ZNode *func = facet->facet.funcs[j];
+                char *name  = func->field.identifier->str;
+                if (!hashset_insert(&seen, name)) {
+                    error(ctx->state, node->tok,
+                        "'%s' conflicts with another facet",
+                        name
+                    );
+                    continue;
+                }
+
+                if (!hashset_has(funcs, name)) {
+                    error(ctx->state, facetRef,
+                        "%s for type '%s' requires '%s' but is not implemented",
+                        stype(facet), stype(node->impl.base), name
+                    );
+                }
+                vecpush(facetNames, name);
             }
-            vecpush(facetNames, name);
         }
     }
 }
