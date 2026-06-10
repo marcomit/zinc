@@ -1,0 +1,222 @@
+use <raylib>
+use <std>
+
+WIDTH  :: 800
+HEIGHT :: 800
+
+BACKGROUND   :: 0xFF1E1E1E
+BORDER_COLOR :: 0xFFAAAAAA
+PLAYER_COLOR :: 0xFF007ACC
+ENEMY_COLOR  :: 0xFFEE3333
+WHITE        :: 0xFFFFFFFF
+RED_COLOR    :: 0xFFFF2222
+DIM_WHITE    :: 0xFFAAAAAA
+
+KEY_RIGHT :: 262
+KEY_UP    :: 265
+KEY_LEFT  :: 263
+KEY_DOWN  :: 264
+KEY_R     :: 82
+
+MAX_ENEMIES :: 64
+
+c :: foreign {
+    sprintf :: i32 (*char, *char, ...)
+}
+
+Enemy :: struct {
+    position: Vec2
+    velocity: Vec2
+    active:   u1
+}
+
+Constraint :: struct {
+    position: Vec2
+    radius:   f32
+}
+
+Player :: struct {
+    position: Vec2
+    radius:   f32
+    speed:    f32
+}
+
+Constraint :: impl {
+    new :: *Constraint () [Allocator] {
+        self: *Constraint = alloc(sizeof Constraint)
+        self.position = Vec2{x: WIDTH as f32 / 2.0, y: HEIGHT as f32 / 2.0}
+        self.radius   = 180.0
+        return self
+    }
+}
+
+*Constraint self :: impl {
+    draw :: u0 () -> raylib::DrawCircleLinesV(self.position, self.radius, BORDER_COLOR)
+}
+
+Player :: impl {
+    new :: *Player () [Allocator] {
+        self: *Player = alloc(sizeof Player)
+        self.position = Vec2{x: WIDTH as f32 / 2.0, y: HEIGHT as f32 / 2.0}
+        self.radius   = 22.0
+        self.speed    = 120.0
+        return self
+    }
+}
+
+*Player self :: impl {
+    draw :: u0 () -> raylib::DrawCircleV(self.position, self.radius, PLAYER_COLOR)
+
+    reset :: u0 () {
+        self.position.x = WIDTH as f32 / 2.0
+        self.position.y = HEIGHT as f32 / 2.0
+    }
+
+    update :: u0 (dx: f32, dy: f32, dt: f32, arena: *Constraint) {
+        if dx != 0.0 or dy != 0.0 {
+            len := math::sqrtf(dx * dx + dy * dy)
+            self.position.x :+ (dx / len) * self.speed * dt
+            self.position.y :+ (dy / len) * self.speed * dt
+        }
+
+        offset   := self.position - arena.position
+        dist     := offset.length()
+        max_dist := arena.radius - self.radius
+
+        if dist > max_dist {
+            norm := offset.scalar(1.0 / dist)
+            self.position = arena.position + norm.scalar(arena.radius - self.radius)
+        }
+    }
+}
+
+main :: i32 () {
+    raylib::InitWindow(WIDTH, HEIGHT, "Circloid")
+    raylib::SetTargetFPS(60)
+    defer raylib::CloseWindow()
+
+    with _ := Allocator::heap() {
+        rand    := Random::by_ref()
+        arena   := Constraint::new()
+        player  := Player::new()
+        enemies: *Enemy = alloc(sizeof Enemy * MAX_ENEMIES as u64)
+        buf     := alloc(32 as u64)
+
+        alive: u1        = true
+        score: f32       = 0.0
+        spawn_timer: f32 = 0.0
+        enemy_count      := 0
+        spawn_idx        := 0
+
+        for not raylib::WindowShouldClose() {
+            dt := raylib::GetFrameTime()
+
+            if alive {
+                dx: f32 = 0.0
+                dy: f32 = 0.0
+                if raylib::IsKeyDown(KEY_RIGHT) { dx :+ 1.0 }
+                if raylib::IsKeyDown(KEY_LEFT)  { dx :- 1.0 }
+                if raylib::IsKeyDown(KEY_DOWN)  { dy :+ 1.0 }
+                if raylib::IsKeyDown(KEY_UP)    { dy :- 1.0 }
+
+                player.update(dx, dy, dt, arena)
+
+                spawn_timer :+ dt
+                interval: f32 = 1.4 - score * 0.02
+                if interval < 0.3 { interval = 0.3 }
+
+                if spawn_timer >= interval {
+                    spawn_timer = 0.0
+
+                    spd: f32 = 110.0 + score * 3.1
+                    if spd > 280.0 { spd = 280.0 }
+
+                    edge := rand.range(0, 3)
+                    ex: f32 = 0.0
+                    ey: f32 = 0.0
+                    if edge == 0 { ex = rand.float() * WIDTH as f32 }
+                    if edge == 1 {
+                        ex = WIDTH as f32
+                        ey = rand.float() * HEIGHT as f32
+                    }
+                    if edge == 2 {
+                        ex = rand.float() * WIDTH as f32
+                        ey = HEIGHT as f32
+                    }
+                    if edge == 3 { ey = rand.float() * HEIGHT as f32 }
+
+                    vdx: f32 = player.position.x - ex
+                    vdy: f32 = player.position.y - ey
+                    vlen := math::sqrtf(vdx * vdx + vdy * vdy)
+
+                    enemies[spawn_idx].position.x = ex
+                    enemies[spawn_idx].position.y = ey
+                    enemies[spawn_idx].velocity.x = (vdx / vlen) * spd
+                    enemies[spawn_idx].velocity.y = (vdy / vlen) * spd
+                    enemies[spawn_idx].active = true
+                    spawn_idx = (spawn_idx + 1) % MAX_ENEMIES
+                    if enemy_count < MAX_ENEMIES { enemy_count :+ 1 }
+                }
+
+                i := 0
+                for i < enemy_count {
+                    if enemies[i].active {
+                        enemies[i].position.x :+ enemies[i].velocity.x * dt
+                        enemies[i].position.y :+ enemies[i].velocity.y * dt
+
+                        edx: f32 = player.position.x - enemies[i].position.x
+                        edy: f32 = player.position.y - enemies[i].position.y
+                        edist := math::sqrtf(edx * edx + edy * edy)
+                        if edist < player.radius + 10.0 { alive = false }
+
+                        if enemies[i].position.x < -60.0 { enemies[i].active = false }
+                        if enemies[i].position.x > WIDTH as f32 + 60.0 { enemies[i].active = false }
+                        if enemies[i].position.y < -60.0 { enemies[i].active = false }
+                        if enemies[i].position.y > HEIGHT as f32 + 60.0 { enemies[i].active = false }
+                    }
+                    i :+ 1
+                }
+
+                score :+ dt
+            } else {
+                if raylib::IsKeyPressed(KEY_R) {
+                    player.reset()
+                    enemy_count = 0
+                    spawn_idx   = 0
+                    score       = 0.0
+                    spawn_timer = 0.0
+                    alive       = true
+                }
+            }
+
+            raylib::BeginDrawing()
+            raylib::ClearBackground(BACKGROUND)
+
+            arena.draw()
+            player.draw()
+
+            j := 0
+            for j < enemy_count {
+                if enemies[j].active {
+                    raylib::DrawCircleV(enemies[j].position, 10.0, ENEMY_COLOR)
+                }
+                j :+ 1
+            }
+
+            c::sprintf(buf, "Time: %d s", score as i32)
+            raylib::DrawText(buf, 10, 10, 22, WHITE)
+
+            if not alive {
+                raylib::DrawText("GAME  OVER", 265, 340, 52, RED_COLOR)
+                c::sprintf(buf, "Score: %d s", score as i32)
+                raylib::DrawText(buf, 330, 402, 26, WHITE)
+                raylib::DrawText("Press R to restart", 290, 440, 22, DIM_WHITE)
+            }
+
+            raylib::DrawFPS(WIDTH - 90, HEIGHT - 28)
+            raylib::EndDrawing()
+        }
+    }
+
+    return 0
+}
