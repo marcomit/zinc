@@ -13,7 +13,7 @@
 #define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
 static char *nodeLabels[] = {
-    "BLOCK",        "IF",           "WHILE",        "FOR",          "RETURN",
+    "BLOCK",        "IF",           "WHILE",        "RETURN",
     "VAR_DECL",     "BINARY",       "UNARY",        "CALL",         "FUNC",
     "LITERAL",      "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
     "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
@@ -505,16 +505,6 @@ void printNode(ZNode *node, u8 depth) {
         printf("Cond: \n");
         printNode(node->whileStmt.cond, depth);
         printNode(node->whileStmt.branch, depth);
-        break;
-    case NODE_FOR:
-        printf("\n");
-        printNode(node->forStmt.var, depth);
-        printf("\n");
-        printNode(node->forStmt.cond, depth);
-        printf("\n");
-        printNode(node->forStmt.incr, depth);
-        printf("\n");
-        printNode(node->forStmt.block, depth);
         break;
     case NODE_EMBED_FIELD:
         if (node->resolved) printf("%s\n", stype(node->resolved));

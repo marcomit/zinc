@@ -1403,6 +1403,19 @@ static ZAnnotation **parseAnnotations(ZParser *parser) {
     return annotations;
 }
 
+static ZNode *parseCondDestructVar(ZParser *parser) {
+    ZVarDestructPattern *pattern = parseDestructVar(parser, true);
+    guard(pattern);
+    expect(parser, TOK_ASSIGN);
+    parser->noStructLit = true;
+    ZNode *expr = tryParse(parser, parseExpr(parser));
+    parser->noStructLit = false;
+
+    guard(expr);
+    
+    return makenodevar(pattern, NULL, expr);
+}
+
 static ZNode *parseIfLet(ZParser *parser) {
     expect(parser, TOK_IF);
     ZVarDestructPattern *pattern = parseDestructVar(parser, true);
@@ -1463,36 +1476,6 @@ static ZNode *parseIf(ZParser *parser) {
     return parseOrGrammar(parser, (ZParseFunc[]){parseIfLet, parseIfStmt}, 2);
 }
 
-static ZNode *parseFor(ZParser *parser) {
-    expect(parser, TOK_FOR);
-
-    ZNode *var = parseVarDef(parser);
-
-    ensure(var, "Expected a variable declaration");
-    expect(parser, TOK_SEMICOLON);
-
-    parser->noStructLit = true;
-    ZNode *cond = parseExpr(parser);
-    parser->noStructLit = false;
-
-    ensure(cond, "Expected an expression");
-    expect(parser, TOK_SEMICOLON);
-
-    ZNode *incr = parseExpr(parser);
-
-    ensure(incr, "Expected an expression");
-    ZNode *block = parseBlockOrInline(parser);
-
-    ensure(block, "Expected a block");
-
-    ZNode *node = makenode(NODE_FOR);
-    node->forStmt.var   = var;
-    node->forStmt.cond  = cond;
-    node->forStmt.incr  = incr;
-    node->forStmt.block = block;
-    return node;
-}
-
 /* While parsed with 'for' token instead of standard while. */
 static ZNode *parseWhile(ZParser *parser) {
     expect(parser, TOK_FOR);
@@ -1509,6 +1492,21 @@ static ZNode *parseWhile(ZParser *parser) {
     ZNode *node = makenode(NODE_WHILE);
     node->whileStmt.branch  = body;
     node->whileStmt.cond    = cond;
+    return node;
+}
+
+static ZNode *parseForLet(ZParser *parser) {
+    ZToken *start = peek(parser);
+    expect(parser, TOK_FOR);
+
+    ZNode *cond = tryParse(parser, parseCondDestructVar(parser));
+    ZNode *body = tryParse(parser, parseBlockOrInline(parser));
+    guard(body);
+
+    ZNode *node = makenode(NODE_WHILE);
+    node->whileStmt.branch  = body;
+    node->whileStmt.cond    = cond;
+    node->tok               = start;
     return node;
 }
 
@@ -1529,7 +1527,7 @@ static ZNode *parseLoops(ZParser *parser) {
         return node;
     }
 
-    ZParseFunc f[] = { parseFor, parseWhile };
+    ZParseFunc f[] = { parseForLet, parseWhile };
     ZNode *node = parseOrGrammar(parser, f, sizeof(f) / sizeof(f[0]));
 
     if (node) node->tok = start;

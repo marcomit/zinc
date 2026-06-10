@@ -1,0 +1,38 @@
+foreign printf :: u0 (*char, ...)
+
+Option :: enum {
+    Some(i32)
+    None
+}
+
+Range :: struct {
+    start: i32
+    end: i32
+    current: i32
+}
+
+range :: Range (start: i32, end: i32) {
+    return Range{ start: start, end: end }
+}
+
+*Range self :: impl {
+    next :: Option () {
+        if self.current >= self.end {
+            return Option::None()
+        }
+
+        res := self.current
+        self.current :+ 1
+        return Option::Some(res)
+    }
+}
+
+main :: i32 () {
+    iter := range(0, 10)
+
+    for Option::Some(num) := (&iter).next() {
+        printf("%d\n", num)
+    }
+
+    return 0
+}

@@ -1,38 +1,9 @@
-use <std::core::mem>
+use <std>
+use <raylib>
 
 VERTS           :: 8
 SCREEN_WIDTH    :: 640
 SCREEN_HEIGHT   :: 480
-
-raylib :: foreign {
-    InitWindow :: u0 (i32, i32, *char)
-    CloseWindow :: u0 ()
-    SetTargetFPS :: u0 (i32)
-    WindowShouldClose :: u1 ()
-    BeginDrawing :: u0 ()
-    EndDrawing :: u0 ()
-    ClearBackground :: u0 (Color)
-    DrawLineV :: u0 (Vec2, Vec2, Color)
-}
-
-math :: foreign {
-    sin :: f64 (f64)
-    cos :: f64 (f64)
-}
-
-#[packed]
-Vec2 :: struct {
-    x: f32
-    y: f32
-}
-
-#[packed]
-Color :: struct {
-    r: u8
-    g: u8
-    b: u8
-    a: u8
-}
 
 Vec3 :: struct {
     ...Vec2
@@ -46,10 +17,6 @@ Context :: struct {
     proj: *Vec3
     angle_a: f32
     angle_b: f32
-}
-
-Color :: impl {
-    new :: Color (r: u8, g: u8, b: u8, a: u8) -> Color{r:r,g:g,b:b,a:a}
 }
 
 Context :: impl {
@@ -83,10 +50,11 @@ Context :: impl {
         norm: f32 = 1.0 - ((za + zb) / 2.0 + 175.0) / 350.0
         if norm < 0.0 { norm = 0.0 }
         if norm > 1.0 { norm = 1.0 }
-        v: u8 = (60.0 + norm * 195.0) as u8
+        // v: u8 = (60.0 + norm * 195.0) as u8
         a := Vec2{x: self.proj[i].x, y: self.proj[i].y}
         b := Vec2{x: self.proj[j].x, y: self.proj[j].y}
-        raylib::DrawLineV(a, b, Color::new(v, v, v, 255))
+
+        raylib::DrawLineV(a, b, 0xFFFFFFFF)
     }
 
     draw :: u0 () {
@@ -131,7 +99,7 @@ main :: i32 () {
         raylib::InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Rotating Cube")
         raylib::SetTargetFPS(60)
 
-        bg := Color::new(15, 15, 15, 0xFF)
+        bg := 0xFF151515
 
         for not raylib::WindowShouldClose() {
             raylib::BeginDrawing()

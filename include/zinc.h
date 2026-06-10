@@ -131,7 +131,6 @@ typedef enum {
     NODE_BLOCK,         // All inside a {} is a block. A list of statement
     NODE_IF,
     NODE_WHILE,
-    NODE_FOR,
     NODE_RETURN,
     NODE_VAR_DECL,
     NODE_BINARY,
