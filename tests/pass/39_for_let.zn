@@ -12,7 +12,7 @@ Range :: struct {
 }
 
 range :: Range (start: i32, end: i32) {
-    return Range{ start: start, end: end }
+    return Range{ start: start, end: end, current: 0 }
 }
 
 *Range self :: impl {
@@ -27,12 +27,35 @@ range :: Range (start: i32, end: i32) {
     }
 }
 
+ArrIter :: struct {
+    current: i32
+    data: []i32
+}
+
+*ArrIter self :: impl {
+    next :: Option () {
+        if self.current >= self.data.len {
+            return Option::None()
+        }
+        res := self.data[self.current]
+        self.current :+ 1
+        return Option::Some(res)
+    }
+}
+
 main :: i32 () {
     iter := range(0, 10)
 
-    for Option::Some(num) := (&iter).next() {
-        printf("%d\n", num)
+    for Option::Some(i) := (&iter).next() {
+        printf("%d\n", i)
     }
 
+    nums := [5, 4, 3, 2, 1]
+
+    iterator := ArrIter{ data: nums, current: 0 }
+    
+    for Option::Some(n) := (&iterator).next() {
+        printf("%d\n", n)
+    }
     return 0
 }
