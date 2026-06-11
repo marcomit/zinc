@@ -2769,6 +2769,8 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
 
 /**
  * @brief Saves the stack allocation indexed by node.
+ *
+ * FIXME: Implement hashset for lookup node pointer avoiding duplicate stack allocations.
  */
 static void addFuncVar(ZCodegen *ctx,
     LLVMValueRef stack,
@@ -2776,6 +2778,10 @@ static void addFuncVar(ZCodegen *ctx,
     LLVMTypeRef stackType,
     LLVMTypeRef elemType,
     ZNode *node) {
+    ZLLVMStack **allocations = ctx->scope->stackAlloca;
+    usize len = veclen(allocations);
+    for (usize i = len; i > 0; i--)
+        if (allocations[i - 1]->node == node) return;
 
     ZLLVMStack *item    = zalloc(ZLLVMStack);
     *item = (ZLLVMStack){
@@ -3025,6 +3031,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_VAR_DECL: {
         LLVMValueRef ptr = buildFuncVar(ctx, node->varDecl.rvalue, true);
         putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
+        genFuncVars(ctx, node->varDecl.rvalue);
         break;
     }
     case NODE_CALL:
