@@ -1495,6 +1495,26 @@ static ZNode *parseWhile(ZParser *parser) {
     return node;
 }
 
+static ZNode *parseForIn(ZParser *parser) {
+    ZToken *start = peek(parser);
+    expect(parser, TOK_FOR);
+
+    ZVarDestructPattern *binding = parseDestructVar(parser, true);
+    expect(parser, TOK_IN);
+    ZNode *iter = tryParse(parser, parseExpr(parser));
+    ZNode *block = tryParse(parser, parseBlockOrInline(parser));
+
+    guard(binding && iter && block);
+
+    ZNode *node = makenode(NODE_FORIN);
+    node->forin.binding = binding;
+    node->forin.iter    = iter;
+    node->forin.body    = block;
+    node->tok = start;
+
+    return node;
+}
+
 static ZNode *parseForLet(ZParser *parser) {
     ZToken *start = peek(parser);
     expect(parser, TOK_FOR);
@@ -1527,7 +1547,7 @@ static ZNode *parseLoops(ZParser *parser) {
         return node;
     }
 
-    ZParseFunc f[] = { parseForLet, parseWhile };
+    ZParseFunc f[] = { parseForLet, parseForIn, parseWhile };
     ZNode *node = parseOrGrammar(parser, f, sizeof(f) / sizeof(f[0]));
 
     if (node) node->tok = start;

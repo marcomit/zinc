@@ -21,7 +21,7 @@ static char *nodeLabels[] = {
     "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
     "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATICACCESS", "NAMESPACE",
     "SLICE",        "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",
-    "FACET",        "IMPL"
+    "FACET",        "IMPL",         "FOR_IN"
 };
 
 static char *levels[] = {
@@ -689,6 +689,12 @@ void printNode(ZNode *node, u8 depth) {
         for (usize i = 0; i < veclen(node->impl.funcs); i++) {
             printNode(node->impl.funcs[i], depth);
         }
+        break;
+    case NODE_FORIN:
+        printf("\n");
+        printDestructedVar(node->forin.binding, depth);
+        printNode(node->forin.iter, depth);
+        printNode(node->forin.body, depth);
         break;
     default:
             printf("(details not implemented in printer for node %d)",
