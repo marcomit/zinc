@@ -849,10 +849,7 @@ ZState *makestate() {
 char *readfile(char *filename) {
     FILE *fd = fopen(filename, "r");
     
-    if (!fd) {
-        perror(filename);
-        return NULL;
-    }
+    if (!fd) return NULL;
 
     fseek(fd, 0, SEEK_END);
     i64 flen = ftell(fd);
