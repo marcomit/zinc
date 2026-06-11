@@ -462,7 +462,10 @@ static void skipMultilineComments(ZLexer *l) {
 ZLexer *makelexer(ZState *state) {
 	char *program = readfile(state->filename);
 
-	if (!program) return NULL;
+	if (!program) {
+        error(state, NULL, strerror(errno));
+        return NULL;
+    }
 
 	ZLexer *self = zalloc(ZLexer);
 

@@ -254,6 +254,22 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
     return self;
 }
 
+#define LABEL_RESET(c) do {                                                     \
+    memset(ctx->str, 0, veclen(ctx->str));                                      \
+    vecsetlen(ctx->str, 0);                                                     \
+} while (0)
+
+#define label(ctx, X) _Generic((X), \
+    ZToken*: labelTok,              \
+    char*:   labelStr               \
+)(ctx, X)
+
+void labelCnt(ZCodegen *ctx) {
+    LABEL_RESET(ctx);
+    snprintf(ctx->str, 6, "zn%.3zx", ctx->count);
+    ctx->count++;
+}
+
 /**
  * @brief Used to name LLVM instructions.
  *
@@ -261,18 +277,25 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
  * the prefix "zn" + a progressive counter in hex format.
  * If the dev mode is not enabled it emits the source string given by the token
  */
-char *label(ZCodegen *ctx, ZToken *tok) {
-    memset(ctx->str, 0, veclen(ctx->str));
-    vecsetlen(ctx->str, 0);
+char *labelTok(ZCodegen *ctx, ZToken *tok) {
+    LABEL_RESET(ctx);
     if (ctx->state->debug && tok) {
         char *str = stoken(tok);
         vecunion(ctx->str, str, strlen(str));
         vecpush(ctx->str, 0);
     } else {
-        snprintf(ctx->str, 6, "zn%.3zx", ctx->count);
-
-        ctx->count++;
+        labelCnt(ctx);
     }
+    return ctx->str;
+}
+
+
+char *labelStr(ZCodegen *ctx, char *msg) {
+    LABEL_RESET(ctx);
+    if (ctx->state->debug && msg) {
+        return msg;
+    }
+    labelCnt(ctx);
     return ctx->str;
 }
 
@@ -665,9 +688,9 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     }
 }
 
-static LLVMBasicBlockRef makeblock(ZCodegen *ctx) {
+static LLVMBasicBlockRef makeblock(ZCodegen *ctx, char *name) {
     return LLVMAppendBasicBlockInContext(
-        ctx->ctx, ctx->currentFunc, label(ctx, NULL)
+        ctx->ctx, ctx->currentFunc, label(ctx, name)
     );
 }
 
@@ -910,6 +933,12 @@ static void putDestructuredPatternInStack(
                 pattern->args[i],   fieldPtr
             );
         }
+        break;
+    }
+    case Z_VAR_SUM: {
+        putDestructuredPatternInStack(
+            ctx, pattern->sum.type, pattern->sum.child, ptr
+        );
         break;
     }
     default:
@@ -1475,7 +1504,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         func,
         args,
         veclen(args),
-        isVoid(node->resolved) ? "" : label(ctx, NULL)
+        isVoid(node->resolved) ? "" : label(ctx, "call")
     );
 
     if (!fitsInRegister(call)) {
@@ -1603,9 +1632,9 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
         sumLLVMType = genType(ctx, node->resolved);
     }
     LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
-    LLVMBasicBlockRef tBranch = makeblock(ctx);
-    LLVMBasicBlockRef fBranch = makeblock(ctx);
-    LLVMBasicBlockRef merge = makeblock(ctx);
+    LLVMBasicBlockRef tBranch = makeblock(ctx, "true");
+    LLVMBasicBlockRef fBranch = makeblock(ctx, "false");
+    LLVMBasicBlockRef merge = makeblock(ctx, "endif");
 
     cond = LLVMBuildICmp(
         ctx->builder, LLVMIntNE, cond,
@@ -1677,8 +1706,8 @@ static LLVMValueRef genNullCoalescing(ZCodegen *ctx, ZNode *root) {
     );
 
     LLVMBasicBlockRef entryBranch   = LLVMGetInsertBlock(ctx->builder);
-    LLVMBasicBlockRef rightBranch   = makeblock(ctx);
-    LLVMBasicBlockRef mergeBranch   = makeblock(ctx);
+    LLVMBasicBlockRef rightBranch   = makeblock(ctx, "coalescing.right");
+    LLVMBasicBlockRef mergeBranch   = makeblock(ctx, "coalescing.merge");
 
     makecondbr(ctx->builder, cond, mergeBranch, rightBranch);
 
@@ -1721,7 +1750,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         LLVMValueRef call = LLVMBuildCall2(
             ctx->builder, funcType, func,
             args, veclen(args),
-            isVoid(root->resolved) ? "" : label(ctx, NULL)
+            isVoid(root->resolved) ? "" : label(ctx, "binary")
         );
         if (!fitsInRegister(call)) {
             ZLLVMStack *stack = getStackValue(ctx, root);
@@ -1754,8 +1783,8 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
             LLVMConstInt(LLVMTypeOf(lv), 0, false), label(ctx, root->tok));
 
         LLVMBasicBlockRef entry_bb = LLVMGetInsertBlock(ctx->builder);
-        LLVMBasicBlockRef rhs_bb   = makeblock(ctx);
-        LLVMBasicBlockRef merge_bb = makeblock(ctx);
+        LLVMBasicBlockRef rhs_bb   = makeblock(ctx, is_and ? "and_right" : "or_right");
+        LLVMBasicBlockRef merge_bb = makeblock(ctx, is_and ? "and_merge" : "or_merge");
 
         if (is_and)
             makecondbr(ctx->builder, lv_bool, rhs_bb, merge_bb);
@@ -1928,7 +1957,7 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
         toIsFloat = (tt == TOK_F32 || tt == TOK_F64);
     }
 
-    char *l = label(ctx, NULL);
+    char *l = label(ctx, "cast");
     unsigned toBits = LLVMGetTypeKind(toType) == LLVMIntegerTypeKind
         ? LLVMGetIntTypeWidth(toType) : 0;
 
@@ -2050,7 +2079,7 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
             };
             LLVMValueRef gep = LLVMBuildGEP2(
                 ctx->builder, stack->stackType,
-                stack->stack, indices, 2, label(ctx, NULL));
+                stack->stack, indices, 2, label(ctx, "cast"));
             LLVMValueRef elem = genExpr(ctx, lit->arraylit[i]);
             elem = castValue(ctx, elem, from->array.base, to->array.base);
             LLVMBuildStore(ctx->builder, elem, gep);
@@ -2197,7 +2226,7 @@ static void matchEnumPattern(
         label(ctx, pattern->prop)
     );
 
-    LLVMBasicBlockRef entry = makeblock(ctx);
+    LLVMBasicBlockRef entry = makeblock(ctx, "match");
     makecondbr(ctx->builder, cond,
             entry, failBranch);
 
@@ -2246,7 +2275,7 @@ static void matchLitPattern(
     right = castValue(ctx, right, litType, type);
 
     LLVMValueRef cond = genEqCmp(ctx, left, right, false);
-    LLVMBasicBlockRef trueBranch = makeblock(ctx);
+    LLVMBasicBlockRef trueBranch = makeblock(ctx, "true");
     makecondbr(ctx->builder, cond, trueBranch, failBranch);
     LLVMPositionBuilderAtEnd(ctx->builder, trueBranch);
 }
@@ -2272,9 +2301,9 @@ static void matchPattern(
 static LLVMValueRef genMatchCond(
     ZCodegen *ctx,                  ZType *type,
     ZVarDestructPattern *pattern,   LLVMValueRef ptr) {
-    LLVMBasicBlockRef success   = makeblock(ctx);
-    LLVMBasicBlockRef failure   = makeblock(ctx);
-    LLVMBasicBlockRef merge     = makeblock(ctx);
+    LLVMBasicBlockRef success   = makeblock(ctx, "match.success");
+    LLVMBasicBlockRef failure   = makeblock(ctx, "match.failure");
+    LLVMBasicBlockRef merge     = makeblock(ctx, "match.merge");
 
     matchPattern(ctx, type, pattern, ptr, failure);
     makebr(ctx->builder, success);
@@ -2501,13 +2530,13 @@ static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
 static void genIf(ZCodegen *ctx, ZNode *node) {
     beginScope(Z_SCOPE_BLOCK, ctx);
     bool hasElse = node->ifStmt.elseBranch != NULL;
-    LLVMBasicBlockRef then = makeblock(ctx);
+    LLVMBasicBlockRef then = makeblock(ctx, "if.then");
 
     LLVMBasicBlockRef elseBranch = NULL;
 
-    if (hasElse) elseBranch = makeblock(ctx);
+    if (hasElse) elseBranch = makeblock(ctx, "if.else");
 
-    LLVMBasicBlockRef endif = makeblock(ctx);
+    LLVMBasicBlockRef endif = makeblock(ctx, "endif");
     LLVMBasicBlockRef nextBlock = hasElse ? elseBranch : endif;
 
     LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
@@ -2550,9 +2579,9 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
  */
 static void genWhile(ZCodegen *ctx, ZNode *node) {
     beginScope(Z_SCOPE_LOOP, ctx);
-    LLVMBasicBlockRef entry     = makeblock(ctx);
-    LLVMBasicBlockRef block     = makeblock(ctx);
-    LLVMBasicBlockRef endwhile  = makeblock(ctx);
+    LLVMBasicBlockRef entry     = makeblock(ctx, "for.entry");
+    LLVMBasicBlockRef block     = makeblock(ctx, "for.body");
+    LLVMBasicBlockRef endwhile  = makeblock(ctx, "for.end");
     ctx->scope->startLoop       = entry;
     ctx->scope->endLoop         = endwhile;
 
@@ -2580,52 +2609,6 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     endScope(ctx);
 }
 
-/**
- * @brief Generates for statement.
- */
-static void genFor(ZCodegen *ctx, ZNode *node) {
-    beginScope(Z_SCOPE_LOOP, ctx);
-    LLVMBasicBlockRef entry     = makeblock(ctx);
-    LLVMBasicBlockRef body      = makeblock(ctx);
-    LLVMBasicBlockRef endfor    = makeblock(ctx);
-
-    /* Save the labels for the continue and break statement. */
-    ctx->scope->startLoop       = entry;
-    ctx->scope->endLoop         = endfor;
-
-    // Bind the loop variable in the loop scope so it shadows any stale
-    // function-scope entry that was inserted by the pre-pass (genFuncVars).
-    if (node->forStmt.var) {
-        ZNode *varDecl = node->forStmt.var;
-        ZLLVMStack *loopSlot = getStackValue(ctx, varDecl->varDecl.rvalue);
-        if (loopSlot) {
-            putDestructuredPatternInStack(
-                ctx, varDecl->resolved, varDecl->varDecl.pattern, loopSlot->stack);
-        }
-    }
-    genVarDecl(ctx, node->forStmt.var);
-
-    makebr             (ctx->builder, entry);
-    LLVMPositionBuilderAtEnd(ctx->builder, entry);
-
-    LLVMValueRef cond = genExpr(ctx, node->forStmt.cond);
-    makecondbr(ctx->builder, cond, body, endfor);
-
-    LLVMPositionBuilderAtEnd(ctx->builder, body);
-    genStmt(ctx, node->forStmt.block);
-    genStmt(ctx, node->forStmt.incr);
-
-    // Fire all defer statements
-    genChainDefer(ctx, ctx->scope->parent);
-
-    /* If the block contains a break or a continue this block is already terminated.*/
-    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
-        makebr(ctx->builder, entry);
-    }
-
-    LLVMPositionBuilderAtEnd(ctx->builder, endfor);
-    endScope(ctx);
-}
 
 static void genBlock(ZCodegen *ctx, ZNode *block) {
     for (usize i = 0; i < veclen(block->block); i++) {
@@ -2718,7 +2701,7 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
     LLVMBasicBlockRef *blocks = znalloc(LLVMBasicBlockRef, armLen+1);
 
     blocks[0] = LLVMGetInsertBlock(ctx->builder);
-    for (usize i = 1; i <= armLen; i++) blocks[i] = makeblock(ctx);
+    for (usize i = 1; i <= armLen; i++) blocks[i] = makeblock(ctx, "matcharm");
 
     LLVMBasicBlockRef merge = blocks[armLen];
 
@@ -2730,7 +2713,7 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
             ctx, condType, arm->matchArm.pattern, cond
         );
 
-        LLVMBasicBlockRef exprBlock = makeblock(ctx);
+        LLVMBasicBlockRef exprBlock = makeblock(ctx, "match.block");
 
         makecondbr(ctx->builder, matchArm, exprBlock, blocks[i+1]);
         LLVMPositionBuilderAtEnd(ctx->builder, exprBlock);
@@ -2763,7 +2746,6 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     switch (stmt->type) {
     /* Variable already declared at the start of the function*/
     case NODE_IF:           genIf           (ctx, stmt);    break;
-    case NODE_FOR:          genFor          (ctx, stmt);    break;
     case NODE_RETURN:       genRet          (ctx, stmt);    break;
     case NODE_CALL:         genCall         (ctx, stmt);    break;
     case NODE_BLOCK:        genBlock        (ctx, stmt);    break;
@@ -2787,6 +2769,8 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
 
 /**
  * @brief Saves the stack allocation indexed by node.
+ *
+ * FIXME: Implement hashset for lookup node pointer avoiding duplicate stack allocations.
  */
 static void addFuncVar(ZCodegen *ctx,
     LLVMValueRef stack,
@@ -2794,6 +2778,10 @@ static void addFuncVar(ZCodegen *ctx,
     LLVMTypeRef stackType,
     LLVMTypeRef elemType,
     ZNode *node) {
+    ZLLVMStack **allocations = ctx->scope->stackAlloca;
+    usize len = veclen(allocations);
+    for (usize i = len; i > 0; i--)
+        if (allocations[i - 1]->node == node) return;
 
     ZLLVMStack *item    = zalloc(ZLLVMStack);
     *item = (ZLLVMStack){
@@ -3021,12 +3009,6 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->subscript.arr);
         genFuncVars(ctx, node->subscript.index);
         break;
-    case NODE_FOR:
-        if (node->forStmt.var) {
-            buildFuncVar(ctx, node->forStmt.var->varDecl.rvalue, true);
-        }
-        genFuncVars(ctx, node->forStmt.block);
-        break;
     case NODE_WHILE:
         genFuncVars(ctx, node->whileStmt.cond);
         genFuncVars(ctx, node->whileStmt.branch);
@@ -3049,6 +3031,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_VAR_DECL: {
         LLVMValueRef ptr = buildFuncVar(ctx, node->varDecl.rvalue, true);
         putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
+        genFuncVars(ctx, node->varDecl.rvalue);
         break;
     }
     case NODE_CALL:
@@ -3207,7 +3190,7 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     putLLVMValueRef(ctx, f->funcDef.mangled, func);
     beginScope(Z_SCOPE_FUNC, ctx);
-    LLVMBasicBlockRef entry = makeblock(ctx);
+    LLVMBasicBlockRef entry = makeblock(ctx, "entry");
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
     /* Allocate a stack slot for each parameter so they can be reassigned.

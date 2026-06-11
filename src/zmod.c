@@ -13,7 +13,7 @@
 #define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
 static char *nodeLabels[] = {
-    "BLOCK",        "IF",           "WHILE",        "FOR",          "RETURN",
+    "BLOCK",        "IF",           "WHILE",        "RETURN",
     "VAR_DECL",     "BINARY",       "UNARY",        "CALL",         "FUNC",
     "LITERAL",      "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
     "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
@@ -321,6 +321,12 @@ void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
         for (usize i = 0; i < veclen(pattern->args); i++)
             printDestructedVar(pattern->args[i], depth + 1);
         break;
+    case Z_VAR_SUM:
+        printf("%s(\n", stype(pattern->sum.type));
+        printDestructedVar(pattern->sum.child, depth + 1);
+        indent(depth);
+        printf(")\n");
+        break;
     default: {
         bool isTuple = pattern->type == Z_VAR_TUPLE;
         ZVarDestructPattern **list = isTuple ?
@@ -499,16 +505,6 @@ void printNode(ZNode *node, u8 depth) {
         printf("Cond: \n");
         printNode(node->whileStmt.cond, depth);
         printNode(node->whileStmt.branch, depth);
-        break;
-    case NODE_FOR:
-        printf("\n");
-        printNode(node->forStmt.var, depth);
-        printf("\n");
-        printNode(node->forStmt.cond, depth);
-        printf("\n");
-        printNode(node->forStmt.incr, depth);
-        printf("\n");
-        printNode(node->forStmt.block, depth);
         break;
     case NODE_EMBED_FIELD:
         if (node->resolved) printf("%s\n", stype(node->resolved));
@@ -853,10 +849,7 @@ ZState *makestate() {
 char *readfile(char *filename) {
     FILE *fd = fopen(filename, "r");
     
-    if (!fd) {
-        perror(filename);
-        return NULL;
-    }
+    if (!fd) return NULL;
 
     fseek(fd, 0, SEEK_END);
     i64 flen = ftell(fd);

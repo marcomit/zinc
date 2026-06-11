@@ -318,7 +318,6 @@ static void putVarPattern(
                 stype(type), stype(literalType)
             );
         }
-        return;
     } else if (pattern->type == Z_VAR_IDENT) {
         putRawSymbol(
             ctx,
@@ -425,6 +424,19 @@ static void putVarPattern(
             );
         }
         
+    } else if (pattern->type == Z_VAR_SUM) {
+        if (type->kind != Z_TYPE_SUM) {
+            error(ctx->state, pattern->tok,
+                "Expected a sum type with '%s', got %s",
+                stype(pattern->sum.type), stype(type)
+            );
+            return;
+        }
+        putVarPattern(ctx, node,
+            pattern->sum.type,
+            pattern->sum.child,
+            condition
+        );
     } else {
         error(ctx->state, pattern->tok, "Unhandled destructure pattern");
     }
@@ -666,6 +678,7 @@ static bool isComparable(ZSemantic *ctx, ZType *type) {
  * Note: this function does not work if a primitive type is aliased.
  * */
 ZType *typesCompatible(ZSemantic *ctx, ZType *a, ZType *b) {
+    (void)ctx;
     if (!a || !b) return NULL;
     
     if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
@@ -1319,7 +1332,7 @@ static ZType *resolveFuncCall(ZSemantic *ctx, ZNode *curr) {
         error(ctx->state, curr->tok,
                 "Expected %zu argument(s), got %zu",
                 expectedArgsLen, veclen(args));
-        return NULL;
+        return expectedFunc->func.ret;
     }
 
     for (usize i = 0; i < expectedArgsLen; i++) {
@@ -2113,41 +2126,23 @@ static void analyzeIf(ZSemantic *ctx, ZNode *curr) {
 }
 
 static void analyzeWhile(ZSemantic *ctx, ZNode *curr) {
+    bool isForLet = curr->whileStmt.cond->type == NODE_VAR_DECL;
+    if (isForLet) beginScope(ctx, curr);
     ZType *cond = resolveType(ctx, curr->whileStmt.cond);
 
-    if (!isComparable(ctx, cond)) {
-        error(ctx->state, curr->whileStmt.cond->tok,
-                "Is not a comparable value");
+    if (!isForLet) {
+        if (!isComparable(ctx, cond)) {
+            error(ctx->state, curr->whileStmt.cond->tok,
+                    "Is not a comparable value");
+        }
+
+        curr->whileStmt.cond = implicitCast(ctx, curr->whileStmt.cond, u1Type);
     }
 
-    curr->whileStmt.cond = implicitCast(ctx, curr->whileStmt.cond, u1Type);
-
     ctx->loopDepth++;
-    analyzeBlock(ctx, curr->whileStmt.branch, true);
+    analyzeBlock(ctx, curr->whileStmt.branch, isForLet);
     ctx->loopDepth--;
-}
-
-static void analyzeFor(ZSemantic *ctx, ZNode *curr) {
-    beginScope(ctx, curr);
-    let f = curr->forStmt;
-    analyzeVar(ctx, f.var, false);
-
-    ZType *cond = resolveType(ctx, f.cond);
-    curr->forStmt.cond->resolved = cond;
-
-    if (!isComparable(ctx, cond)) {
-        error(ctx->state, f.cond->tok, "Is not a comparable value");
-    }
-
-    curr->forStmt.cond = implicitCast(ctx, curr->forStmt.cond, u1Type);
-
-    resolveType(ctx, f.incr);
-
-    ctx->loopDepth++;
-    analyzeBlock(ctx, curr->forStmt.block, false);
-    ctx->loopDepth--;
-
-    endScope(ctx);
+    if (isForLet) endScope(ctx);
 }
 
 static void analyzeForeign(ZSemantic *ctx, ZNode *curr) {
@@ -2404,8 +2399,8 @@ static bool patternEq(ZState *state, ZVarDestructPattern *a, ZVarDestructPattern
         }
         return true;
     }
+    default: return false;
     }
-    return true;
 }
 
 static void analyzeMatchStmt(ZSemantic *ctx, ZNode *curr) {
@@ -2449,7 +2444,6 @@ static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
     case NODE_IF:           analyzeIf(ctx, curr);                   break;
     case NODE_WHILE:        analyzeWhile(ctx, curr);                break;
-    case NODE_FOR:          analyzeFor(ctx, curr);                  break;
     case NODE_BLOCK:        analyzeBlock(ctx, curr, false);         break;
     case NODE_DEFER:        resolveType(ctx, curr->deferStmt.expr); break;
     case NODE_RETURN:       analyzeReturn(ctx, curr);               break;
@@ -2492,39 +2486,47 @@ static void putImpl(ZSemantic *ctx, ZNode *node) {
         hashset_insert(&funcs, func->funcDef.name->str);
     }
 
-    for (usize i = 0; i < veclen(node->impl.facets); i++) {
-        ZType *facet = resolveTypeRef(ctx, node->impl.facets[i]);
+    if (veclen(node->impl.facets) > 0 &&
+        node->impl.base->kind != Z_TYPE_POINTER) {
+        error(ctx->state, node->impl.base->tok,
+            "Facets must be implemented only by pointers"
+        );
+    } else {
+        for (usize i = 0; i < veclen(node->impl.facets); i++) {
+            ZToken *facetRef = node->impl.facets[i]->tok;
+            ZType *facet = resolveTypeRef(ctx, node->impl.facets[i]);
 
-        if (!facet) continue;
-        node->impl.facets[i] = facet;
+            if (!facet) continue;
+            node->impl.facets[i] = facet;
 
-        if (facet->kind != Z_TYPE_FACET) {
-            error(ctx->state,
-                node->impl.facets[i]->tok,
-                "Expected a facet, got '%s'", stype(facet)
-            );
-            continue;
-        }
-
-        usize facetFuncs = veclen(facet->facet.funcs);
-        for (usize j = 0; j < facetFuncs; j++) {
-            ZNode *func = facet->facet.funcs[j];
-            char *name  = func->field.identifier->str;
-            if (!hashset_insert(&seen, name)) {
-                error(ctx->state, node->tok,
-                    "'%s' conflicts with another facet",
-                    name
+            if (facet->kind != Z_TYPE_FACET) {
+                error(ctx->state,
+                    node->impl.facets[i]->tok,
+                    "Expected a facet, got '%s'", stype(facet)
                 );
                 continue;
             }
 
-            if (!hashset_has(funcs, name)) {
-                error(ctx->state, node->impl.facets[i]->tok,
-                    "%s requires '%s' but is not implemented",
-                    stype(facet), name
-                );
+            usize facetFuncs = veclen(facet->facet.funcs);
+            for (usize j = 0; j < facetFuncs; j++) {
+                ZNode *func = facet->facet.funcs[j];
+                char *name  = func->field.identifier->str;
+                if (!hashset_insert(&seen, name)) {
+                    error(ctx->state, node->tok,
+                        "'%s' conflicts with another facet",
+                        name
+                    );
+                    continue;
+                }
+
+                if (!hashset_has(funcs, name)) {
+                    error(ctx->state, facetRef,
+                        "%s for type '%s' requires '%s' but is not implemented",
+                        stype(facet), stype(node->impl.base), name
+                    );
+                }
+                vecpush(facetNames, name);
             }
-            vecpush(facetNames, name);
         }
     }
 }

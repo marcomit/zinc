@@ -40,10 +40,14 @@ main :: i32 () {
     }
 
     // Nested C-style for loops
-    for x: i32 = 0; x < 3; x = x + 1 {
-        for y: i32 = 0; y < 3; y = y + 1 {
+    x := 0
+    for x < 3 {
+        y := 0
+        for y < 3 {
             if x == y { c::printf("diag%d\n", x) }
+            y :+ 1
         }
+        x :+ 1
     }
 
     // Nested if-else chains
@@ -64,11 +68,13 @@ main :: i32 () {
 
     // break in nested for loop (C-style)
     found := -1
-    for idx: i32 = 0; idx < 10; idx = idx + 1 {
+    idx := 0
+    for idx < 10 {
         if idx * idx > 20 {
             found = idx
             break
         }
+        idx :+ 1
     }
     c::printf("found=%d\n", found)
 

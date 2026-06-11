@@ -17,5 +17,9 @@ main :: i32 () {
         *char(msg)  -> c::printf("%s\n", msg),
         f32(f)      -> c::printf("%f\n", f)
     }
+
+    if i32(num) := val {
+        c::printf("%d\n", num)
+    }
     return 0
 }

@@ -1,0 +1,27 @@
+pub io :: foreign {
+    printf  :: u0 (*char, ...)
+    putchar :: i32 (i32)
+}
+
+pub mem :: foreign {
+    memset  :: *u8 (*u8, i32, u64)
+    memcpy  :: *u8 (*u8, *u8, u64)
+}
+
+pub math :: foreign {
+    sin     :: f64 (f64)
+    cos     :: f64 (f64)
+    tan     :: f64 (f64)
+    atan    :: f64 (f64)
+    atan2   :: f64 (f64, f64)
+    sqrt    :: f64 (f64)
+    fabs    :: f64 (f64)
+
+    sinf    :: f32 (f32)
+    cosf    :: f32 (f32)
+    tanf    :: f32 (f32)
+    atanf   :: f32 (f32)
+    atan2f  :: f32 (f32, f32)
+    sqrtf   :: f32 (f32)
+    fabsf   :: f32 (f32)
+}

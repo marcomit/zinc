@@ -19,12 +19,16 @@ main :: i32(argc: i32) {
         i = i + 1
     }
 
-    for j := 0; j < 3; j = j + 1 {
+    j := 0
+    for j < 3 {
         printf("for\n")
+        j :+ 1
     }
 
-    for j: i32 = 0; j < 3; j = j + 1 {
+    j = 0
+    for j < 3 {
         printf("for typed\n")
+        j :+ 1
     }
 
     k := 0
