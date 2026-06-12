@@ -90,6 +90,11 @@ Tile self :: impl {
     width   :: u8 () -> (self >> 16) & 0xFF
     kind    :: u8 () -> self >> 24
 
+    #[inline(always)]
+    at :: u1 (x: u8, y: u8) {
+        return (self >> (y * self.width() + x)) & 1
+    }
+
     draw :: u0 (gx: i32, gy: i32) {
         kind    := self.kind()
         width   := self.width() as i32
@@ -128,11 +133,6 @@ Tile self :: impl {
             y :+ 1
         }
         return (self & (0xFFFF0000 as u32)) | content
-    }
-
-    #[inline(always)]
-    at :: u1 (x: u8, y: u8) {
-        return (self >> (y * self.width() + x)) & 1
     }
 }
 
@@ -194,29 +194,27 @@ GameState :: impl {
     #[inline(always)]
     at :: u8 (x: u8, y: u8) -> self.board[y * 10 + x]
 
-    draw :: u0 () {
+    collides :: u1 (tile: Tile, px: i32, py: i32) {
+        width := tile.width() as i32
         y := 0
-        for y < 20 {
+        for y < width {
             x := 0
-            for x < 10 {
-                box := self.board[y * 10 + x]
-                if not box {
-                    x :+ 1
-                    continue
+            for x < width {
+                if tile.at(x as u8, y as u8) {
+                    bx := px + x
+                    by := py + y
+                    if bx < 0 or bx >= 10 or by >= 20 {
+                        return true
+                    }
+                    if by >= 0 and self.board[by * 10 + bx] {
+                        return true
+                    }
                 }
-                rect := Rectangle {
-                    x: (x as f32) * 20.0,
-                    y: (y as f32) * 20.0,
-                    width: 20.0,
-                    height: 20.0
-                }
-                raylib::DrawRectangleRec(rect, get_color(box))
                 x :+ 1
             }
             y :+ 1
         }
-        self.drawGhost()
-        self.current.draw(self.offset.x as i32, self.offset.y as i32)
+        return false
     }
 
     landing :: i32 () {
@@ -255,27 +253,29 @@ GameState :: impl {
         }
     }
 
-    collides :: u1 (tile: Tile, px: i32, py: i32) {
-        width := tile.width() as i32
+    draw :: u0 () {
         y := 0
-        for y < width {
+        for y < 20 {
             x := 0
-            for x < width {
-                if tile.at(x as u8, y as u8) {
-                    bx := px + x
-                    by := py + y
-                    if bx < 0 or bx >= 10 or by >= 20 {
-                        return true
-                    }
-                    if by >= 0 and self.board[by * 10 + bx] {
-                        return true
-                    }
+            for x < 10 {
+                box := self.board[y * 10 + x]
+                if not box {
+                    x :+ 1
+                    continue
                 }
+                rect := Rectangle {
+                    x: (x as f32) * 20.0,
+                    y: (y as f32) * 20.0,
+                    width: 20.0,
+                    height: 20.0
+                }
+                raylib::DrawRectangleRec(rect, get_color(box))
                 x :+ 1
             }
             y :+ 1
         }
-        return false
+        self.drawGhost()
+        self.current.draw(self.offset.x as i32, self.offset.y as i32)
     }
 
     lock :: u0 () {
@@ -408,6 +408,7 @@ main :: i32 () {
 
     raylib::InitWindow(screenWidth, screenHeight, "Tetris")
     raylib::SetTargetFPS(60)
+    defer raylib::CloseWindow()
 
     black   := Color::new(0, 0, 0, 255)
     white   := Color::new(255, 255, 255, 255)
@@ -450,6 +451,5 @@ main :: i32 () {
         }
     }
 
-    raylib::CloseWindow()
     return 0
 }
