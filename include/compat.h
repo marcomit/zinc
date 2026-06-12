@@ -18,7 +18,7 @@
 /* ---- strdup / strndup -------------------------------------------- */
 #define strdup _strdup
 
-#ifndef strndup
+#ifndef __MINGW32__
 static inline char *strndup(const char *s, size_t n) {
     size_t len = strnlen(s, n);
     char  *p   = (char *)malloc(len + 1);
