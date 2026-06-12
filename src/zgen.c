@@ -2359,35 +2359,37 @@ static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
     ZNode *obj      = node->memberAccess.object;
     ZToken *field   = node->memberAccess.field;
 
-    LLVMValueRef objRef = genExpr(ctx, obj);
-    LLVMValueRef vtablePtr = LLVMBuildStructGEP2(
-        ctx->builder,
-        genType(ctx, obj->resolved),
-        objRef,
-        1, label(ctx, "vtablePtr")
-    );
+    LLVMValueRef objRef = genLvalue(ctx, obj);
 
+    ZNode **funcs = obj->resolved->facet.funcs;
     i32 index = -1;
-    for (usize i = 0; i < veclen(obj->resolved); i++) {
-        if (tokeneq(obj->resolved->facet.funcs[i]->funcDef.name, field)) {
+    for (usize i = 0; i < veclen(funcs); i++) {
+        if (tokeneq(funcs[i]->field.identifier, field)) {
             index = i;
             break;
         }
     }
+    if (index == -1) {
+        error(ctx->state, field, "facet has no member '%s'", stoken(field));
+        return NULL;
+    }
 
-    if (index == -1) return NULL;
+    LLVMValueRef vtableSlot = LLVMBuildStructGEP2(
+    ctx->builder, genType(ctx, obj->resolved), objRef, 1,
+    label(ctx, "vtable.slot"));
 
-    LLVMBuildGEP2(
-        ctx->builder,
-        LLVMPointerType(i8Type, 0),
-        vtablePtr,
-        (LLVMValueRef[]){
-            LLVMConstInt(i8Type, index, false)
-        },
-        1, label(ctx, "vtable.func") 
-    );
+    LLVMValueRef vtable = LLVMBuildLoad2(
+    ctx->builder, LLVMPointerType(i8Type, 0), vtableSlot,
+    label(ctx, "vtable"));
 
-    return NULL;
+    LLVMTypeRef vtableType = genFacetDecl(ctx, obj->resolved);
+    LLVMValueRef funcSlot = LLVMBuildStructGEP2(
+    ctx->builder, vtableType, vtable, index,
+    label(ctx, "vtable.func"));
+
+    return LLVMBuildLoad2(
+        ctx->builder, LLVMPointerType(i8Type, 0), funcSlot,
+        label(ctx, "func"));
 }
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
