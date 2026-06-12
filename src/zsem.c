@@ -1942,6 +1942,7 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
         if (field->integer < 0 || field->integer >= (i64)len) {
             error(ctx->state, field,
                     "Integer literal out of range for tuple indexing");
+            return NULL;
         }
 
         return base->tuple[field->integer];
@@ -1953,10 +1954,12 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
         return pointer;
     } else if (objType->kind == Z_TYPE_FACET) {
         ZType *func = NULL;
+        usize index = 0;
         for (usize i = 0; i < veclen(objType->facet.funcs); i++) {
             ZNode *funcField = objType->facet.funcs[i];
             if (tokeneq(field, funcField->field.identifier)) {
                 func = funcField->resolved;
+                index = i;
                 break;
             }
         }
@@ -1966,7 +1969,9 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
                 "%s has no function called %s",
                 stype(objType), stoken(field)
             );
+            return NULL;
         }
+
         return func;
     } else {
         ZNode *resolved = resolveFuncCallEmbedded(ctx, curr, objType, field);
