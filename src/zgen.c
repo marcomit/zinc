@@ -2609,6 +2609,52 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     endScope(ctx);
 }
 
+static void genForIn(ZCodegen *ctx, ZNode *node) {
+    ZNode *callNode = node->forin.iterNextRef;
+    ZNode *member   = callNode->call.callee;
+
+    LLVMValueRef func = getLLVMValueRef(ctx, member->memberAccess.mangled);
+    LLVMTypeRef funcType = LLVMGlobalGetValueType(func);
+
+    LLVMValueRef self = genLvalue(ctx,
+        member->memberAccess.object->unary.operand
+    );
+
+    LLVMBasicBlockRef entry = makeblock(ctx, "forin.entry");
+    LLVMBasicBlockRef body  = makeblock(ctx, "forin.body");
+    LLVMBasicBlockRef end   = makeblock(ctx, "forin.end");
+
+    ZLLVMStack *stack       = getStackValue(ctx, callNode);
+
+    LLVMBuildBr(ctx->builder, entry);
+    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+    LLVMValueRef call = LLVMBuildCall2(
+        ctx->builder,
+        funcType,
+        func,
+        &self, 1, label(ctx, "iter.next"));
+
+    if (!fitsInRegister(call) && stack)
+        LLVMBuildStore(ctx->builder, call, stack->stack);
+
+    LLVMValueRef cond = genMatchCond(ctx,
+        node->forin.iterNextRef->resolved,
+        node->forin.binding,
+        stack->stack
+    );
+
+    makecondbr(ctx->builder, cond, body, end);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, body);
+    putDestructuredPatternInStack(
+        ctx, callNode->resolved,
+        node->forin.binding, stack->stack
+    );
+    genStmt(ctx, node->forin.body);
+    LLVMBuildBr(ctx->builder, entry);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, end);
+}
 
 static void genBlock(ZCodegen *ctx, ZNode *block) {
     for (usize i = 0; i < veclen(block->block); i++) {
@@ -2750,6 +2796,7 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     case NODE_CALL:         genCall         (ctx, stmt);    break;
     case NODE_BLOCK:        genBlock        (ctx, stmt);    break;
     case NODE_WHILE:        genWhile        (ctx, stmt);    break;
+    case NODE_FORIN:        genForIn        (ctx, stmt);    break;
     case NODE_BREAK:        genBreak        (ctx, stmt);    break;
     case NODE_DEFER:        genDefer        (ctx, stmt);    break;
     case NODE_VAR_DECL:     genVarDecl      (ctx, stmt);    break;
@@ -3013,6 +3060,10 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->whileStmt.cond);
         genFuncVars(ctx, node->whileStmt.branch);
         break;
+    case NODE_FORIN:
+        genFuncVars(ctx, node->forin.iterNextRef);
+        genFuncVars(ctx, node->forin.body);
+        break;
     case NODE_IF:
         if (node->resolved && node->resolved->kind == Z_TYPE_SUM) {
             buildFuncVar(ctx, node, false);
@@ -3039,6 +3090,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
             error(ctx->state, node->tok, "Unresolved type");
             break;
         }
+        genFuncVars(ctx, node->call.callee);
         if (!typesPrimitive(node->resolved)) {
             buildFuncVar(ctx, node, false);
         }
