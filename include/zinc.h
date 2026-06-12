@@ -168,7 +168,8 @@ typedef enum {
     NODE_MATCH_ARM,
     NODE_ENUM_LIT,
     NODE_FACET,
-    NODE_IMPL
+    NODE_IMPL,
+    NODE_FORIN
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -369,6 +370,16 @@ struct ZNode {
             ZNode   *incr;
             ZNode   *block;
         } forStmt;
+
+        struct {
+            ZVarDestructPattern *binding;
+            ZNode               *iter;
+            ZNode               *body;
+
+            /* Cached function definition of the 'next' function.
+             * */
+            ZNode               *iterNextRef;
+        } forin;
 
         struct {
             ZVarDestructPattern *pattern;

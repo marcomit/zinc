@@ -1,0 +1,25 @@
+foreign printf :: u0 (*char, ...)
+main :: i32 () {
+    arr := [5, 2, 8, 1, 9, 3]
+    n := arr.len
+    i := 0
+    for i < n {
+        j := 0
+        for j < n - 1 - i {
+            if arr[j] > arr[j + 1] {
+                tmp := arr[j]
+                arr[j] = arr[j + 1]
+                arr[j + 1] = tmp
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    k := 0
+    for k < n {
+        printf("%d ", arr[k])
+        k = k + 1
+    }
+    printf("\n")
+    return 0
+}

@@ -1,0 +1,64 @@
+use <std::libc>
+
+Option :: enum {
+    Some(i32)
+    None
+}
+
+Range :: struct {
+    start: i32
+    end: i32
+    current: i32
+}
+
+*Range self :: impl {
+    next :: Option () {
+        if self.current >= self.end {
+            return Option::None()
+        }
+        res := Option::Some(self.current)
+        self.current :+ 1
+        return res
+    }
+}
+
+range :: Range (start: i32, end: i32) -> Range {
+    start: start, end: end, current: start
+}
+
+ArrIter :: struct {
+    data: []i32
+    current: i32
+}
+
+[]i32 self :: impl {
+    iter :: ArrIter () -> ArrIter {
+        data: self, current: 0
+    }
+}
+
+*ArrIter self :: impl {
+    next :: Option () {
+        if self.current >= self.data.len {
+            return Option::None()
+        }
+
+        res := Option::Some(self.data[self.current])
+        self.current :+ 1
+        return res
+    }
+}
+
+main :: i32 () {
+    io::printf("nums\n")
+    for Option::Some(i) in range(0, 10) {
+        io::printf("%d\n", i)
+    }
+
+    io::printf("values\n")
+    values := [5, 4, 3, 2, 1]
+    for Option::Some(item) in values.iter() {
+        io::printf("%d\n", item)
+    }
+    return 0
+}

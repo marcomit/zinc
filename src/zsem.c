@@ -2439,6 +2439,67 @@ static void analyzeMatchStmt(ZSemantic *ctx, ZNode *curr) {
     }
 }
 
+static void analyzeForIn(ZSemantic *ctx, ZNode *curr) {
+    ZType *iter = resolveType(ctx, curr->forin.iter);
+
+    ZType *iterPtr = maketype(Z_TYPE_POINTER);
+    iterPtr->tok = iter->tok;
+    iterPtr->base = iter;
+
+    ZFuncTable *table = resolveFuncTable(ctx, iterPtr);
+    if (!table || !hashset_has(table->seenReceiverFuncs, "next")) {
+        error(ctx->state, curr->forin.iter->tok,
+            "iterator expression doesn't implement 'next' function"
+        );
+        return;
+    }
+
+    usize idx = 0;
+    for (usize i = 0; i < veclen(table->funcDef); i++) {
+        if (strcmp(table->funcDef[i]->funcDef.name->str, "next") == 0) {
+            idx = i;
+            break;
+        }
+    }
+    ZNode *funcRef = table->funcDef[idx];
+    if (veclen(funcRef->resolved->func.args) != 0) {
+        error(ctx->state, funcRef->tok,
+            "'next' function expects 0 arguments, got %zu",
+            veclen(funcRef->resolved->func.args)
+        );
+    }
+    ZType *itemType = funcRef->resolved->func.ret;
+    char *start = curr->forin.iter->tok->start;
+
+    ZNode *call             = makenode(NODE_CALL);
+    
+    ZNode *iterAddr         = makenode(NODE_UNARY);
+    iterAddr->unary.operand = curr->forin.iter;
+    iterAddr->unary.operat  = maketoken(TOK_REF, start);
+
+    ZNode *iterCall         = makenode(NODE_MEMBER);
+    iterCall->memberAccess.object   = iterAddr;
+    iterCall->memberAccess.field    = makeident("next", start);
+    iterCall->memberAccess.mangled  = funcRef->funcDef.mangled;
+
+    call->call.callee       = iterCall;
+    call->call.args         = NULL;
+    call->call.func         = funcRef;
+    call->call.capabilities = NULL;
+    call->resolved          = funcRef->resolved->func.ret;
+
+    curr->forin.iterNextRef = call;
+
+    beginScope(ctx, curr->forin.body);
+
+    ctx->loopDepth++;
+    putVarPattern(ctx, curr, itemType, curr->forin.binding, true);
+    analyzeBlock(ctx, curr->forin.body, false);
+    ctx->loopDepth--;
+
+    endScope(ctx);
+}
+
 static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     switch (curr->type) {
     case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
@@ -2449,6 +2510,7 @@ static void analyzeStmt(ZSemantic *ctx, ZNode *curr) {
     case NODE_RETURN:       analyzeReturn(ctx, curr);               break;
     case NODE_MATCH:        analyzeMatchStmt(ctx, curr);            break;
     case NODE_CAPABILITY:   analyzeCapability(ctx, curr);           break;
+    case NODE_FORIN:        analyzeForIn(ctx, curr);                break;
     default:                resolveType(ctx, curr);                 break;
     }
 }
