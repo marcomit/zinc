@@ -18,6 +18,7 @@
 /* ---- strdup / strndup -------------------------------------------- */
 #define strdup _strdup
 
+#ifndef strndup
 static inline char *strndup(const char *s, size_t n) {
     size_t len = strnlen(s, n);
     char  *p   = (char *)malloc(len + 1);
@@ -26,6 +27,7 @@ static inline char *strndup(const char *s, size_t n) {
     p[len] = '\0';
     return p;
 }
+#endif
 
 /* ---- clock_gettime / CLOCK_MONOTONIC ----------------------------- */
 #ifndef CLOCK_MONOTONIC
