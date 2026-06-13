@@ -53,6 +53,7 @@ typedef struct {
 static void analyze(ZSemantic *, ZNode *);
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
+static bool satisfyFacet(ZSemantic *, ZType *, ZType *);
 static ZType *resolveTypeRef(ZSemantic *, ZType *);
 static void checkFunctionUsedAsValue(ZSemantic *, ZNode *);
 static ZFuncTable *resolveFuncTable(ZSemantic *, ZType *);
@@ -678,8 +679,13 @@ static bool isComparable(ZSemantic *ctx, ZType *type) {
  * Note: this function does not work if a primitive type is aliased.
  * */
 ZType *typesCompatible(ZSemantic *ctx, ZType *a, ZType *b) {
-    (void)ctx;
     if (!a || !b) return NULL;
+
+    if (a->kind == Z_TYPE_FACET     &&
+        b->kind == Z_TYPE_POINTER   &&
+        satisfyFacet(ctx, b, a)     ) {
+        return a;
+    }
     
     if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
         return a;

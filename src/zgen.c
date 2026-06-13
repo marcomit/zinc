@@ -1230,7 +1230,10 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
         baseType    = baseType->base;
 
     u32 *path = NULL;
-    if (baseType->kind == Z_TYPE_STRUCT) {
+    if (baseType->kind == Z_TYPE_FACET) {
+        printf("facet member access %s\n", stoken(tok));
+        return NULL;
+    } else if (baseType->kind == Z_TYPE_STRUCT) {
         path = getStructIndex(baseType, tok->str);
         if (!path) {
             error(ctx->state, tok, "'%s' member not found", tok->str);
@@ -1369,6 +1372,66 @@ static LLVMTypeRef buildFuncType(ZCodegen *ctx, ZType *type) {
     return LLVMFunctionType(ret, params, (unsigned)argc, type->func.variadic);
 }
 
+/* Facet methods are dispatched through a type-erased vtable. The concrete
+ * receiver is passed as an opaque pointer prepended to the declared params,
+ * matching the impl function whose first parameter is the receiver. */
+static LLVMTypeRef buildFacetFuncType(ZCodegen *ctx, ZType *type) {
+    usize argc = veclen(type->func.args);
+    LLVMTypeRef *params = znalloc(LLVMTypeRef, argc + 1);
+
+    params[0] = LLVMPointerType(i8Type, 0);
+
+    for (usize i = 0; i < argc; i++)
+        params[i + 1] = genType(ctx, type->func.args[i]);
+
+    LLVMTypeRef ret = genType(ctx, type->func.ret);
+    return LLVMFunctionType(
+        ret, params, (unsigned)(argc + 1), type->func.variadic
+    );
+}
+
+static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
+    ZNode *obj          = node->memberAccess.object;
+    ZToken *field       = node->memberAccess.field;
+    LLVMTypeRef type    = genType(ctx, obj->resolved);
+    LLVMValueRef objRef = genLvalue(ctx, obj);
+
+    ZNode **funcs = obj->resolved->facet.funcs;
+    i32 index = -1;
+    for (usize i = 0; i < veclen(funcs); i++) {
+        if (tokeneq(funcs[i]->field.identifier, field)) {
+            index = i;
+            break;
+        }
+    }
+    if (index == -1) {
+        error(ctx->state, field, "facet has no member '%s'", stoken(field));
+        return NULL;
+    }
+
+    LLVMValueRef vtableSlot = LLVMBuildStructGEP2(
+        ctx->builder, type, objRef, 1,
+        label(ctx, "vtable.slot")
+    );
+
+    LLVMValueRef vtable = LLVMBuildLoad2(
+        ctx->builder, LLVMPointerType(i8Type, 0), vtableSlot,
+        label(ctx, "vtable")
+    );
+
+    LLVMTypeRef vtableType = genFacetDecl(ctx, obj->resolved);
+
+    LLVMValueRef funcSlot = LLVMBuildStructGEP2(
+        ctx->builder, vtableType, vtable, index,
+        label(ctx, "vtable.func")
+    );
+
+    return LLVMBuildLoad2(
+        ctx->builder, LLVMPointerType(i8Type, 0), funcSlot,
+        label(ctx, "func")
+    );
+}
+
 /**
  * @brief Generates a call to a function.
  *
@@ -1388,7 +1451,24 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef *args  = NULL;
     ZNode *callee       = node->call.callee;
 
-    if (callee->type == NODE_MEMBER && callee->memberAccess.mangled) {
+    if (callee->type == NODE_MEMBER &&
+        callee->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
+        ZNode *obj          = callee->memberAccess.object;
+        LLVMValueRef facet  = genLvalue(ctx, obj);
+        LLVMTypeRef type    = genType(ctx, obj->resolved);
+
+        LLVMValueRef objSlot = LLVMBuildStructGEP2(
+            ctx->builder, type, facet, 0, label(ctx, "facet.obj")
+        );
+
+        LLVMValueRef self = LLVMBuildLoad2(
+            ctx->builder, LLVMPointerType(i8Type, 0),
+            objSlot, label(ctx, "facet.self")
+        );
+
+        vecpush(args, self);
+        func = genFacetMember(ctx, callee);
+    } else if (callee->type == NODE_MEMBER && callee->memberAccess.mangled) {
         /* Receiver method call: look up the global function and inject self. */
         func = getLLVMValueRef(ctx, callee->memberAccess.mangled);
 
@@ -1411,7 +1491,10 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
      * not a global, so LLVMGlobalGetValueType is invalid. Derive the function
      * type from the semantic info instead. mangled == NULL means indirect. */
     LLVMTypeRef funcType;
-    if (callee->type == NODE_MEMBER && !callee->memberAccess.mangled) {
+    if (callee->type == NODE_MEMBER &&
+        callee->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
+        funcType = buildFacetFuncType(ctx, callee->resolved);
+    } else if (callee->type == NODE_MEMBER && !callee->memberAccess.mangled) {
         funcType = buildFuncType(ctx, callee->resolved);
     } else if (LLVMGetValueKind(func) != LLVMFunctionValueKind) {
         /* Indirect call through a function pointer variable. */
@@ -2036,6 +2119,7 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
     }
 
     if (to->kind == Z_TYPE_FACET && from->kind != Z_TYPE_FACET) {
+        LLVMValueRef objRef = genExpr(ctx, node->castExpr.expr);
         ZLLVMStack *stack = getStackValue(ctx, node);
 
         if (!stack) {
@@ -2054,10 +2138,17 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
 
         LLVMValueRef vtablePtr = LLVMBuildStructGEP2(
             ctx->builder, stack->stackType,
-            stack->stack, 1, "vtablePtr"
+            stack->stack, 1, "facet.vtable"
         );
 
+        LLVMValueRef objPtr = LLVMBuildStructGEP2(
+            ctx->builder, stack->stackType,
+            stack->stack, 0, "facet.obj"
+        );
+
+
         LLVMBuildStore(ctx->builder, vtable, vtablePtr);
+        LLVMBuildStore(ctx->builder, objRef, objPtr);
 
         return stack->elem;
     }
@@ -2353,43 +2444,6 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
 
     putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
     return genMatchCond(ctx, node->resolved, node->varDecl.pattern, ptr);
-}
-
-static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
-    ZNode *obj      = node->memberAccess.object;
-    ZToken *field   = node->memberAccess.field;
-
-    LLVMValueRef objRef = genLvalue(ctx, obj);
-
-    ZNode **funcs = obj->resolved->facet.funcs;
-    i32 index = -1;
-    for (usize i = 0; i < veclen(funcs); i++) {
-        if (tokeneq(funcs[i]->field.identifier, field)) {
-            index = i;
-            break;
-        }
-    }
-    if (index == -1) {
-        error(ctx->state, field, "facet has no member '%s'", stoken(field));
-        return NULL;
-    }
-
-    LLVMValueRef vtableSlot = LLVMBuildStructGEP2(
-    ctx->builder, genType(ctx, obj->resolved), objRef, 1,
-    label(ctx, "vtable.slot"));
-
-    LLVMValueRef vtable = LLVMBuildLoad2(
-    ctx->builder, LLVMPointerType(i8Type, 0), vtableSlot,
-    label(ctx, "vtable"));
-
-    LLVMTypeRef vtableType = genFacetDecl(ctx, obj->resolved);
-    LLVMValueRef funcSlot = LLVMBuildStructGEP2(
-    ctx->builder, vtableType, vtable, index,
-    label(ctx, "vtable.func"));
-
-    return LLVMBuildLoad2(
-        ctx->builder, LLVMPointerType(i8Type, 0), funcSlot,
-        label(ctx, "func"));
 }
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
@@ -2847,10 +2901,12 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     case NODE_CAPABILITY:   genCapability   (ctx, stmt);    break;
     default: {
         LLVMValueRef compiled = genExpr(ctx, stmt);
-        if (compiled) return;
-        error(ctx->state, stmt->tok,
+        if (!compiled) {
+            error(ctx->state, stmt->tok,
                 "Node '%d' does not compile yet",
-                stmt->type);
+                stmt->type
+            );
+        }
         break;
     }
     }
