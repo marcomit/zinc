@@ -1098,13 +1098,18 @@ static ZNode *resolveStaticFuncTable(ZSemantic *ctx,
 
     if (!node) return NULL;
 
-    for (usize i = 0; i < veclen(node->resolved->func.args); i++) {
-        ZType *resolved = resolveTypeRef(ctx, node->resolved->func.args[i]);
+    ZType **args = node->resolved->func.args;
+    for (usize i = 0; i < veclen(args); i++) {
+        if (!args[i]) {
+            error(ctx->state, node->tok, "unresolved type");
+            continue;
+        }
+        ZType *resolved = resolveTypeRef(ctx, args[i]);
         if (!resolved) {
-            error(ctx->state, node->resolved->func.args[i]->tok,
+            error(ctx->state, args[i]->tok,
                 "Unresolved type");
         } else {
-            node->resolved->func.args[i] = resolved;
+            args[i] = resolved;
         }
     }
     return node;
