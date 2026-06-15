@@ -3077,7 +3077,7 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
     } else if (!node->resolved) {
         error(ctx->state, node->tok,
                 "Missing resolved type for node %d", node->type);
-        return NULL;;
+        return NULL;
     }
 
     /* Function types are passed as pointers and fit in a register - no alloca needed. */

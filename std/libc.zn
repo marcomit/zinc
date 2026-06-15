@@ -2,10 +2,13 @@ pub io :: foreign {
     printf  :: u0 (*char, ...)
     putchar :: i32 (i32)
 }
-
 pub mem :: foreign {
     memset  :: *u8 (*u8, i32, u64)
     memcpy  :: *u8 (*u8, *u8, u64)
+    strlen  :: u64 (*char)
+    strcmp  :: i32 (*char, *char)
+    strncmp :: i32 (*char, *char, u64)
+    strstr  :: *char (*char, *char)
 }
 
 pub math :: foreign {

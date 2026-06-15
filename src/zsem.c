@@ -1965,12 +1965,10 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
         return pointer;
     } else if (objType->kind == Z_TYPE_FACET) {
         ZType *func = NULL;
-        usize index = 0;
         for (usize i = 0; i < veclen(objType->facet.funcs); i++) {
             ZNode *funcField = objType->facet.funcs[i];
             if (tokeneq(field, funcField->field.identifier)) {
                 func = funcField->resolved;
-                index = i;
                 break;
             }
         }

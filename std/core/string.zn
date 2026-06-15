@@ -1,13 +1,5 @@
 use <std::core::mem>
-
-c :: foreign {
-    printf  :: u0  (*char, ...)
-    strlen  :: u64 (*char)
-    strcmp  :: i32 (*char, *char)
-    strncmp :: i32 (*char, *char, u64)
-    strstr  :: *char (*char, *char)
-    memcpy  :: *u8 (*u8, *u8, u64)
-}
+use <std::libc>
 
 #[packed]
 SdsHdr :: struct {
@@ -29,7 +21,7 @@ string :: impl {
         s := (&(base[sizeof SdsHdr])) as string
 
         if initlen > 0 and init != none {
-            c::memcpy(s as *u8, init as *u8, initlen as u64)
+            mem::memcpy(s as *u8, init as *u8, initlen as u64)
         }
         s[initlen] = 0 as char
         return s
@@ -37,7 +29,7 @@ string :: impl {
 
     pub new :: string (init: *char)[Allocator] {
         l: u32 = 0
-        if init != none { l = c::strlen(init) as u32 }
+        if init != none { l = mem::strlen(init) as u32 }
         return string::make(init, l, l)
     }
 
@@ -103,7 +95,7 @@ string self :: impl {
     pub append :: string (t: *char)[Allocator] {
         if not t { return self }
 
-        tlen := c::strlen(t) as u32
+        tlen := mem::strlen(t) as u32
         if tlen == 0 { return self }
 
         s := self.make_room_for(tlen)
@@ -111,7 +103,7 @@ string self :: impl {
 
         hdr := s.header()
         dst := s as *u8
-        c::memcpy(&(dst[hdr.len]), t as *u8, tlen as u64)
+        mem::memcpy(&(dst[hdr.len]), t as *u8, tlen as u64)
 
         hdr.len :+ tlen
         s[hdr.len] = 0 as char
@@ -147,25 +139,29 @@ string self :: impl {
     }
 
     pub cmp :: i32 (other: *char) {
-        return c::strcmp(self, other)
+        return mem::strcmp(self, other)
     }
 
     #[overload(==)]
     pub equals :: u1 (other: *char) {
-        return c::strcmp(self, other) == 0
+        return mem::strcmp(self, other) == 0
     }
 
     pub starts_with :: u1 (prefix: *char) {
-        plen := c::strlen(prefix)
-        return c::strncmp(self, prefix, plen) == 0
+        plen := mem::strlen(prefix)
+        return mem::strncmp(self, prefix, plen) == 0
     }
 
     pub contains :: u1 (needle: *char) {
-        return c::strstr(self, needle) != none
+        return mem::strstr(self, needle) != none
     }
 
     pub print :: u0 () {
-        c::printf("%s", self)
+        libc::printf("%s", self)
+    }
+
+    pub println :: u0 () {
+        libc::printf("%s\n", self)
     }
 
     pub free :: u0 ()[Allocator] {

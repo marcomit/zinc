@@ -36,8 +36,7 @@ Rect :: struct {
 
 
 main :: i32 () {
-    entity: Entity = &Rect{width: 10.0, height: 12.0}
+    entity: Entity = &Rect{width: 10, height: 12}
     entity.draw()
-    entity = &Circle{radius: 10.0}
     return 0
 }
