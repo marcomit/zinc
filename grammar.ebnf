@@ -1,3 +1,13 @@
+(* ============================================================= *)
+(*  Zinc grammar (EBNF)                                           *)
+(*                                                                *)
+(*  Restored to match the language as implemented (see            *)
+(*  tests/pass and examples/), with the comptime-parameter        *)
+(*  extension layered on top. Comptime additions are grouped      *)
+(*  under the "Compile-time parameters" section and referenced    *)
+(*  from the declaration rules; see docs/comptime.md.             *)
+(* ============================================================= *)
+
 source_file = { declaration } ;
 
 declaration =
@@ -6,48 +16,117 @@ declaration =
         struct_declaration  |
         enum_declaration    |
         type_alias          |
+        facet_declaration   |
         foreign_block       |
+        foreign_func        |
         func_block          |
         func_decl           |
-        foreign_func        |
-        import_decl         ) ;
+        import_decl         |
+        constant_declaration ) ;
 
-attribute = "#" "[" identifier, { "," identifier} [ "," ] "]"
+(* ------------------------------------------------------------- *)
+(*  Attributes                                                    *)
+(* ------------------------------------------------------------- *)
 
-import_declaration =
-    [ identifier "::" ] "use" (
+attribute = "#" "[" attribute_item { "," attribute_item } [ "," ] "]" ;
+
+attribute_item = identifier [ "(" [ attribute_arg { "," attribute_arg } ] ")" ] ;
+
+(* args may be identifiers (e.g. inline(always)) or operators
+   (e.g. overload(+), overload(==)) *)
+attribute_arg = identifier | operator | literal ;
+
+(* ------------------------------------------------------------- *)
+(*  Imports                                                       *)
+(* ------------------------------------------------------------- *)
+
+import_decl =
+    "use" (
         "<" module_path ">" | module_path
     ) ;
 
 module_path = identifier { "::" identifier } ;
 
-struct_declaration = identifier "::" "struct" "{" { struct_member } "}" ;
+(* ------------------------------------------------------------- *)
+(*  Declarations                                                  *)
+(* ------------------------------------------------------------- *)
+
+struct_declaration =
+    identifier [ comptime_params ] "::" "struct" "{" { struct_member } "}" ;
 
 struct_member = field_declaration | struct_embed ;
 
-field_declaration = field_type identifier ;
+field_declaration =
+    field_type identifier
+  | identifier ":" field_type ;
 
 struct_embed = "..." type ;
 
-enum_declaration = identifier "::" "enum" "{" { enum_variant } "}"
+enum_declaration =
+    identifier [ comptime_params ] "::" "enum" "{" { enum_variant } "}" ;
 
-enum_variant = 
+enum_variant =
     { attribute } identifier
     [ "(" [ field_type { "," field_type } ] ")" ] ;
 
 type_alias = identifier "::" "type" field_type ;
 
+(* top-level compile-time constant, e.g.  GLOBAL :: 100 *)
+constant_declaration = identifier "::" literal ;
+
 foreign_block = identifier "::" "foreign" "{" { foreign_signature } "}" ;
 
 foreign_signature = identifier "::" type parameter_list ;
 
-foreign_function = "foreign" identifier "::" type parameter_list ;
+foreign_func = "foreign" identifier "::" type parameter_list ;
 
-func_block = type [ identifier ] "::" "for" "{" { func_decl } "}" ;
+facet_declaration =
+    identifier [ comptime_params ] "::" "facet" "{" { func_decl } "}" ;
 
-func_decl = [ "pub" ] identifier "::" type parameter_list [ capability_list ] func_body ;
+(* receiver-style or static impl block.
+   The receiver is a type optionally bound to a name, e.g.
+       Vec :: impl { ... }                (static methods)
+       Counter self :: impl { ... }       (value receiver)
+       *Range self :: impl { ... }         (pointer receiver)
+       []i32 self :: impl { ... }          (slice receiver)
+       i32 self :: impl { ... }            (primitive receiver)
+   and may declare the facet it satisfies, e.g.  impl Iter[i32] *)
+func_block =
+    type [ identifier ] "::" "impl" [ facet_name ] "{" { func_decl } "}" ;
 
-func_body = block | "->" (expression) ;
+facet_name = type_identifier | generic_type ;
+
+func_decl =
+    [ "pub" ]
+    identifier [ comptime_params ] "::"
+    field_type
+    parameter_list
+    [ capability_list ]
+    func_body ;
+
+func_body = block | "->" expression ;
+
+(* ------------------------------------------------------------- *)
+(*  Compile-time parameters  (see docs/comptime.md)               *)
+(*                                                                *)
+(*  Rule: "[" introduces compile-time parameters, "(" introduces  *)
+(*  run-time parameters. Inside "[", a parameter declares its     *)
+(*  KIND with "::" exactly as a run-time parameter declares its   *)
+(*  TYPE with ":". A bare identifier is sugar for ":: type".      *)
+(* ------------------------------------------------------------- *)
+
+comptime_params = "[" comptime_param { "," comptime_param } [ "," ] "]" ;
+
+comptime_param = identifier [ "::" kind ] ;   (* bare identifier  ==  identifier :: type *)
+
+kind =
+    "type"        (* any type                            *)
+  | facet_name    (* any type satisfying a facet         *)
+  | field_type ;  (* a compile-time value of this type   *)
+
+(* ------------------------------------------------------------- *)
+(*  Run-time parameters & capabilities                            *)
+(* ------------------------------------------------------------- *)
 
 parameter_list = "(" [
         parameter_or_variadic
@@ -57,18 +136,36 @@ parameter_list = "(" [
 
 parameter_or_variadic = parameter | "..." ;
 
-parameter = field_type identifier ;
+parameter =
+    field_type identifier
+  | identifier ":" field_type
+  | field_type ;          (* unnamed parameter type (foreign signatures) *)
 
-capability_list = "[" field_type [ identifier ] { "," field_tye [ identifier ] } "]" ;
+capability_list = "[" capability { "," capability } [ "," ] "]" ;
+
+capability =
+    field_type [ identifier ]
+  | identifier ":" field_type ;
+
+(* ------------------------------------------------------------- *)
+(*  Types                                                         *)
+(* ------------------------------------------------------------- *)
+
+field_type = type | sum_type ;
 
 type =
     primitive_type  |
     pointer_type    |
     slice_type      |
     tuple_type      |
+    grouped_type    |
     generic_type    |
-    type_identifier |
-    func_type       ;
+    func_type       |
+    type_identifier ;
+
+sum_type = type "|" type { "|" type } ;
+
+grouped_type = "(" field_type ")" ;   (* grouping, e.g. return type (*char | i32) *)
 
 func_type = type "(" [ type { "," type } ] ")" ;
 
@@ -88,20 +185,24 @@ primitive_type =
     "char"  |
     "rune"  ;
 
-pointer_type = "*" type
+pointer_type = "*" type ;
 
-slice_type = "[" [ expression ] "]" type ;
+slice_type = "[" [ expression ] "]" type ;   (* [ ]T slice, [N]T sized array *)
 
 tuple_type = "(" type "," type { "," type } ")" ;
 
+(* use-site instantiation, e.g. Vec[i32], Array[i32, 8], Iter[i32].
+   Arguments are compile-time: types or compile-time values. *)
 generic_type =
-    type_identifier
-    "["
-    type
-    { "," type }
-    "]" ;
+    type_identifier "[" comptime_arg { "," comptime_arg } [ "," ] "]" ;
+
+comptime_arg = type | expression ;
 
 type_identifier = identifier ;
+
+(* ------------------------------------------------------------- *)
+(*  Statements                                                    *)
+(* ------------------------------------------------------------- *)
 
 block = "{" { statement } "}" ;
 
@@ -115,18 +216,15 @@ statement
     | defer_statement
     | break_statement
     | continue_statement
+    | comptime_statement
     | expression_statement
     | block ;
 
 variable_declaration
-    =
-      (
-          field_type identifier [ "=" expression ]
-      )
-    |
-      (
-          binding ":=" expression
-      ) ;
+    = field_type identifier [ "=" expression ]        (* type-first:  i32 x = e   / *Point p = e *)
+    | identifier ":" field_type [ "=" expression ]    (* name-first:  x: i32 = e                  *)
+    | identifier "::" expression                       (* comptime local binding                  *)
+    | binding ":=" expression ;                        (* inferred:    x := e  / (a, b) := e       *)
 
 binding
     = identifier
@@ -151,38 +249,33 @@ struct_destructure
 struct_destructure_field
     = identifier [ ":" identifier ] ;
 
+(* compound / self-relative update, e.g.
+       i :+ 1        ->  i = i + 1
+       self.cap :* 2 ->  self.cap = self.cap * 2
+       root : .next  ->  root = root.next
+       flag : not    ->  flag = not flag
+       root : e      ->  root = e                       *)
 update_statement
     = expression ":" update_tail ;
 
 update_tail
-    = "." identifier
-    | ( "not" | "!" | "~" )
-    | expression ;
+    = "." identifier                     (* self-relative member  *)
+    | ( "not" | "!" | "~" )              (* self-relative unary   *)
+    | binary_operator expression         (* compound assignment   *)
+    | expression ;                        (* plain assignment      *)
+
+comptime_statement
+    = "comptime" ( block | for_statement | if_expression | expression_statement ) ;
 
 expression_statement
     = expression ;
 
-if_expression
-    = "if"
-      condition
-      if_branch
-      [ "else" ( if_expression | if_branch ) ] ;
-
-if_branch
-    = block
-    | "->" expression ;
-
-condition
-    = let_condition
-    | expression ;
-
-let_condition
-    = match_pattern ":=" expression ;
-
 for_statement
     = "for"
-      [ c_style_for_header | condition ]
+      [ c_style_for_header | for_in_header | condition ]
       block ;
+
+for_in_header = ( binding | enum_pattern ) "in" expression ;
 
 c_style_for_header
     = ( variable_declaration | expression )
@@ -190,6 +283,13 @@ c_style_for_header
       expression
       ";"
       expression ;
+
+condition
+    = let_condition
+    | expression ;
+
+let_condition
+    = match_pattern ":=" expression ;
 
 match_statement
     = "match"
@@ -223,11 +323,19 @@ break_statement
 continue_statement
     = "continue" ;
 
+(* ------------------------------------------------------------- *)
+(*  Patterns                                                      *)
+(* ------------------------------------------------------------- *)
+
 match_pattern
     = enum_pattern
+    | type_pattern
     | tuple_pattern
     | literal
     | identifier ;
+
+type_pattern
+    = type "(" [ match_pattern { "," match_pattern } [ "," ] ] ")" ;
 
 enum_pattern
     = scoped_identifier
@@ -246,6 +354,10 @@ tuple_pattern
         { "," match_pattern }
         [ "," ]
       ")" ;
+
+(* ------------------------------------------------------------- *)
+(*  Expressions                                                   *)
+(* ------------------------------------------------------------- *)
 
 expression
     = assignment_expression ;
@@ -323,11 +435,19 @@ unary_expression
     = postfix_expression
     | ( "-" | "+" | "!" | "not" | "~" | "*" | "&" )
       unary_expression
-    | sizeof_expression ;
+    | sizeof_expression
+    | comptime_expression ;
 
 sizeof_expression
     = "sizeof" field_type ;
 
+comptime_expression
+    = "comptime" unary_expression ;
+
+(* A postfix "[" ... "]" is either a subscript or a compile-time
+   instantiation; the two share this syntax and are disambiguated
+   during name resolution (a given name is either indexable or
+   generic, never both). See docs/comptime.md. *)
 postfix_expression
     = primary_expression
       {
@@ -346,6 +466,16 @@ primary_expression
     | array_literal
     | tuple_literal
     | parenthesized_expression ;
+
+if_expression
+    = "if"
+      condition
+      if_branch
+      [ "else" ( if_expression | if_branch ) ] ;
+
+if_branch
+    = block
+    | "->" expression ;
 
 scoped_identifier
     = identifier "::"
@@ -402,6 +532,23 @@ slice
       ":"
       [ expression ] ;
 
+(* ------------------------------------------------------------- *)
+(*  Operators                                                     *)
+(* ------------------------------------------------------------- *)
+
+binary_operator
+    = "+" | "-" | "*" | "/" | "%"
+    | "&" | "|" | "^" | "<<" | ">>"
+    | "and" | "or" | "&&" | "||"
+    | "==" | "!=" | "<" | ">" | "<=" | ">=" ;
+
+operator
+    = binary_operator
+    | "!" | "not" | "~" | "??" | "=" ;
+
+(* ------------------------------------------------------------- *)
+(*  Literals & lexical                                            *)
+(* ------------------------------------------------------------- *)
 
 literal
     = int_literal

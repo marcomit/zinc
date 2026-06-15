@@ -20,7 +20,7 @@ Rect :: struct {
     }
 
     update :: u0 () {
-        self.radius: + 0.1
+        self.radius: + 1
     }
 }
 
@@ -34,9 +34,26 @@ Rect :: struct {
     }
 }
 
+draw :: u0 (entity: Entity) -> entity.draw()
 
 main :: i32 () {
-    entity: Entity = &Rect{width: 10, height: 12}
-    entity.draw()
+    rect            := &Rect{width: 10, height: 12}
+    circle          := &Circle{radius: 10}
+    entity: Entity  = rect
+    draw(entity)
+
+    entities := [
+        rect    as Entity,
+        circle  as Entity,
+        rect    as Entity,
+        circle  as Entity
+    ]
+
+    i := 0
+    for i < entities.len {
+        draw(entities[i])
+        i: + 1
+    }
+
     return 0
 }

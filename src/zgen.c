@@ -994,7 +994,8 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
         return;
     }
 
-    ZLLVMStack *stack = getStackValue(ctx, node->varDecl.rvalue);
+    ZNode *rvalue = node->varDecl.rvalue;
+    ZLLVMStack *stack = getStackValue(ctx, rvalue);
     if (!stack) {
         error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
         return;
@@ -1003,14 +1004,13 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
     putDestructuredPatternInStack(
         ctx, node->resolved, node->varDecl.pattern, stack->stack);
 
-    LLVMValueRef val = genExpr(ctx, node->varDecl.rvalue);
+    LLVMValueRef val = genExpr(ctx, rvalue);
+    if (!val || val == stack->stack) return;
 
-    if (val && val != stack->stack) {
-        if (fitsInRegister(val)) {
-            val = castValue(ctx, val, node->varDecl.rvalue->resolved, node->resolved);
-        }
-        LLVMBuildStore(ctx->builder, val, stack->stack);
+    if (fitsInRegister(val)) {
+        val = castValue(ctx, val, rvalue->resolved, node->resolved);
     }
+    LLVMBuildStore(ctx->builder, val, stack->stack);
 }
 
 /**
@@ -1844,7 +1844,14 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     if (root->binary.op->type == TOK_EQ) {
         LLVMValueRef ptr = genLvalue(ctx, root->binary.left);
         LLVMValueRef val = genExpr(ctx, root->binary.right);
-        if (!ptr || !val) return NULL;
+        if (!ptr) {
+            error(ctx->state, root->tok, "lvalue failed");
+            return NULL;
+        }
+        if (!val) {
+            error(ctx->state, root->tok, "rvalue failed");
+            return NULL;
+        }
         LLVMBuildStore(ctx->builder, val, ptr);
         return val;
     }
@@ -1924,14 +1931,13 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     }
 
 
-    let div = bothUnsigned ? LLVMBuildUDiv : LLVMBuildSDiv;
-    let mod = bothUnsigned ? LLVMBuildURem : LLVMBuildSRem;
-    let rightShift = bothUnsigned ? LLVMBuildLShr : LLVMBuildAShr;
-
-    let lt  = bothUnsigned ? LLVMIntULT : LLVMIntSLT;
-    let gt  = bothUnsigned ? LLVMIntUGT : LLVMIntSGT;
-    let lte = bothUnsigned ? LLVMIntULE : LLVMIntSLE;
-    let gte = bothUnsigned ? LLVMIntUGE : LLVMIntSGE;
+    let div         = bothUnsigned ? LLVMBuildUDiv : LLVMBuildSDiv;
+    let mod         = bothUnsigned ? LLVMBuildURem : LLVMBuildSRem;
+    let rightShift  = bothUnsigned ? LLVMBuildLShr : LLVMBuildAShr;
+    let lt          = bothUnsigned ? LLVMIntULT : LLVMIntSLT;
+    let gt          = bothUnsigned ? LLVMIntUGT : LLVMIntSGT;
+    let lte         = bothUnsigned ? LLVMIntULE : LLVMIntSLE;
+    let gte         = bothUnsigned ? LLVMIntUGE : LLVMIntSGE;
 
     switch (op) {
     case TOK_PLUS:  return LLVMBuildAdd (ctx->builder, left, right, l);
@@ -2128,7 +2134,6 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
         }
 
         char *vtableName = encodeFacetVTable(to, from);
-        info(ctx->state, node->tok, "%s: from %s to %s", vtableName, stype(from), stype(to));
         LLVMValueRef vtable = getLLVMValueRef(ctx, vtableName);
 
         if (!vtable) {
@@ -2146,11 +2151,14 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
             stack->stack, 0, "facet.obj"
         );
 
-
         LLVMBuildStore(ctx->builder, vtable, vtablePtr);
         LLVMBuildStore(ctx->builder, objRef, objPtr);
 
-        return stack->elem;
+        /* Return the facet value (not the slot pointer) so assignment and other
+         * consumers copy the whole {obj, vtable} struct rather than storing the
+         * address of this temporary. Mirrors the sum-cast path above. */
+        LLVMTypeRef facetType = genType(ctx, to);
+        return LLVMBuildLoad2(ctx->builder, facetType, stack->stack, label(ctx, node->tok));
     }
 
     /* Array-literal cast: [n]T as []U - write each element directly into
@@ -2447,17 +2455,18 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef res = NULL;
     switch (node->type) {
-        case NODE_IF:               return genInlineIf      (ctx, node);
-        case NODE_CALL:             return genCall          (ctx, node);
-        case NODE_CAST:             return genCast          (ctx, node);
-        case NODE_UNARY:            return genUnary         (ctx, node);
-        case NODE_BINARY:           return genBinary        (ctx, node);
-        case NODE_LITERAL:          return genLit           (ctx, node);
-        case NODE_ARRAY_INIT:       return genArrayInit     (ctx, node);
-        case NODE_IDENTIFIER:       return genIdent         (ctx, node);
-        case NODE_STATIC_ACCESS:    return genStaticAccess  (ctx, node);
-        case NODE_VAR_DECL:         return genVarDestruct   (ctx, node);
+        case NODE_IF:               res = genInlineIf      (ctx, node); break;
+        case NODE_CALL:             res = genCall          (ctx, node); break;
+        case NODE_CAST:             res = genCast          (ctx, node); break;
+        case NODE_UNARY:            res = genUnary         (ctx, node); break;
+        case NODE_BINARY:           res = genBinary        (ctx, node); break;
+        case NODE_LITERAL:          res = genLit           (ctx, node); break;
+        case NODE_ARRAY_INIT:       res = genArrayInit     (ctx, node); break;
+        case NODE_IDENTIFIER:       res = genIdent         (ctx, node); break;
+        case NODE_STATIC_ACCESS:    res = genStaticAccess  (ctx, node); break;
+        case NODE_VAR_DECL:         res = genVarDestruct   (ctx, node); break;
         case NODE_BLOCK: {
             for (usize i = 0; i < veclen(node->block); i++) {
                 genStmt(ctx, node->block[i]);
@@ -2467,7 +2476,8 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 
         case NODE_MEMBER:
             if (node->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
-                return genFacetMember(ctx, node);
+                res = genFacetMember(ctx, node);
+                break;
             }
         case NODE_SUBSCRIPT:
         case NODE_TUPLE_LIT:
@@ -2483,17 +2493,18 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
             if (node->resolved->kind == Z_TYPE_FUNCTION) {
                 loadType = LLVMPointerType(loadType, 0);
             }
-            return LLVMBuildLoad2(
+            res = LLVMBuildLoad2(
                 ctx->builder,   loadType,
                 ptr,            label(ctx, node->tok)
             );
+            break;
         }
 
         case NODE_SIZEOF: {
             usize size = typeSize(node->sizeofExpr.type);
-            return LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
+            res = LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
+            break;
         }
-
 
         default: 
             printf("Node '%d' not handled\n", node->type);
@@ -2503,7 +2514,8 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
                     node->type);
             break;
     }
-    return NULL;
+
+    return res;
 }
 
 /* A Homogeneous Float Aggregate (HFA) is a struct with 1-4 fields all of the
@@ -2903,7 +2915,7 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
         LLVMValueRef compiled = genExpr(ctx, stmt);
         if (!compiled) {
             error(ctx->state, stmt->tok,
-                "Node '%d' does not compile yet",
+                "Node '%d' failed to compile",
                 stmt->type
             );
         }
@@ -3095,11 +3107,6 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
         elem = LLVMBuildAlloca(ctx->builder, elemType, label(ctx, node->tok));
         stackPointer = elem;
     }
-    // else if (node->resolved->kind == Z_TYPE_FACET) {
-    //     elemType = genType(ctx, node->resolved);
-    //     elem = LLVMBuildAlloca(ctx->builder, elemType, label(ctx, node->tok));
-    //     stackPointer = elem;
-    // }
 
     LLVMTypeRef type = genType(ctx, node->resolved);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
@@ -3138,7 +3145,9 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     case NODE_ENUM_LIT:
         buildFuncVar(ctx, node, false);
     case NODE_CAST:
-        if (node->resolved && node->resolved->kind == Z_TYPE_SUM)
+        if (node->resolved &&
+                (node->resolved->kind == Z_TYPE_SUM ||
+                 node->resolved->kind == Z_TYPE_FACET))
             buildFuncVar(ctx, node, false);
         genFuncVars(ctx, node->castExpr.expr);
         break;

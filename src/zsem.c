@@ -863,6 +863,19 @@ bool typesEqual(ZType *a, ZType *b) {
         }
         return true;
     }
+    case Z_TYPE_FACET: {
+        if (!tokeneq(a->facet.name, b->facet.name)) return false;
+
+        if (veclen(a->facet.funcs) != veclen(b->facet.funcs)) return false;
+
+        for (usize i = 0; i < veclen(a->facet.funcs); i++) {
+            if (!typesEqual(
+                    a->facet.funcs[i]->resolved,
+                    b->facet.funcs[i]->resolved))
+                return false;
+        }
+        return true;
+    }
     default:
         return false;
     }
@@ -879,6 +892,7 @@ ZNode *implicitCast(ZSemantic *ctx, ZNode *node, ZType *type) {
     cast->castExpr.expr     = node;
     cast->castExpr.toType   = type;
     cast->resolved          = type;
+    cast->tok               = node->tok;
     return cast;
 }
 
@@ -1872,7 +1886,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
             result->array.size = expr->array.size;
         }
 
-        if (!typesCompatible(ctx, expr, result)) {
+        if (!typesCompatible(ctx, result, expr)) {
             error(ctx->state, curr->tok,
                 "'%s' can't be casted to '%s'",
                 stype(expr), stype(result)
