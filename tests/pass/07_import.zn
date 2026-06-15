@@ -7,10 +7,10 @@ libc :: foreign {
 
 main :: i32 () {
     with _ := Allocator::heap() {
-        hello := String::from("Ciao")
-        cap := String::withCapacity(64)
+        hello := string::new("Ciao")
+        cap := string::with_capacity(64)
 
-        hello2 := String::from("Ciao")
+        hello2 := string::new("Ciao")
         
         hello.println()
 

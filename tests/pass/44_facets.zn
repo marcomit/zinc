@@ -1,0 +1,59 @@
+foreign printf :: u0 (*char, ...)
+
+Entity :: facet {
+    draw :: u0 ()
+    update :: u0 ()
+}
+
+Circle :: struct {
+    radius: i32
+}
+
+Rect :: struct {
+    width: i32
+    height: i32
+}
+
+*Circle self :: impl Entity {
+    draw :: u0 () {
+        printf("Circle{radius: %d}\n", self.radius)
+    }
+
+    update :: u0 () {
+        self.radius: + 1
+    }
+}
+
+*Rect self :: impl Entity {
+    draw :: u0 () {
+        printf("Rect{w:%d, h:%d}\n", self.width, self.height)
+    }
+
+    update :: u0 () {
+        
+    }
+}
+
+draw :: u0 (entity: Entity) -> entity.draw()
+
+main :: i32 () {
+    rect            := &Rect{width: 10, height: 12}
+    circle          := &Circle{radius: 10}
+    entity: Entity  = rect
+    draw(entity)
+
+    entities := [
+        rect    as Entity,
+        circle  as Entity,
+        rect    as Entity,
+        circle  as Entity
+    ]
+
+    i := 0
+    for i < entities.len {
+        draw(entities[i])
+        i: + 1
+    }
+
+    return 0
+}

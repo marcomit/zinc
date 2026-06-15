@@ -1,139 +1,171 @@
 use <std::core::mem>
+use <std::libc>
 
-c :: foreign {
-    printf  :: u0    (*char, ...)
-    strlen  :: u64   (*char)
-    strcmp  :: i32   (*char, *char)
-    strncmp :: i32   (*char, *char, u64)
-    strstr  :: *char (*char, *char)
+#[packed]
+SdsHdr :: struct {
+    len:    u32
+    alloc:  u32
 }
 
-pub String :: struct {
-    data: *char
-    len: u64
-}
+pub string :: type *char
 
-copyinto :: u0 (dst: *char, off: u64, src: *char, n: u64) {
-    i := 0 as u64
-    for i < n {
-        dst[off + i] = src[i]
-        i :+ 1
-    }
-}
+string :: impl {
+    make :: string (init: *char, initlen: u32, cap: u32)[Allocator] {
+        sh := alloc(sizeof SdsHdr + cap + 1) as *SdsHdr
+        if not sh { return none }
 
-String :: impl {
-    pub from :: String (s: *char) -> String { data: s, len: c::strlen(s) }
+        sh.len   = initlen
+        sh.alloc = cap
 
-    pub withCapacity :: String (cap: u64)[Allocator] {
-        buf := alloc(cap + 1) as *char
-        buf[0] = 0 as char
-        return String { data: buf, len: 0 }
-    }
+        base := sh as *u8
+        s := (&(base[sizeof SdsHdr])) as string
 
-    pub concat :: String (a: *char, b: *char)[Allocator] {
-        alen  := c::strlen(a)
-        blen  := c::strlen(b)
-        total := alen + blen
-
-        buf := alloc(total + 1) as *char
-        copyinto(buf, 0, a, alen)
-        copyinto(buf, alen, b, blen)
-        buf[total] = 0 as char
-
-        return String { data: buf, len: total }
-    }
-}
-
-String self :: impl {
-    pub isEmpty :: u1 () -> self.len == 0
-
-    pub print :: u0 () -> c::printf("%s", self.data)
-
-    pub println :: u0 () -> c::printf("%s\n", self.data)
-
-    pub at :: char (index: u64) {
-        if index >= self.len { return 0 as char }
-        return self.data[index]
-    }
-
-    pub indexOf :: i64 (c: char) {
-        i := 0 as u64
-        for i < self.len {
-            if self.data[i] == c { return i as i64 }
-            i :+ 1
+        if initlen > 0 and init != none {
+            mem::memcpy(s as *u8, init as *u8, initlen as u64)
         }
-        return -1
+        s[initlen] = 0 as char
+        return s
     }
 
-    pub contains :: u1 (other: *char) -> c::strstr(self.data, other) != none
-
-    pub startsWith :: u1 (prefix: *char) {
-        plen := c::strlen(prefix)
-        if plen > self.len { return false }
-        return c::strncmp(self.data, prefix, plen) == 0
+    pub new :: string (init: *char)[Allocator] {
+        l: u32 = 0
+        if init != none { l = mem::strlen(init) as u32 }
+        return string::make(init, l, l)
     }
 
-    pub endsWith :: u1 (suffix: *char) {
-        slen := c::strlen(suffix)
-        if slen > self.len { return false }
+    pub empty :: string ()[Allocator] {
+        return string::make(none, 0, 0)
+    }
 
-        off := self.len - slen
-        i := 0 as u64
-        for i < slen {
-            if self.data[off + i] != suffix[i] { return false }
-            i :+ 1
+    pub with_capacity :: string (cap: u32)[Allocator] {
+        return string::make(none, 0, cap)
+    }
+}
+
+string self :: impl {
+    #[inline]
+    header :: *SdsHdr () {
+        off: i64 = 0 - (sizeof SdsHdr) as i64
+        return (&(self[off])) as *SdsHdr
+    }
+
+    make_room_for :: string (addlen: u32)[Allocator] {
+        if not self { return none }
+
+        hdr := self.header()
+        available := hdr.alloc - hdr.len
+        if available >= addlen { return self }
+
+        newlen := hdr.len + addlen
+        newalloc := newlen
+        if newalloc < 32 {
+            newalloc = 32
+        } else {
+            newalloc :* 2
         }
-        return true
+
+        new_sh := resize(hdr, sizeof SdsHdr + newalloc + 1) as *SdsHdr
+        if not new_sh { return none }
+
+        new_sh.alloc = newalloc
+        new_base := new_sh as *u8
+        return (&(new_base[sizeof SdsHdr])) as string
     }
 
-    pub equals :: u1 (other: *char) -> c::strcmp(self.data, other) == 0
+    pub len :: u32 () {
+        if not self { return 0 }
+        hdr := self.header()
+        return hdr.len
+    }
+
+    pub cap :: u32 () {
+        if not self { return 0 }
+        hdr := self.header()
+        return hdr.alloc
+    }
+
+    pub avail :: u32 () {
+        if not self { return 0 }
+        hdr := self.header()
+        return hdr.alloc - hdr.len
+    }
+
+    pub is_empty :: u1 () -> self.len() == 0
+
+    pub append :: string (t: *char)[Allocator] {
+        if not t { return self }
+
+        tlen := mem::strlen(t) as u32
+        if tlen == 0 { return self }
+
+        s := self.make_room_for(tlen)
+        if not s { return none }
+
+        hdr := s.header()
+        dst := s as *u8
+        mem::memcpy(&(dst[hdr.len]), t as *u8, tlen as u64)
+
+        hdr.len :+ tlen
+        s[hdr.len] = 0 as char
+        return s
+    }
+
+    pub append_str :: string (other: string)[Allocator] {
+        return self.append(other)
+    }
+
+    pub append_char :: string (ch: char)[Allocator] {
+        s := self.make_room_for(1)
+        if not s { return none }
+
+        hdr := s.header()
+        s[hdr.len] = ch
+        hdr.len :+ 1
+        s[hdr.len] = 0 as char
+        return s
+    }
+
+    pub dup :: string ()[Allocator] {
+        if not self { return none }
+        hdr := self.header()
+        return string::make(self, hdr.len, hdr.len)
+    }
+
+    pub clear :: u0 () {
+        if not self { return }
+        hdr := self.header()
+        hdr.len = 0
+        self[0] = 0 as char
+    }
+
+    pub cmp :: i32 (other: *char) {
+        return mem::strcmp(self, other)
+    }
 
     #[overload(==)]
-    pub eq :: u1 (other: String) {
-        if self.len != other.len { return false }
-        return c::strncmp(self.data, other.data, self.len) == 0
+    pub equals :: u1 (other: *char) {
+        return mem::strcmp(self, other) == 0
     }
 
-    #[overload(+)]
-    pub append :: String (other: *char)[Allocator] {
-        olen  := c::strlen(other)
-        total := self.len + olen
-
-        buf := alloc(total + 1) as *char
-        copyinto(buf, 0, self.data, self.len)
-        copyinto(buf, self.len, other, olen)
-        buf[total] = 0 as char
-
-        return String { data: buf, len: total }
+    pub starts_with :: u1 (prefix: *char) {
+        plen := mem::strlen(prefix)
+        return mem::strncmp(self, prefix, plen) == 0
     }
 
-    pub substring :: String (start: u64, end: u64)[Allocator] {
-        s := start
-        e := end
-        if s > self.len { s = self.len }
-        if e > self.len { e = self.len }
-        if e < s { e = s }
-
-        n := e - s
-        buf := alloc(n + 1) as *char
-        i := 0 as u64
-        for i < n {
-            buf[i] = self.data[s + i]
-            i :+ 1
-        }
-        buf[n] = 0 as char
-
-        return String { data: buf, len: n }
+    pub contains :: u1 (needle: *char) {
+        return mem::strstr(self, needle) != none
     }
 
-    pub clone :: String ()[Allocator] {
-        buf := alloc(self.len + 1) as *char
-        copyinto(buf, 0, self.data, self.len)
-        buf[self.len] = 0 as char
-        return String { data: buf, len: self.len }
+    pub print :: u0 () {
+        libc::printf("%s", self)
     }
 
-    pub drop :: u0 ()[Allocator] {
-        destroy(self.data as *u8)
+    pub println :: u0 () {
+        libc::printf("%s\n", self)
+    }
+
+    pub free :: u0 ()[Allocator] {
+        if not self { return }
+        destroy(self.header())
     }
 }

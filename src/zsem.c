@@ -53,6 +53,7 @@ typedef struct {
 static void analyze(ZSemantic *, ZNode *);
 static void analyzeStmt(ZSemantic *, ZNode *);
 static void analyzeBlock(ZSemantic *, ZNode *, bool);
+static bool satisfyFacet(ZSemantic *, ZType *, ZType *);
 static ZType *resolveTypeRef(ZSemantic *, ZType *);
 static void checkFunctionUsedAsValue(ZSemantic *, ZNode *);
 static ZFuncTable *resolveFuncTable(ZSemantic *, ZType *);
@@ -678,8 +679,13 @@ static bool isComparable(ZSemantic *ctx, ZType *type) {
  * Note: this function does not work if a primitive type is aliased.
  * */
 ZType *typesCompatible(ZSemantic *ctx, ZType *a, ZType *b) {
-    (void)ctx;
     if (!a || !b) return NULL;
+
+    if (a->kind == Z_TYPE_FACET     &&
+        b->kind == Z_TYPE_POINTER   &&
+        satisfyFacet(ctx, b, a)     ) {
+        return a;
+    }
     
     if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
         return a;
@@ -857,6 +863,19 @@ bool typesEqual(ZType *a, ZType *b) {
         }
         return true;
     }
+    case Z_TYPE_FACET: {
+        if (!tokeneq(a->facet.name, b->facet.name)) return false;
+
+        if (veclen(a->facet.funcs) != veclen(b->facet.funcs)) return false;
+
+        for (usize i = 0; i < veclen(a->facet.funcs); i++) {
+            if (!typesEqual(
+                    a->facet.funcs[i]->resolved,
+                    b->facet.funcs[i]->resolved))
+                return false;
+        }
+        return true;
+    }
     default:
         return false;
     }
@@ -873,6 +892,7 @@ ZNode *implicitCast(ZSemantic *ctx, ZNode *node, ZType *type) {
     cast->castExpr.expr     = node;
     cast->castExpr.toType   = type;
     cast->resolved          = type;
+    cast->tok               = node->tok;
     return cast;
 }
 
@@ -1092,13 +1112,18 @@ static ZNode *resolveStaticFuncTable(ZSemantic *ctx,
 
     if (!node) return NULL;
 
-    for (usize i = 0; i < veclen(node->resolved->func.args); i++) {
-        ZType *resolved = resolveTypeRef(ctx, node->resolved->func.args[i]);
+    ZType **args = node->resolved->func.args;
+    for (usize i = 0; i < veclen(args); i++) {
+        if (!args[i]) {
+            error(ctx->state, node->tok, "unresolved type");
+            continue;
+        }
+        ZType *resolved = resolveTypeRef(ctx, args[i]);
         if (!resolved) {
-            error(ctx->state, node->resolved->func.args[i]->tok,
+            error(ctx->state, args[i]->tok,
                 "Unresolved type");
         } else {
-            node->resolved->func.args[i] = resolved;
+            args[i] = resolved;
         }
     }
     return node;
@@ -1861,7 +1886,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
             result->array.size = expr->array.size;
         }
 
-        if (!typesCompatible(ctx, expr, result)) {
+        if (!typesCompatible(ctx, result, expr)) {
             error(ctx->state, curr->tok,
                 "'%s' can't be casted to '%s'",
                 stype(expr), stype(result)
@@ -1942,6 +1967,7 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
         if (field->integer < 0 || field->integer >= (i64)len) {
             error(ctx->state, field,
                     "Integer literal out of range for tuple indexing");
+            return NULL;
         }
 
         return base->tuple[field->integer];
@@ -1966,7 +1992,9 @@ static ZType *resolveMemberAccess(ZSemantic *ctx, ZNode *curr) {
                 "%s has no function called %s",
                 stype(objType), stoken(field)
             );
+            return NULL;
         }
+
         return func;
     } else {
         ZNode *resolved = resolveFuncCallEmbedded(ctx, curr, objType, field);
