@@ -748,6 +748,7 @@ void encodeType(ZType *type, char **buf) {
             tmp /= 10;
         }
         vecunion(*buf, name, len);
+        break;
     }
     case Z_TYPE_ARRAY:
         vecpush(*buf, 'A');
