@@ -52,6 +52,9 @@ ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
 	return self;
 }
 
+// FNV-1a is defined to wrap modulo 2^32; the unsigned overflow is intentional
+// (and legal C), so exempt it from -fsanitize=unsigned-integer-overflow.
+NOSANITIZE("unsigned-integer-overflow")
 static u32 hashtoken(const char *buff, size_t len) {
 	u32 hash = FNV_OFFSET;
 	for (size_t i = 0; i < len; i++) {
@@ -168,7 +171,10 @@ static void next(ZLexer *l) {
 }
 
 static void skip(ZLexer *l, u8 chars) {
-	while (chars--) next(l);
+	while (chars) {
+		next(l);
+		chars--;
+	}
 }
 
 static u32 decodeUtf8(char **src) {

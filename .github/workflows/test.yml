@@ -93,3 +93,60 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: bash run_tests.sh
+
+  # Build the compiler under sanitizers and run the whole test suite through
+  # it, so memory errors / UB in zinc's own code surface as a failing job.
+  # Windows is excluded: sanitizers aren't wired up for the MSYS2 build.
+  sanitizers:
+    name: sanitize-${{ matrix.san }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        san: [asan, ubsan]
+    runs-on: ${{ matrix.os }}
+
+    env:
+      # Turn sanitizer findings into a non-zero exit so CI actually fails.
+      # detect_leaks=0:           zinc allocates arena-style and exits without
+      #                           freeing, so every run would "leak" by design.
+      # detect_container_overflow=0: we link a non-instrumented libLLVM that
+      #                           shares STL containers across the ASan
+      #                           boundary - the classic ASan false positive.
+      ASAN_OPTIONS: abort_on_error=1:detect_leaks=0:detect_container_overflow=0
+      # UBSan only prints by default; halt_on_error makes a finding fail.
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM and Clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev clang liblld-dev
+          if ! command -v llvm-config &>/dev/null; then
+            VERSIONED=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
+            if [ -n "$VERSIONED" ]; then
+              sudo ln -sf "$VERSIONED" /usr/local/bin/llvm-config
+            else
+              echo "::error::llvm-config not found after installing llvm-dev"
+              exit 1
+            fi
+          fi
+          echo "clang: $(clang --version | head -1)"
+
+      - name: Install LLVM and Clang (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm lld
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+
+      - name: Build zinc (${{ matrix.san }})
+        shell: bash
+        run: make clean && make ${{ matrix.san }}
+
+      - name: Run tests under ${{ matrix.san }}
+        shell: bash
+        run: ZINC=./zinc-${{ matrix.san }} bash run_tests.sh

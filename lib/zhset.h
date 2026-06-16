@@ -89,6 +89,7 @@ typedef const char **hashset_t;
  * Hash function - FNV-1a
  * ============================================================================ */
 
+NOSANITIZE("unsigned-integer-overflow")
 static inline u32 hashset__fnv1a(const char *s) {
 	u32 h = 2166136261u;
 	for (; *s; s++)

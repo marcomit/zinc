@@ -7,7 +7,7 @@
 
 #include <stdlib.h>
 
-#define ARENA_ALIGNMENT 8
+#define ARENA_ALIGNMENT ((usize)8)
 #define ARENA_ALIGN(size) (((size) + (ARENA_ALIGNMENT - 1)) & ~(ARENA_ALIGNMENT - 1))
 
 #define ARENA_PAGE_SIZE MiB(2)
