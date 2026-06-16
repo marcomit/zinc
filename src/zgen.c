@@ -936,8 +936,11 @@ static void putDestructuredPatternInStack(
         break;
     }
     case Z_VAR_SUM: {
+        LLVMValueRef bufPtr = LLVMBuildStructGEP2(
+            ctx->builder, genType(ctx, type), ptr, 1, label(ctx, "sum.buf")
+        );
         putDestructuredPatternInStack(
-            ctx, pattern->sum.type, pattern->sum.child, ptr
+            ctx, pattern->sum.type, pattern->sum.child, bufPtr
         );
         break;
     }
@@ -1688,6 +1691,28 @@ static void storeSumVariant(ZCodegen *ctx, LLVMValueRef alloca, LLVMTypeRef sumL
 }
 
 /**
+ * @brief Stores an inline-if branch value into a sum slot.
+ *
+ * After semantic analysis a branch feeding a sum is either a concrete variant
+ * or already a full value of the same sum type. In the latter
+ * case the struct is stored as-is; otherwise it is tagged as a variant.
+ */
+static void storeSumBranch(ZCodegen *ctx, LLVMValueRef alloca, LLVMTypeRef sumLLVMType,
+                           ZType *sumType, LLVMValueRef val, ZType *valType) {
+    if (valType && valType->kind == Z_TYPE_SUM) {
+        LLVMBuildStore(ctx->builder, val, alloca);
+        return;
+    }
+    i32 tag = sumTypeIndexOf(sumType, valType);
+    if (tag == -1) {
+        error(ctx->state, valType ? valType->tok : NULL,
+              "Branch type is not a variant of the sum type");
+        return;
+    }
+    storeSumVariant(ctx, alloca, sumLLVMType, tag, val, valType);
+}
+
+/**
  * @brief Generates inline if.
  *
  * This uses a common instruction of LLVM called phi.
@@ -1729,8 +1754,8 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     LLVMPositionBuilderAtEnd(ctx->builder, tBranch);
     LLVMValueRef tValue = genExpr(ctx, node->ifStmt.body);
     if (stack) {
-        i32 tTag = sumTypeIndexOf(node->resolved, node->ifStmt.body->resolved);
-        storeSumVariant(ctx, stack->stack, sumLLVMType, tTag, tValue, node->ifStmt.body->resolved);
+        storeSumBranch(ctx, stack->stack, sumLLVMType,
+                       node->resolved, tValue, node->ifStmt.body->resolved);
     }
     LLVMBasicBlockRef tExit = LLVMGetInsertBlock(ctx->builder);
     makebr(ctx->builder, merge);
@@ -1738,8 +1763,8 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     LLVMPositionBuilderAtEnd(ctx->builder, fBranch);
     LLVMValueRef fValue = genExpr(ctx, node->ifStmt.elseBranch);
     if (stack) {
-        i32 fTag = sumTypeIndexOf(node->resolved, node->ifStmt.elseBranch->resolved);
-        storeSumVariant(ctx, stack->stack, sumLLVMType, fTag, fValue, node->ifStmt.elseBranch->resolved);
+        storeSumBranch(ctx, stack->stack, sumLLVMType,
+                       node->resolved, fValue, node->ifStmt.elseBranch->resolved);
     }
     LLVMBasicBlockRef fExit = LLVMGetInsertBlock(ctx->builder);
     makebr(ctx->builder, merge);
@@ -2381,6 +2406,28 @@ static void matchLitPattern(
     LLVMPositionBuilderAtEnd(ctx->builder, trueBranch);
 }
 
+static void matchSumPattern(
+        ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
+        LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+    i32 index = sumTypeIndexOf(type, pattern->sum.type);
+    if (index == -1) {
+        error(ctx->state, pattern->sum.type->tok, "type not found");
+        return;
+    }
+
+    LLVMValueRef flagPtr    = LLVMBuildStructGEP2(
+        ctx->builder, genType(ctx, type), ptr, 0, label(ctx, "sum.flag.ptr"));
+    LLVMValueRef right      = LLVMBuildLoad2(
+        ctx->builder, i8Type, flagPtr, label(ctx, "sum.flag"));
+    LLVMValueRef cond       = genEqCmp(
+        ctx, LLVMConstInt(i8Type, index, false), right, false
+    );
+
+    LLVMBasicBlockRef trueBranch = makeblock(ctx, "sum.true");
+    makecondbr(ctx->builder, cond, trueBranch, failBranch);
+    LLVMPositionBuilderAtEnd(ctx->builder, trueBranch);
+}
+
 static void matchPattern(
         ZCodegen *ctx,
         ZType *type,
@@ -2393,6 +2440,7 @@ static void matchPattern(
     case Z_VAR_STRUCT:  matchStructPattern  (ctx, type, pattern, ptr, failBranch); break;
     case Z_VAR_ENUM:    matchEnumPattern    (ctx, type, pattern, ptr, failBranch); break;
     case Z_VAR_LIT:     matchLitPattern     (ctx, type, pattern, ptr, failBranch); break;
+    case Z_VAR_SUM:     matchSumPattern     (ctx, type, pattern, ptr, failBranch); break;
     default:
         error(ctx->state, pattern->tok, "Unknown pattern %d", pattern->type);
         break;

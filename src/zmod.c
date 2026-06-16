@@ -199,6 +199,7 @@ static void _stype(ZType *type, char **buff) {
         vecpush(*buff, ')');
         break;
     case Z_TYPE_SUM:
+        vecpush(*buff, '(');
         for (usize i = 0; i < veclen(type->sumType); i++) {
             _stype(type->sumType[i], buff);
             if (i != veclen(type->sumType) - 1) {
@@ -207,6 +208,7 @@ static void _stype(ZType *type, char **buff) {
                 vecpush(*buff, ' ');
             }
         }
+        vecpush(*buff, ')');
         break;
     case Z_TYPE_FACET:
         vecunion(*buff, "facet ", 6);
@@ -288,12 +290,14 @@ void printType(ZType *type) {
         printf("enum %s\n", type->enm.name->str);
         break;
     case Z_TYPE_SUM:
+        printf("(");
         for (usize i = 0; i < veclen(type->sumType); i++) {
             printType(type->sumType[i]);
             if (i != veclen(type->sumType) - 1) {
                 printf(" | ");
             }
         }
+        printf(")");
         break;
     case Z_TYPE_FACET:
         printf("facet %s\n", type->facet.name->str);

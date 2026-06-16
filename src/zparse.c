@@ -1302,11 +1302,6 @@ static ZNode *parseStructDecl(ZParser *parser,
             TOK_LBRACKET, TOK_RBRACKET,
             parseStructField, false);
 
-    if (veclen(fields) < 1) {
-        error(parser->state, start, "Expected at least one field");
-        return NULL;
-    }
-
     ZNode *node                 = makenode(NODE_STRUCT);
     node->tok                   = start;
     node->structDef.fields      = fields;

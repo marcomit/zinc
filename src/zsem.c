@@ -896,6 +896,30 @@ ZNode *implicitCast(ZSemantic *ctx, ZNode *node, ZType *type) {
     return cast;
 }
 
+/*
+ * @brief Coerce an expression to a (flattened) sum type.
+ *
+ * Inline-if branches are resolved bottom-up, so a nested if can end up with a
+ * narrower sum than the context expects. A narrower sum has a different variant order,
+ * so its runtime tags don't line up with the wider one.  Rather than re-tag at runtime,
+ * we thread the final sum type down through every nested inline-if and cast each
+ * leaf branch straight to it, so leaves are tagged in the outer variant order
+ * and an if just stores the already-correct struct.
+ */
+static ZNode *coerceToSum(ZSemantic *ctx, ZNode *node, ZType *sum) {
+    if (!node || !node->resolved) return node;
+
+    if (node->type == NODE_IF && node->resolved->kind == Z_TYPE_SUM) {
+        node->ifStmt.body       = coerceToSum(ctx, node->ifStmt.body, sum);
+        node->ifStmt.elseBranch = coerceToSum(ctx, node->ifStmt.elseBranch, sum);
+        node->resolved          = sum;
+        return node;
+    }
+
+    if (typesEqual(node->resolved, sum)) return node;
+    return implicitCast(ctx, node, sum);
+}
+
 /* ================== Symbol lookup ================== */
 ZSymbol *resolve(ZSemantic *ctx, ZToken *ident) {
     if (ident && ident->type == TOK_IDENT && strcmp(ident->str, "_") == 0) {
@@ -2109,7 +2133,11 @@ static void analyzeVar(ZSemantic *ctx, ZNode *curr, bool isGlobal) {
 
     curr->resolved = declaredType;
 
-    if (curr->varDecl.rvalue && rvalueType && !typesEqual(declaredType, rvalueType)) {
+    if (curr->varDecl.rvalue && rvalueType && declaredType &&
+            declaredType->kind == Z_TYPE_SUM) {
+        curr->varDecl.rvalue = coerceToSum(ctx, curr->varDecl.rvalue, declaredType);
+    } else if (curr->varDecl.rvalue && rvalueType &&
+            !typesEqual(declaredType, rvalueType)) {
         curr->varDecl.rvalue = implicitCast(ctx, curr->varDecl.rvalue, curr->resolved);
     }
 
@@ -2341,9 +2369,15 @@ static void analyzeReturn(ZSemantic *ctx, ZNode *curr) {
                 stype(ctx->currentFuncRet),
                 stype(retType)
             );
+        } else if (ctx->currentFuncRet->kind == Z_TYPE_SUM) {
+            /* Thread the sum type into nested inline-ifs so leaves are tagged
+             * in the outer variant order. */
+            curr->returnStmt.expr = coerceToSum(ctx,
+                curr->returnStmt.expr, ctx->currentFuncRet
+            );
         } else {
             /* Implicit casting. */
-            curr->returnStmt.expr = implicitCast(ctx, 
+            curr->returnStmt.expr = implicitCast(ctx,
                 curr->returnStmt.expr, ctx->currentFuncRet
             );
         }
