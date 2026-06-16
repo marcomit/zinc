@@ -49,20 +49,16 @@ SRC_DIR = src
 LIB_DIR = lib
 INCLUDES = -I include -I lib
 
-ifeq ($(UNAME), Windows)
-  SANITIZE =
-else
-  SANITIZE =
-  ifneq ($(filter debug,$(MAKECMDGOALS)),)
-	SANITIZE = -fsanitize=address,undefined,fuzzer
-  endif
-endif
+# Sanitizer flags. Empty for the normal build; the sanitizer presets below
+# (debug / asan / ubsan) set this via a recursive make so instrumented and
+# plain object files never end up in the same build dir.
+SANITIZE ?=
 
 CFLAGS   = -g -Wall -Wextra -Wdeprecated-declarations -O2 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS)
 CXXFLAGS = -g -O2 -std=c++17 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS) $(LLD_INCLUDES)
 LDFLAGS  = $(SANITIZE) $(LLD_LIBS) $(_LLVM_LDFLAGS)
 TARGET    = zinc
-BUILD_DIR = build
+BUILD_DIR ?= build
 
 C_SRC   = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(LIB_DIR)/*.c)
 CXX_SRC = $(wildcard $(SRC_DIR)/*.cpp)
@@ -73,7 +69,42 @@ OBJ     = $(C_OBJ) $(CXX_OBJ)
 
 all: $(TARGET)
 
-debug: all
+# --- Sanitizer builds ---------------------------------------------------
+# Several sanitizers are mutually exclusive (ASan/TSan/MSan cannot be combined)
+# and instrumented objects must never be linked against plain ones, so each
+# preset rebuilds into its own dir and produces its own binary.
+#
+# Omitted on purpose:
+#   memory  - reports false positives unless every linked lib (LLVM/LLD) is
+#             also MSan-instrumented; Homebrew's prebuilt LLVM is not.
+#   thread  - zinc is single-threaded, nothing to race.
+#   fuzzer  - needs an LLVMFuzzerTestOneInput harness; zinc only has main().
+#   cfi     - requires -flto and -fvisibility=hidden across the whole build.
+
+ifeq ($(UNAME), Windows)
+debug asan ubsan ubsan-int:
+	@echo "sanitizer builds are not configured for Windows"
+else
+# ASan + UBSan: the default debug build. Best general-purpose catcher for
+# memory errors (use-after-free, OOB) and undefined behavior.
+debug asan:
+	+$(MAKE) all BUILD_DIR=build/asan TARGET=$(TARGET)-asan \
+	  SANITIZE="-fsanitize=address,undefined"
+
+# UBSan limited to genuine undefined behavior (signed overflow, bad shifts,
+# divide-by-zero, OOB, null deref, ...) plus local array bounds. These flag
+# real bugs and stay green on correct code, so CI gates on this one.
+ubsan:
+	+$(MAKE) all BUILD_DIR=build/ubsan TARGET=$(TARGET)-ubsan \
+	  SANITIZE="-fsanitize=undefined,local-bounds"
+
+# Opt-in audit build: adds the integer / implicit-conversion checks. Those also
+# fire on perfectly legal code (FNV hashing wraps on purpose, narrowing casts),
+# so this is a manual auditing tool and is intentionally NOT wired into CI.
+ubsan-int:
+	+$(MAKE) all BUILD_DIR=build/ubsan-int TARGET=$(TARGET)-ubsan-int \
+	  SANITIZE="-fsanitize=undefined,integer,implicit-conversion,local-bounds"
+endif
 
 $(TARGET): $(OBJ)
 	$(CXX) -o $(TARGET) $(OBJ) $(LDFLAGS)
@@ -107,7 +138,7 @@ else
 endif
 
 clean:
-	rm -f $(TARGET)
-	rm -rf $(BUILD_DIR)
+	rm -f $(TARGET) $(TARGET)-asan $(TARGET)-ubsan $(TARGET)-ubsan-int
+	rm -rf build
 
-.PHONY: all clean install
+.PHONY: all debug asan ubsan ubsan-int clean install test

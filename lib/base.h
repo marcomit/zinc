@@ -24,6 +24,12 @@
 
 #define let __auto_type
 
+#if defined(__clang__) || defined(__GNUC__)
+#   define NOSANITIZE(attr) __attribute__((no_sanitize(attr)))
+#else
+#   define NOSANITIZE(attr)
+#endif
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
