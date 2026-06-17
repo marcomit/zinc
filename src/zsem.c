@@ -644,8 +644,8 @@ static inline bool isFloat   (ZTokenType t) { return (bool)(t & TOK_FLOAT);     
 static inline bool isInteger (ZTokenType t) { return isSigned(t) || isUnsigned(t);  }
 static inline bool isPrimitive(ZType *t)    { return t->kind == Z_TYPE_PRIMITIVE;   }
 static inline bool isNumeric(ZType *t) {
-    ZTokenType type = t->primitive.token->type;
-    return isPrimitive(t) && (type & (TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT));
+    if (!isPrimitive(t)) return false;
+    return t->primitive.token->type & (TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT);
 }
 
 static ZTokenType toSigned(u8 rank) {
