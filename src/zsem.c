@@ -643,6 +643,10 @@ static inline bool isSigned  (ZTokenType t) { return (bool)(t & TOK_SIGNED);    
 static inline bool isFloat   (ZTokenType t) { return (bool)(t & TOK_FLOAT);     }
 static inline bool isInteger (ZTokenType t) { return isSigned(t) || isUnsigned(t);  }
 static inline bool isPrimitive(ZType *t)    { return t->kind == Z_TYPE_PRIMITIVE;   }
+static inline bool isNumeric(ZType *t) {
+    ZTokenType type = t->primitive.token->type;
+    return isPrimitive(t) && (type & (TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT));
+}
 
 static ZTokenType toSigned(u8 rank) {
     switch (rank) {
@@ -686,6 +690,9 @@ ZType *typesCompatible(ZSemantic *ctx, ZType *a, ZType *b) {
         satisfyFacet(ctx, b, a)     ) {
         return a;
     }
+
+    if (a->kind == Z_TYPE_POINTER && isNumeric(b)) return a;
+    if (b->kind == Z_TYPE_POINTER && isNumeric(a)) return b;
     
     if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
         return a;
@@ -1574,8 +1581,8 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
     ZType     *right    = resolveType(ctx, curr->binary.right);
 
     if (op & TOK_BITOPERATOR_MASK) {
-        if (isPrimitive(left)   &&  !isInteger(left->primitive.token->type) &&
-            isPrimitive(right)  &&  !isInteger(right->primitive.token->type)) {
+        if (isNumeric(left) &&
+            isNumeric(right)) {
             error(ctx->state, curr->binary.op,
                 "Bit operators can be used only with integers");
             return NULL;
@@ -1616,17 +1623,41 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
     curr->binary.right = implicitCast(ctx, curr->binary.right, promoted);
 
     /* Comparison / logical operators always produce a bool. */
-    if (op == TOK_EQEQ  || op == TOK_NOTEQ  ||
-        op == TOK_LT    || op == TOK_GT     ||
-        op == TOK_LTE   || op == TOK_GTE    ||
-        op == TOK_AND   || op == TOK_OR     ) {
+    switch (op) {
+    case TOK_EQEQ:
+    case TOK_NOTEQ:
+    case TOK_LT:
+    case TOK_GT:
+    case TOK_LTE:
+    case TOK_GTE:
+    case TOK_AND:
+    case TOK_OR: {
         ZType *boolType = maketype(Z_TYPE_PRIMITIVE);
         boolType->primitive.token = maketoken(TOK_BOOL, NULL);
         boolType->tok = curr->tok;
         return boolType;
     }
 
-    return promoted;
+    case TOK_PLUS:
+        if (left->kind == Z_TYPE_POINTER &&
+            isNumeric(right)             ) {
+            return left;
+        }
+        if (right->kind == Z_TYPE_POINTER    &&
+            isNumeric(left)) {
+            return right;
+        }
+    case TOK_DIV:
+    case TOK_STAR:
+    case TOK_MINUS: {
+        if (!isNumeric(curr->binary.left->resolved) ||
+            !isNumeric(curr->binary.right->resolved)) {
+            error(ctx->state, curr->tok, "Expected numeric types");
+        }
+        return promoted;
+    }
+    default: return promoted;
+    }
 }
 
 static ZType *resolveArrayLiteral(ZSemantic *ctx, ZNode *curr) {
@@ -1911,7 +1942,7 @@ ZType *resolveType(ZSemantic *ctx, ZNode *curr) {
 
         if (expr && expr->kind == Z_TYPE_ARRAY &&
             result->kind == Z_TYPE_ARRAY) {
-            result->array.size = expr->array.size;
+            // result->array.size = expr->array.size;
         }
 
         if (!typesCompatible(ctx, result, expr)) {
