@@ -285,7 +285,12 @@ static ZToken *parseString(ZLexer *l) {
 
     if (*src == '"') src++;
     else {
-        error(l->state, makestring(buff, start), "Unterminated string");
+        ZToken *tok = maketoken(TOK_STR_LIT, start - 1);
+        tok->row    = l->row;
+        tok->col    = l->col;
+        tok->sourcePtr = start - 1;
+        tok->sourceLinePtr = l->line;
+        error(l->state, tok, "Unterminated string");
         return NULL;
     }
     vecpush(buff, '\0');
@@ -407,11 +412,13 @@ static ZToken *parseNumber(ZLexer *l) {
 	}
 
 	if (isFloat) {
+        errno = 0;
 		double value = strtod(start, NULL);
 		if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid float range %.10s", start);
 		return makefloat(value, start);
 	}
 
+    errno = 0;
 	long long value = strtoll(start, NULL, 10);
 	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
@@ -458,7 +465,7 @@ static void skipMultilineComments(ZLexer *l) {
 		if (*l->current == '*' && *(l->current + 1) == '/') break;
 		next(l);
 	}
-	if (!*l->current || !*(l->current + 1)) {
+	if (!l->current[0] || !l->current[1]) {
 		error(l->state, veclast(l->tokens), "Unterminated multiline comment");
 	}
 
