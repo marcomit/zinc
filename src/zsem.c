@@ -989,33 +989,37 @@ ZType *resolveLiteralType(ZToken *curr) {
  * which would make the struct infinitely large. `seen` is a visited-struct
  * set to avoid re-entering mutual-recursion loops.
  */
-static bool isInfiniteSize(ZType *type, ZType *root, ZType **seen) {
+static bool isInfiniteSize(ZType *type, ZType *root, ZType ***seen) {
     if (!type) return false;
     switch (type->kind) {
-    case Z_TYPE_STRUCT:
+    case Z_TYPE_STRUCT: {
         if (type == root) return true;
 
-        for (usize i = 0; i < veclen(seen); i++)
-            if (typesEqual(seen[i], type)) return false;
+        for (usize i = 0; i < veclen(*seen); i++)
+            if (typesEqual(*seen[i], type)) return false;
 
-        vecpush(seen, type);
-        for (usize i = 0; i < veclen(type->strct.fields); i++)
-            if (isInfiniteSize(type->strct.fields[i]->resolved, root, seen))
+        vecpush(*seen, type);
+        ZNode **fields = type->strct.fields;
+        for (usize i = 0; i < veclen(fields); i++)
+            if (isInfiniteSize(fields[i]->resolved, root, seen))
                 return true;
         return false;
+    }
 
-    case Z_TYPE_ENUM:
+    case Z_TYPE_ENUM: {
         if (type == root) return true;
 
         for (usize i = 0; i < veclen(seen); i++)
-            if (typesEqual(seen[i], type)) return false;
+            if (typesEqual(*seen[i], type)) return false;
 
-        vecpush(seen, type);
+        vecpush(*seen, type);
 
-        for (usize i = 0; i < veclen(type->enm.fields); i++) {
-            if (isInfiniteSize(type->enm.fields[i], root, seen)) return true;
+        ZType **fields = type->enm.fields;
+        for (usize i = 0; i < veclen(fields); i++) {
+            if (isInfiniteSize(fields[i], root, seen)) return true;
         }
         return false;
+    }
 
     case Z_TYPE_POINTER:
         return false;
@@ -2697,23 +2701,32 @@ static void discoverGlobalScope(ZSemantic *ctx, ZNode *root) {
     }
 }
 
-static void checkEmbedFieldConflicts(ZSemantic *ctx, ZType *strct, hashset_t *seen, ZToken *embedTok) {
+static void _checkEmbedFieldConflicts(
+        ZSemantic *ctx, ZType *strct,
+        hashset_t *fieldSeen, hashset_t *structSeen, ZToken *embedTok) {
     if (!strct || strct->kind != Z_TYPE_STRUCT) return;
+    if (!hashset_insert(structSeen, strct->strct.name->str)) return;
     ZNode **fields = strct->strct.fields;
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *field = fields[i];
         if (field->type == NODE_EMBED_FIELD) {
             ZType *nested = field->resolved;
             if (nested && nested->kind == Z_TYPE_STRUCT)
-                checkEmbedFieldConflicts(ctx, nested, seen, embedTok);
+                _checkEmbedFieldConflicts(ctx, nested, structSeen, fieldSeen, embedTok);
         } else if (field->type == NODE_FIELD) {
-            if (!hashset_insert(seen, field->field.identifier->str)) {
+            if (!hashset_insert(fieldSeen, field->field.identifier->str)) {
                 error(ctx->state, embedTok,
                     "field '%s' conflicts with embedded struct '%s'",
                     field->field.identifier->str, stype(strct));
             }
         }
     }
+}
+
+static void checkEmbedFieldConflicts(ZSemantic *ctx, ZType *strct, ZToken *embedTok) {
+    hashset_t structSeen    = NULL;
+    hashset_t fieldSeen     = NULL;
+    _checkEmbedFieldConflicts(ctx, strct, &fieldSeen, &structSeen, embedTok);
 }
 
 static void analyzeStruct(ZSemantic *ctx, ZNode *structDef) {
@@ -2738,13 +2751,14 @@ static void analyzeStruct(ZSemantic *ctx, ZNode *structDef) {
     ZType *structType = structDef->resolved;
 
     for (usize i = 0; i < len; i++) {
-        let field = fields[i];
+        ZNode *field = fields[i];
+        if (!field || !field->resolved) continue;
         ZType **szSeen = NULL;
 
-        if (isInfiniteSize(field->field.type, structType, szSeen)) {
-            error(ctx->state, field->field.identifier,
+        if (isInfiniteSize(field->resolved, structType, &szSeen)) {
+            error(ctx->state, field->tok,
                   "field '%s' embeds struct by value causing infinite size; use a pointer",
-                  field->field.identifier->str);
+                  stoken(field->tok));
         }
     }
 
@@ -2763,7 +2777,7 @@ static void analyzeStruct(ZSemantic *ctx, ZNode *structDef) {
         if (field->type != NODE_EMBED_FIELD) continue;
         ZType *embedded = field->resolved;
         if (!embedded || embedded->kind != Z_TYPE_STRUCT) continue;
-        checkEmbedFieldConflicts(ctx, embedded, &fieldSeen, field->tok);
+        checkEmbedFieldConflicts(ctx, embedded, field->tok);
     }
 }
 
@@ -2801,7 +2815,7 @@ static void analyzeEnum(ZSemantic *ctx, ZNode *enumDef) {
             ZType **szSeen = NULL;
             ZType *resolved = resolveTypeRef(ctx, enumField[j]->field.type);
             if (!resolved) continue;
-            if (isInfiniteSize(resolved, enm, szSeen)) {
+            if (isInfiniteSize(resolved, enm, &szSeen)) {
                 error(ctx->state,
                     enumField[j]->field.type->tok,
                     "field '%s' embeds enum by value causing infinite size; use a pointer",
@@ -2878,6 +2892,7 @@ static void analyze(ZSemantic *ctx, ZNode *root) {
             break;
 
         case NODE_IMPL:
+            // if (!child || !child->impl.funcs) break;
             for (usize i = 0; i < veclen(child->impl.funcs); i++) {
                 ZNode *func = child->impl.funcs[i];
                 analyzeFunc(ctx, func);
