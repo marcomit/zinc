@@ -971,7 +971,7 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType ***seen) {
     case Z_TYPE_STRUCT: {
         if (type == root) return true;
 
-        for (usize i = 0; i < veclen(seen); i++)
+        for (usize i = 0; i < veclen(*seen); i++)
             if (typesEqual(*seen[i], type)) return false;
 
         vecpush(*seen, type);
@@ -2858,6 +2858,7 @@ static void analyze(ZSemantic *ctx, ZNode *root) {
             break;
 
         case NODE_IMPL:
+            // if (!child || !child->impl.funcs) break;
             for (usize i = 0; i < veclen(child->impl.funcs); i++) {
                 ZNode *func = child->impl.funcs[i];
                 analyzeFunc(ctx, func);
