@@ -765,13 +765,18 @@ void encodeType(ZType *type, char **buf) {
             encodeType(type->func.args[i], buf);
         }
         break;
-    case Z_TYPE_STRUCT:
+    case Z_TYPE_STRUCT: {
         vecpush(*buf, 'S');
-        for (usize i = 0; i < veclen(type->strct.fields); i++) {
-            encodeType(type->strct.fields[i]->resolved, buf);
+        const char *name = type->strct.name->str;
+        usize len = strlen(name);
+        int tmp = len;
+        while (tmp) {
+            vecpush(*buf, '0' + tmp % 10);
+            tmp /= 10;
         }
+        vecunion(*buf, name, len);
         break;
-        break;
+    }
     case Z_TYPE_FACET:
         vecpush(*buf, 'I');
         break;
