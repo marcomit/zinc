@@ -3536,6 +3536,13 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
         putLLVMValueRef(ctx, pat->ident->str, global);
         break;
     }
+    case NODE_IMPL: {
+        ZNode **funcs = node->impl.funcs;
+        for (usize i = 0; i < veclen(funcs); i++) {
+            genForwardDecl(ctx, funcs[i]);
+        }
+        break;
+    }
     case NODE_FUNC: {
         if (!node->funcDef.mangled)
             node->funcDef.mangled = mangler((ZToken*[]) { node->funcDef.name, NULL });

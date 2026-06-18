@@ -1003,8 +1003,32 @@ static char *resolvePath(ZState *state, char *filename) {
     return out;
 }
 
+static bool fileExists(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
+static char *resolveModuleFile(char *filename) {
+    if (fileExists(filename)) return filename;
+
+    usize n = strlen(filename);
+    if (n < 3 || strcmp(filename + n - 3, ".zn") != 0) return filename;
+
+    usize baseLen = n - 3;
+    char *alt = malloc(baseLen + sizeof("/lib.zn"));
+    memcpy(alt, filename, baseLen);
+    memcpy(alt + baseLen, "/lib.zn", sizeof("/lib.zn"));
+
+    if (fileExists(alt)) return alt;
+    free(alt);
+    return filename;
+}
+
 bool visit(ZState *state, char *filename, bool external) {
     filename = resolvePath(state, filename);
+    filename = resolveModuleFile(filename);
     for (usize i = 0; i < veclen(state->visitedFiles); i++) {
         if (strcmp(state->visitedFiles[i], filename) == 0) return false;
     }
