@@ -1,4 +1,4 @@
-use <std::core::mem>
+use <std::mem>
 use <std::core::rand>
 use <std::core::math>
 
@@ -122,7 +122,8 @@ main :: i32 () {
     origin := Vec2{ x: WIDTH as f32 / 2.0, y: 50.0 }
     length := 0
 
-    with _ := Allocator::heap() {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
         rand := Random::by_ref()
 
         particles: **Particle = alloc(sizeof *Particle * MAX_PARTICLES as u64)

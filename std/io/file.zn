@@ -1,4 +1,4 @@
-use <std::core::mem>
+use <std::mem>
 
 c :: foreign {
     fopen   :: *u8  (*char, *char)

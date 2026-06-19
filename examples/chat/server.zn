@@ -1,9 +1,9 @@
-use <std::core::mem>
+use <std::mem::gpa>
 use <std::io::thread>
 use <std::io::mutex>
 use <std::io::net>
 
-c :: foreign {
+libc :: foreign {
     printf   :: u0  (*char, ...)
     snprintf :: i32 (*char, u64, *char, ...)
     fflush   :: i32 (*u8)
@@ -69,7 +69,8 @@ worker :: *u8 (arg: *u8) {
     ctx := w.ctx
     id  := w.id
 
-    with _ := Allocator::heap() {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
         buf := alloc(1024)
         out := alloc(1024)
 
@@ -79,30 +80,31 @@ worker :: *u8 (arg: *u8) {
             if n <= 0 { break }
             buf[n] = 0
 
-            m := c::snprintf(out as *char, 1024, "[user %llu] %s", id, buf as *char)
-            c::printf("%s\n", out as *char)
-            c::fflush(none)
+            m := libc::snprintf(out as *char, 1024, "[user %llu] %s", id, buf as *char)
+            libc::printf("%s\n", out as *char)
+            libc::fflush(none)
 
             ctx.broadcast(id, out, m as u64)
         }
 
         ctx.clients[id].alive = false
         ctx.clients[id].stream.close()
-        c::printf("server: client %llu disconnected\n", id)
-        c::fflush(none)
+        libc::printf("server: client %llu disconnected\n", id)
+        libc::fflush(none)
     }
     return none
 }
 
 main :: i32 () {
-    with _ := Allocator::heap() {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
         listener := TcpListener::bind(8080)
         if not listener.valid() {
-            c::printf("server: failed to bind on :8080\n")
+            libc::printf("server: failed to bind on :8080\n")
             return 1
         }
-        c::printf("server: listening on :8080\n")
-        c::fflush(none)
+        libc::printf("server: listening on :8080\n")
+        libc::fflush(none)
 
         ctx := Context::new(Mutex::new())
 
@@ -111,8 +113,8 @@ main :: i32 () {
             if not conn.valid() { continue }
 
             id := ctx.add(conn)
-            c::printf("server: client %llu connected\n", id)
-            c::fflush(none)
+            libc::printf("server: client %llu connected\n", id)
+            libc::fflush(none)
 
             arg := alloc(sizeof WorkerArg) as *WorkerArg
             arg.ctx = ctx

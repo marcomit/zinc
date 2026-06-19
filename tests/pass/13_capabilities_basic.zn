@@ -1,5 +1,5 @@
 use <std::libc>
-use <std::core::mem::gpa>
+use <std::mem::gpa>
 
 
 fill :: i32 (size: u64)[alloc: Allocator] {

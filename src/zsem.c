@@ -1581,8 +1581,8 @@ static ZType *resolveBinary(ZSemantic *ctx, ZNode *curr) {
     ZType     *right    = resolveType(ctx, curr->binary.right);
 
     if (op & TOK_BITOPERATOR_MASK) {
-        if (isNumeric(left) &&
-            isNumeric(right)) {
+        if (!isNumeric(left) ||
+            !isNumeric(right)) {
             error(ctx->state, curr->binary.op,
                 "Bit operators can be used only with integers");
             return NULL;

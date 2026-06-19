@@ -1,4 +1,4 @@
-use <std::core::mem>
+use <std::mem>
 
 c :: foreign {
     pthread_mutex_init      :: i32 (*u8, *u0)
@@ -20,7 +20,7 @@ Mutex :: impl {
 }
 
 Mutex self :: impl {
-    pub lock    :: u0 () -> c::pthread_mutex_lock(self.handle)
-    pub unlock  :: u0 () -> c::pthread_mutex_unlock(self.handle)
-    pub destroy :: u0 () -> c::pthread_mutex_destroy(self.handle)
+    pub lock    :: u0 () { c::pthread_mutex_lock(self.handle)   }
+    pub unlock  :: u0 () { c::pthread_mutex_unlock(self.handle) }
+    pub destroy :: u0 () { c::pthread_mutex_destroy(self.handle)}
 }

@@ -1,538 +1,137 @@
-use <std::core::mem>
+use <std::mem::gpa>
+use <std::mem::rc>
+use <std::libc>
 
-foreign readline :: *char(*char)
-libc :: foreign {
-    printf  :: u0   (*char, ...)
-    strcmp  :: i32  (*char, *char)
-    isspace :: i32  (i32)
-    strlen  :: u64  (*char)
-    isalnum :: i32  (i32)
-    isalpha :: i32  (i32)
-    isdigit   :: i32  (i32)
-}
-
-Variant :: enum {
-    Num(f64)
+Expr :: enum {
     Sym(*char)
+    Num(f64)
+    Log(*Expr)
     Add(*Expr, *Expr)
     Sub(*Expr, *Expr)
     Mul(*Expr, *Expr)
     Div(*Expr, *Expr)
-    Pow(*Expr, *Expr)
-}
-
-Expr :: struct {
-    u64 ref
-    Variant variant
 }
 
 Expr :: impl {
-    new :: *Expr(Variant variant)[Allocator allocator] {
-        *Expr self = allocator.alloc(sizeof Expr)
-        self.variant = variant
-        self.ref = 1
+    new :: *Expr (expr: Expr) [Allocator] {
+        self: *Expr = Rc::new(sizeof Expr)
+        *self = expr
         return self
     }
-    sym :: *Expr(*char name)[Allocator _]               -> Expr::new(Variant::Sym(name))
-    num :: *Expr(f64 value)[Allocator _]                -> Expr::new(Variant::Num(value))
-    add :: *Expr(*Expr left, *Expr right)[Allocator _]  -> Expr::new(Variant::Add(left.retain(), right.retain()))
-    sub :: *Expr(*Expr left, *Expr right)[Allocator _]  -> Expr::new(Variant::Sub(left.retain(), right.retain()))
-    mul :: *Expr(*Expr left, *Expr right)[Allocator _]  -> Expr::new(Variant::Mul(left.retain(), right.retain()))
-    div :: *Expr(*Expr left, *Expr right)[Allocator _]  -> Expr::new(Variant::Div(left.retain(), right.retain()))
-    pow :: *Expr(*Expr base, *Expr exp)[Allocator _]    -> Expr::new(Variant::Pow(base.retain(), exp.retain()))
+
+    sym :: *Expr (a: *char)             [Allocator] -> Expr::new(Expr::Sym(a))
+    num :: *Expr (n: f64)               [Allocator] -> Expr::new(Expr::Num(n))
+    log :: *Expr (e: *Expr)             [Allocator] -> Expr::new(Expr::Log(e))
+    add :: *Expr (l: *Expr, r: *Expr)   [Allocator] -> Expr::new(Expr::Add(l, r))
+    sub :: *Expr (l: *Expr, r: *Expr)   [Allocator] -> Expr::new(Expr::Sub(l, r))
+    mul :: *Expr (l: *Expr, r: *Expr)   [Allocator] -> Expr::new(Expr::Mul(l, r))
+    div :: *Expr (l: *Expr, r: *Expr)   [Allocator] -> Expr::new(Expr::Div(l, r))
 }
 
 *Expr self :: impl {
-    retain :: *Expr() {
-        if not self { return none }
-        self.ref :+ 1
-        return self
-    }
-    release :: *Expr()[Allocator _] {
-        if not self { return none }
-        if self.ref == 1 {
-            self.drop()
-            return none
+    print :: u0 () {
+        if not self { return }
+
+        match *self {
+            Expr::Sym(s) -> io::printf("%s", s),
+            Expr::Num(n) -> io::printf("%g", n),
+            Expr::Add(l, r) {
+                l.print()
+                io::printf(" + ")
+                r.print()
+            },
+            Expr::Sub(l, r) {
+                l.print()
+                io::printf(" + ")
+                r.print()
+            },
+            Expr::Mul(l, r) {
+                l.print()
+                io::printf(" * ")
+                r.print()
+            },
+            Expr::Div(l, r) {
+                l.print()
+                io::printf(" / ")
+                r.print()
+            },
+            Expr::Log(e) {
+                io::printf("log(")
+                e.print()
+                io::printf(")")
+            },
         }
-        self.ref :- 1
-        return self
-    }
-    drop :: u0()[Allocator allocator] {
-        match self.variant {
-            Variant::Add(l, r) {
-                l.release()
-                r.release()
-            },
-            Variant::Sub(l, r) {
-                l.release()
-                r.release()
-            },
-            Variant::Mul(l, r) {
-                l.release()
-                r.release()
-            },
-            Variant::Div(l, r) {
-                l.release()
-                r.release()
-            },
-            Variant::Pow(l, r) {
-                l.release()
-                r.release()
-            }
-        }
-        allocator.free(self)
-    }
-    derive :: *Expr(*char sym)[Allocator _] {
-        if not self { return none }
-        match self.variant {
-            Variant::Num(_) {
-                return Expr::num(0.0)
-            },
-            Variant::Sym(s) {
-                if libc::strcmp(sym, s) == 0 {
-                    return Expr::num(1.0)
-                }
-                return Expr::num(0.0)
-            },
-            Variant::Add(left, right) {
-                return Expr::add(
-                    left.derive(sym),
-                    right.derive(sym)
-                )
-            },
-            Variant::Sub(left, right) {
-                return Expr::sub(
-                    left.derive(sym),
-                    right.derive(sym)
-                )
-            },
-            Variant::Mul(left, right) {
-                return Expr::add(
-                    Expr::mul(left.derive(sym), right),
-                    Expr::mul(left, right.derive(sym))
-                )
-            },
-            Variant::Div(left, right) {
-                return Expr::div(
-                    Expr::sub(
-                        Expr::mul(left.derive(sym), right),
-                        Expr::mul(left, right.derive(sym))
-                    ),
-                    Expr::mul(right, right)
-                )
-            },
-            // Unimplemented
-            Variant::Pow(base, exp) {
-                return none
-            },
-            _ {
-                return none
-            }
-        }
-        return none
     }
 
-    print :: u0() {
-        if not self {
-            libc::printf("<none>")
-            return
+    derive :: *Expr (sym: *char) [Allocator] {
+        if not self { return none }
+        match *self {
+            Expr::Sym(s) { return Expr::num(mem::strcmp(s, sym) as f64) },
+            Expr::Num(n) { return Expr::num(0.0) },
+            Expr::Add(l, r) {
+                return Expr::add(l.derive(sym), r.derive(sym))
+            },
+            Expr::Sub(l, r) {
+                return Expr::sub(l.derive(sym), r.derive(sym))
+            },
+            Expr::Mul(l, r) {
+                return Expr::add(
+                    Expr::mul(l.derive(sym), r),
+                    Expr::mul(l, r.derive(sym))
+                )
+            },
+            Expr::Div(l, r) {
+                return Expr::div(
+                    Expr::sub(
+                        Expr::mul(l.derive(sym), r),
+                        Expr::mul(l, r.derive(sym))
+                    ),
+                    Expr::mul(r, r)
+                )
+            },
+            Expr::Log(e) {
+                return Expr::div(Expr::num(1.0), e)
+            }
         }
-        if Variant::Num(n) := self.variant {
-            libc::printf("%g", n)
-            return
-        }
-        if Variant::Sym(s) := self.variant {
-            libc::printf("%s", s)
-            return
-        }
-        if Variant::Add(l, r) := self.variant {
-            libc::printf("(")
-            l.print()
-            libc::printf(" + ")
-            r.print()
-            libc::printf(")")
-            return
-        }
-        if Variant::Sub(l, r) := self.variant {
-            libc::printf("(")
-            l.print()
-            libc::printf(" - ")
-            r.print()
-            libc::printf(")")
-            return
-        }
-        if Variant::Mul(l, r) := self.variant {
-            libc::printf("(")
-            l.print()
-            libc::printf(" * ")
-            r.print()
-            libc::printf(")")
-            return
-        }
-        if Variant::Div(l, r) := self.variant {
-            libc::printf("(")
-            l.print()
-            libc::printf(" / ")
-            r.print()
-            libc::printf(")")
-            return
-        }
-        if Variant::Pow(l, r) := self.variant {
-            libc::printf("(")
-            l.print()
-            libc::printf(" ^ ")
-            r.print()
-            libc::printf(")")
-            return
-        }
+
+        io::printf("Unknown expression\n")
+        return none
     }
 
     println :: u0 () {
         self.print()
-        libc::printf("\n")
+        io::printf("\n")
     }
 }
 
-Token :: enum {
-    Num(f64)
-    Ident(*char)
-    Sym(char)
-    None
-}
+foreign readline :: *char (*char)
+repl :: u0 () [Allocator] {
+    for {
+        prompt := readline(">> ")
 
-Scanner :: struct {
-    *char source
-    u64 cursor
-    u64 source_len
-    *Token tokens
-    u64 len
-    u64 cap
-}
-
-Scanner :: impl {
-    new :: *Scanner(*char source)[Allocator allocator] {
-        *Scanner self = allocator.alloc(sizeof Scanner)
-        self.cursor = 0
-        self.source = source
-        self.source_len = libc::strlen(source)
-
-        self.len = 0
-        self.cap = 8
-        self.tokens = allocator.alloc(sizeof Token * self.cap)
-        return self
-    }
-}
-
-*Scanner self :: impl {
-    skipspaces :: u0 () {
-        for self.cursor < self.source_len and libc::isspace(self.source[self.cursor]) {
-            self.cursor :+ 1
+        if not prompt { continue }
+        if mem::strcmp(prompt, "exit") == 0 {
+            io::printf("Goodbye by marcomit\n")
+            return
         }
-    }
-
-    add :: u0 (Token token)[Allocator allocator] {
-        if self.len >= self.cap {
-            self.cap :* 2
-            self.tokens = allocator.realloc(self.tokens, sizeof Token * self.cap)
-        }
-        self.tokens[self.len] = token
-        self.len :+ 1
-    }
-
-    can_peek :: u1 () -> self.cursor < self.source_len
-    
-    peek :: char () {
-        if self.cursor >= self.source_len { return 0 }
-        return self.source[self.cursor]
-    }
-
-    advance :: char () {
-        if self.cursor >= self.source_len { return 0 }
-        self.cursor :+ 1
-        return self.source[self.cursor - 1]
-    }
-
-    scan_num :: Token ()[Allocator _] {
-        start := self.cursor
-        for self.can_peek() and (libc::isdigit(self.peek()) or self.peek() == '.') {
-            self.advance()
-        }
-        double_value := 0.0
-        is_fraction := false
-        divisor := 10.0
-        
-        i := start
-        for i < self.cursor {
-            c := self.source[i]
-            if c == '.' {
-                is_fraction = true
-                i :+ 1
-                continue
-            }
-            digit := (c - '0') as f64
-            if not is_fraction {
-                double_value = (double_value * 10.0) + digit
-            } else {
-                double_value = double_value + (digit / divisor)
-                divisor :* 10.0
-            }
-            i :+ 1
-        }
-        
-        return Token::Num(double_value)
-    }
-
-    scan_ident :: Token ()[Allocator allocator] {
-        start := self.cursor
-        for self.can_peek() and (libc::isalnum(self.peek()) or self.peek() == '_') {
-            self.advance()
-        }
-        
-        len := self.cursor - start
-        *char str = allocator.alloc(len + 1)
-        i := 0
-        for i < len {
-            str[i] = self.source[start + i]
-            i :+ 1
-        }
-        str[len] = 0 // Null terminator
-        
-        return Token::Ident(str)
-    }
-
-    scan :: u0 ()[Allocator _] {
-        for self.cursor < self.source_len {
-            self.skipspaces()
-
-            if self.cursor >= self.source_len { break }
-
-            c := self.peek()
-
-            if libc::isalpha(c) or c == '_' {
-                token := self.scan_ident()
-                self.add(token)
-                continue
-            }
-
-            if libc::isdigit(c) {
-                token := self.scan_num()
-                self.add(token)
-                continue
-            }
-
-            if c == '+' or c == '-' or c == '*' or c == '/' or c == '^' or c == '(' or c == ')' {
-                self.advance()
-                self.add(Token::Sym(c))
-                continue
-            }
-
-            self.advance()
-        }
-    }
-}
-
-Parser :: struct {
-    *Scanner scanner
-    u64 curr
-}
-
-Parser :: impl {
-    new :: *Parser(*Scanner scanner)[Allocator allocator] {
-        *Parser self = allocator.alloc(sizeof Parser)
-        self.scanner = scanner
-        self.curr = 0
-        return self
-    }
-}
-
-*Parser self :: impl {
-    can_peek :: u1 () -> self.curr < self.scanner.len
-
-    peek :: Token () {
-        if not self.can_peek() {
-            return Token::None()
-        }
-        return self.scanner.tokens[self.curr]
-    }
-
-    advance :: Token () {
-        if not self.can_peek() { 
-            return Token::None()
-        }
-        tok := self.peek()
-        self.curr :+ 1
-        return tok
-    }
-
-    get_precedence :: i32 (char op) {
-        if op == '+' or op == '-' { return 1 }
-        if op == '*' or op == '/' { return 2 }
-        if op == '^'             { return 3 }
-        return 0
-    }
-
-    parse_primary :: *Expr ()[Allocator allocator] {
-        if not self.can_peek() { return none }
-        
-        tok := self.peek()
-
-        if Token::Num(n) := tok {
-            self.advance()
-            return Expr::num(n)
-        }
-
-        if Token::Ident(s) := tok {
-            self.advance()
-            return Expr::sym(s)
-        }
-
-        if Token::Sym(c) := tok {
-            if c == '(' {
-                self.advance() // Consuma '('
-                expr := self.parse_expr(0)
-                
-                // Controlliamo la tonda chiusa in modo isolato
-                if self.can_peek() {
-                    next_tok := self.peek()
-                    if Token::Sym(close_c) := next_tok {
-                        if close_c == ')' {
-                            self.advance() // Consuma ')'
-                            return expr
-                        }
-                    }
-                }
-                
-                // Se manca la parentesi chiusa o fallisce, puliamo la memoria
-                if expr { expr.release() }
-                return none
-            }
-            
-            if c == '-' {
-                self.advance() // Consuma '-' unario
-                right := self.parse_primary()
-                if not right { return none }
-                return Expr::sub(Expr::num(0.0), right)
-            }
-        }
-
-        // Se il token non è riconosciuto come atomo primario, 
-        // avanziamo per evitare di rimanere bloccati sullo stesso punto
-        self.advance()
-        return none
-    }
-
-    parse_expr :: *Expr (i32 min_precedence)[Allocator allocator] {
-        *Expr left = self.parse_primary()
-        if not left { return none }
-
-        for true {
-            // Se i token sono finiti, interrompiamo il ciclo in sicurezza
-            if not self.can_peek() {
-                break
-            }
-
-            tok := self.peek()
-            
-            // Estraiamo il carattere dell'operatore in un blocco isolato
-            char op = 0
-            if Token::Sym(c) := tok {
-                op = c
-            } else {
-                // Se non è un Token::Sym (es. è un numero o identificatore), usciamo dal sotto-albero
-                break
-            }
-
-            // Verifichiamo la precedenza del simbolo trovato
-            prec := self.get_precedence(op)
-            if prec == 0 or prec < min_precedence {
-                break
-            }
-
-            self.advance() // Consuma l'operatore binario sicuro
-
-            // Gestione associatività della potenza
-            next_min_prec := prec
-            if op != '^' {
-                next_min_prec = prec + 1
-            }
-
-            *Expr right = self.parse_expr(next_min_prec)
-            if not right {
-                left.release()
-                return none
-            }
-
-            // Costruzione dei nodi dell'albero sintattico
-            if op == '+' { left = Expr::add(left, right) }
-            if op == '-' { left = Expr::sub(left, right) }
-            if op == '*' { left = Expr::mul(left, right) }
-            if op == '/' { left = Expr::div(left, right) }
-            if op == '^' { left = Expr::pow(left, right) }
-            
-            // Rilasciamo il reference count locale del nodo destro appena agganciato
-            right.release()
-        }
-
-        return left
-    }
-
-    parse :: *Expr ()[Allocator allocator] {
-        if not self.can_peek() { return none }
-        return self.parse_expr(0)
-    }
-}
-
-repl :: u0 ()[Allocator allocator] {
-    for true {
-        read := readline(">> ")
-        if not read { break }
-        
-        if libc::strcmp(read, "exit") == 0 {
-            libc::printf("Goodbye by marocmit\n")
-            break
-        }
-
-        scanner := Scanner::new(read)
-        scanner.scan()
-        libc::printf("scanned\n")
-
-        parser := Parser::new(scanner)
-        parsed := parser.parse()
-        libc::printf("parsed\n")
-
-        if parsed {
-            libc::printf("Funzione originale: ")
-            parsed.println()
-
-            derived := parsed.derive("x")
-            
-            libc::printf("Derivata (rispetto a x): ")
-            // derived.println()
-
-            if derived {
-                derived.release()
-            }
-            // parsed.release()
-        } else {
-            libc::printf("Errore di parsing!\n")
-        }
-
-        allocator.free(scanner.tokens)
-        allocator.free(scanner)
-        allocator.free(parser)
-        
-        libc::printf("\n")
+        io::printf("%s\n", prompt)
     }
 }
 
 main :: i32 () {
-    with _ := Allocator::heap() {
-        repl()
+    gpa := GeneralPurposeAllocator::init()
+
+    sym := "x"
+    with _ := (&gpa).allocator() {
         expr := Expr::add(
             Expr::num(10.0),
-            Expr::num(20.0)
+            Expr::log(
+                Expr::sym(sym)
+            )
         )
-        expr.release()
+        expr.println()
+        expr.derive(sym).println()
     }
+
     return 0
 }

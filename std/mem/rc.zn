@@ -1,0 +1,33 @@
+use <std::mem>
+
+RcDrop :: type u0 (*u8)
+
+pub Rc :: struct {
+    ref: u32
+    offset: u32
+}
+
+RC_FLAG :: 0xDEADBEEF as u32
+
+Rc :: impl {
+    pub new :: *u8 (size: u64) [Allocator] {
+        self: *Rc = alloc(sizeof Rc + size)
+        self.ref = 1
+        self.offset = RC_FLAG
+        return &(self[1])
+    }
+
+    pub retain :: *u8 (ptr: *u8) {
+        self: *Rc = &(ptr[-sizeof Rc])
+        if not self or self.offset != RC_FLAG { return none }
+        self.ref: + 1
+        return self
+    }
+
+    pub release :: u32 (ptr: *u8) {
+        self: *Rc = &(ptr[-sizeof Rc])
+        if not self or self.offset != RC_FLAG or self.ref == 0 { return -1 }
+        self.ref: - 1
+        return self.ref
+    }
+}

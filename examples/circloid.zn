@@ -1,5 +1,6 @@
 use <raylib>
 use <std>
+use <std::mem::gpa>
 
 WIDTH  :: 800
 HEIGHT :: 800
@@ -95,7 +96,8 @@ main :: i32 () {
     raylib::SetTargetFPS(60)
     defer raylib::CloseWindow()
 
-    with _ := Allocator::heap() {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
         rand    := Random::by_ref()
         arena   := Constraint::new()
         player  := Player::new()

@@ -35,8 +35,8 @@ GeneralPurposeAllocator :: impl {
         if self.active > 0 { self.active :- 1 }
         c::free(ptr)
     }
-    init :: u0 () {}
-    deinit :: u0 () {}
+    init :: u0 () { return }
+    deinit :: u0 () { return }
 }
 
 *GeneralPurposeAllocator self :: impl {

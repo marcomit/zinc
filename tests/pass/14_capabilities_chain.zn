@@ -1,4 +1,4 @@
-use <std::core::mem::gpa>
+use <std::mem::gpa>
 use <std::libc>
 
 allocInner :: *u8 (size: u64)[Allocator] -> alloc(size)
