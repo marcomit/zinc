@@ -9,7 +9,8 @@ i32 fill(u64 size)(Logger log) {
 }
 
 i32 main() {
-    with heap := Allocator::heap() {
+    gpa := GenerauPurposeAllocator::init()
+    with heap := (&gpa).allocator() {
         i32 result = fill(64)
     }
     return 0

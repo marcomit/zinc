@@ -1,12 +1,13 @@
 use <std::core::string>
-use <std::core::mem>
+use <std::core::mem::gpa>
 
 libc :: foreign {
     printf :: u0 (*char, ...)
 }
 
 main :: i32 () {
-    with _ := Allocator::heap() {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
         hello := string::new("Ciao")
         cap := string::with_capacity(64)
 

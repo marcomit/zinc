@@ -1,12 +1,5 @@
-// Function requiring two different capability types (Allocator and Logger).
-// Each type is provided by a separate nested `with` block;
-// lookupScopedCapability walks parent scopes so both are found at the call site.
-
-use <std::core::mem>
-
-c :: foreign {
-    printf :: u0 (*char, ...)
-}
+use <std::core::mem::gpa>
+use <std::libc>
 
 Logger :: struct  {
     level: i32
@@ -19,9 +12,10 @@ allocAndLog :: i32 (size: u64)[alloc: Allocator, log: Logger] {
 
 main :: i32 () {
     with log := Logger { level: 42 } {
-        with heap := Allocator::heap() {
+        gpa := GeneralPurposeAllocator::init()
+        with heap := (&gpa).allocator() {
             r := allocAndLog(16)
-            c::printf("%d\n", r)
+            io::printf("%d\n", r)
         }
     }
     return 0

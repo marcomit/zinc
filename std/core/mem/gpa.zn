@@ -1,0 +1,46 @@
+use lib
+
+c :: foreign {
+    malloc  :: *u8 (u64)
+    realloc :: *u8 (*u8, u64)
+    free    :: u0 (*u8)
+}
+
+pub GeneralPurposeAllocator :: struct {
+    active: u64
+    bytes:  u64
+}
+
+GeneralPurposeAllocator :: impl {
+    pub init :: GeneralPurposeAllocator () {
+        return GeneralPurposeAllocator{ active: 0, bytes: 0 }
+    }
+}
+
+*GeneralPurposeAllocator self :: impl Allocator {
+    alloc :: *u8 (size: u64) {
+        p := c::malloc(size)
+        if not p { return none }
+        self.active :+ 1
+        self.bytes  :+ size
+        return p
+    }
+
+    resize :: *u8 (ptr: *u8, size: u64) {
+        return c::realloc(ptr, size)
+    }
+
+    destroy :: u0 (ptr: *u8) {
+        if not ptr { return }
+        if self.active > 0 { self.active :- 1 }
+        c::free(ptr)
+    }
+    init :: u0 () {}
+    deinit :: u0 () {}
+}
+
+*GeneralPurposeAllocator self :: impl {
+    pub allocator :: Allocator () -> self as Allocator
+
+    pub leaked :: u64 () -> self.active
+}

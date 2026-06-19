@@ -1,0 +1,54 @@
+use <std::io::mutex>
+use lib
+
+pub ThreadAllocator :: struct {
+    inner: Allocator
+    mutex: Mutex
+}
+
+ThreadAllocator :: impl {
+    pub init :: ThreadAllocator(allocator: Allocator) {
+        self := ThreadAllocator{
+            inner: allocator,
+            mutex: Mutex::new()
+        }
+    }
+
+    pub from_ctx :: ThreadAllocator() [allocator: Allocator] {
+        self := ThreadAllocator{
+            inner: allocator,
+            mutex: Mutex::new()
+        }
+    }
+}
+
+*ThreadAllocator self :: impl {
+    allocator :: Allocator () -> self as Allocator
+}
+
+*ThreadAllocator self :: impl Allocator {
+    pub init :: u0 () {}
+    pub deinit :: u0 () -> self.mutex.destroy()
+
+    pub alloc :: *u8 (size: u64) {
+        self.mutex.lock()
+        ptr := self.allocator.alloc()
+        self.mutex.unlock()
+        return ptr
+    }
+
+    pub resize :: *u8 (ptr: *u8, size: u64) {
+        self.mutex.lock()
+        new_ptr := self.allocator.resize(ptr, size)
+        self.mutex.unlock()
+        return new_ptr
+    }
+
+    pub destroy :: u0 (ptr: *u8) {
+        self.mutex.lock()
+        self.allocator.free(ptr)
+        self.mutex.unlock()
+    }
+}
+
+

@@ -1,11 +1,6 @@
-use <std::core::mem>
+use <std::core::mem::gpa>
+use <std::libc>
 
-c :: foreign {
-    printf :: u0 (*char, ...)
-}
-
-// allocInner requires the same capability as its caller.
-// The capability is threaded automatically - no explicit passing.
 allocInner :: *u8 (size: u64)[Allocator] -> alloc(size)
 
 allocOuter :: i32 (size: u64)[Allocator] {
@@ -15,11 +10,12 @@ allocOuter :: i32 (size: u64)[Allocator] {
 }
 
 main :: i32 () {
-    allocator := Allocator::heap()
+    gpa := GeneralPurposeAllocator::init()
+    allocator := (&gpa).allocator()
     with _ := allocator {
         a: i32 = allocOuter(32)
         b: i32 = allocOuter(64)
-        c::printf("%d %d\n", a, b)
+        io::printf("%d %d\n", a, b)
     }
 
     with _ := allocator -> allocInner(1024)
