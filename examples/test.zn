@@ -1,9 +1,0 @@
-use <std::core::mem>
-
-main :: i32 () {
-    with _ := Allocator::heap() {
-        buf: *u8 = alloc(1024)
-        defer destroy(buf)
-    }
-    return 0
-}

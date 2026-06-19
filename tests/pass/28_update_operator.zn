@@ -1,10 +1,5 @@
-use <std::core::mem>
-void :: type u0
-bool :: type u1
-
-c :: foreign {
-    printf :: u0 (*char, ...)
-}
+use <std::core::mem::gpa>
+use <std::libc>
 
 LinkedList :: struct {
     val: i32
@@ -21,13 +16,14 @@ LinkedList :: impl {
 *LinkedList self :: impl {
     print :: u0 () {
         if not self { return }
-        c::printf("%d\n", self.val)
+        io::printf("%d\n", self.val)
         self.next.print()
     }
 }
 
 main :: i32 () {
-    with _ := Allocator::heap() {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
         i := 0
         root := LinkedList::new(none, 0)
 
@@ -37,7 +33,7 @@ main :: i32 () {
         }
 
         for root {
-            c::printf("%d\n", root.val)
+            io::printf("%d\n", root.val)
             root : .next
         }
 

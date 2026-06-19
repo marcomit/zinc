@@ -1,0 +1,95 @@
+use lib
+
+c :: foreign {
+    malloc :: *u8 (u64)
+    free   :: u0 (*u8)
+    memcpy :: *u8 (*u8, *u8, u64)
+}
+
+DEFAULT_BLOCK :: 4096
+
+#[packed]
+Block :: struct {
+    next: *Block
+    cap:  u64
+    used: u64
+}
+
+pub ArenaAllocator :: struct {
+    head: *Block
+}
+
+ArenaAllocator :: impl {
+    pub init :: ArenaAllocator () {
+        return ArenaAllocator{ head: none }
+    }
+}
+
+*ArenaAllocator self :: impl Allocator {
+    init :: u0 () { }
+    alloc :: *u8 (size: u64) {
+        need := sizeof u64 + size
+
+        block := self.head
+        if not block or block.used + need > block.cap {
+            block = self.grow(need)
+            if not block { return none }
+        }
+
+        base := block as *u8
+        slot := &(base[sizeof Block + block.used])
+        head := slot as *u64
+        head[0] = size
+        block.used :+ need
+        return &(slot[sizeof u64])
+    }
+
+    resize :: *u8 (ptr: *u8, size: u64) {
+        if not ptr { return self.alloc(size) }
+
+        off: i64 = 0 - (sizeof u64) as i64
+        hdr := (&(ptr[off])) as *u64
+        old := hdr[0]
+        if size <= old {
+            hdr[0] = size
+            return ptr
+        }
+
+        fresh := self.alloc(size)
+        if not fresh { return none }
+        c::memcpy(fresh, ptr, old)
+        return fresh
+    }
+
+    destroy :: u0 (ptr: *u8) { return }
+
+    pub deinit :: u0 () {
+        block := self.head
+        for block {
+            next := block.next
+            c::free(block as *u8)
+            block = next
+        }
+        self.head = none
+    }
+
+}
+
+*ArenaAllocator self :: impl {
+    pub allocator :: Allocator () -> self as Allocator
+
+    grow :: *Block (min: u64) {
+        cap := DEFAULT_BLOCK as u64
+        if min > cap { cap = min }
+
+        raw := c::malloc(sizeof Block + cap)
+        if not raw { return none }
+
+        block := raw as *Block
+        block.next = self.head
+        block.cap  = cap
+        block.used = 0
+        self.head  = block
+        return block
+    }
+}

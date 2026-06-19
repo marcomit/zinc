@@ -1,8 +1,6 @@
-use <std::core::mem>
+use <std::libc>
+use <std::core::mem::gpa>
 
-c :: foreign {
-    printf :: u0 (*char, ...)
-}
 
 fill :: i32 (size: u64)[alloc: Allocator] {
     _ := alloc.alloc(size)
@@ -10,9 +8,10 @@ fill :: i32 (size: u64)[alloc: Allocator] {
 }
 
 main :: i32 () {
-    with _ := Allocator::heap() {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
         result: i32 = fill(64)
-        c::printf("%d\n", result)
+        io::printf("%d\n", result)
     }
     return 0
 }

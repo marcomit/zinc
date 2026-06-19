@@ -1,11 +1,6 @@
-// Early return from inside a capability block.
-// The function returns before the `with` scope ends normally.
+use <std::core::mem::gpa>
+use <std::libc>
 
-use <std::core::mem>
-
-c :: foreign {
-    printf :: u0 (*char, ...)
-}
 
 allocate :: i32 (size: u64)[alloc: Allocator] {
     _ := alloc.alloc(size)
@@ -13,12 +8,13 @@ allocate :: i32 (size: u64)[alloc: Allocator] {
 }
 
 run :: i32 () {
-    with _ := Allocator::heap() {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
         return allocate(32)
     }
 }
 
 main :: i32 () {
-    c::printf("%d\n", run())
+    io::printf("%d\n", run())
     return 0
 }

@@ -3470,9 +3470,31 @@ static void genImpl(ZCodegen *ctx, ZNode *root) {
         }
         char *buf = encodeFacetVTable(facet, root->impl.base);
 
+        ZNode **facetFuncs = facet->facet.funcs;
+        usize vlen = veclen(facetFuncs);
+        LLVMValueRef vtable[vlen ? vlen : 1];
+
+        for (usize j = 0; j < vlen; j++) {
+            ZToken *fname = facetFuncs[j]->field.identifier;
+            LLVMValueRef fn = NULL;
+
+            for (usize k = 0; k < len; k++) {
+                if (tokeneq(fname, root->impl.funcs[k]->funcDef.name)) {
+                    fn = ptrs[k];
+                    break;
+                }
+            }
+            if (!fn) {
+                error(ctx->state, fname,
+                    "impl of facet '%s' is missing method '%s'", stype(facet), stoken(fname)
+                );
+            }
+            vtable[j] = fn;
+        }
+
         LLVMTypeRef ptrType     = LLVMPointerTypeInContext(ctx->ctx, 0);
-        LLVMTypeRef arrType     = LLVMArrayType2(ptrType, len);
-        LLVMValueRef val        = LLVMConstArray2(ptrType, ptrs, len);
+        LLVMTypeRef arrType     = LLVMArrayType2(ptrType, vlen);
+        LLVMValueRef val        = LLVMConstArray2(ptrType, vtable, vlen);
         LLVMValueRef globalRef  = LLVMAddGlobal(ctx->mod, arrType, buf);
 
         LLVMSetInitializer(globalRef, val);
