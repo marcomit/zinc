@@ -731,13 +731,10 @@ typedef struct ZFuncTable {
 } ZFuncTable;
 
 typedef struct ZSymTable {
-    /* Global scope used to store global symbols. */
+    /* Global scope used to store global symbols. Shared read-only across
+     * worker threads during the parallel body pass; the per-traversal cursor
+     * (current/module) lives in ZThreadSem instead. */
     ZScope          *global;
-
-    ZScope          *current;
-
-    /* Used to track the current module. */
-    ZScope          *module;
 
     /* Imagine this like an hashmap where:
      * the key is the type 
@@ -760,13 +757,6 @@ typedef struct ZSemantic {
     ZSymbol         *main;
     ZSymTable       *table;
     ZScopeTable     **scopes;
-
-    /* Set of seen symbols (by name) */
-    hashset_t       seen;    
-
-    ZType           *currentFuncRet;
-    ZNode           *currentFunc;
-    u32             loopDepth;
 } ZSemantic;
 
 /* Lexer */
@@ -798,9 +788,9 @@ bool macropatterneq(ZMacroPattern *, ZMacroPattern *);
 ZNode *makenode(ZNodeType);
 ZType *maketype(ZTypeKind);
 
-/* Semantic */
-ZType *resolveType(ZSemantic *, ZNode *);
-ZSymbol *resolve(ZSemantic *, ZToken *);
+/* Semantic  -  public entry points. The per-traversal helpers (resolveType,
+ * resolve, typesCompatible) now take the internal ZThreadSem and stay private
+ * to zsem.c. */
 ZType *resolveLiteralType(ZToken *);
 ZSemantic *zanalyze(ZState *, ZNode *);
 
@@ -812,7 +802,6 @@ void typesSort(ZType **);
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
 bool typesPrimitive(ZType *);
-ZType *typesCompatible(ZSemantic *, ZType *, ZType *);
 
 /* ================== Zinc state ================== */
 ZState *makestate();

@@ -10,21 +10,22 @@
 #define ARENA_ALIGNMENT ((usize)8)
 #define ARENA_ALIGN(size) (((size) + (ARENA_ALIGNMENT - 1)) & ~(ARENA_ALIGNMENT - 1))
 
-#define ARENA_PAGE_SIZE MiB(2)
+#define ARENA_MIN_BUCKET KiB(64)
+#define ARENA_MAX_BUCKET MiB(2)
 
-static ArenaBucket *createArenaBucket(usize requested) {
-    usize actual = requested > ARENA_PAGE_SIZE ? requested : ARENA_PAGE_SIZE;
-
-    ArenaBucket *self = malloc(sizeof(ArenaBucket) + actual);
+/* Allocate a bucket with an exact buffer size. Callers compute the size:
+ * geometric growth for default buckets, exact fit for oversized allocations. */
+static ArenaBucket *createArenaBucket(usize size) {
+    ArenaBucket *self = malloc(sizeof(ArenaBucket) + size);
     self->len = 0;
-    self->size = ARENA_PAGE_SIZE;
+    self->size = size;
     self->next = NULL;
     return self;
 }
 
 arena_t *createArena() {
     arena_t *self = malloc(sizeof(arena_t));
-    self->head = createArenaBucket(0);
+    self->head = createArenaBucket(ARENA_MIN_BUCKET);
     self->tail = self->head;
     self->scopes = NULL;
     return self;
@@ -46,7 +47,11 @@ void *arenaAlloc(arena_t *arena, usize size) {
         return ptr;
     }
 
-    ArenaBucket *next = createArenaBucket(size);
+    usize grown = arena->tail->size << 1;
+    if (grown > ARENA_MAX_BUCKET) grown = ARENA_MAX_BUCKET;
+    usize actual = size > grown ? size : grown;
+
+    ArenaBucket *next = createArenaBucket(actual);
     arena->tail->next = next;
     arena->tail = next;
     arena->tail->len = size;
