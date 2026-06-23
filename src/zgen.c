@@ -242,6 +242,7 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
     self->ctx           = LLVMContextCreate();
     self->builder       = LLVMCreateBuilderInContext(self->ctx);
 
+    self->mod           = NULL;
     self->modules       = NULL;
     self->structNames   = NULL;
     self->structTypes   = NULL;
