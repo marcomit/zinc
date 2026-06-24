@@ -2396,10 +2396,8 @@ static void matchLitPattern(
         ctx->builder, genType(ctx, type), ptr, label(ctx, pattern->tok)
     );
 
-    ZType *litType = resolveLiteralType(pattern->tok);
-
-    LLVMValueRef right = genLitTok(ctx, pattern->ident, litType);
-    right = castValue(ctx, right, litType, type);
+    LLVMValueRef right = genLitTok(ctx, pattern->ident, pattern->resolved);
+    right = castValue(ctx, right, pattern->resolved, type);
 
     LLVMValueRef cond = genEqCmp(ctx, left, right, false);
     LLVMBasicBlockRef trueBranch = makeblock(ctx, "true");

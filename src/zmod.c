@@ -6,6 +6,7 @@
 #include "zvec.h"
 #include "zcolors.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -878,13 +879,14 @@ char *readfile(char *filename) {
     return buff;
 }
 
-ZLog *vmakelog(ZLogLevel level,
-               char *filename,
-               ZToken *tok,
-               const char *src_file,
-               int src_line,
-               const char *fmt,
-               va_list args) {
+ZLog *vmakelog( ZState *state,
+                ZLogLevel level,
+                char *filename,
+                ZToken *tok,
+                const char *src_file,
+                int src_line,
+                const char *fmt,
+                va_list args) {
     ZLog *log = zalloc(ZLog);
 
     log->filename = filename;
@@ -904,81 +906,37 @@ ZLog *vmakelog(ZLogLevel level,
     if (log->message) {
         vsnprintf(log->message, (size_t)len + 1, fmt, args);
     }
+    log->phase = state->currentPhase;
+    vecpush(state->logs, log);
 
     return log;
 }
 
-void _error(ZState *state, ZToken *tok, const char *src_file,
-            int src_line, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
+static pthread_mutex_t logLock = PTHREAD_MUTEX_INITIALIZER;
 
-    ZLog *log = vmakelog(Z_ERROR,
-        state->filename,
-        tok,
-        src_file,
-        src_line,
-        fmt,
-        args);
-    log->phase = state->currentPhase;
-    vecpush(state->logs, log);
-    
-    va_end(args);
+#define LOG_FUNC(name, level)                                                   \
+void name(ZState *state, ZToken *tok, const char *src_file,                     \
+            int src_line, const char *fmt, ...) {                               \
+    pthread_mutex_lock(&logLock);                                               \
+    va_list args;                                                               \
+    va_start(args, fmt);                                                        \
+                                                                                \
+    vmakelog(state, level,                                                      \
+        state->filename,                                                        \
+        tok,                                                                    \
+        src_file,                                                               \
+        src_line,                                                               \
+        fmt,                                                                    \
+        args);                                                                  \
+                                                                                \
+    va_end(args);                                                               \
+    pthread_mutex_unlock(&logLock);                                             \
 }
 
-void _warning(ZState *state, ZToken *tok, const char *src_file,
-            int src_line, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-
-    ZLog *log = vmakelog(Z_WARNING,
-            state->filename,
-            tok, src_file,
-            src_line,
-            fmt,
-            args);
-    log->phase = state->currentPhase;
-    vecpush(state->logs, log);
-
-    va_end(args);
-}
-
-void _info(ZState *state, ZToken *tok, const char *src_file,
-            int src_line, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-
-    ZLog *log = vmakelog(Z_INFO,
-            state->filename,
-            tok,
-            src_file,
-            src_line,
-            fmt,
-            args);
-    log->phase = state->currentPhase;
-    vecpush(state->logs, log);
-
-    va_end(args);
-}
-
-/* Debug logs are printed directly. */
-void _debug(ZState *state, ZToken *tok, const char *src_file,
-            int src_line, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-
-    ZLog *log = vmakelog(Z_DEBUG,
-            state->filename,
-            tok,
-            src_file,
-            src_line,
-            fmt,
-            args);
-    log->phase = state->currentPhase;
-    vecpush(state->logs, log);
-
-    va_end(args);
-}
+LOG_FUNC(_error,    Z_ERROR)
+LOG_FUNC(_warning,  Z_WARNING)
+LOG_FUNC(_info,     Z_INFO)
+LOG_FUNC(_debug,    Z_DEBUG)
 
 static char *resolvePath(ZState *state, char *filename) {
     if (!state->filename) return filename;
@@ -1015,6 +973,8 @@ static bool fileExists(const char *path) {
     return true;
 }
 
+#define ENTRY_MODULE "/lib.zn"
+
 static char *resolveModuleFile(char *filename) {
     if (fileExists(filename)) return filename;
 
@@ -1022,9 +982,9 @@ static char *resolveModuleFile(char *filename) {
     if (n < 3 || strcmp(filename + n - 3, ".zn") != 0) return filename;
 
     usize baseLen = n - 3;
-    char *alt = malloc(baseLen + sizeof("/lib.zn"));
+    char *alt = malloc(baseLen + sizeof(ENTRY_MODULE));
     memcpy(alt, filename, baseLen);
-    memcpy(alt + baseLen, "/lib.zn", sizeof("/lib.zn"));
+    memcpy(alt + baseLen, ENTRY_MODULE, sizeof(ENTRY_MODULE));
 
     if (fileExists(alt)) return alt;
     free(alt);

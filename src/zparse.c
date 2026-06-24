@@ -1884,6 +1884,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
     }
 
     cur->tok = tok;
+    cur->resolved = NULL;
     return cur;
 }
 
