@@ -5,10 +5,12 @@
 #define ZINC_H
 
 #include "base.h"
+#include "zarena.h"
 #include "zvec.h"
 #include "zhset.h"
 #include "zmem.h"
 #include <stdatomic.h>
+#include <pthread.h>
 
 static char sep = '/';
 
@@ -52,6 +54,7 @@ typedef struct ZNode ZNode;
 typedef struct ZType ZType;
 typedef struct ZScope ZScope;
 typedef struct ZAnnotation ZAnnotation;
+typedef struct ZThreadSem ZThreadSem;
 
 typedef enum {
     Z_ERROR,
@@ -315,6 +318,8 @@ struct ZVarDestructPattern {
     int type;
     /* The start token of the pattern. */
     ZToken *tok;
+
+    ZType *resolved;
     union {
         ZToken *ident;
         ZVarDestructPattern **tuple;
@@ -745,6 +750,7 @@ typedef struct ZSymTable {
 typedef struct ZScopeTable {
     ZNode           *module;
     ZScope          *scope;
+    ZThreadSem      *ctx;
 } ZScopeTable;
 
 typedef struct ZSemantic {
@@ -758,6 +764,18 @@ typedef struct ZSemantic {
     ZSymTable       *table;
     ZScopeTable     **scopes;
 } ZSemantic;
+
+struct ZThreadSem {
+    ZSemantic   *semantic;
+    ZState      *state;
+    ZScope      *current;
+    ZScope      *module;
+    ZNode       *root;
+    arena_t     *arena;
+    ZType       *currentFuncRet;
+    ZNode       *currentFunc;
+    u16         loopDepth;
+};
 
 /* Lexer */
 ZToken **ztokenize(ZState *);
@@ -791,7 +809,6 @@ ZType *maketype(ZTypeKind);
 /* Semantic  -  public entry points. The per-traversal helpers (resolveType,
  * resolve, typesCompatible) now take the internal ZThreadSem and stay private
  * to zsem.c. */
-ZType *resolveLiteralType(ZToken *);
 ZSemantic *zanalyze(ZState *, ZNode *);
 
 /* Code generation */
