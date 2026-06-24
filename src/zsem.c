@@ -62,18 +62,21 @@ static ZType *u64Type   = NULL;
 
 static ZNode *makeNodeThread(ZThreadSem *ctx, ZNodeType type) {
     ZNode *node = arenaAlloc(ctx->arena, sizeof(ZNode));
+    *node = (ZNode){ 0 };
     node->type = type;
     return node;
 }
 
-static ZType *makeTypeThread(ZThreadSem *ctx, ZTypeKind type) {
-    ZType *node = arenaAlloc(ctx->arena, sizeof(ZType));
-    node->kind = type;
-    return node;
+static ZType *makeTypeThread(ZThreadSem *ctx, ZTypeKind kind) {
+    ZType *type = arenaAlloc(ctx->arena, sizeof(ZType));
+    *type = (ZType){ 0 };
+    type->kind = kind;
+    return type;
 }
 
 static ZToken *makeTokenThread(ZThreadSem *ctx, ZTokenType type, char *start) {
     ZToken *tok = arenaAlloc(ctx->arena, sizeof(ZToken));
+    *tok = (ZToken){ 0 };
     tok->type = type;
     tok->start = start;
     return tok;
