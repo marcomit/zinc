@@ -2603,7 +2603,7 @@ static void analyzeStmt(ZThreadSem *ctx, ZNode *curr) {
     case NODE_IF:           analyzeIf(ctx, curr);                   break;
     case NODE_WHILE:        analyzeWhile(ctx, curr);                break;
     case NODE_BLOCK:        analyzeBlock(ctx, curr, false);         break;
-    case NODE_DEFER:        resolveType(ctx, curr->deferStmt.expr); break;
+    case NODE_DEFER:        analyzeStmt(ctx, curr->deferStmt.expr); break;
     case NODE_RETURN:       analyzeReturn(ctx, curr);               break;
     case NODE_MATCH:        analyzeMatchStmt(ctx, curr);            break;
     case NODE_CAPABILITY:   analyzeCapability(ctx, curr);           break;

@@ -961,7 +961,7 @@ ZType *parseType(ZParser *parser) {
 
 static ZNode *parseDefer(ZParser *parser) {
     expect(parser, TOK_DEFER);
-    ZNode *expr = parseExpr(parser);
+    ZNode *expr = parseStmt(parser);
 
     ensure(expr, "Expected an expression after 'defer' keyword");
 
