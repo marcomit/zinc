@@ -1,0 +1,153 @@
+use <std::io::thread>
+
+libc :: foreign {
+    putchar :: i32 (i32)
+    printf  ::  u0 (*char, ...)
+}
+
+EXIT_CODE :: 27
+BOARD_LEN :: 30
+
+Cursor :: struct { }
+
+Cursor :: impl {
+    move :: u0 (x: i32, y: i32) {
+        libc::putchar(EXIT_CODE)
+        libc::printf("[%d;%dH", y, x)
+    }
+    clear :: u0 () {
+        libc::putchar(EXIT_CODE)
+        libc::printf("[2J")
+    }
+    bg :: u0 (r: u8, g: u8, b: u8) {
+        libc::putchar(EXIT_CODE)
+        libc::printf("[48;2;%d;%d;%dm", r, g, b)
+    }
+    hide :: u0 () {
+        libc::putchar(EXIT_CODE)
+        libc::printf("[?25l")
+    }
+    show :: u0 () {
+        libc::putchar(EXIT_CODE)
+        libc::printf("[?25h")
+    }
+}
+
+Board :: type []u64
+
+Board self :: impl {
+    get :: u1 (x: i32, y: i32) {
+        x = (x + BOARD_LEN) % BOARD_LEN
+        y = (y + BOARD_LEN) % BOARD_LEN
+
+        return self[y] >> x & 0b1
+    }
+    set :: u0 (x: i32, y: i32, val: u1) {
+        x = (x + BOARD_LEN) % BOARD_LEN
+        y = (y + BOARD_LEN) % BOARD_LEN
+        if val {
+            self[y]: | ((1 as u64) << x)
+        } else {
+            self[y]: & ~((1 as u64) << x)
+        }
+    }
+    draw :: u0 () {
+        i := 0
+        for i < BOARD_LEN {
+            j := 0
+            for j < BOARD_LEN {
+                if (self[i] >> j) & 0b1 {
+                    Cursor::bg(255, 255, 255)
+                } else {
+                    Cursor::bg(0, 0, 0)
+                }
+                libc::printf("  ")
+                j: + 1
+            }
+            libc::printf("\n")
+            i: + 1
+        }
+    }
+
+    neighbors :: i32 (x: i32, y: i32) {
+        res := 0
+
+        directions := [
+            -1, -1,
+            -1,  0,
+            -1,  1,
+             0, -1,
+             0,  1,
+             1, -1,
+             1,  0,
+             1,  1
+        ]
+
+        i := 0
+        for i < directions.len {
+            if self.get(x + directions[i], y + directions[i + 1]) {
+                res: + 1
+            }
+            i: + 2
+        }
+        return res
+    }
+
+    update :: u0 (next: Board) {
+        i := 0
+        for i < BOARD_LEN {
+            j := 0
+            for j < BOARD_LEN {
+                neighbors := self.neighbors(j, i)
+                val := true
+                if self.get(j, i) {
+                    if neighbors < 2 or neighbors > 3 {
+                        val = false
+                    }
+                } else {
+                    if neighbors != 3 { val = false }
+                }
+                next.set(j, i, val)
+                j: + 1
+            }
+            i: + 1
+        }
+    }
+
+    copy :: u0 (next: Board) {
+        i := 0
+        for i < BOARD_LEN {
+            self[i] = next[i]
+            i: + 1
+        }
+    }
+}
+
+main :: i32 () {
+    Cursor::hide()
+    Cursor::clear()
+    Cursor::move(0, 0)
+
+    board: Board = [64]u64
+    next:  Board = [64]u64
+
+    i := 0
+    for i < BOARD_LEN {
+        board[i] = 0
+        i: + 1
+    }
+
+    board[4] = 0b1110 << 10
+    board[5] = 0b1001 << 10
+    board[6] = 0b0110 << 10
+    for {
+        board.update(next)
+        board.copy(next)
+        board.draw()
+        Cursor::move(0, 0)
+        Thread::sleep(500)
+        
+    }
+
+    return 0
+}
