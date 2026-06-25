@@ -183,21 +183,29 @@ static u32 decodeUtf8(char **src) {
         (*src)++;
         return c;
     } else if ((c & 0xE0) == 0xC0) {
+        if (((u8)(*src)[1] & 0xC0) != 0x80) { (*src)++; return 0xFFFD; }
         u32 cp = c & 0x1F; (*src)++;
         cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
         return cp;
     } else if ((c & 0xF0) == 0xE0) {
+        if (((u8)(*src)[1] & 0xC0) != 0x80 ||
+            ((u8)(*src)[2] & 0xC0) != 0x80) { (*src)++; return 0xFFFD; }
         u32 cp = c & 0x0F; (*src)++;
         cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
         cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
         return cp;
-    } else {
+    } else if ((c & 0xF8) == 0xF0) {
+        if (((u8)(*src)[1] & 0xC0) != 0x80 ||
+            ((u8)(*src)[2] & 0xC0) != 0x80 ||
+            ((u8)(*src)[3] & 0xC0) != 0x80) { (*src)++; return 0xFFFD; }
         u32 cp = c & 0x07; (*src)++;
         cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
         cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
         cp = (cp << 6) | ((u8)**src & 0x3F); (*src)++;
         return cp;
     }
+    (*src)++;
+    return 0xFFFD;
 }
 
 static u32 decodeHexCode(ZLexer *l, char **src, int len) {
@@ -408,6 +416,10 @@ static ZToken *parseNumber(ZLexer *l) {
 		isFloat = true;
 		next(l);  // consume 'e' or 'E'
 		if (*l->current == '+' || *l->current == '-') next(l);
+		if (!isdigit(*l->current)) {
+			error(l->state, veclast(l->tokens), "Expected exponent digits");
+			return NULL;
+		}
 		while (isdigit(*l->current)) next(l);
 	}
 
@@ -461,12 +473,13 @@ static void skipMultilineComments(ZLexer *l) {
 	if (*l->current != '/' || *(l->current + 1) != '*') return;
 
 	next(l); next(l);
-	while (l->current && l->current + 1) {
+	while (*l->current && l->current + 1) {
 		if (*l->current == '*' && *(l->current + 1) == '/') break;
 		next(l);
 	}
 	if (!l->current[0] || !l->current[1]) {
 		error(l->state, veclast(l->tokens), "Unterminated multiline comment");
+		return;
 	}
 
 	next(l); next(l);

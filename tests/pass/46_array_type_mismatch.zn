@@ -1,0 +1,8 @@
+foreign printf :: u0 (*char, ...)
+
+main :: i32 () {
+    arr: [5]i32 = [1, 2]
+    arr[4] = 1
+    printf("%d %d %d\n", arr[0], arr[1], arr[4])
+    return 0
+}

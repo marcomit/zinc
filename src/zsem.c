@@ -93,10 +93,10 @@ static ZScope *makescope(arena_t *arena, ZScope *parent, ZNode *node) {
     return self;
 }
 
-static ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root) {
+static ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root, arena_t *arena) {
     ZThreadSem *self        = zalloc(ZThreadSem);
 
-    self->arena             = createArena();
+    self->arena             = arena;
     self->currentFunc       = NULL;
     self->currentFuncRet    = NULL;
     self->loopDepth         = 0;
@@ -579,6 +579,10 @@ static void registerModule(ZThreadSem *ctx, ZNode *module) {
      * so a module can resolve names from the scope that pulled it in. */
     table->scope = makescope(allocator.ctx, ctx->current, module);
 
+    ZModuleAllocator *m = zalloc(ZModuleAllocator);
+    m->module = module;
+    m->allocator = createArena();
+    vecpush(ctx->state->modules, m);
     vecpush(ctx->semantic->scopes, table);
     scope = table->scope;
 
@@ -798,8 +802,8 @@ bool typesPrimitive(ZType *t) {
 }
 
 int compareTypes(const void *a, const void *b) {
-    ZType *typeA = (ZType *)a;
-    ZType *typeB = (ZType *)b;
+    ZType *typeA = *(ZType * const *)a;
+    ZType *typeB = *(ZType * const *)b;
 
     int sizeA = (int)typeSize(typeA) << 2;
     int sizeB = (int)typeSize(typeB) << 2;
@@ -1581,7 +1585,6 @@ static bool hasOverloadAnnotation(
             );
         } else if (annotation->args[0]->name->type == op) {
             annotation->used = true;
-            printf("used %s\n", stoken(annotation->name));
             return true;
         }
     }
@@ -2173,9 +2176,9 @@ static void analyzeVar(ZThreadSem *ctx, ZNode *curr, bool isGlobal) {
 
     if (curr->resolved) {
         declaredType = resolveTypeRef(ctx, curr->resolved);
-        curr->resolved = declaredType;
+        ZType *promoted = typesCompatible(ctx, declaredType, rvalueType);
         if (rvalueType &&
-            !typesCompatible(ctx, declaredType, rvalueType)) {
+            !promoted) {
 
             if (declaredType->kind == Z_TYPE_FACET) {
                 if (!satisfyFacet(ctx, rvalueType, declaredType)) {
@@ -2198,6 +2201,17 @@ static void analyzeVar(ZThreadSem *ctx, ZNode *curr, bool isGlobal) {
     curr->resolved = declaredType;
 
     if (curr->varDecl.rvalue && rvalueType && declaredType &&
+            declaredType->kind == Z_TYPE_ARRAY &&
+            declaredType->array.size > 0 &&
+            rvalueType->kind == Z_TYPE_ARRAY) {
+        if (rvalueType->array.size > declaredType->array.size) {
+            error(ctx->state, curr->varDecl.rvalue->tok,
+                "'%s' is larger than '%s'",
+                stype(rvalueType), stype(declaredType)
+            );
+        }
+        rvalueType->array.size = declaredType->array.size;
+    } else if (curr->varDecl.rvalue && rvalueType && declaredType &&
             declaredType->kind == Z_TYPE_SUM) {
         curr->varDecl.rvalue = coerceToSum(ctx, curr->varDecl.rvalue, declaredType);
     } else if (curr->varDecl.rvalue && rvalueType &&
@@ -2987,7 +3001,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     if (!u1Type)    u1Type  = makePrimitiveType(TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType(TOK_U64);
 
-    ZThreadSem *first = makethreadsem(ctx, ctx->table->global, root);
+    ZThreadSem *first = makethreadsem(ctx, ctx->table->global, root, allocator.ctx);
     registerModule(first, root);
     discoverGlobalScope(first, root);
 
@@ -2997,7 +3011,9 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
 
     for (usize i = 0; i < modules; i++) {
         ZScopeTable *entry  = ctx->scopes[i];
-        ZThreadSem  *sem    = makethreadsem(ctx, entry->scope, entry->module);
+        ZThreadSem  *sem    = makethreadsem(
+            ctx, entry->scope, entry->module, ctx->state->modules[i]->allocator
+        );
         entry->ctx          = sem;
         pthread_create(threads + i, NULL, worker, sem);
     }

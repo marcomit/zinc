@@ -94,33 +94,41 @@ typedef enum {
 } ZEmitMode;
 
 typedef struct {
-    char        *output;
-    ZLog        **logs;
-    ZPhase      currentPhase;
-    char        *currentPath;
-    char        *filename;
-    char        *homePath;
+    ZNode   *module;
+    arena_t *allocator;
+} ZModuleAllocator;
 
-    char        **pathFiles;
-    char        **visitedFiles;
-    bool        canAdvance;
-
-    bool        debug;
-
-    bool        unusedVar;
-    bool        unusedFunc;
-    bool        unusedStruct;
-
-    bool        skipLLVMValidation;
-    bool        verbose;
-
-    char        optimizationLevel;
-    ZLTOMode    ltoMode;
-    ZEmitMode   emit;
-    ZNode       *root;
+typedef struct {
+    char            *output;
+    ZLog            **logs;
+    ZPhase          currentPhase;
+    char            *currentPath;
+    char            *filename;
+    char            *homePath;
+                    
+    char            **pathFiles;
+    char            **visitedFiles;
+    bool            canAdvance;
+                    
+    bool            debug;
+                    
+    bool            unusedVar;
+    bool            unusedFunc;
+    bool            unusedStruct;
+                    
+    bool            skipLLVMValidation;
+    bool            verbose;
+                    
+    char            optimizationLevel;
+    ZLTOMode        ltoMode;
+    ZEmitMode       emit;
+    ZNode           *root;
 
     /* Extra arguments should be passed in the linker. */
-    char        **extraArgs;
+    char            **extraArgs;
+
+    arena_t         *globalAllocator;
+    ZModuleAllocator **modules;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -812,7 +820,7 @@ ZType *maketype(ZTypeKind);
 ZSemantic *zanalyze(ZState *, ZNode *);
 
 /* Code generation */
-void zcompile(ZState *, ZNode *, const char *output, ZSemantic *);
+void zcompile(ZState *, ZNode *, const char *output);
 
 usize typeSize(ZType *);
 void typesSort(ZType **);
