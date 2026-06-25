@@ -859,6 +859,7 @@ ZState *makestate() {
     self->optimizationLevel     = '2';
     self->ltoMode               = Z_LTO_OFF;
     self->extraArgs             = NULL;
+    self->modules               = NULL;
 
     return self;
 }
@@ -945,8 +946,10 @@ static char *resolvePath(ZState *state, char *filename) {
     if (filename[0] && filename[1] == ':' && (filename[2] == '/' || filename[2] == '\\')) return filename;
 
     
-    char path[256] = { 0 };
-    strncpy(path, state->filename, 256);
+    usize len = strlen(state->filename);
+    char *path = znalloc(char, len+1);
+    strncpy(path, state->filename, len);
+    path[len] = '\0';
 
     char *dir = dirname(path);
     char *out = NULL;

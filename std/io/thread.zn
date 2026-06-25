@@ -2,7 +2,7 @@ use <std::mem>
 
 pthread_t :: type u64
 
-ThreadFunc :: type *u8 (*u8)
+pub ThreadFunc :: type *u8 (*u8)
 
 timespec :: struct {
     tv_sec: i64

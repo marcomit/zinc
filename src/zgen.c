@@ -79,9 +79,7 @@ typedef struct {
     LLVMModuleRef   mod;
 
     LLVMBuilderRef  builder;
-    ZSemantic       *semantic;
     ZState          *state;
-    ZScope          *current;
 
     ZLLVMScope      *scope;
 
@@ -223,7 +221,6 @@ static void beginModule(ZCodegen *ctx, ZNode *node) {
         );
     }
     vecpush(ctx->modules, prev);
-    ctx->current = node->module.scope;
 }
 
 static void endModule(ZCodegen *ctx) {
@@ -237,7 +234,7 @@ static void endModule(ZCodegen *ctx) {
     if (prev) ctx->mod = prev;
 }
 
-ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
+ZCodegen *makecodegen(ZState *state) {
     ZCodegen *self      = zalloc(ZCodegen);
     self->ctx           = LLVMContextCreate();
     self->builder       = LLVMCreateBuilderInContext(self->ctx);
@@ -248,7 +245,6 @@ ZCodegen *makecodegen(ZState *state, ZSemantic *semantic) {
     self->structTypes   = NULL;
     self->scope         = makescope(Z_SCOPE_GLOB, NULL);
     self->state         = state;
-    self->semantic      = semantic;
     self->count         = 0;
     self->str           = NULL;
     vecunion(self->str, "        ", 9);
@@ -1082,6 +1078,9 @@ static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
     }
 
     LLVMTypeRef elemType = genType(ctx, node->resolved->array.base);
+    if (node->resolved->array.size > veclen(node->arraylit)) {
+        LLVMBuildStore(ctx->builder, LLVMConstNull(stack->elemType), stack->elem);
+    }
 
     for (usize i = 0; i < veclen(node->arraylit); i++) {
         LLVMValueRef indices[] = {
@@ -1110,7 +1109,7 @@ static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
     }
 
     storeArray(
-        ctx, stack, LLVMConstInt(i64Type, veclen(node->arraylit), false)
+        ctx, stack, LLVMConstInt(i64Type, node->resolved->array.size, false)
     );
     
     return stack->stack;
@@ -3129,11 +3128,11 @@ static void buildNestedFuncVar(
  * - One for the metadata {len + ptr} (saved in stack)
  * - One for the items (saved in elem)
  * */
-static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
+static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, bool force) {
     if (!node) {
         error(ctx->state, NULL, "'buildFuncVar' called with a null node");
         return NULL;
-    } else if (!node->resolved) {
+    } else if (!node->resolved || !overrided) {
         error(ctx->state, node->tok,
                 "Missing resolved type for node %d", node->type);
         return NULL;
@@ -3155,7 +3154,7 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, bool force) {
         stackPointer = elem;
     }
 
-    LLVMTypeRef type = genType(ctx, node->resolved);
+    LLVMTypeRef type = genType(ctx, overrided);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
     addFuncVar(ctx, val, elem, type, elemType, node);
 
@@ -3181,28 +3180,28 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->returnStmt.expr);
         break;
     case NODE_TUPLE_LIT:
-        buildFuncVar(ctx, node, false);
+        buildFuncVar(ctx, node, node->resolved, false);
         for (usize i = 0; i < veclen(node->tuplelit); i++) {
             genFuncVars(ctx, node->tuplelit[i]);
         }
         break;
     case NODE_STRUCT_LIT:
-        buildFuncVar(ctx, node, false);
+        buildFuncVar(ctx, node, node->resolved, false);
         break;
     case NODE_ENUM_LIT:
-        buildFuncVar(ctx, node, false);
+        buildFuncVar(ctx, node, node->resolved, false);
     case NODE_CAST:
         if (node->resolved &&
                 (node->resolved->kind == Z_TYPE_SUM ||
                  node->resolved->kind == Z_TYPE_FACET))
-            buildFuncVar(ctx, node, false);
+            buildFuncVar(ctx, node, node->resolved, false);
         genFuncVars(ctx, node->castExpr.expr);
         break;
     case NODE_ARRAY_LIT:
-        buildFuncVar(ctx, node, false);
+        buildFuncVar(ctx, node, node->resolved, false);
         break;
     case NODE_ARRAY_INIT:
-        buildFuncVar(ctx, node, false);
+        buildFuncVar(ctx, node, node->resolved, false);
         break;
     case NODE_MEMBER:
         genFuncVars(ctx, node->memberAccess.object);
@@ -3221,7 +3220,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         break;
     case NODE_IF:
         if (node->resolved && node->resolved->kind == Z_TYPE_SUM) {
-            buildFuncVar(ctx, node, false);
+            buildFuncVar(ctx, node, node->resolved, false);
         }
         genFuncVars(ctx, node->ifStmt.cond);
         genFuncVars(ctx, node->ifStmt.body);
@@ -3235,7 +3234,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->unary.operand);
         break;
     case NODE_VAR_DECL: {
-        LLVMValueRef ptr = buildFuncVar(ctx, node->varDecl.rvalue, true);
+        LLVMValueRef ptr = buildFuncVar(ctx, node->varDecl.rvalue, node->resolved, true);
         putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
         genFuncVars(ctx, node->varDecl.rvalue);
         break;
@@ -3247,13 +3246,13 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         }
         genFuncVars(ctx, node->call.callee);
         if (!typesPrimitive(node->resolved)) {
-            buildFuncVar(ctx, node, false);
+            buildFuncVar(ctx, node, node->resolved, false);
         }
         for (usize i = 0; i < veclen(node->call.args); i++) {
             ZNode *arg = node->call.args[i];
             genFuncVars(ctx, arg);
             if (!typesPrimitive(arg->resolved) && !getStackValue(ctx, arg)) {
-                buildFuncVar(ctx, arg, false);
+                buildFuncVar(ctx, arg, arg->resolved, false);
             }
         }
         break;
@@ -3326,33 +3325,34 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
 
     i32 inl = hasAnnotation(annotations, "inline");
 
-    if (inl != -1) {
-        ZAnnotation *annotation = annotations[inl];
+    if (inl == -1) goto cold;
 
-        usize argLen = veclen(annotation->args);
-        if (argLen == 0) {
-            LLVMAddFuncAttribute(ctx, func, "inlinehint");
-        } else if (argLen == 1) {
-            const char *arg = annotation->args[0]->name->str;
+    ZAnnotation *annotation = annotations[inl];
 
-            if (strcmp(arg, "always") == 0) {
-                LLVMAddFuncAttribute(ctx, func, "alwaysinline");
-            } else if (strcmp(arg, "never") == 0) {
-                LLVMAddFuncAttribute(ctx, func, "noinline");
-            } else {
-                error(ctx->state,
-                    annotation->name,
-                    "inline supports only 'never', 'always' as arguments"
-                );
-            }
+    usize argLen = veclen(annotation->args);
+    if (argLen == 0) {
+        LLVMAddFuncAttribute(ctx, func, "inlinehint");
+    } else if (argLen == 1) {
+        const char *arg = annotation->args[0]->name->str;
+
+        if (strcmp(arg, "always") == 0) {
+            LLVMAddFuncAttribute(ctx, func, "alwaysinline");
+        } else if (strcmp(arg, "never") == 0) {
+            LLVMAddFuncAttribute(ctx, func, "noinline");
         } else {
             error(ctx->state,
                 annotation->name,
-                "inline annotation expects 0 or 1 arguments"
+                "inline supports only 'never', 'always' as arguments"
             );
         }
+    } else {
+        error(ctx->state,
+            annotation->name,
+            "inline annotation expects 0 or 1 arguments"
+        );
     }
 
+cold:
     if (hasAnnotation(annotations, "cold") != -1) {
         LLVMAddFuncAttribute(ctx, func, "cold");
     }
@@ -3685,8 +3685,8 @@ static void freeCodegen(ZCodegen *ctx) {
     LLVMContextDispose(ctx->ctx);
 }
 
-void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semantic) {
-    ZCodegen *ctx = makecodegen(state, semantic);
+void zcompile(ZState *state, ZNode *root, const char *output) {
+    ZCodegen *ctx = makecodegen(state);
     initNativeTypes(ctx);
     compile(ctx, root);
 
@@ -3717,7 +3717,6 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
         return;
     }
 
-    const char *objfile = (state->ltoMode != Z_LTO_OFF) ? "output.bc" : "output.o";
     if (state->emit == Z_EMIT_OBJ) {
         const char *out = output ? output : "output.o";
         if (emitObjectFile(ctx, out, LLVMObjectFile))
@@ -3726,12 +3725,24 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
         return;
     }
 
+    const char *outname = output ? output : "a.out";
+    const char *objext = (state->ltoMode != Z_LTO_OFF) ? ".tmp.bc" : ".tmp.o";
+    size_t objnameLen = strlen(outname) + strlen(objext) + 1;
+    char *objfileBuf = malloc(objnameLen);
+    if (!objfileBuf) {
+        error(state, NULL, "Failed to allocate temporary object filename");
+        freeCodegen(ctx);
+        return;
+    }
+    snprintf(objfileBuf, objnameLen, "%s%s", outname, objext);
+    const char *objfile = objfileBuf;
+
     if (!emitObjectFile(ctx, objfile, LLVMObjectFile)) {
+        free(objfileBuf);
         freeCodegen(ctx);
         return;
     }
 
-    const char *outname = output ? output : "a.out";
 #ifdef _WIN32
     /* The PE linker uses the exact name given; ensure .exe extension. */
     char *outname_buf = NULL;
@@ -3758,6 +3769,7 @@ void zcompile(ZState *state, ZNode *root, const char *output, ZSemantic *semanti
 #endif
 
     remove(objfile);
+    free(objfileBuf);
 
     freeCodegen(ctx);
 }
