@@ -25,6 +25,7 @@
 #include <llvm-c/Error.h>
 #include <llvm-c/Linker.h>
 #include <llvm-c/IRReader.h>
+#include <llvm-c/BitReader.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
 typedef struct ZLLVMSymbol {
@@ -3704,14 +3705,15 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
     LLVMModuleRef module    = LLVMModuleCreateWithNameInContext(
         output ? output : "a.out", ctx);
 
-    for (usize i = 0; i < veclen(gens); i++) {
+    for (usize i = 0; i < veclen(state->modules); i++) {
         if (!gens[i]->mod) continue;
 
         LLVMMemoryBufferRef buf = LLVMWriteBitcodeToMemoryBuffer(gens[i]->mod);
         LLVMModuleRef imported  = NULL;
         char *parseErr          = NULL;
 
-        if (LLVMParseIRInContext(ctx, buf, &imported, &parseErr)) {
+        if (LLVMParseBitcodeInContext2(ctx, buf, &imported)) {
+        // if (LLVMParseIRInContext(ctx, buf, &imported, &parseErr)) {
             error(state, NULL, "[LLVM: Import of module failed] %s", parseErr);
             LLVMDisposeErrorMessage(parseErr);
             continue;
@@ -3734,16 +3736,17 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
 
 static ZCodegen *compileModules(ZState *state) {
     usize len           = veclen(state->modules);
+    
     ZCodegen **gens     = znalloc(ZCodegen *, len);
-    // pthread_t *threads  = znalloc(pthread_t, len);
+    pthread_t *threads  = znalloc(pthread_t, len);
 
     for (usize i = 0; i < len; i++) {
         gens[i] = makecodegen(state, state->modules[i]);
-        // pthread_create(threads + i, NULL, compileModule, gens[i]);
+        pthread_create(threads + i, NULL, compileModule, gens[i]);
         compileModule(gens[i]);
     }
 
-    // for (usize i = 0; i < len; i++) pthread_join(threads[i], NULL);
+    for (usize i = 0; i < len; i++) pthread_join(threads[i], NULL);
 
     return mergeModules(state, gens, state->output);
 }
@@ -3753,7 +3756,12 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 
     ZCodegen *ctx = compileModules(state);
 
+    if (!LLVMGetNamedFunction(ctx->mod, "main")) {
+        error(state, NULL, "[LLVM: function main not registered]");
+    }
+
     char *errmsg = NULL;
+
     if (!state->skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
         error(state, NULL, "LLVM: %s", errmsg);
         LLVMDisposeMessage(errmsg);

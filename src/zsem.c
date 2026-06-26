@@ -2736,6 +2736,8 @@ static void putImpl(ZThreadSem *ctx, ZNode *node) {
 /* ================== Global scope discovery ================== */
 
 static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
+    ZScope *saved = ctx->current;
+    registerModule(ctx, root);
     for (usize i = 0; i < veclen(root->module.root); i++) {
         ZNode *child = root->module.root[i];
 
@@ -2767,16 +2769,17 @@ static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
                 /* Save/restore the cursor around the nested module via the
                  * call stack so registration returns to the enclosing module
                  * regardless of nesting depth. */
-                ZScope *saved = ctx->current;
-                registerModule(ctx, child);
+                // ZScope *saved = ctx->current;
+                // registerModule(ctx, child);
                 discoverGlobalScope(ctx, child);
-                ctx->current = saved;
+                // ctx->current = saved;
             }
             break;
 
         default: break;
         }
     }
+    ctx->current = saved;
 }
 
 static void _checkEmbedFieldConflicts(
@@ -3001,8 +3004,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     if (!u1Type)    u1Type  = makePrimitiveType(TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType(TOK_U64);
 
-    ZThreadSem *first = makethreadsem(ctx, ctx->table->global, root, allocator.ctx);
-    registerModule(first, root);
+    ZThreadSem *first = makethreadsem(ctx, ctx->table->global, root, createArena());
     discoverGlobalScope(first, root);
 
     usize modules = veclen(ctx->scopes);
