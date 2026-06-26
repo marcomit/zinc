@@ -194,12 +194,12 @@ int pipeline(ZState *state) {
     ZNode *root = zparse(state, tokens);
 
     if (!canAdvance(state)) return 3;
-    ZSemantic *semantic = zanalyze(state, root);
+    zanalyze(state, root);
 
     if (state->debug) printNode(root, 0);
 
     if (!canAdvance(state)) return 4;
-    zcompile(state, root, state->output, semantic);
+    zcompile(state, root, state->output);
 
     if (!canAdvance(state)) return 5;
 

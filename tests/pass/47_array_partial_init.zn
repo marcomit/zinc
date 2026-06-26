@@ -1,0 +1,7 @@
+foreign printf :: u0 (*char, ...)
+
+main :: i32 () {
+    xs: [5]i32 = [1, 2]
+    printf("%llu %d %d %d\n", xs.len, xs[0], xs[1], xs[4])
+    return 0
+}
