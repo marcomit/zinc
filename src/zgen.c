@@ -110,15 +110,16 @@ static LLVMValueRef genStructLitInto(ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
 
 /* ========== Native types ==========*/
-static LLVMTypeRef i0Type   = NULL;
-static LLVMTypeRef i1Type   = NULL;
-static LLVMTypeRef i8Type   = NULL;
-static LLVMTypeRef i16Type  = NULL;
-static LLVMTypeRef i32Type  = NULL;
-static LLVMTypeRef i64Type  = NULL;
 
-static LLVMTypeRef f32Type  = NULL;
-static LLVMTypeRef f64Type  = NULL;
+static _Thread_local LLVMTypeRef i0Type   = NULL;
+static _Thread_local LLVMTypeRef i1Type   = NULL;
+static _Thread_local LLVMTypeRef i8Type   = NULL;
+static _Thread_local LLVMTypeRef i16Type  = NULL;
+static _Thread_local LLVMTypeRef i32Type  = NULL;
+static _Thread_local LLVMTypeRef i64Type  = NULL;
+
+static _Thread_local LLVMTypeRef f32Type  = NULL;
+static _Thread_local LLVMTypeRef f64Type  = NULL;
 
 static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {
     ZLLVMSymbol *self = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMSymbol));
@@ -134,6 +135,7 @@ static ZLLVMScope *makescope(ZCodegen *ctx, int type, ZLLVMScope *parent) {
     self->stackAlloca   = NULL;
     self->defers        = NULL;
     self->type          = type;
+
     return self;
 }
 
@@ -490,7 +492,7 @@ static LLVMTypeRef genStructType(ZCodegen *ctx, ZType *type) {
     putStructInCache(ctx, (char *)name, structType);
 
     usize nfields           = veclen(type->strct.fields);
-    LLVMTypeRef ftypes[nfields];
+    LLVMTypeRef *ftypes     = znalloc(LLVMTypeRef, nfields);
 
     for (usize i = 0; i < veclen(type->strct.fields); i++) {
         ZType *ft = type->strct.fields[i]->resolved;
@@ -3327,7 +3329,14 @@ static void LLVMAddFuncAttribute(ZCodegen *ctx,
 
 static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
     ZAnnotation **annotations = f->funcDef.annotations;
-    if (f->funcDef.pub) LLVMSetLinkage(func, LLVMExternalLinkage);
+
+    if (strcmp(f->funcDef.mangled, "main") == 0) {
+        LLVMSetLinkage(func, LLVMExternalLinkage);
+    } else if (f->funcDef.pub) {
+        LLVMSetLinkage(func, LLVMWeakODRLinkage);
+    } else {
+        LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
+    }
 
     i32 inl = hasAnnotation(annotations, "inline");
 
@@ -3394,8 +3403,9 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     LLVMTypeRef funcType    = LLVMFunctionType(ret, args, veclen(args), false);
     LLVMValueRef func       = LLVMGetNamedFunction(ctx->mod, f->funcDef.mangled);
-    if (!func)
+    if (!func) {
         func = LLVMAddFunction(ctx->mod, f->funcDef.mangled, funcType);
+    }
     ctx->currentFunc        = func;
     ctx->currentFuncNode    = f;
 
@@ -3504,7 +3514,7 @@ static void genImpl(ZCodegen *ctx, ZNode *root) {
 
         LLVMSetInitializer(globalRef, val);
         LLVMSetAlignment(globalRef, 16);
-        LLVMSetLinkage(globalRef, LLVMExternalLinkage);
+        LLVMSetLinkage(globalRef, LLVMLinkOnceODRLinkage);
 
         putLLVMValueRef(ctx, buf, globalRef);
     }
@@ -3525,21 +3535,8 @@ static void compile(ZCodegen *ctx, ZNode *root) {
     case NODE_MACRO:        /* Doesn't generate anything. */    break;
     case NODE_IMPL:         genImpl     (ctx, root);            break;
     case NODE_MODULE:
-        // beginModule(ctx, root);
-        /* Pass 1: emit all struct/enum LLVM types so forward declarations
-         * can reference them without hitting getCachedStruct misses. */
-        for (usize i = 0; i < veclen(root->module.root); i++) {
-            ZNode *child = root->module.root[i];
-            if (child->type == NODE_STRUCT || child->type == NODE_ENUM)
-                genType(ctx, child->resolved);
-            else if (child->type == NODE_FACET)
-                genFacetDecl(ctx, child->resolved);
-        }
-        /* Pass 2: emit forward declarations for every function so
-         * out-of-order and mutually-recursive calls resolve correctly. */
-        // for (usize i = 0; i < veclen(root->module.root); i++)
-        //     genForwardDecl(ctx, root->module.root[i]);
-        /* Pass 3: emit function bodies and remaining declarations. */
+        for (usize i = 0; i < veclen(root->module.root); i++)
+            genForwardDecl(ctx, root->module.root[i]);
         for (usize i = 0; i < veclen(root->module.root); i++)
             compile(ctx, root->module.root[i]);
         break;
@@ -3737,13 +3734,13 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
 static ZCodegen *compileModules(ZState *state) {
     usize len           = veclen(state->modules);
     
-    ZCodegen **gens     = znalloc(ZCodegen *, len);
+    ZCodegen **gens     = NULL;
     pthread_t *threads  = znalloc(pthread_t, len);
 
     for (usize i = 0; i < len; i++) {
-        gens[i] = makecodegen(state, state->modules[i]);
-        pthread_create(threads + i, NULL, compileModule, gens[i]);
-        compileModule(gens[i]);
+        ZCodegen *gen = makecodegen(state, state->modules[i]);
+        pthread_create(threads + i, NULL, compileModule, gen);
+        vecpush(gens, gen);
     }
 
     for (usize i = 0; i < len; i++) pthread_join(threads[i], NULL);
