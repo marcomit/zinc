@@ -152,8 +152,9 @@ bool tokeneq(ZToken *a, ZToken *b) {
 }
 
 static void addToken(ZLexer *l, ZToken *token) {
-	token->row = l->row;
-	token->col = l->col;
+	token->row      = l->row;
+	token->col      = l->col;
+    token->filename = l->state->filename;
 	vecpush(l->tokens, token);
 }
 

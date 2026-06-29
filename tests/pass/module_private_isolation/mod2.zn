@@ -1,0 +1,10 @@
+foreign printf :: u0 (*char, ...)
+
+// Same name as the private test in test.zn; must not collide with it.
+test :: u0 () {
+    printf("mod2\n")
+}
+
+pub mod2 :: u0 () {
+    test()
+}

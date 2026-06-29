@@ -55,8 +55,7 @@ compile() {
 
 run_pass_test() {
     local src="$1"
-    local name
-    name=$(basename "$src" .zn)
+    local name="${2:-$(basename "$src" .zn)}"
     local expected="${src%.zn}.expected"
     local bin="$TMP_DIR/${name}${EXE_EXT}"
     local compile_log="$TMP_DIR/${name}.compile.log"
@@ -106,8 +105,7 @@ run_pass_test() {
 
 run_fail_test() {
     local src="$1"
-    local name
-    name=$(basename "$src" .zn)
+    local name="${2:-$(basename "$src" .zn)}"
     local bin="$TMP_DIR/${name}${EXE_EXT}"
     local compile_log="$TMP_DIR/${name}.compile.log"
 
@@ -127,8 +125,7 @@ run_fail_test() {
 
 run_xfail_test() {
     local src="$1"
-    local name
-    name=$(basename "$src" .zn)
+    local name="${2:-$(basename "$src" .zn)}"
     local expected="${src%.zn}.expected"
     local bin="$TMP_DIR/${name}${EXE_EXT}"
     local compile_log="$TMP_DIR/${name}.compile.log"
@@ -190,39 +187,74 @@ echo -e "${BOLD}Zinc test suite${NC}  (zinc: $ZINC)"
 [ -n "$TEST_FILTER" ] && echo -e "  filter: tests starting with ${BOLD}${TEST_FILTER}${NC}"
 echo ""
 
-if [ -d "$PASS_DIR" ] && compgen -G "$PASS_DIR/*.zn" > /dev/null 2>&1; then
+if [ -d "$PASS_DIR" ]; then
     ran=0
-    for f in "$PASS_DIR"/*.zn; do
-        name=$(basename "$f")
-        [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
-        [ "$ran" -eq 0 ] && echo -e "${BOLD}Pass tests${NC}"
-        ran=1
-        run_pass_test "$f"
-    done
+    if compgen -G "$PASS_DIR/*.zn" > /dev/null 2>&1; then
+        for f in "$PASS_DIR"/*.zn; do
+            name=$(basename "$f")
+            [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+            [ "$ran" -eq 0 ] && echo -e "${BOLD}Pass tests${NC}"
+            ran=1
+            run_pass_test "$f"
+        done
+    fi
+    # Directory-based tests: <name>/test.zn (entry) + <name>/test.expected,
+    # with sibling .zn files acting as importable modules.
+    if compgen -G "$PASS_DIR/*/test.zn" > /dev/null 2>&1; then
+        for f in "$PASS_DIR"/*/test.zn; do
+            name=$(basename "$(dirname "$f")")
+            [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+            [ "$ran" -eq 0 ] && echo -e "${BOLD}Pass tests${NC}"
+            ran=1
+            run_pass_test "$f" "$name"
+        done
+    fi
     [ "$ran" -eq 1 ] && echo ""
 fi
 
-if [ -d "$FAIL_DIR" ] && compgen -G "$FAIL_DIR/*.zn" > /dev/null 2>&1; then
+if [ -d "$FAIL_DIR" ]; then
     ran=0
-    for f in "$FAIL_DIR"/*.zn; do
-        name=$(basename "$f")
-        [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
-        [ "$ran" -eq 0 ] && echo -e "${BOLD}Fail tests${NC}  (compiler must reject these)"
-        ran=1
-        run_fail_test "$f"
-    done
+    if compgen -G "$FAIL_DIR/*.zn" > /dev/null 2>&1; then
+        for f in "$FAIL_DIR"/*.zn; do
+            name=$(basename "$f")
+            [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+            [ "$ran" -eq 0 ] && echo -e "${BOLD}Fail tests${NC}  (compiler must reject these)"
+            ran=1
+            run_fail_test "$f"
+        done
+    fi
+    if compgen -G "$FAIL_DIR/*/test.zn" > /dev/null 2>&1; then
+        for f in "$FAIL_DIR"/*/test.zn; do
+            name=$(basename "$(dirname "$f")")
+            [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+            [ "$ran" -eq 0 ] && echo -e "${BOLD}Fail tests${NC}  (compiler must reject these)"
+            ran=1
+            run_fail_test "$f" "$name"
+        done
+    fi
     [ "$ran" -eq 1 ] && echo ""
 fi
 
-if [ -d "$XFAIL_DIR" ] && compgen -G "$XFAIL_DIR/*.zn" > /dev/null 2>&1; then
+if [ -d "$XFAIL_DIR" ]; then
     ran=0
-    for f in "$XFAIL_DIR"/*.zn; do
-        name=$(basename "$f")
-        [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
-        [ "$ran" -eq 0 ] && echo -e "${BOLD}Expected failures${NC}  (unimplemented features)"
-        ran=1
-        run_xfail_test "$f"
-    done
+    if compgen -G "$XFAIL_DIR/*.zn" > /dev/null 2>&1; then
+        for f in "$XFAIL_DIR"/*.zn; do
+            name=$(basename "$f")
+            [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+            [ "$ran" -eq 0 ] && echo -e "${BOLD}Expected failures${NC}  (unimplemented features)"
+            ran=1
+            run_xfail_test "$f"
+        done
+    fi
+    if compgen -G "$XFAIL_DIR/*/test.zn" > /dev/null 2>&1; then
+        for f in "$XFAIL_DIR"/*/test.zn; do
+            name=$(basename "$(dirname "$f")")
+            [ -n "$TEST_FILTER" ] && [[ "$name" != ${TEST_FILTER}_* ]] && continue
+            [ "$ran" -eq 0 ] && echo -e "${BOLD}Expected failures${NC}  (unimplemented features)"
+            ran=1
+            run_xfail_test "$f" "$name"
+        done
+    fi
     [ "$ran" -eq 1 ] && echo ""
 fi
 

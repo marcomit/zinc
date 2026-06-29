@@ -43,6 +43,11 @@
     res;                                                                        \
 })
 
+#define sinchronize(parser, type) if (!check(parser, type))                     \
+    while (canPeek(parser) && !check(parser, type)) consume(parser);            \
+
+
+
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType                            (ZParser *);
@@ -370,9 +375,9 @@ static ZNode *parsePrimary(ZParser *parser) {
             consume(parser);
             node->staticAccess.prop = consume(parser);
 
-            ZToken *segments[] = {
-                node->staticAccess.base,
-                node->staticAccess.prop,
+            char *segments[] = {
+                node->staticAccess.base->str,
+                node->staticAccess.prop->str,
                 NULL
             };
 
@@ -1120,9 +1125,7 @@ static ZNode *parseBlock(ZParser *parser) {
     } while (stmt);
 
     if (!check(parser, TOK_RBRACKET)) {
-        error(parser->state, peek(parser), "A statement cannot be parsed");
-        while (canPeek(parser) && !check(parser, TOK_RBRACKET)) consume(parser);
-
+        sinchronize(parser, TOK_RBRACKET);
         ensure(canPeek(parser), "Expected a '}' to close the block");
     }
 
@@ -1756,6 +1759,13 @@ static ZNode *parseFuncDecl(ZParser *parser,
     for (usize i = 0; i < veclen(capabilities); i++)
         vecpush(func->func.capabilities, capabilities[i]->field.type);
 
+    char *mangled = strcmp(name->str, "main") == 0 ? name->str :
+        mangler((char *[]){
+            name->filename,
+            name->str,
+            NULL
+        });
+
     ZNode *node                 = makenode(NODE_FUNC);
     node->tok                   = name;
     node->resolved              = func;
@@ -1767,7 +1777,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
     node->funcDef.generics      = generics;
     node->funcDef.base          = NULL;
     node->funcDef.receiver      = NULL;
-    node->funcDef.mangled       = name->str;
+    node->funcDef.mangled       = mangled;
     node->funcDef.annotations   = annotations;
     node->funcDef.capabilities  = capabilities;
 
@@ -1986,6 +1996,10 @@ static ZNode *parseArrayLit(ZParser *parser) {
         if (!expr) break;
         vecpush(values, expr);
     } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
+
+    if (!check(parser, TOK_RSBRACKET)) {
+        sinchronize(parser, TOK_RSBRACKET);
+    }
 
     expect(parser, TOK_RSBRACKET);
 
@@ -2249,6 +2263,17 @@ static ZNode *parseForeignInlineDecl(ZParser *parser, bool public) {
     node->tok               = start;
     node->resolved          = func;
     return node;
+}
+
+static ZNode *parseForeignUse(ZParser *parser, bool public) {
+    expect(parser, TOK_FOREIGN);
+    expect(parser, TOK_MODULE);
+    if (!check(parser, TOK_STR_LIT)) {
+        error(parser->state, peek(parser), "foreign use expects a string literal");
+    }
+    ZToken *import = consume(parser);
+    // convertHeaderToZNode(parser, import);
+    return NULL;
 }
 
 /* Parse the pattern of the macro.
@@ -2574,9 +2599,9 @@ static ZNode *parseImpl(ZParser *parser, bool public) {
         }
     } else { // static functions
         for (usize i = 0; i < len; i++) {
-            block->impl.funcs[i]->funcDef.mangled = mangler((ZToken*[]) {
-                typeNameTok,
-                block->impl.funcs[i]->funcDef.name,
+            block->impl.funcs[i]->funcDef.mangled = mangler((char *[]) {
+                typeNameTok->str,
+                block->impl.funcs[i]->funcDef.name->str,
                 NULL
             });
             block->impl.funcs[i]->funcDef.base = type;
@@ -2661,7 +2686,11 @@ static ZNode *parse(ZParser *parser) {
     bool public = match(parser, TOK_PUB);
 
     if (check(parser, TOK_FOREIGN)) {
-        return parseForeignInlineDecl(parser, public);
+        if (checkAhead(parser, TOK_IDENT, 1)) {
+            return parseForeignInlineDecl(parser, public);
+        } else if (checkAhead(parser, TOK_MODULE, 1)) {
+            return parseForeignUse(parser, public);
+        }
     }
 
     ZParserSnapshot *snap = store(parser);
