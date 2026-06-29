@@ -1683,19 +1683,24 @@ i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
 
 static void storeSumVariant(ZCodegen *ctx, LLVMValueRef alloca, LLVMTypeRef sumLLVMType,
                             i32 tag, LLVMValueRef val, ZType *valType) {
+    if (tag < 0) {
+        error(ctx->state, NULL, "sum-type tag must be a positive integer");
+    }
     LLVMBuildStore(
         ctx->builder,
         LLVMConstInt(i8Type, (u32)tag, false),
         alloca
     );
-    LLVMTypeRef valLLVMType = genType(ctx, valType);
     LLVMValueRef bufPtr = LLVMBuildStructGEP2(
-        ctx->builder, sumLLVMType, alloca, 1, "sum.buf"
+        ctx->builder, sumLLVMType, alloca, 1, label(ctx, "sum.buf")
     );
-    LLVMValueRef typedPtr = LLVMBuildBitCast(
-        ctx->builder, bufPtr, LLVMPointerType(valLLVMType, 0), "sum.buf.typed"
-    );
-    LLVMBuildStore(ctx->builder, val, typedPtr);
+    if (valType && val) {
+        LLVMTypeRef valLLVMType = genType(ctx, valType);
+        LLVMValueRef typedPtr = LLVMBuildBitCast(
+            ctx->builder, bufPtr, LLVMPointerType(valLLVMType, 0), label(ctx, "sum.buf.typed")
+        );
+        LLVMBuildStore(ctx->builder, val, typedPtr);
+    }
 }
 
 /**
@@ -2645,45 +2650,51 @@ static inline bool LLVMCanInsertRet(ZCodegen *ctx) {
     return !LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder));
 }
 
-static LLVMValueRef genRet(ZCodegen *ctx, ZNode *ret) {
-    if (!ret->returnStmt.expr || isVoid(ret->resolved)) {
-        if (ret->returnStmt.expr) genExpr(ctx, ret->returnStmt.expr);
-        genRetChainDefer(ctx);
-        if (!LLVMCanInsertRet(ctx)) return NULL;
-        return LLVMBuildRetVoid(ctx->builder);
-    }
+static void genRet(ZCodegen *ctx, ZNode *ret) {
+    ZType *expectedFuncType = ctx->currentFuncNode->resolved;
+    ZType *expectedRetType  = expectedFuncType->func.ret;
+    
 
-    LLVMValueRef val = genExpr(ctx, ret->returnStmt.expr);
+    LLVMValueRef val = ret->returnStmt.expr ? genExpr(ctx, ret->returnStmt.expr) : NULL;
 
-    if (ctx->currentFuncNode->resolved->func.ret->kind == Z_TYPE_SUM) {
-        ZType *retSumType = ctx->currentFuncNode->resolved->func.ret;
-        ZType *exprType   = ret->returnStmt.expr->resolved;
-        if (exprType->kind != Z_TYPE_SUM) {
-            i32 tag = sumTypeIndexOf(retSumType, exprType);
+    if (expectedRetType->kind == Z_TYPE_SUM) {
+        ZType *exprType     = ret->resolved;
+
+        if (exprType && exprType->kind != Z_TYPE_SUM) {
+            i32 tag = sumTypeIndexOf(expectedRetType, exprType);
             if (tag == -1) {
-                error(ctx->state, ret->tok, "Return type is not a variant of the sum type");
-                return NULL;
+                error(ctx->state, ret->tok,
+                    "Return type is not a variant of the sum type");
+                return;
             }
-            LLVMTypeRef sumLLVMType = genType(ctx, retSumType);
+            LLVMTypeRef sumLLVMType = genType(ctx, expectedRetType);
             LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, sumLLVMType, "sum.ret");
             storeSumVariant(ctx, alloca, sumLLVMType, tag, val, exprType);
             val = LLVMBuildLoad2(ctx->builder, sumLLVMType, alloca, "sum.ret.val");
         }
+    } else if (!ret->returnStmt.expr || isVoid(ret->resolved)) {
+        genRetChainDefer(ctx);
+        if (!LLVMCanInsertRet(ctx)) return;
+        LLVMBuildRetVoid(ctx->builder);
+        return;
     }
-
     /* If the expression produced i1 (e.g. a comparison) but the
        function's declared return type is a wider integer, zero-extend. */
     LLVMTypeRef funcType = LLVMGlobalGetValueType(ctx->currentFunc);
     LLVMTypeRef retType  = LLVMGetReturnType(funcType);
-    if (LLVMTypeOf(val) == i1Type && retType != i1Type &&
+    if (val && LLVMTypeOf(val) == i1Type && retType != i1Type &&
             LLVMGetTypeKind(retType) == LLVMIntegerTypeKind) {
         val = LLVMBuildZExt(ctx->builder, val, retType, label(ctx, ret->tok));
     }
 
     genRetChainDefer(ctx);
 
-    if (!LLVMCanInsertRet(ctx)) return NULL;
-    return LLVMBuildRet(ctx->builder, val);
+    if (!val) {
+        error(ctx->state, ret->tok, "val not generated");
+        return;
+    }
+
+    if (LLVMCanInsertRet(ctx)) LLVMBuildRet(ctx->builder, val);
 }
 
 /**
@@ -3380,7 +3391,11 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMTypeRef *args = NULL;
 
     if (!f->funcDef.mangled) {
-        f->funcDef.mangled = mangler((ZToken*[]) { f->funcDef.name, NULL });
+        f->funcDef.mangled = mangler((char *[]) {
+            f->funcDef.name->filename,
+            f->funcDef.name->str,
+            NULL
+        });
     }
 
     if (f->funcDef.receiver) {
@@ -3571,7 +3586,11 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
     }
     case NODE_FUNC: {
         if (!node->funcDef.mangled)
-            node->funcDef.mangled = mangler((ZToken*[]) { node->funcDef.name, NULL });
+            node->funcDef.mangled = mangler((char *[]) {
+                node->funcDef.name->filename,
+                node->funcDef.name->str,
+                NULL
+            });
 
         LLVMTypeRef ret      = genType(ctx, node->funcDef.ret);
         LLVMTypeRef *args    = NULL;

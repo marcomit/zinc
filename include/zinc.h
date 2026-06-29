@@ -42,6 +42,7 @@ typedef struct ZToken {
         f64 floating;
         bool boolean;
     };
+    char *filename;
     char *sourcePtr;
     char *sourceLinePtr;
     char *start;
@@ -55,6 +56,11 @@ typedef struct ZType ZType;
 typedef struct ZScope ZScope;
 typedef struct ZAnnotation ZAnnotation;
 typedef struct ZThreadSem ZThreadSem;
+
+static ZType *none      = NULL;
+static ZType *u0Type    = NULL;
+static ZType *u1Type    = NULL;
+static ZType *u64Type   = NULL;
 
 typedef enum {
     Z_ERROR,
@@ -836,7 +842,7 @@ ZState *makestate();
 char *readfile(char *);
 
 void encodeType(ZType *, char **);
-char *mangler(ZToken **);
+char *mangler(char *[]);
 char *manglerM(ZType *, ZToken *);
 
 void _error  (ZState *, ZToken *, const char *, int, const char *, ...);

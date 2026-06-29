@@ -56,11 +56,6 @@ static ZType *resolveLiteralType(ZThreadSem *, ZToken *);
 
 /* ================== Scope / Symbol helpers ================== */
 
-static ZType *none      = NULL;
-static ZType *u0Type    = NULL;
-static ZType *u1Type    = NULL;
-static ZType *u64Type   = NULL;
-
 static ZNode *makeNodeThread(ZThreadSem *ctx, ZNodeType type) {
     ZNode *node = arenaAlloc(ctx->arena, sizeof(ZNode));
     *node = (ZNode){ 0 };
@@ -2413,12 +2408,6 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
     ZType *retType  = NULL;
     ZType *promoted = NULL;
 
-    if (ctx->currentFuncRet->kind == Z_TYPE_SUM) {
-        curr->returnStmt.expr = coerceToSum(ctx,
-            curr->returnStmt.expr, ctx->currentFuncRet
-        );
-    }
-
     if (curr->returnStmt.expr) {
         retType     = resolveType(ctx, curr->returnStmt.expr);
         if (!retType) {
@@ -2431,7 +2420,6 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
     curr->resolved  = retType;
 
     if (!ctx->currentFuncRet) return;
-
     
     bool sumAcceptVoid =
         ctx->currentFuncRet->kind == Z_TYPE_SUM &&
@@ -2446,8 +2434,8 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
               stype(retType));
     } else if (!isVoid && !sumAcceptVoid && isVoidRet) {
         error(ctx->state, ctx->currentFunc->tok,
-              "Expected a return value %d %s %s", sumTypeIndexOf(ctx->currentFuncRet, u0Type), stype(ctx->currentFuncRet), stype(u0Type));
-    } else if (!isVoid && !isVoidRet) {
+              "Expected a return value of type '%s', got u0", ctx->currentFuncRet);
+    } else if (!isVoid && !sumAcceptVoid && !isVoidRet) {
         promoted = typesCompatible(
             ctx, retType, ctx->currentFuncRet
         );
@@ -2458,20 +2446,24 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
                 stype(ctx->currentFuncRet),
                 stype(retType)
             );
+            return;
+        } else if (ctx->currentFuncRet->kind == Z_TYPE_SUM) {
+            /* Thread the sum type into nested inline-ifs so leaves are tagged
+             * in the outer variant order. */
+            curr->returnStmt.expr = coerceToSum(ctx,
+                curr->returnStmt.expr, ctx->currentFuncRet
+            );
+            curr->resolved = ctx->currentFuncRet;
         }
-        // else if (ctx->currentFuncRet->kind == Z_TYPE_SUM) {
-        //     /* Thread the sum type into nested inline-ifs so leaves are tagged
-        //      * in the outer variant order. */
-        //     curr->returnStmt.expr = coerceToSum(ctx,
-        //         curr->returnStmt.expr, ctx->currentFuncRet
-        //     );
-        // }
         else {
             /* Implicit casting. */
             curr->returnStmt.expr = implicitCast(ctx,
                 curr->returnStmt.expr, ctx->currentFuncRet
             );
         }
+        curr->resolved = curr->returnStmt.expr->resolved;
+    } else if (sumAcceptVoid && isVoidRet) {
+        curr->resolved = u0Type;
     }
 }
 

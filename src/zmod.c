@@ -709,21 +709,18 @@ void printNode(ZNode *node, u8 depth) {
     printf("\n");
 }
 
-char *mangler(ZToken *segments[]) {
+char *mangler(char *segments[]) {
     char *mangled = NULL;
-    if (strcmp((*segments)->str, "main") == 0) {
-        vecunion(mangled, "main\0", 5);
-    }
+
     vecunion(mangled, "_ZN", 3);
-    while (*segments) {
-        int len = strlen((*segments)->str);
+    for (usize i = 0; segments[i] != NULL; i++) {
+        int len = strlen(segments[i]);
         int tmp = len;
         while (tmp) {
             vecpush(mangled, ('0' + tmp % 10));
             tmp /= 10;
         }
-        vecunion(mangled, (*segments)->str, (usize)len);
-        segments++;
+        vecunion(mangled, segments[i], (usize)len);
     }
     vecpush(mangled, '\0');
     return mangled;
@@ -923,7 +920,7 @@ void name(ZState *state, ZToken *tok, const char *src_file,                     
     va_start(args, fmt);                                                        \
                                                                                 \
     vmakelog(state, level,                                                      \
-        state->filename,                                                        \
+        tok ? tok->filename : NULL,                                             \
         tok,                                                                    \
         src_file,                                                               \
         src_line,                                                               \

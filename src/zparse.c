@@ -43,7 +43,7 @@
     res;                                                                        \
 })
 
-#define sinchronize(parser, type)                                               \
+#define sinchronize(parser, type) if (!check(parser, type))                     \
     while (canPeek(parser) && !check(parser, type)) consume(parser);            \
 
 
@@ -375,9 +375,9 @@ static ZNode *parsePrimary(ZParser *parser) {
             consume(parser);
             node->staticAccess.prop = consume(parser);
 
-            ZToken *segments[] = {
-                node->staticAccess.base,
-                node->staticAccess.prop,
+            char *segments[] = {
+                node->staticAccess.base->str,
+                node->staticAccess.prop->str,
                 NULL
             };
 
@@ -1759,6 +1759,13 @@ static ZNode *parseFuncDecl(ZParser *parser,
     for (usize i = 0; i < veclen(capabilities); i++)
         vecpush(func->func.capabilities, capabilities[i]->field.type);
 
+    char *mangled = strcmp(name->str, "main") == 0 ? name->str :
+        mangler((char *[]){
+            name->filename,
+            name->str,
+            NULL
+        });
+
     ZNode *node                 = makenode(NODE_FUNC);
     node->tok                   = name;
     node->resolved              = func;
@@ -1770,7 +1777,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
     node->funcDef.generics      = generics;
     node->funcDef.base          = NULL;
     node->funcDef.receiver      = NULL;
-    node->funcDef.mangled       = name->str;
+    node->funcDef.mangled       = mangled;
     node->funcDef.annotations   = annotations;
     node->funcDef.capabilities  = capabilities;
 
@@ -1989,6 +1996,10 @@ static ZNode *parseArrayLit(ZParser *parser) {
         if (!expr) break;
         vecpush(values, expr);
     } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
+
+    if (!check(parser, TOK_RSBRACKET)) {
+        sinchronize(parser, TOK_RSBRACKET);
+    }
 
     expect(parser, TOK_RSBRACKET);
 
@@ -2588,9 +2599,9 @@ static ZNode *parseImpl(ZParser *parser, bool public) {
         }
     } else { // static functions
         for (usize i = 0; i < len; i++) {
-            block->impl.funcs[i]->funcDef.mangled = mangler((ZToken*[]) {
-                typeNameTok,
-                block->impl.funcs[i]->funcDef.name,
+            block->impl.funcs[i]->funcDef.mangled = mangler((char *[]) {
+                typeNameTok->str,
+                block->impl.funcs[i]->funcDef.name->str,
                 NULL
             });
             block->impl.funcs[i]->funcDef.base = type;
