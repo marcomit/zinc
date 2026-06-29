@@ -792,6 +792,8 @@ ZToken *makeident(char *, char *);
 ZTokenStream *maketokstream(ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
 
+ZNode *convertHeaderToZNode(ZParser *, ZToken *);
+
 /* Parser */
 ZNode *zparse(ZState *, ZToken **);
 ZNode *parseExpr(ZParser *);
@@ -820,7 +822,7 @@ ZType *maketype(ZTypeKind);
 ZSemantic *zanalyze(ZState *, ZNode *);
 
 /* Code generation */
-void zcompile(ZState *, ZNode *, const char *output);
+void zcompile(ZState *, ZNode *, const char *);
 
 usize typeSize(ZType *);
 void typesSort(ZType **);
@@ -866,4 +868,5 @@ void printSymbol(ZSymbol *);
 
 void printScope(ZScope *);
 
+i32 sumTypeIndexOf(ZType *sum, ZType *concrete);
 #endif

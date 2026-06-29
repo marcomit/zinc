@@ -57,6 +57,7 @@ static ZType *resolveLiteralType(ZThreadSem *, ZToken *);
 /* ================== Scope / Symbol helpers ================== */
 
 static ZType *none      = NULL;
+static ZType *u0Type    = NULL;
 static ZType *u1Type    = NULL;
 static ZType *u64Type   = NULL;
 
@@ -2411,6 +2412,13 @@ static bool isType(ZType *type, ZTokenType tok) {
 static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
     ZType *retType  = NULL;
     ZType *promoted = NULL;
+
+    if (ctx->currentFuncRet->kind == Z_TYPE_SUM) {
+        curr->returnStmt.expr = coerceToSum(ctx,
+            curr->returnStmt.expr, ctx->currentFuncRet
+        );
+    }
+
     if (curr->returnStmt.expr) {
         retType     = resolveType(ctx, curr->returnStmt.expr);
         if (!retType) {
@@ -2424,19 +2432,22 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
 
     if (!ctx->currentFuncRet) return;
 
-    bool isVoidRet  = isVoid(retType);
-    bool isVoidFunc = isType(ctx->currentFuncRet, TOK_VOID);
+    
+    bool sumAcceptVoid =
+        ctx->currentFuncRet->kind == Z_TYPE_SUM &&
+        sumTypeIndexOf(ctx->currentFuncRet, u0Type) != -1;
 
-    if (isVoidFunc && !isVoidRet) {
+    bool isVoidRet  = isVoid(retType);
+    bool isVoid = isType(ctx->currentFuncRet, TOK_VOID);
+
+    if (isVoid && !isVoidRet) {
         error(ctx->state, ctx->currentFunc->tok,
               "Unexpected return value in void function '%s'",
               stype(retType));
-        return;
-    } else if (!isVoidFunc && isVoidRet) {
+    } else if (!isVoid && !sumAcceptVoid && isVoidRet) {
         error(ctx->state, ctx->currentFunc->tok,
-              "Expected a return value");
-        return;
-    } else if (!isVoidFunc && !isVoidRet) {
+              "Expected a return value %d %s %s", sumTypeIndexOf(ctx->currentFuncRet, u0Type), stype(ctx->currentFuncRet), stype(u0Type));
+    } else if (!isVoid && !isVoidRet) {
         promoted = typesCompatible(
             ctx, retType, ctx->currentFuncRet
         );
@@ -2447,13 +2458,15 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
                 stype(ctx->currentFuncRet),
                 stype(retType)
             );
-        } else if (ctx->currentFuncRet->kind == Z_TYPE_SUM) {
-            /* Thread the sum type into nested inline-ifs so leaves are tagged
-             * in the outer variant order. */
-            curr->returnStmt.expr = coerceToSum(ctx,
-                curr->returnStmt.expr, ctx->currentFuncRet
-            );
-        } else {
+        }
+        // else if (ctx->currentFuncRet->kind == Z_TYPE_SUM) {
+        //     /* Thread the sum type into nested inline-ifs so leaves are tagged
+        //      * in the outer variant order. */
+        //     curr->returnStmt.expr = coerceToSum(ctx,
+        //         curr->returnStmt.expr, ctx->currentFuncRet
+        //     );
+        // }
+        else {
             /* Implicit casting. */
             curr->returnStmt.expr = implicitCast(ctx,
                 curr->returnStmt.expr, ctx->currentFuncRet
@@ -3001,6 +3014,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     ZSemantic *ctx = makesemantic(state, root);
 
     if (!none)      none    = maketype(Z_TYPE_NONE);
+    if (!u0Type)    u0Type  = makePrimitiveType(TOK_VOID);
     if (!u1Type)    u1Type  = makePrimitiveType(TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType(TOK_U64);
 

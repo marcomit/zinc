@@ -1673,7 +1673,7 @@ static bool typeIsUnsigned(ZType *type) {
     return (bool)(type->primitive.token->type & TOK_UNSIGNED);
 }
 
-static i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
+i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
     for (usize i = 0; i < veclen(sum->sumType); i++) {
         if (typesEqual(sum->sumType[i], concrete))
             return (i32)i;

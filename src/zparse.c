@@ -43,6 +43,11 @@
     res;                                                                        \
 })
 
+#define sinchronize(parser, type)                                               \
+    while (canPeek(parser) && !check(parser, type)) consume(parser);            \
+
+
+
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType                            (ZParser *);
@@ -1120,9 +1125,7 @@ static ZNode *parseBlock(ZParser *parser) {
     } while (stmt);
 
     if (!check(parser, TOK_RBRACKET)) {
-        error(parser->state, peek(parser), "A statement cannot be parsed");
-        while (canPeek(parser) && !check(parser, TOK_RBRACKET)) consume(parser);
-
+        sinchronize(parser, TOK_RBRACKET);
         ensure(canPeek(parser), "Expected a '}' to close the block");
     }
 
@@ -2251,6 +2254,17 @@ static ZNode *parseForeignInlineDecl(ZParser *parser, bool public) {
     return node;
 }
 
+static ZNode *parseForeignUse(ZParser *parser, bool public) {
+    expect(parser, TOK_FOREIGN);
+    expect(parser, TOK_MODULE);
+    if (!check(parser, TOK_STR_LIT)) {
+        error(parser->state, peek(parser), "foreign use expects a string literal");
+    }
+    ZToken *import = consume(parser);
+    // convertHeaderToZNode(parser, import);
+    return NULL;
+}
+
 /* Parse the pattern of the macro.
  * The pattern can be formed by a combination of these elements:
  * - ident: this captures an identifier (like a variable name or the name of a struct ...).
@@ -2661,7 +2675,11 @@ static ZNode *parse(ZParser *parser) {
     bool public = match(parser, TOK_PUB);
 
     if (check(parser, TOK_FOREIGN)) {
-        return parseForeignInlineDecl(parser, public);
+        if (checkAhead(parser, TOK_IDENT, 1)) {
+            return parseForeignInlineDecl(parser, public);
+        } else if (checkAhead(parser, TOK_MODULE, 1)) {
+            return parseForeignUse(parser, public);
+        }
     }
 
     ZParserSnapshot *snap = store(parser);
