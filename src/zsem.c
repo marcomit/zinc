@@ -568,23 +568,25 @@ static ZCapability *putCapability(ZThreadSem *ctx, ZNode *var) {
 }
 
 static ZThreadSem *registerModule(ZSemantic *ctx, ZNode *module) {
-    ZScope *scope           = NULL;
+    ZScope *scope       = NULL;
     for (usize i = 0; i < veclen(ctx->scopes); i++) {
         if (ctx->scopes[i]->module == module) {
             scope       = ctx->scopes[i]->scope;
+            ctx->semantics[i]->current = ctx->semantics[i]->module;
             return ctx->semantics[i];
         }
     }
 
-    ZScopeTable *table = zalloc(ZScopeTable);
-    table->module = module;
     /* Parent the module scope to the lexically enclosing scope (the importer),
      * so a module can resolve names from the scope that pulled it in. */
-    table->scope = makescope(allocator.ctx, NULL, module);
+    ZScopeTable *table  = zalloc(ZScopeTable);
+    table->module       = module;
+    table->scope        = makescope(allocator.ctx, NULL, module);
 
     ZModuleAllocator *m = zalloc(ZModuleAllocator);
     m->module           = module;
     m->allocator        = createArena();
+
     vecpush(ctx->state->modules, m);
     vecpush(ctx->scopes, table);
     scope = table->scope;
@@ -2754,8 +2756,8 @@ static void putImpl(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
 /* ================== Global scope discovery ================== */
 
 static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root, ZScope *ps) {
-    ZScope *saved = ctx->current;
-    ctx = registerModule(ctx->semantic, root);
+    ctx             = registerModule(ctx->semantic, root);
+    ZScope *saved   = ctx->current;
     for (usize i = 0; i < veclen(root->module.root); i++) {
         ZNode *node = root->module.root[i];
 
@@ -2778,7 +2780,9 @@ static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root, ZScope *ps) {
             symbol->node      = node;
             symbol->type      = node->resolved;
             symbol->isPublic  = node->foreignFunc.pub;
-            putSymbol(ctx, symbol, ps);
+            printSymbol(symbol);
+            putSymbol(ctx, symbol, ctx->current);
+            
             break;
         }
 
@@ -2788,12 +2792,12 @@ static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root, ZScope *ps) {
                 /* Save/restore the cursor around the nested module via the
                  * call stack so registration returns to the enclosing module
                  * regardless of nesting depth. */
-                ZScope *saved = ctx->current;
+                ZScope *savedScope = ctx->current;
                 // registerModule(ctx, child);
                 for (usize i = 0; i < veclen(children); i++) {
+                    discoverGlobalScope(ctx, children[i], ctx->current);
                 }
-                discoverGlobalScope(ctx, node, ctx->current);
-                ctx->current = saved;
+                ctx->current = savedScope;
             }
             break;
 
@@ -3025,8 +3029,9 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     if (!u0Type)    u0Type  = makePrimitiveType(TOK_VOID);
     if (!u1Type)    u1Type  = makePrimitiveType(TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType(TOK_U64);
+    ZScope *globalScope     = makescope(allocator.ctx, NULL, root);
     ZThreadSem *first       = makethreadsem(
-        ctx, makescope(allocator.ctx, NULL, root), root, allocator.ctx
+        ctx, globalScope, root, allocator.ctx
     );
     discoverGlobalScope(first, root, NULL);
 
