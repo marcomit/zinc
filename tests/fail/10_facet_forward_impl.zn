@@ -1,0 +1,29 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+    malloc :: *u8 (u64)
+    realloc :: *u8 (*u8, u64)
+    free :: u0 (*u8)
+}
+
+pub Allocator :: facet {
+    alloc   :: *u8 (u64)
+    realloc :: *u8 (*u8, u64)
+    free    :: u0 (*u8)
+}
+
+pub GeneralPurposeAllocator :: struct { }
+
+GeneralPurposeAllocator :: impl {
+    init :: Allocator () {
+        c::printf("new allocator\n")
+        return (none as *GeneralPurposeAllocator) as Allocator
+    }
+}
+
+*GeneralPurposeAllocator self :: impl {
+    alloc :: *u8 (size: u64) -> c::malloc(size)
+    realloc :: *u8 (ptr: *u8, size: u64) -> c::realloc(ptr, size)
+    free :: u0 (ptr: *u8) -> c::free(ptr)
+}
+
+main :: i32 () { return 0 }

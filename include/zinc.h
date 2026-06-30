@@ -775,8 +775,9 @@ typedef struct ZSemantic {
 
     /* cached main function node. */
     ZSymbol         *main;
-    ZSymTable       *table;
     ZScopeTable     **scopes;
+    ZSymTable       *table;
+    ZThreadSem      **semantics;
 } ZSemantic;
 
 struct ZThreadSem {
