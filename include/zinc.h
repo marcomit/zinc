@@ -749,18 +749,6 @@ typedef struct ZFuncTable {
     ZType           **facets;
 } ZFuncTable;
 
-typedef struct ZSymTable {
-    /* Global scope used to store global symbols. Shared read-only across
-     * worker threads during the parallel body pass; the per-traversal cursor
-     * (current/module) lives in ZThreadSem instead. */
-    ZScope          *global;
-
-    /* Imagine this like an hashmap where:
-     * the key is the type 
-     * the value is a list of receiver functions for that type. */
-    ZFuncTable      **funcs;
-} ZSymTable;
-
 typedef struct ZScopeTable {
     ZNode           *module;
     ZScope          *scope;
@@ -776,7 +764,7 @@ typedef struct ZSemantic {
     /* cached main function node. */
     ZSymbol         *main;
     ZScopeTable     **scopes;
-    ZSymTable       *table;
+    // ZSymTable       *table;
     ZThreadSem      **semantics;
 } ZSemantic;
 
@@ -789,6 +777,7 @@ struct ZThreadSem {
     arena_t     *arena;
     ZType       *currentFuncRet;
     ZNode       *currentFunc;
+    ZFuncTable  **funcs;
     u16         loopDepth;
 };
 

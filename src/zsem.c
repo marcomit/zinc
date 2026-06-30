@@ -89,13 +89,6 @@ static ZScope *makescope(arena_t *arena, ZScope *parent, ZNode *node) {
     return self;
 }
 
-static ZSymTable *makesymtable(arena_t *arena) {
-    ZSymTable *self     = zalloc(ZSymTable);
-    self->global        = makescope(arena, NULL, NULL);
-    self->funcs         = NULL;
-    return self;
-}
-
 static ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root, arena_t *arena) {
     ZThreadSem *self        = zalloc(ZThreadSem);
 
@@ -108,7 +101,7 @@ static ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root, a
     self->module            = current;
     self->current           = current;
     self->root              = root;
-    // self->table             = makesymtable(arena);
+    self->funcs             = NULL;
 
     return self;
 }
@@ -127,12 +120,12 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
     self->state             = state;
     self->scopes            = NULL;
     self->semantics         = NULL;
-    self->table             = makesymtable(allocator.ctx);
+    // self->table             = makesymtable(allocator.ctx);
     return self;
 }
 
 
-static void putSymbol(ZThreadSem *ctx, ZSymbol *symbol, ZScope *publicScope) {
+static void putSymbol(ZThreadSem *ctx, ZSymbol *symbol, ZThreadSem *publicCtx) {
     ZScope *scope = ctx->current;
 
     // if (symbol->isPublic && ctx->current->parent) scope = ctx->current->parent;
@@ -151,7 +144,7 @@ static void putSymbol(ZThreadSem *ctx, ZSymbol *symbol, ZScope *publicScope) {
                 symbol->name->str);
     } else {
         vecpush(scope->symbols, symbol);
-        if (symbol->isPublic && publicScope) vecpush(publicScope->symbols, symbol);
+        if (symbol->isPublic && publicCtx) vecpush(publicCtx->module->symbols, symbol);
     }
 
 }
@@ -181,7 +174,7 @@ static void putRawSymbol(ZThreadSem *ctx,
                         ZType *type,
                         ZNode *node,
                         bool isPublic,
-                        ZScope *publicScope) {
+                        ZThreadSem *publicCtx) {
     putSymbol(ctx,
         makeRawSymbol(
             ctx->arena,
@@ -190,7 +183,7 @@ static void putRawSymbol(ZThreadSem *ctx,
             type,
             node,
             isPublic
-        ), publicScope);
+        ), publicCtx);
 }
 
 static ZFuncTable *makefunctable(ZType *base) {
@@ -205,7 +198,7 @@ static ZFuncTable *putOrInsertFuncTable(ZThreadSem *ctx, ZType *type) {
     if (table) return table;
 
     table = makefunctable(type);
-    vecpush(ctx->semantic->table->funcs, table);
+    vecpush(ctx->funcs, table);
 
     return table;
 }
@@ -224,16 +217,7 @@ static void addStaticFunc(ZThreadSem *ctx, ZNode *func) {
     vecpush(cur->staticFuncDef, func);
 }
 
-static void putReceiverFunc(ZThreadSem *ctx, ZNode *node) {
-    if (!node->funcDef.receiver) {
-        error(ctx->state, node->tok, "receiver must be setted");
-        return;
-    } else if (node->funcDef.base) {
-        error(ctx->state, node->tok,
-                "receiver functions cannot have a base");
-        return;
-    }
-
+static void addReceiverFunc(ZThreadSem *ctx, ZNode *node) {
     ZNode *receiver         = node->funcDef.receiver;
     ZFuncTable *table       = putOrInsertFuncTable(ctx, receiver->field.type);
 
@@ -246,7 +230,21 @@ static void putReceiverFunc(ZThreadSem *ctx, ZNode *node) {
     vecpush(table->funcDef, node);
 }
 
-static void putStaticFunc(ZThreadSem *ctx, ZNode *node) {
+static void putReceiverFunc(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
+    if (!node->funcDef.receiver) {
+        error(ctx->state, node->tok, "receiver must be setted");
+        return;
+    } else if (node->funcDef.base) {
+        error(ctx->state, node->tok,
+                "receiver functions cannot have a base");
+        return;
+    }
+    addReceiverFunc(ctx, node);
+
+    if (node->funcDef.pub && publicCtx) addReceiverFunc(publicCtx, node);
+}
+
+static void putStaticFunc(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
     ZType *baseType = node->funcDef.base;
     
     if (baseType->kind != Z_TYPE_PRIMITIVE) {
@@ -267,18 +265,19 @@ static void putStaticFunc(ZThreadSem *ctx, ZNode *node) {
     }
 
     addStaticFunc(ctx, node);
+    if (node->funcDef.pub && publicCtx) addStaticFunc(publicCtx, node);
 }
 
-static void putFunc(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
+static void putFunc(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
     if (node->funcDef.receiver) {
         if (node->funcDef.base) {
             error(ctx->state, node->tok,
                     "A static function cannot accept any receiver");
         }
 
-        putReceiverFunc(ctx, node);
+        putReceiverFunc(ctx, node, publicCtx);
     } else if (node->funcDef.base) {
-        putStaticFunc(ctx, node);
+        putStaticFunc(ctx, node, publicCtx);
     } else {
         ZSymbol *f = makeRawSymbol(
                 allocator.ctx,
@@ -295,7 +294,7 @@ static void putFunc(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
                       "'main' must return i32");
             }
         }
-        putSymbol(ctx, f, publicScope);
+        putSymbol(ctx, f, publicCtx);
     }
 }
 
@@ -472,7 +471,7 @@ static void putGeneric(ZThreadSem *ctx, ZType *type) {
     );
 }
 
-static void putStruct(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
+static void putStruct(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
     ZType *type             = maketype(Z_TYPE_STRUCT);
     type->strct.name        = node->structDef.ident;
     type->strct.fields      = node->structDef.fields;
@@ -486,11 +485,11 @@ static void putStruct(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
             type,
             node,
             node->structDef.pub,
-            publicScope
+            publicCtx
     );
 }
 
-static void putEnum(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
+static void putEnum(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
     putRawSymbol(
         ctx,
         Z_SYM_ENUM,
@@ -498,40 +497,40 @@ static void putEnum(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
         node->resolved,
         node,
         node->enumDef.pub,
-        publicScope
+        publicCtx
     );
 }
 
-static void putTypedef(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
+static void putTypedef(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
     putRawSymbol(ctx,
         Z_SYM_TYPEDEF,
         node->typeDef.alias,
         node->typeDef.type,
         node,
         node->typeDef.pub,
-        publicScope
+        publicCtx
     );
 }
 
-static void putFacet(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
+static void putFacet(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
     putRawSymbol(ctx,
         Z_SYM_FACET,
         node->facet.name,
         node->resolved,
         node,
         node->facet.pub,
-        publicScope
+        publicCtx
     );
 }
 
-static void putNamespace(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
+static void putNamespace(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
     putRawSymbol(ctx,
         Z_SYM_NAMESPACE,
         node->tok,
         node->resolved,
         node,
         node->pub,
-        publicScope
+        publicCtx
     );
 }
 
@@ -1154,8 +1153,8 @@ static ZType *resolveArrSubscript(ZThreadSem *, ZNode *);
 static ZNode *resolveStaticFuncTable(ZThreadSem *ctx,
     ZToken *base, ZToken *prop) {
     ZNode **staticFuncs = NULL;
-    for (usize i = 0; i < veclen(ctx->semantic->table->funcs); i++) {
-        ZFuncTable *table = ctx->semantic->table->funcs[i];
+    for (usize i = 0; i < veclen(ctx->funcs); i++) {
+        ZFuncTable *table = ctx->funcs[i];
         if (table->base->kind != Z_TYPE_PRIMITIVE       ||
             !tokeneq(table->base->primitive.token, base)) continue;
 
@@ -1221,7 +1220,7 @@ static bool funcTableBaseMatches(ZThreadSem *ctx, ZType *tableBase, ZType *obj) 
 }
 
 static ZFuncTable *resolveFuncTable(ZThreadSem *ctx, ZType *obj) {
-    ZFuncTable **table = ctx->semantic->table->funcs;
+    ZFuncTable **table = ctx->funcs;
     for (usize i = 0; i < veclen(table); i++) {
         if (funcTableBaseMatches(ctx, table[i]->base, obj)) return table[i];
     }
@@ -2697,14 +2696,14 @@ static void analyzeBlock(ZThreadSem *ctx, ZNode *block, bool scoped) {
     if (scoped) endScope(ctx);
 }
 
-static void putImpl(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
+static void putImpl(ZThreadSem *ctx, ZNode *node, ZThreadSem *publicCtx) {
     hashset_t seen = NULL;
     char **facetNames = NULL;
     hashset_t funcs = NULL;
     usize funcLen = veclen(node->impl.funcs);
     for (usize i = 0; i < funcLen; i++) {
         ZNode *func = node->impl.funcs[i];
-        putFunc(ctx, func, publicScope);
+        putFunc(ctx, func, publicCtx);
         hashset_insert(&funcs, func->funcDef.name->str);
     }
 
@@ -2755,20 +2754,21 @@ static void putImpl(ZThreadSem *ctx, ZNode *node, ZScope *publicScope) {
 
 /* ================== Global scope discovery ================== */
 
-static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root, ZScope *ps) {
-    ctx             = registerModule(ctx->semantic, root);
-    ZScope *saved   = ctx->current;
+static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root, ZThreadSem *ps) {
+    ZThreadSem *this    = ctx;
+    ctx                 = registerModule(ctx->semantic, root);
+    ZScope *saved       = ctx->current;
     for (usize i = 0; i < veclen(root->module.root); i++) {
         ZNode *node = root->module.root[i];
 
         switch (node->type) {
-        case NODE_FUNC:         putFunc     (ctx, node, ps);       break;
-        case NODE_STRUCT:       putStruct   (ctx, node, ps);       break;
-        case NODE_ENUM:         putEnum     (ctx, node, ps);       break;
-        case NODE_NAMESPACE:    putNamespace(ctx, node, ps);       break;
-        case NODE_TYPEDEF:      putTypedef  (ctx, node, ps);       break;
-        case NODE_FACET:        putFacet    (ctx, node, ps);       break;
-        case NODE_IMPL:         putImpl     (ctx, node, ps);       break;
+        case NODE_FUNC:         putFunc     (ctx, node, this);       break;
+        case NODE_STRUCT:       putStruct   (ctx, node, this);       break;
+        case NODE_ENUM:         putEnum     (ctx, node, this);       break;
+        case NODE_NAMESPACE:    putNamespace(ctx, node, this);       break;
+        case NODE_TYPEDEF:      putTypedef  (ctx, node, this);       break;
+        case NODE_FACET:        putFacet    (ctx, node, this);       break;
+        case NODE_IMPL:         putImpl     (ctx, node, this);       break;
 
         case NODE_FOREIGN: {
             /* Foreign functions are callable like regular functions.
@@ -2780,25 +2780,14 @@ static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root, ZScope *ps) {
             symbol->node      = node;
             symbol->type      = node->resolved;
             symbol->isPublic  = node->foreignFunc.pub;
-            printSymbol(symbol);
-            putSymbol(ctx, symbol, ctx->current);
+            putSymbol(ctx, symbol, this);
             
             break;
         }
 
         case NODE_MODULE:
-            if (node->module.root) {
-                ZNode **children = node->module.root;
-                /* Save/restore the cursor around the nested module via the
-                 * call stack so registration returns to the enclosing module
-                 * regardless of nesting depth. */
-                ZScope *savedScope = ctx->current;
-                // registerModule(ctx, child);
-                for (usize i = 0; i < veclen(children); i++) {
-                    discoverGlobalScope(ctx, children[i], ctx->current);
-                }
-                ctx->current = savedScope;
-            }
+            if (node->module.root)
+                discoverGlobalScope(ctx, node, this);
             break;
 
         default: break;
@@ -2979,24 +2968,22 @@ static void analyze(ZThreadSem *ctx, ZNode *root) {
         ZNode *child = root->module.root[i];
 
         switch (child->type) {
+        /* These nodes don't require any validation. */
+        case NODE_VAR_DECL:                                     break;
+        case NODE_MACRO:                                        break;
+        case NODE_MODULE:                                       break;
+
         case NODE_FOREIGN:      analyzeForeign(ctx, child);     break;
         case NODE_FUNC:         analyzeFunc(ctx, child);        break;
         case NODE_TYPEDEF:      analyzeTypedef(ctx, child);     break;
-        case NODE_VAR_DECL:     /* already handled in pre-pass */break;
         case NODE_STRUCT:       analyzeStruct(ctx, child);      break;
         case NODE_ENUM:         analyzeEnum(ctx, child);        break;
         case NODE_NAMESPACE:    analyzeNamespace(ctx, child);   break;
         case NODE_FACET:        analyzeFacet(ctx, child);       break;
-        case NODE_MACRO:    /* does't require any validation*/  break;
-
-        case NODE_MODULE:
-            break;
 
         case NODE_IMPL:
-            // if (!child || !child->impl.funcs) break;
             for (usize i = 0; i < veclen(child->impl.funcs); i++) {
-                ZNode *func = child->impl.funcs[i];
-                analyzeFunc(ctx, func);
+                analyzeFunc(ctx, child->impl.funcs[i]);
             }
             break;
 
