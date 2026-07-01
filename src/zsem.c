@@ -1306,12 +1306,19 @@ static void resolveFuncArgs(
     ZToken *start, bool variadic) {
 
     usize expectedArgsLen = veclen(expectedArgs);
-    if (!variadic && expectedArgsLen != veclen(args)) {
+
+    if (variadic && veclen(args) < expectedArgsLen) {
+        printf("args: %zu %zu\n", expectedArgsLen, veclen(args));
+    }
+
+    if ((!variadic && expectedArgsLen != veclen(args)) ||
+        ( variadic && expectedArgsLen >  veclen(args))) {
         error(ctx->state, start,
                 "Expected %zu argument(s), got %zu",
                 expectedArgsLen, veclen(args));
         return;
     }
+
 
     for (usize i = 0; i < expectedArgsLen; i++) {
         ZType *expected = expectedArgs[i];
@@ -1462,9 +1469,7 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr) {
          * by resolveType above - leave it as the function type so that genCall
          * can derive the LLVM funcType for indirect/function-pointer calls. */
     }
-    if (!expectedFunc) {
-        return NULL;
-    }
+    if (!expectedFunc) return NULL;
 
     resolveFuncArgs(
         ctx,        expectedFunc->func.args,    args,
@@ -2762,13 +2767,13 @@ static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root, ZThreadSem *ps) {
         ZNode *node = root->module.root[i];
 
         switch (node->type) {
-        case NODE_FUNC:         putFunc     (ctx, node, this);       break;
-        case NODE_STRUCT:       putStruct   (ctx, node, this);       break;
-        case NODE_ENUM:         putEnum     (ctx, node, this);       break;
-        case NODE_NAMESPACE:    putNamespace(ctx, node, this);       break;
-        case NODE_TYPEDEF:      putTypedef  (ctx, node, this);       break;
-        case NODE_FACET:        putFacet    (ctx, node, this);       break;
-        case NODE_IMPL:         putImpl     (ctx, node, this);       break;
+        case NODE_FUNC:         putFunc     (ctx, node, ps);       break;
+        case NODE_STRUCT:       putStruct   (ctx, node, ps);       break;
+        case NODE_ENUM:         putEnum     (ctx, node, ps);       break;
+        case NODE_NAMESPACE:    putNamespace(ctx, node, ps);       break;
+        case NODE_TYPEDEF:      putTypedef  (ctx, node, ps);       break;
+        case NODE_FACET:        putFacet    (ctx, node, ps);       break;
+        case NODE_IMPL:         putImpl     (ctx, node, ps);       break;
 
         case NODE_FOREIGN: {
             /* Foreign functions are callable like regular functions.

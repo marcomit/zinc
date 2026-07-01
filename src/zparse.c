@@ -46,8 +46,6 @@
 #define sinchronize(parser, type) if (!check(parser, type))                     \
     while (canPeek(parser) && !check(parser, type)) consume(parser);            \
 
-
-
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType                            (ZParser *);
@@ -63,6 +61,7 @@ static ZNode *parseLoops                    (ZParser *);
 static ZNode *parseReturn                   (ZParser *);
 static ZNode *parseVarDef                   (ZParser *);
 static ZNode *parseBinary                   (ZParser *);
+static ZNode *parsePrimary                  (ZParser *);
 static ZNode *parseContinue                 (ZParser *);
 static ZNode *parseArrayLit                 (ZParser *);
 static ZNode *parseTupleLit                 (ZParser *);
@@ -83,10 +82,34 @@ static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
 static ZType **parseGenericsDecl            (ZParser *, bool);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
+
 static ZParseFunc exprFunc[] = {
     parseBinary,
     parseTupleLit,
 };
+
+// static const int priorities[256] = {
+//     [TOK_STAR           & 0xFF] = 0x0C,
+//     [TOK_DIV            & 0xFF] = 0x0C,
+//     [TOK_MOD            & 0xFF] = 0x0C,
+//     [TOK_PLUS           & 0xFF] = 0x0B,
+//     [TOK_MINUS          & 0xFF] = 0x0B,
+//     [TOK_BITL           & 0xFF] = 0x0A,
+//     [TOK_BITR           & 0xFF] = 0x0A,
+//     [TOK_LT             & 0xFF] = 0x09,
+//     [TOK_GT             & 0xFF] = 0x09,
+//     [TOK_LTE            & 0xFF] = 0x09,
+//     [TOK_GTE            & 0xFF] = 0x09,
+//     [TOK_EQEQ           & 0xFF] = 0x08,
+//     [TOK_NOTEQ          & 0xFF] = 0x08,
+//     [TOK_REF            & 0xFF] = 0x07,
+//     [TOK_BITXOR         & 0xFF] = 0x06,
+//     [TOK_BITOR          & 0xFF] = 0x05,
+//     [TOK_AND            & 0xFF] = 0x04,
+//     [TOK_OR             & 0xFF] = 0x03,
+//     [TOK_COALESCING     & 0xFF] = 0x02,
+//     [TOK_EQ             & 0xFF] = 0x01,
+// };
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
     ZParser *self                       = zalloc(ZParser);
@@ -297,6 +320,7 @@ static ZNode *_parseGenericBinary(ZParser *parser,
 
     return node ? node : left;
 }
+
 static ZNode *parseGenericBinary(ZParser *parser,
                                     ZParseFunc parseLeft,
                                     ZParseFunc parseRight,
@@ -1844,7 +1868,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
         }
     } else if (tok->type == TOK_LBRACKET) {
         ZToken *key = NULL;
-        while (true) {
+        do {
             if (!check(parser, TOK_IDENT)) break;
             key = consume(parser);
 
@@ -1870,9 +1894,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
 
             vecpush(list, pair);
 
-            if (!match(parser, TOK_COMMA)) break;
-            if (check(parser, TOK_RBRACKET)) break;
-        }
+        } while (!check(parser, TOK_RBRACKET) && match(parser, TOK_COMMA));
         expect(parser, TOK_RBRACKET);
 
         cur = makeVarDestructPattern(Z_VAR_STRUCT);
@@ -1900,6 +1922,18 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
 
 static ZNode *parseVarInferred(ZParser *parser) {
     ZVarDestructPattern *pattern = parseDestructVar(parser, false);
+
+    if (match(parser, TOK_COMMA)) {
+        ZVarDestructPattern **list = NULL;
+        vecpush(list, pattern);
+        do {
+            ZVarDestructPattern *next = parseDestructVar(parser, false);
+            if (!next) break;
+            vecpush(list, next);
+        } while (match(parser, TOK_COMMA));
+        pattern = makeVarDestructPattern(Z_VAR_TUPLE);
+        pattern->tuple = list;
+    }
 
     expect(parser, TOK_ASSIGN);
     ZNode *expr = tryParse(parser, parseExpr(parser));
@@ -2266,12 +2300,14 @@ static ZNode *parseForeignInlineDecl(ZParser *parser, bool public) {
 }
 
 static ZNode *parseForeignUse(ZParser *parser, bool public) {
+    (void)public;
     expect(parser, TOK_FOREIGN);
     expect(parser, TOK_MODULE);
     if (!check(parser, TOK_STR_LIT)) {
         error(parser->state, peek(parser), "foreign use expects a string literal");
     }
     ZToken *import = consume(parser);
+    (void)import;
     // convertHeaderToZNode(parser, import);
     return NULL;
 }
