@@ -97,6 +97,7 @@ static ZParser *makeparser(ZState *state, ZToken **tokens) {
     self->state                         = state;
     self->noFuncType                    = false;
     self->noStructLit                   = false;
+    self->cachedModules                 = NULL;
 
     self->macroParser.currentMacro      = NULL;
     self->macroParser.expandingMacros   = NULL;
