@@ -164,6 +164,7 @@ typedef enum {
     NODE_EMBED_FIELD,
     NODE_TYPEDEF,
     NODE_FOREIGN,
+    NODE_FOREIGN_VAR,
     NODE_DEFER,
     NODE_STRUCT_LIT,
     NODE_TUPLE_LIT,
@@ -474,6 +475,12 @@ struct ZNode {
             ZType   **args;
             bool    pub;
         } foreignFunc;
+
+        struct {
+            ZType   *type;
+            ZToken  *name;
+            bool    pub;
+        } foreignVar;
 
         struct {
             ZNode   *callee;

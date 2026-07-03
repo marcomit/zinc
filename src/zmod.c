@@ -18,11 +18,11 @@ static char *nodeLabels[] = {
     "VAR_DECL",     "BINARY",       "UNARY",        "CALL",         "FUNC",
     "LITERAL",      "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
     "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
-    "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
-    "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
-    "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATICACCESS", "NAMESPACE",
-    "SLICE",        "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",
-    "FACET",        "IMPL",         "FOR_IN"
+    "FOREIGN_VAR",  "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",
+    "ARRAY_INIT",   "MACRO",        "TYPE",         "ENUM",         "BREAK",
+    "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATICACCESS",
+    "NAMESPACE",    "SLICE",        "CAPABILITY",   "MATCH",        "MATCH_ARM",
+    "ENUM_LIT",     "FACET",        "IMPL",         "FOR_IN"
 };
 
 static char *levels[] = {
@@ -701,6 +701,12 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->forin.iter, depth);
         printNode(node->forin.body, depth);
         break;
+
+    case NODE_FOREIGN_VAR:
+        printf("%s: %s\n",
+            node->foreignVar.name->str,
+            stype(node->foreignVar.type));
+        break;
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
@@ -1060,15 +1066,14 @@ static void printLineHighlight(ZToken *tok, const char *color) {
 }
 
 static void printLog(ZState *state, ZLog *log) {
-    printf("  %s", log->filename);
+    if (log->filename) printf("  %s", log->filename);
     if (state->debug) {
         printf("[%s:%d]", log->src_file, log->src_line);
     }
     printf(":");
 
-    if (log->token) {
-        printf("%zu:%zu: ", log->token->row, log->token->col);
-    }
+    if (log->token) printf("%zu:%zu: ", log->token->row, log->token->col);
+
     printf(COLOR_BOLD "\n  %s%s\033[0m: ", colors[log->level], levels[log->level]);
     printf("%s\n", log->message);
 

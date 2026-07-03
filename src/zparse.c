@@ -903,10 +903,23 @@ static ZType *parseTypeTuple(ZParser *parser) {
 }
 
 static ZType *parseTypeFunc(ZParser *parser, ZType *previous) {
-    ZType **args = tryParse(parser, parseTypeList(parser, TOK_LPAREN, TOK_RPAREN));
-    if (!args) return previous;
-    ZType **generics = NULL;
+    if (!match(parser, TOK_LPAREN)) return previous;
 
+    ZType **args    = NULL;
+    bool variadic   = false;
+    while (!check(parser, TOK_RPAREN)) {
+        if (match(parser, TOK_TRIPLE_DOT)) {
+            variadic = true;
+            break;
+        }
+        ZType *arg = tryParse(parser, parseType(parser));
+        if (!arg) return previous;
+        vecpush(args, arg);
+        if (!match(parser, TOK_COMMA)) break;
+    }
+    if (!match(parser, TOK_RPAREN)) return previous;
+
+    ZType **generics = NULL;
     if (check(parser, TOK_LSBRACKET)) {
         generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
         if (!generics) {
@@ -915,9 +928,10 @@ static ZType *parseTypeFunc(ZParser *parser, ZType *previous) {
     }
 
     ZType *type = maketype(Z_TYPE_FUNCTION);
-    type->func.ret = previous;
-    type->func.args = args;
+    type->func.ret      = previous;
+    type->func.args     = args;
     type->func.generics = generics;
+    type->func.variadic = variadic;
     return type;
 }
 
@@ -2244,7 +2258,7 @@ static ZNode *parseForeignBlock(ZParser *parser, bool public) {
     expect(parser, TOK_FOREIGN);
     expect(parser, TOK_LBRACKET);
 
-    ZType *func         = NULL;
+    ZType *type         = NULL;
     ZNode *namespace    = makenode(NODE_NAMESPACE);
     namespace->tok      = lib;
     namespace->block    = NULL;
@@ -2260,18 +2274,26 @@ static ZNode *parseForeignBlock(ZParser *parser, bool public) {
         expect(parser, TOK_IDENT);
         expect(parser, TOK_DOUBLE_COLON);
 
-        func = parseFuncType(parser);
-        if (!func) {
+        type = parseType(parser);
+        if (!type) {
             error(parser->state, peek(parser), "Error parsing function");
             return NULL;
         }
-        node                    = makenode(NODE_FOREIGN);
-        node->foreignFunc.ret   = func->func.ret;
-        node->foreignFunc.tok   = name;
-        node->foreignFunc.args  = func->func.args;
-        node->foreignFunc.pub   = public;
-        node->tok               = name;
-        node->resolved          = func;
+        if (type->kind == Z_TYPE_FUNCTION) {
+            node                    = makenode(NODE_FOREIGN);
+            node->foreignFunc.ret   = type->func.ret;
+            node->foreignFunc.tok   = name;
+            node->foreignFunc.args  = type->func.args;
+            node->foreignFunc.pub   = public;
+            node->tok               = name;
+            node->resolved          = type;
+        } else {
+            node                    = makenode(NODE_FOREIGN_VAR);
+            node->foreignVar.name   = name;
+            node->foreignVar.pub    = public;
+            node->foreignVar.type   = type;
+            node->resolved          = type;
+        }
 
         vecpush(namespace->block, node);
     }

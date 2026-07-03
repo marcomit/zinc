@@ -1854,9 +1854,14 @@ static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr) {
         ZType *resolved = NULL;
         for (usize i = 0; i < veclen(baseSym->node->block); i++) {
             ZNode *child = baseSym->node->block[i];
-            if (child->type == NODE_FOREIGN && tokeneq(child->foreignFunc.tok, prop)) {
+            if (child->type == NODE_FOREIGN &&
+                    tokeneq(child->foreignFunc.tok, prop)) {
                 resolved = child->resolved;
                 break;
+            } else if (child->type == NODE_FOREIGN_VAR &&
+                    tokeneq(child->foreignVar.name, prop)) {
+                resolved = child->resolved;
+                curr->staticAccess.mangled = child->foreignVar.name->str;
             }
         }
         if (!resolved) {
@@ -1865,7 +1870,7 @@ static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr) {
                 prop->str, base->str
             );
             return NULL;
-        } else {
+        } else if (resolved->kind == Z_TYPE_FUNCTION) {
             for (usize i = 0; i < veclen(resolved->func.args); i++) {
                 resolved->func.args[i] = resolveTypeRef(
                     ctx,
@@ -1879,6 +1884,8 @@ static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr) {
              * registers foreign functions under their plain C name. */
             curr->staticAccess.mangled = prop->str;
             return resolved;
+        } else {
+            return resolveTypeRef(ctx, resolved);
         }
     } else {
         error(ctx->state, base, "Base should refer to a type");
@@ -2767,13 +2774,13 @@ static void discoverGlobalScope(ZThreadSem *ctx, ZNode *root, ZThreadSem *ps) {
         ZNode *node = root->module.root[i];
 
         switch (node->type) {
-        case NODE_FUNC:         putFunc     (ctx, node, ps);       break;
-        case NODE_STRUCT:       putStruct   (ctx, node, ps);       break;
-        case NODE_ENUM:         putEnum     (ctx, node, ps);       break;
-        case NODE_NAMESPACE:    putNamespace(ctx, node, ps);       break;
-        case NODE_TYPEDEF:      putTypedef  (ctx, node, ps);       break;
-        case NODE_FACET:        putFacet    (ctx, node, ps);       break;
-        case NODE_IMPL:         putImpl     (ctx, node, ps);       break;
+        case NODE_FUNC:         putFunc     (ctx, node, this);       break;
+        case NODE_STRUCT:       putStruct   (ctx, node, this);       break;
+        case NODE_ENUM:         putEnum     (ctx, node, this);       break;
+        case NODE_NAMESPACE:    putNamespace(ctx, node, this);       break;
+        case NODE_TYPEDEF:      putTypedef  (ctx, node, this);       break;
+        case NODE_FACET:        putFacet    (ctx, node, this);       break;
+        case NODE_IMPL:         putImpl     (ctx, node, this);       break;
 
         case NODE_FOREIGN: {
             /* Foreign functions are callable like regular functions.
