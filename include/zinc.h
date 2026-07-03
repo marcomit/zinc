@@ -582,10 +582,18 @@ struct ZNode {
 
         struct {
             char        *name;
+
+            /* List of file-level declarations.
+             * It is NULL if the module is already parsed
+             * */
             ZNode       **root;
 
-            /* Initialized in the semantic analyzer with all top-level symbols. */
-            ZScope      *scope;
+            /* List shared with every module that imports this module.
+             * It'll be never NULL.
+             * */
+            ZNode       **cached;
+
+            bool        pub;
         } module;
 
         /* For macros don't parse the body.
@@ -666,6 +674,11 @@ typedef struct ZMacroParser {
     usize             currentIndex;
 } ZMacroParser;
 
+typedef struct ZParserModule {
+    char    *name;
+    ZNode   **node;
+} ZParserModule;
+
 typedef struct ZParser {
     ZState          *state;
     ZTokenStream    *source;
@@ -687,6 +700,11 @@ typedef struct ZParser {
      * suffix. Set in parseVarDefTyped so that `(i32,i32) (first,second) = ...`
      * does not greedily parse the destructure pattern as function args. */
     bool            noFuncType;
+
+    /* Every module must be parsed only once.
+     * Duplicate imports take the reference from the parsed module.
+     * */
+    ZParserModule   **cachedModules;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */
@@ -779,14 +797,29 @@ struct ZThreadSem {
     ZSemantic   *semantic;
     ZState      *state;
     ZScope      *current;
-    ZScope      *module;
+    ZScope      *global;
+    ZScope      *local;
     ZNode       *root;
     arena_t     *arena;
     ZType       *currentFuncRet;
     ZNode       *currentFunc;
+
+    /* All func tables usable during this module's analysis (own funcs +
+     * imported funcs), keyed by receiver/base type. Used by every lookup. */
     ZFuncTable  **funcs;
+
+    /* Funcs this module exports: own pub funcs plus funcs pulled in via
+     * `pub use`. Only discoverImport touches this. */
+    ZNode       **exportedFuncs;
+
     u16         loopDepth;
 };
+
+#define hash(x) _Generic(x,                                                     \
+    ZToken*: hashtoken,                                                         \
+    ZNode* : hashNode,                                                          \
+    ZType* : hashType                                                           \
+)(x)
 
 /* Lexer */
 ZToken **ztokenize(ZState *);
@@ -794,6 +827,11 @@ ZToken *maketoken(ZTokenType, char *);
 ZToken *makeident(char *, char *);
 ZTokenStream *maketokstream(ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
+
+u32 hashStr(const char *, usize);
+u32 hashNode(ZNode *);
+u32 hashType(ZType *);
+u32 hashtoken(ZToken *);
 
 ZNode *convertHeaderToZNode(ZParser *, ZToken *);
 
@@ -855,7 +893,7 @@ void _debug  (ZState *, ZToken *, const char *, int, const char *, ...);
 void printLogs(ZState *);
 bool canAdvance(ZState *);
 
-bool visit(ZState *, char *, bool);
+bool visit(ZState *, char **, bool);
 void undoVisit(ZState *);
 
 char *stoken(ZToken *);

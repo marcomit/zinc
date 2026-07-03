@@ -55,7 +55,7 @@ ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
 // FNV-1a is defined to wrap modulo 2^32; the unsigned overflow is intentional
 // (and legal C), so exempt it from -fsanitize=unsigned-integer-overflow.
 NOSANITIZE("unsigned-integer-overflow")
-static u32 hashtoken(const char *buff, size_t len) {
+u32 hashStr(const char *buff, size_t len) {
 	u32 hash = FNV_OFFSET;
 	for (size_t i = 0; i < len; i++) {
 		hash ^= (u8)(buff[i]);
@@ -85,7 +85,7 @@ static void initKeywords() {
 	usize len = sizeof(keywords) / sizeof(keywords[0]);
 	for (size_t i = 0; i < len; i++) {
 		const char *name = keywords[i].keyword;
-		u32 hash = hashtoken(name, strlen(name)) & HASHMAP_TOK_MASK;
+		u32 hash = hashStr(name, strlen(name)) & HASHMAP_TOK_MASK;
 
 		while (keywordEntries[hash].keyword != NULL) {
 			hash = (hash + 1) & HASHMAP_TOK_MASK;
@@ -96,7 +96,7 @@ static void initKeywords() {
 }
 
 ZTokenType findKeyword(const char *ident, size_t len) {
-	u32 hash = hashtoken(ident, len) & HASHMAP_TOK_MASK;
+	u32 hash = hashStr(ident, len) & HASHMAP_TOK_MASK;
 
 	while (keywordEntries[hash].keyword != NULL) {
 		if (strlen(keywordEntries[hash].keyword) == len &&

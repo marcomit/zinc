@@ -309,6 +309,100 @@ void printType(ZType *type) {
     }
 }
 
+static const u64 KIND_PRIME[] = {
+    0xE142EA7D17BE3111ULL,  // Z_TYPE_PRIMITIVE
+    0x9064005C3985C3CFULL,  // Z_TYPE_POINTER
+    0xBF87E362CF8D446BULL,  // Z_TYPE_STRUCT
+    0xC8A639D015B52909ULL,  // Z_TYPE_ARRAY
+    0xC797B2C957207247ULL,  // Z_TYPE_FUNCTION
+    0xFDE31A516694C343ULL,  // Z_TYPE_TUPLE
+    0xC4007D5AE88DA719ULL,  // Z_TYPE_GENERIC
+    0xFF9D3E64C1A6423BULL,  // Z_TYPE_FACET
+    0x8CF2B69B0577AEA9ULL,  // Z_TYPE_ENUM
+    0xE92AC1391F4A8CA1ULL,  // Z_TYPE_NONE
+    0xA7AA7CBC23377BBDULL,  // Z_TYPE_NAMESPACE
+    0xAD78DC4BFB9E8DDBULL,  // Z_TYPE_SUM
+};
+
+inline u32 hashtoken(ZToken *tok) {
+    char *str = stoken(tok);
+    return hashStr(str, strlen(str));
+}
+
+u32 hashNode(ZNode *node) {
+    return node->type;
+}
+
+static inline u32 hashMix(u32 h, u32 x) {
+    return h ^ (x + 0x9e3779b9u + (h << 6) + (h >> 2));
+}
+
+static inline u32 hashTypeList(u32 h, ZType **types) {
+    h = hashMix(h, (u32)veclen(types));
+    for (usize i = 0; i < veclen(types); i++) {
+        h = hashMix(h, hashType(types[i]));
+    }
+    return h;
+}
+
+u32 hashType(ZType *type) {
+    if (!type) return 0;
+
+    u32 h = (u32)KIND_PRIME[type->kind];
+
+    switch (type->kind) {
+    case Z_TYPE_PRIMITIVE:
+        h = hashMix(h, hashtoken(type->primitive.token));
+        break;
+    case Z_TYPE_POINTER:
+        h = hashMix(h, hashType(type->base));
+        break;
+    case Z_TYPE_STRUCT:
+        if (type->strct.name) h = hashMix(h, hashtoken(type->strct.name));
+        break;
+    case Z_TYPE_ARRAY:
+        h = hashMix(h, hashType(type->array.base));
+        break;
+    case Z_TYPE_FUNCTION:
+        h = hashMix(h, hashType(type->func.ret));
+        h = hashTypeList(h, type->func.args);
+        h = hashTypeList(h, type->func.capabilities);
+        h = hashMix(h, (u32)veclen(type->func.generics));
+        break;
+    case Z_TYPE_TUPLE:
+        h = hashTypeList(h, type->tuple);
+        break;
+    case Z_TYPE_GENERIC:
+        if (type->generic.name) h = hashMix(h, hashtoken(type->generic.name));
+        break;
+    case Z_TYPE_FACET:
+        if (type->facet.name) h = hashMix(h, hashtoken(type->facet.name));
+        h = hashMix(h, (u32)veclen(type->facet.funcs));
+        for (usize i = 0; i < veclen(type->facet.funcs); i++) {
+            h = hashMix(h, hashType(type->facet.funcs[i]->resolved));
+        }
+        break;
+    case Z_TYPE_ENUM:
+        if (type->enm.name) h = hashMix(h, hashtoken(type->enm.name));
+        break;
+    case Z_TYPE_SUM: {
+        u32 acc = 0;
+        for (usize i = 0; i < veclen(type->sumType); i++) {
+            acc += hashType(type->sumType[i]);
+        }
+        h = hashMix(h, (u32)veclen(type->sumType));
+        h ^= acc;
+        break;
+    }
+    case Z_TYPE_NAMESPACE:
+    case Z_TYPE_NONE:
+        // No structural payload compared by typesEqual; the kind seed suffices.
+        break;
+    }
+
+    return h;
+}
+
 void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
     indent(depth);
 
@@ -997,19 +1091,23 @@ static char *resolveModuleFile(char *filename) {
     return filename;
 }
 
-bool visit(ZState *state, char *filename, bool external) {
-    filename = resolvePath(state, filename);
-    filename = resolveModuleFile(filename);
+/* Stores the filename in the global state of visited files.
+ * if external is true means that the compiler try to find it in the package directory.
+ * It returns the resolved file path or null if already visited.
+ * */
+bool visit(ZState *state, char **filename, bool external) {
+    *filename = resolvePath(state, *filename);
+    *filename = resolveModuleFile(*filename);
     for (usize i = 0; i < veclen(state->visitedFiles); i++) {
-        if (strcmp(state->visitedFiles[i], filename) == 0) return false;
+        if (strcmp(state->visitedFiles[i], *filename) == 0) return false;
     }
 
     if (!external) {
-        printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", filename);
+        printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", *filename);
     }
-    vecpush(state->visitedFiles,     filename);
-    vecpush(state->pathFiles,         filename);
-    state->filename = filename;
+    vecpush(state->visitedFiles,    *filename);
+    vecpush(state->pathFiles,       *filename);
+    state->filename = *filename;
     return true;
 }
 

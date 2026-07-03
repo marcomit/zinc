@@ -72,7 +72,7 @@ static ZNode *parseVarDefTyped              (ZParser *);
 static ZNode *parseBlockOrInline            (ZParser *);
 
 /* File-level parsing functions */
-static ZNode *parseImport                   (ZParser *);
+static ZNode *parseImport                   (ZParser *, bool);
 static ZNode *skipMacro                     (ZParser *, bool);
 static ZNode *parseTypedef                  (ZParser *, bool);
 static ZNode *parseFuncDecl                 (ZParser *, ZAnnotation **, bool);
@@ -87,29 +87,6 @@ static ZParseFunc exprFunc[] = {
     parseBinary,
     parseTupleLit,
 };
-
-// static const int priorities[256] = {
-//     [TOK_STAR           & 0xFF] = 0x0C,
-//     [TOK_DIV            & 0xFF] = 0x0C,
-//     [TOK_MOD            & 0xFF] = 0x0C,
-//     [TOK_PLUS           & 0xFF] = 0x0B,
-//     [TOK_MINUS          & 0xFF] = 0x0B,
-//     [TOK_BITL           & 0xFF] = 0x0A,
-//     [TOK_BITR           & 0xFF] = 0x0A,
-//     [TOK_LT             & 0xFF] = 0x09,
-//     [TOK_GT             & 0xFF] = 0x09,
-//     [TOK_LTE            & 0xFF] = 0x09,
-//     [TOK_GTE            & 0xFF] = 0x09,
-//     [TOK_EQEQ           & 0xFF] = 0x08,
-//     [TOK_NOTEQ          & 0xFF] = 0x08,
-//     [TOK_REF            & 0xFF] = 0x07,
-//     [TOK_BITXOR         & 0xFF] = 0x06,
-//     [TOK_BITOR          & 0xFF] = 0x05,
-//     [TOK_AND            & 0xFF] = 0x04,
-//     [TOK_OR             & 0xFF] = 0x03,
-//     [TOK_COALESCING     & 0xFF] = 0x02,
-//     [TOK_EQ             & 0xFF] = 0x01,
-// };
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
     ZParser *self                       = zalloc(ZParser);
@@ -2112,7 +2089,17 @@ static ZNode *parseStructLit(ZParser *parser) {
     return structlit;
 }
 
-static ZNode *getModuleByName(ZParser *parser, ZToken **module, bool external) {
+static ZNode **getCachedModule(ZParser *parser, char *filename) {
+    for (usize i = 0; i < veclen(parser->cachedModules); i++) {
+        if (strcmp(parser->cachedModules[i]->name, filename) == 0) {
+            return parser->cachedModules[i]->node;
+        }
+    }
+    return NULL;
+}
+
+static ZNode *getModuleByName(
+    ZParser *parser, ZToken **module, bool external, bool public) {
     char *filename = NULL;
     usize len = veclen(module);
     if (len == 0) return NULL;
@@ -2153,24 +2140,33 @@ static ZNode *getModuleByName(ZParser *parser, ZToken **module, bool external) {
     vecunion(filename, ".zn", 3);
     vecpush(filename, '\0');
 
-    bool canVisit = visit(parser->state, filename, external);
-    ZNode *node = makenode(NODE_MODULE);
-
+    bool canVisit               = visit(parser->state, &filename, external);
+    ZNode *node                 = makenode(NODE_MODULE);
     if (!canVisit) {
-        node->module.name = filename;
-        node->module.root = NULL;
+        node->module.name       = filename;
+        node->module.root       = NULL;
+        node->module.cached     = getCachedModule(parser, filename);
+        node->module.pub        = public;
         return node;
     }
 
     ZToken **tokens = ztokenize(parser->state);
 
     node = zparse(parser->state, tokens);
+    node->module.pub = public;
+
+    ZParserModule *parserModule = zalloc(ZParserModule);
+    *parserModule = (ZParserModule){
+        .node = node->module.root,
+        .name = filename,
+    };
+    vecpush(parser->cachedModules, parserModule);
 
     undoVisit(parser->state);
     return node;
 }
 
-static ZNode *parseImport(ZParser *parser) {
+static ZNode *parseImport(ZParser *parser, bool public) {
     expect(parser, TOK_MODULE);
 
     bool isStd = match(parser, TOK_LT);
@@ -2193,7 +2189,7 @@ static ZNode *parseImport(ZParser *parser) {
 
     if (isStd) expect(parser, TOK_GT);
 
-    return getModuleByName(parser, module, isStd);
+    return getModuleByName(parser, module, isStd, public);
 }
 
 static ZNode *parseTypedef(ZParser *parser, bool public) {
@@ -2735,15 +2731,15 @@ static ZNode *parse(ZParser *parser) {
     ZTokenType t = start->type;
     ZAnnotation **annotations = NULL;
 
-    if (t == TOK_MODULE) {
-        return parseImport(parser);
-    } else if (t == TOK_HASHTAG && checkAhead(parser, TOK_LSBRACKET, 1)) {
+    if (t == TOK_HASHTAG && checkAhead(parser, TOK_LSBRACKET, 1)) {
         annotations = parseAnnotations(parser);
     }
 
     bool public = match(parser, TOK_PUB);
 
-    if (check(parser, TOK_FOREIGN)) {
+    if (check(parser, TOK_MODULE)) {
+        return parseImport(parser, public);
+    } else if (check(parser, TOK_FOREIGN)) {
         if (checkAhead(parser, TOK_IDENT, 1)) {
             return parseForeignInlineDecl(parser, public);
         } else if (checkAhead(parser, TOK_MODULE, 1)) {
