@@ -1,0 +1,7 @@
+pub A :: struct {
+    name: *char
+}
+
+A :: impl {
+    pub new :: A (name: *char) -> A{name: name}
+}

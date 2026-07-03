@@ -27,6 +27,8 @@
 #include <llvm-c/IRReader.h>
 #include <llvm-c/BitReader.h>
 #include <llvm-c/Transforms/PassBuilder.h>
+#include <stdio.h>
+#include <unistd.h>
 
 typedef struct ZLLVMSymbol {
     ZToken *token;
@@ -2272,7 +2274,7 @@ static LLVMValueRef genStructLitInto(
 }
 
 static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
-    if (!node || !node->resolved || node->resolved->kind != Z_TYPE_FUNCTION) {
+    if (!node || !node->resolved) {
         error(ctx->state, node ? node->tok : NULL, "Invalid genStaticAccess");
         return NULL;
     }
@@ -2288,6 +2290,11 @@ static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
     if (!val) {
         error(ctx->state, node->tok, "Unknown name '%s'", mangled);
         return NULL;
+    }
+    LLVMValueKind kind = LLVMGetValueKind(val);
+    if (kind == LLVMInstructionValueKind || kind == LLVMGlobalVariableValueKind) {
+        LLVMTypeRef type = genType(ctx, node->resolved);
+        return LLVMBuildLoad2(ctx->builder, type, val, node->tok->str);
     }
     return val;
 }
@@ -3547,6 +3554,7 @@ static void compile(ZCodegen *ctx, ZNode *root) {
     case NODE_NAMESPACE:    genNamespace(ctx, root);            break;
     case NODE_VAR_DECL:     genGlobalVar(ctx, root);            break;
     case NODE_TYPEDEF:
+    case NODE_FOREIGN_VAR:
     case NODE_MACRO:        /* Doesn't generate anything. */    break;
     case NODE_IMPL:         genImpl     (ctx, root);            break;
     case NODE_MODULE:
@@ -3582,6 +3590,17 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
         for (usize i = 0; i < veclen(funcs); i++) {
             genForwardDecl(ctx, funcs[i]);
         }
+        break;
+    }
+    case NODE_FOREIGN_VAR: {
+        char *name = node->foreignVar.name->str;
+        LLVMValueRef global = LLVMGetNamedGlobal(ctx->mod, name);
+        if (!global) {
+            global = LLVMAddGlobal(ctx->mod,
+                genType(ctx, node->resolved), name
+            );
+        }
+        putLLVMValueRef(ctx, name, global);
         break;
     }
     case NODE_FUNC: {

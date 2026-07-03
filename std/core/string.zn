@@ -157,11 +157,11 @@ string self :: impl {
     }
 
     pub print :: u0 () {
-        libc::printf("%s", self)
+        io::printf("%s", self)
     }
 
     pub println :: u0 () {
-        libc::printf("%s\n", self)
+        io::printf("%s\n", self)
     }
 
     pub free :: u0 ()[Allocator] {

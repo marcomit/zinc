@@ -165,7 +165,7 @@ ZState *loadState(int argc, char **argv) {
         state->output = base;
     }
 
-    visit(state, filename, false);
+    visit(state, &filename, false);
 
     return state;
 

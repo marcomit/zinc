@@ -1,0 +1,8 @@
+use a
+use b
+
+main :: i32 () {
+    a: A = A::new("ciao")
+    print(a)
+    return 0
+}

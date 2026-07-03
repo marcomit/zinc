@@ -1,9 +1,7 @@
-use <std::core::string>
+use <std::libc>
+use <std::mem>
 use <std::mem::gpa>
-
-libc :: foreign {
-    printf :: u0 (*char, ...)
-}
+use <std::core::string>
 
 main :: i32 () {
     gpa := GeneralPurposeAllocator::init()
@@ -16,7 +14,7 @@ main :: i32 () {
         hello.println()
 
         if hello == hello2 {
-            libc::printf("ok\n")
+            io::printf("ok\n")
         }
     }
 
