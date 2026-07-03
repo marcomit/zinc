@@ -1,0 +1,7 @@
+use a
+
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+pub print :: u0 (a: A) -> c::printf("%s\n", a.name)
