@@ -98,7 +98,6 @@ static ZParser *makeparser(ZState *state, ZToken **tokens) {
     self->state                         = state;
     self->noFuncType                    = false;
     self->noStructLit                   = false;
-    self->cachedModules                 = NULL;
 
     self->macroParser.currentMacro      = NULL;
     self->macroParser.expandingMacros   = NULL;
@@ -2115,9 +2114,9 @@ static ZNode *parseStructLit(ZParser *parser) {
 }
 
 static ZNode **getCachedModule(ZParser *parser, char *filename) {
-    for (usize i = 0; i < veclen(parser->cachedModules); i++) {
-        if (strcmp(parser->cachedModules[i]->name, filename) == 0) {
-            return parser->cachedModules[i]->node;
+    for (usize i = 0; i < veclen(parser->state->cachedModules); i++) {
+        if (strcmp(parser->state->cachedModules[i]->name, filename) == 0) {
+            return parser->state->cachedModules[i]->node;
         }
     }
     return NULL;
@@ -2187,7 +2186,7 @@ static ZNode *getModuleByName(
     };
 
     node->module.cached = node->module.root;
-    vecpush(parser->cachedModules, parserModule);
+    vecpush(parser->state->cachedModules, parserModule);
 
     undoVisit(parser->state);
     return node;

@@ -139,6 +139,12 @@ typedef struct {
     /* Each module carries its own arena allocator for thread-safety. */
     ZModuleAllocator **modules;
 
+    /* Every module is parsed exactly once; every later import reuses the parsed
+     * body from here. Shared across the per-file parser instances (each file
+     * gets its own ZParser), so a re-import from any file resolves its cached
+     * body regardless of which file first parsed it. */
+    struct ZParserModule **cachedModules;
+
     /* Indicates the start time of the current phase to calculate the diagnostics. */
     struct timespec phaseTime;
 } ZState;
@@ -708,10 +714,6 @@ typedef struct ZParser {
      * does not greedily parse the destructure pattern as function args. */
     bool            noFuncType;
 
-    /* Every module must be parsed only once.
-     * Duplicate imports take the reference from the parsed module.
-     * */
-    ZParserModule   **cachedModules;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */

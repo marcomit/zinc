@@ -103,6 +103,14 @@ typedef struct {
 
     /* buffer for operation names for storing the hex number. */
     char                *str;
+
+    /* Modules already forward-declared / defined into ctx->mod, keyed by
+     * module name. A module can be reached through several import paths (and
+     * re-imports carry an empty module.root), so these guard against emitting
+     * a body twice - which would append a second definition to the same
+     * function - and terminate on cyclic imports. */
+    hashset_t           seenModuleDecls;
+    hashset_t           seenModuleDefs;
 } ZCodegen;
 
 static void         genStmt         (ZCodegen *, ZNode *);
@@ -257,6 +265,8 @@ ZCodegen *makecodegen(ZState *state, ZModuleAllocator *module) {
     self->state         = state;
     self->count         = 0;
     self->str           = NULL;
+    self->seenModuleDecls = NULL;
+    self->seenModuleDefs  = NULL;
     vecunion(self->str, "        ", 9);
     return self;
 }
@@ -3483,6 +3493,16 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 static void compile(ZCodegen *, ZNode *);
 static void genForwardDecl(ZCodegen *, ZNode *);
 
+/* Returns the declarations of an imported module. A module is parsed exactly
+ * once: the first import site owns the parsed list in module.root, while every
+ * later re-import carries an empty module.root and reaches the same list
+ * through module.cached. Codegen must follow cached so functions declared in a
+ * module that this file only re-imports still get emitted into ctx->mod. */
+static inline ZNode **moduleBody(ZNode *node) {
+    return veclen(node->module.root) > 0 ? node->module.root
+                                         : node->module.cached;
+}
+
 static void genNamespace(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < veclen(node->block); i++) {
         compile(ctx, node->block[i]);
@@ -3557,12 +3577,18 @@ static void compile(ZCodegen *ctx, ZNode *root) {
     case NODE_FOREIGN_VAR:
     case NODE_MACRO:        /* Doesn't generate anything. */    break;
     case NODE_IMPL:         genImpl     (ctx, root);            break;
-    case NODE_MODULE:
-        for (usize i = 0; i < veclen(root->module.root); i++)
-            genForwardDecl(ctx, root->module.root[i]);
-        for (usize i = 0; i < veclen(root->module.root); i++)
-            compile(ctx, root->module.root[i]);
+    case NODE_MODULE: {
+        /* Emit each module body at most once per LLVM module: repeated imports
+         * and cyclic imports would otherwise append a second definition to a
+         * function that already has one. */
+        if (!hashset_insert(&ctx->seenModuleDefs, root->module.name)) break;
+        ZNode **body = moduleBody(root);
+        for (usize i = 0; i < veclen(body); i++)
+            genForwardDecl(ctx, body[i]);
+        for (usize i = 0; i < veclen(body); i++)
+            compile(ctx, body[i]);
         break;
+    }
     default:
         error(ctx->state, root->tok, "(compilation not yet implemented for %d)", root->type);
         break;
@@ -3573,9 +3599,15 @@ static void compile(ZCodegen *ctx, ZNode *root) {
 static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
     if (!node) return;
     switch (node->type) {
-    case NODE_MODULE:
-        for (usize i = 0; i < veclen(node->module.root); i++)
-            genForwardDecl(ctx, node->module.root[i]);
+    case NODE_MODULE: {
+        /* Follow module.cached for re-imports and guard against cycles, so
+         * every reachable declaration lands in ctx->mod exactly once. */
+        if (!hashset_insert(&ctx->seenModuleDecls, node->module.name)) break;
+        ZNode **body = moduleBody(node);
+        for (usize i = 0; i < veclen(body); i++)
+            genForwardDecl(ctx, body[i]);
+        break;
+    }
     case NODE_NAMESPACE:
         for (usize i = 0; i < veclen(node->block); i++)
             genForwardDecl(ctx, node->block[i]);
@@ -3583,9 +3615,12 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
     case NODE_VAR_DECL: {
         ZVarDestructPattern *pat = node->varDecl.pattern;
         if (!pat || pat->type != Z_VAR_IDENT) break;
-        LLVMTypeRef type    = genType(ctx, node->resolved);
-        LLVMValueRef global = LLVMAddGlobal(ctx->mod, type, pat->ident->str);
-        LLVMSetLinkage(global, LLVMInternalLinkage);
+        LLVMValueRef global = LLVMGetNamedGlobal(ctx->mod, pat->ident->str);
+        if (!global) {
+            LLVMTypeRef type = genType(ctx, node->resolved);
+            global = LLVMAddGlobal(ctx->mod, type, pat->ident->str);
+            LLVMSetLinkage(global, LLVMInternalLinkage);
+        }
         putLLVMValueRef(ctx, pat->ident->str, global);
         break;
     }
@@ -3614,6 +3649,12 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
                 node->funcDef.name->str,
                 NULL
             });
+
+        LLVMValueRef existing = LLVMGetNamedFunction(ctx->mod, node->funcDef.mangled);
+        if (existing) {
+            putLLVMValueRef(ctx, node->funcDef.mangled, existing);
+            break;
+        }
 
         LLVMTypeRef ret      = genType(ctx, node->funcDef.ret);
         LLVMTypeRef *args    = NULL;
