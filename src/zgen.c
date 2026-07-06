@@ -3905,12 +3905,12 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     /* The PE linker uses the exact name given; ensure .exe extension. */
     char *outname_buf = NULL;
     {
-        size_t n = strlen(outname);
-        if (n < 4 || strcmp(outname + n - 4, ".exe") != 0) {
+        size_t n = strlen(output);
+        if (n < 4 || strcmp(output + n - 4, ".exe") != 0) {
             outname_buf = (char *)malloc(n + 5);
-            memcpy(outname_buf, outname, n);
+            memcpy(outname_buf, output, n);
             memcpy(outname_buf + n, ".exe", 5);
-            outname = outname_buf;
+            output = outname_buf;
         }
     }
 #endif
