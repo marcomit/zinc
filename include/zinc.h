@@ -714,6 +714,10 @@ typedef struct ZParser {
      * does not greedily parse the destructure pattern as function args. */
     bool            noFuncType;
 
+    /* When true, parseStmt will not attempt to parse a return statement.
+     * Set by parseDefer so that `defer return ...` will be rejected by the parser.
+     * */
+    bool            noReturnStmt;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */

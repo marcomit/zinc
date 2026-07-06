@@ -1,0 +1,33 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+main :: i32 () {
+    Shape :: enum {
+        Circle(i32)
+        Square(i32)
+    }
+
+    Vec :: struct {
+        x: i32
+        y: i32
+    }
+    V2 :: type Vec
+
+    a := Shape::Circle(5)
+    match a {
+        Shape::Circle(r) -> c::printf("circle:%d\n", r),
+        Shape::Square(s) -> c::printf("square:%d\n", s)
+    }
+
+    b := Shape::Square(3)
+    match b {
+        Shape::Circle(r) -> c::printf("circle:%d\n", r),
+        Shape::Square(s) -> c::printf("square:%d\n", s)
+    }
+
+    p: V2 = Vec { x: 6, y: 8 }
+    c::printf("%d %d\n", p.x, p.y)
+
+    return 0
+}

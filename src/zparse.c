@@ -72,12 +72,14 @@ static ZNode *parseVarDefTyped              (ZParser *);
 static ZNode *parseBlockOrInline            (ZParser *);
 
 /* File-level parsing functions */
-static ZNode *parseImport                   (ZParser *, bool);
 static ZNode *skipMacro                     (ZParser *, bool);
+static ZNode *parseFacet                    (ZParser *, bool);
+static ZNode *parseImport                   (ZParser *, bool);
 static ZNode *parseTypedef                  (ZParser *, bool);
 static ZNode *parseFuncDecl                 (ZParser *, ZAnnotation **, bool);
 static ZNode *parseEnumDecl                 (ZParser *, ZAnnotation **, bool);
 static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
+static ZNode *parseForeignBlock             (ZParser *, bool);
 
 static ZType **parseGenericsDecl            (ZParser *, bool);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
@@ -90,18 +92,9 @@ static ZParseFunc exprFunc[] = {
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
     ZParser *self                       = zalloc(ZParser);
+    *self                               = (ZParser){ 0 };
     self->source                        = maketokstream(tokens, NULL);
-    self->tokenIndex                    = 0;
-    self->errstack                      = NULL;
-    self->depth                         = 0;
     self->state                         = state;
-    self->noFuncType                    = false;
-    self->noStructLit                   = false;
-
-    self->macroParser.currentMacro      = NULL;
-    self->macroParser.expandingMacros   = NULL;
-    self->macroParser.currentIndex      = 0;
-    self->macroParser.macros            = NULL;
     return self;
 }
 
@@ -981,7 +974,9 @@ ZType *parseType(ZParser *parser) {
 
 static ZNode *parseDefer(ZParser *parser) {
     expect(parser, TOK_DEFER);
+    parser->noReturnStmt = true;
     ZNode *expr = parseStmt(parser);
+    parser->noReturnStmt = false;
 
     ensure(expr, "Expected an expression after 'defer' keyword");
 
@@ -1087,16 +1082,33 @@ ZNode *parseStmt(ZParser *parser) {
 
     ZTokenType t = peek(parser)->type;
 
+    if (check(parser, TOK_IDENT) &&
+        checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
+        ZToken *next = peekAhead(parser, 2);
+        if (!next) return NULL;
+        switch (next->type) {
+        case TOK_STRUCT:    return parseStructDecl(parser, NULL, false);
+        case TOK_ENUM:      return parseEnumDecl(parser, NULL, false);
+        case TOK_TYPEDEF:   return parseTypedef(parser, false);
+        case TOK_FOREIGN:   return parseForeignBlock(parser, false);
+        default: break;
+        }
+    }
 
     switch (t) {
     case TOK_IF:        return parseIf              (parser);
     case TOK_FOR:       return parseLoops           (parser);
     case TOK_MATCH:     return parseMatch           (parser, false);
     case TOK_DEFER:     return parseDefer           (parser);
-    case TOK_RETURN:    return parseReturn          (parser);
     case TOK_BREAK:     return parseBreak           (parser);
     case TOK_CONTINUE:  return parseContinue        (parser);
     case TOK_WITH:      return parseCapabilityBlock (parser);
+    case TOK_RETURN:
+        if (parser->noReturnStmt) {
+            error(parser->state, peek(parser), "'return' statement not allowed");
+            return NULL;
+        }
+        return parseReturn          (parser);
     default: {
         ZParseFunc funcs[] = {
             parseVarInferred,

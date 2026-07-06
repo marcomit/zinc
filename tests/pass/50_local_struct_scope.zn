@@ -1,0 +1,28 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+T :: type i32
+
+main :: i32 () {
+    Node :: struct {
+        val: i32
+        next: *Node
+    }
+
+    a := Node { val: 1, next: 0 as *Node }
+    b := Node { val: 2, next: &a }
+    c::printf("%d %d\n", b.val, b.next.val)
+
+    T :: type u8
+    v: T = 200
+    c::printf("%d\n", v)
+
+    if b.val == 2 {
+        Inner :: struct { flag: i32 }
+        i := Inner { flag: 9 }
+        c::printf("%d\n", i.flag)
+    }
+
+    return 0
+}

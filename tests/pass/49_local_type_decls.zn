@@ -1,0 +1,41 @@
+c :: foreign {
+    printf :: u0 (*char, ...)
+}
+
+main :: i32 () {
+    Point :: struct {
+        x: i32
+        y: i32
+    }
+
+    Option :: enum {
+        Some(i32)
+        None
+    }
+
+    myint :: type i32
+
+    libc :: foreign {
+        puts :: u0 (*char)
+    }
+
+    p := Point { x: 3, y: 4 }
+    c::printf("%d %d\n", p.x, p.y)
+
+    n: myint = 7
+    v := Option::Some(n)
+    if Option::Some(got) := v {
+        c::printf("some:%d\n", got)
+    }
+
+    empty := Option::None()
+    if Option::Some(_) := empty {
+        c::printf("WRONG\n")
+    } else {
+        c::printf("none\n")
+    }
+
+    libc::puts("done")
+
+    return 0
+}
