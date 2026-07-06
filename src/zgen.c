@@ -103,6 +103,14 @@ typedef struct {
 
     /* buffer for operation names for storing the hex number. */
     char                *str;
+
+    /* Modules already forward-declared / defined into ctx->mod, keyed by
+     * module name. A module can be reached through several import paths (and
+     * re-imports carry an empty module.root), so these guard against emitting
+     * a body twice - which would append a second definition to the same
+     * function - and terminate on cyclic imports. */
+    hashset_t           seenModuleDecls;
+    hashset_t           seenModuleDefs;
 } ZCodegen;
 
 static void         genStmt         (ZCodegen *, ZNode *);
@@ -257,6 +265,8 @@ ZCodegen *makecodegen(ZState *state, ZModuleAllocator *module) {
     self->state         = state;
     self->count         = 0;
     self->str           = NULL;
+    self->seenModuleDecls = NULL;
+    self->seenModuleDefs  = NULL;
     vecunion(self->str, "        ", 9);
     return self;
 }
@@ -3483,6 +3493,16 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 static void compile(ZCodegen *, ZNode *);
 static void genForwardDecl(ZCodegen *, ZNode *);
 
+/* Returns the declarations of an imported module. A module is parsed exactly
+ * once: the first import site owns the parsed list in module.root, while every
+ * later re-import carries an empty module.root and reaches the same list
+ * through module.cached. Codegen must follow cached so functions declared in a
+ * module that this file only re-imports still get emitted into ctx->mod. */
+static inline ZNode **moduleBody(ZNode *node) {
+    return veclen(node->module.root) > 0 ? node->module.root
+                                         : node->module.cached;
+}
+
 static void genNamespace(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < veclen(node->block); i++) {
         compile(ctx, node->block[i]);
@@ -3557,12 +3577,18 @@ static void compile(ZCodegen *ctx, ZNode *root) {
     case NODE_FOREIGN_VAR:
     case NODE_MACRO:        /* Doesn't generate anything. */    break;
     case NODE_IMPL:         genImpl     (ctx, root);            break;
-    case NODE_MODULE:
-        for (usize i = 0; i < veclen(root->module.root); i++)
-            genForwardDecl(ctx, root->module.root[i]);
-        for (usize i = 0; i < veclen(root->module.root); i++)
-            compile(ctx, root->module.root[i]);
+    case NODE_MODULE: {
+        /* Emit each module body at most once per LLVM module: repeated imports
+         * and cyclic imports would otherwise append a second definition to a
+         * function that already has one. */
+        if (!hashset_insert(&ctx->seenModuleDefs, root->module.name)) break;
+        ZNode **body = moduleBody(root);
+        for (usize i = 0; i < veclen(body); i++)
+            genForwardDecl(ctx, body[i]);
+        for (usize i = 0; i < veclen(body); i++)
+            compile(ctx, body[i]);
         break;
+    }
     default:
         error(ctx->state, root->tok, "(compilation not yet implemented for %d)", root->type);
         break;
@@ -3571,7 +3597,17 @@ static void compile(ZCodegen *ctx, ZNode *root) {
 }
 
 static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
+    if (!node) return;
     switch (node->type) {
+    case NODE_MODULE: {
+        /* Follow module.cached for re-imports and guard against cycles, so
+         * every reachable declaration lands in ctx->mod exactly once. */
+        if (!hashset_insert(&ctx->seenModuleDecls, node->module.name)) break;
+        ZNode **body = moduleBody(node);
+        for (usize i = 0; i < veclen(body); i++)
+            genForwardDecl(ctx, body[i]);
+        break;
+    }
     case NODE_NAMESPACE:
         for (usize i = 0; i < veclen(node->block); i++)
             genForwardDecl(ctx, node->block[i]);
@@ -3579,9 +3615,12 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
     case NODE_VAR_DECL: {
         ZVarDestructPattern *pat = node->varDecl.pattern;
         if (!pat || pat->type != Z_VAR_IDENT) break;
-        LLVMTypeRef type    = genType(ctx, node->resolved);
-        LLVMValueRef global = LLVMAddGlobal(ctx->mod, type, pat->ident->str);
-        LLVMSetLinkage(global, LLVMInternalLinkage);
+        LLVMValueRef global = LLVMGetNamedGlobal(ctx->mod, pat->ident->str);
+        if (!global) {
+            LLVMTypeRef type = genType(ctx, node->resolved);
+            global = LLVMAddGlobal(ctx->mod, type, pat->ident->str);
+            LLVMSetLinkage(global, LLVMInternalLinkage);
+        }
         putLLVMValueRef(ctx, pat->ident->str, global);
         break;
     }
@@ -3610,6 +3649,12 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
                 node->funcDef.name->str,
                 NULL
             });
+
+        LLVMValueRef existing = LLVMGetNamedFunction(ctx->mod, node->funcDef.mangled);
+        if (existing) {
+            putLLVMValueRef(ctx, node->funcDef.mangled, existing);
+            break;
+        }
 
         LLVMTypeRef ret      = genType(ctx, node->funcDef.ret);
         LLVMTypeRef *args    = NULL;
@@ -3789,7 +3834,18 @@ static ZCodegen *compileModules(ZState *state) {
 void zcompile(ZState *state, ZNode *root, const char *output) {
     (void)root;
 
+    if (state->verbose) timer_start(&state->phaseTime);
+
     ZCodegen *ctx = compileModules(state);
+
+    
+    const char *format;
+    double elapsed;
+
+    if (state->verbose) {
+        elapsed = timer_elapsed(state->phaseTime, &format);
+        printf(COLOR_BOLD COLOR_CYAN "  Codegen:    " COLOR_RESET "%.2f%s\n", elapsed, format);
+    }
 
     if (!LLVMGetNamedFunction(ctx->mod, "main")) {
         error(state, NULL, "[LLVM: function main not registered]");
@@ -3806,41 +3862,37 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     LLVMDisposeMessage(errmsg);
 
     if (state->emit == Z_EMIT_IR) {
-        const char *llfile = output ? output : "output.ll";
-        if (LLVMPrintModuleToFile(ctx->mod, llfile, &errmsg)) {
+        if (!output) output = "output.ll";
+        if (LLVMPrintModuleToFile(ctx->mod, output, &errmsg)) {
             error(state, NULL, "Failed to write IR file: %s", errmsg);
             LLVMDisposeMessage(errmsg);
+            goto end;
         }
-        freeCodegen(ctx);
-        return;
+        goto success;
     }
 
     if (state->emit == Z_EMIT_ASM) {
-        const char *asmfile = output ? output : "output.s";
-        if (emitObjectFile(ctx, asmfile, LLVMAssemblyFile))
-            printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", asmfile);
-        freeCodegen(ctx);
-        return;
+        if (!output) output = "output.s";
+        if (emitObjectFile(ctx, output, LLVMAssemblyFile)) goto success;
+        goto end;
     }
 
     if (state->emit == Z_EMIT_OBJ) {
-        const char *out = output ? output : "output.o";
-        if (emitObjectFile(ctx, out, LLVMObjectFile))
-            printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", out);
-        freeCodegen(ctx);
-        return;
+        if (!output) output = "output.o";
+        if (emitObjectFile(ctx, output, LLVMObjectFile)) goto success;
+        goto end;
     }
 
-    const char *outname = output ? output : "a.out";
+    if (!output) output = "a.out";
     const char *objext = (state->ltoMode != Z_LTO_OFF) ? ".tmp.bc" : ".tmp.o";
-    size_t objnameLen = strlen(outname) + strlen(objext) + 1;
+    size_t objnameLen = strlen(output) + strlen(objext) + 1;
     char *objfileBuf = malloc(objnameLen);
     if (!objfileBuf) {
         error(state, NULL, "Failed to allocate temporary object filename");
         freeCodegen(ctx);
         return;
     }
-    snprintf(objfileBuf, objnameLen, "%s%s", outname, objext);
+    snprintf(objfileBuf, objnameLen, "%s%s", output, objext);
     const char *objfile = objfileBuf;
 
     if (!emitObjectFile(ctx, objfile, LLVMObjectFile)) {
@@ -3853,29 +3905,43 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     /* The PE linker uses the exact name given; ensure .exe extension. */
     char *outname_buf = NULL;
     {
-        size_t n = strlen(outname);
-        if (n < 4 || strcmp(outname + n - 4, ".exe") != 0) {
+        size_t n = strlen(output);
+        if (n < 4 || strcmp(output + n - 4, ".exe") != 0) {
             outname_buf = (char *)malloc(n + 5);
-            memcpy(outname_buf, outname, n);
+            memcpy(outname_buf, output, n);
             memcpy(outname_buf + n, ".exe", 5);
-            outname = outname_buf;
+            output = outname_buf;
         }
     }
 #endif
 
-    int ret = zinc_lld_link(objfile, outname,
+    if (state->verbose) {
+        timer_start(&state->phaseTime);
+    }
+
+    int ret = zinc_lld_link(objfile, output,
             (const char**)state->extraArgs, veclen(state->extraArgs));
     if (ret != 0) {
         error(state, NULL, "Linker failed with code %d", ret);
-    } else {
-        printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", outname);
-    }
+    } else goto success;
+
 #ifdef _WIN32
     free(outname_buf);
 #endif
 
+    if (state->verbose) {
+        elapsed = timer_elapsed(state->phaseTime, &format);
+        printf(COLOR_BOLD COLOR_CYAN "  LLD Linker: " COLOR_RESET "%.2f%s\n", elapsed, format);
+    }
+
     remove(objfile);
     free(objfileBuf);
+success:
 
+    // if (state->verbose) {
+        printf(COLOR_BLUE COLOR_BOLD "  Generated   " COLOR_RESET "%s\n", output);
+    // }
+
+end:
     freeCodegen(ctx);
 }

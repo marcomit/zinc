@@ -2,8 +2,10 @@
 // Copyright (c) 2025, Marco Menegazzi
 
 #include "zinc.h"
+#include "base.h"
 #include "zcolors.h"
 
+#include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
@@ -30,6 +32,7 @@ static void usage(char *program) {
     printf("Usage: %s <filename> [options]\n", program);
     printf("Options:\n");
     printf("\t -d --debug               Enable debug mode (sets -O0)\n");
+    printf("\t -v --verbose             Enable verbose mode\n");
     printf("\t --emit=exe|obj|ir|asm    Select output type (default: exe)\n");
     printf("\t --unused-variable        Suppress 'unused variable' warnings\n");
     printf("\t --unused-function        Suppress 'unused function' warnings\n");
@@ -80,6 +83,7 @@ static struct option long_options[] = {
     {"unused-struct",           no_argument,        NULL,   OPT_UNUSED_STRUCT       },
     {"skip-llvm-validation",    no_argument,        NULL,   OPT_SKIP_LLVM_VALIDATION},
     {"output",                  required_argument,  NULL,   'o'                     },
+    {"verbose",                 no_argument,        NULL,   'v'                     },
     {"lto",                     required_argument,  NULL,   OPT_LTO                 },
     {"release",                 no_argument,        NULL,   OPT_RELEASE             },
     {"release-fast",            no_argument,        NULL,   OPT_RELEASE_FAST        },
@@ -96,7 +100,7 @@ ZState *loadState(int argc, char **argv) {
     int opt;
     optind = 2;
 
-    while (( opt = getopt_long(argc, argv, "do:l:L:O:", long_options, NULL) ) != -1) {
+    while (( opt = getopt_long(argc, argv, "dvo:l:L:O:", long_options, NULL) ) != -1) {
         switch (opt) {
         case 'L': {
             usize len = 3 + strlen(optarg);
@@ -135,6 +139,7 @@ ZState *loadState(int argc, char **argv) {
             else if (strcmp(optarg, "asm")  == 0) state->emit = Z_EMIT_ASM;
             else if (strcmp(optarg, "exe")  == 0) state->emit = Z_EMIT_EXE;
             break;
+        case 'v':                       SET_FLAG(state->verbose,            "Verbose");                 break;
         case OPT_UNUSED_FUNC:           SET_FLAG(state->unusedFunc,         "Unused function flag");    break;
         case OPT_UNUSED_VAR:            SET_FLAG(state->unusedVar,          "Unused variable flag");    break;
         case OPT_UNUSED_STRUCT:         SET_FLAG(state->unusedStruct,       "Unused struct flag");      break;
@@ -186,6 +191,8 @@ void handler(int sig) {
 }
 
 int pipeline(ZState *state) {
+    if (state->verbose) timer_start(&state->phaseTime);
+
     ZToken **tokens = ztokenize(state);
     if (!tokens) return 1;
 
@@ -199,6 +206,13 @@ int pipeline(ZState *state) {
     if (state->debug) printNode(root, 0);
 
     if (!canAdvance(state)) return 4;
+
+    if (state->verbose) {
+        const char *format;
+        double elapsed = timer_elapsed(state->phaseTime, &format);
+        printf(COLOR_BOLD COLOR_CYAN "  Frontend:   " COLOR_RESET "%.2f%s\n", elapsed, format);
+    }
+
     zcompile(state, root, state->output);
 
     if (!canAdvance(state)) return 5;
@@ -214,25 +228,20 @@ int main(int argc, char **argv) {
 
     if (!state) return 1;
 
-    struct timespec start, end;
-
-    clock_gettime(CLOCK_MONOTONIC, &start);
+    struct timespec start;
+    timer_start(&start);
 
     int res = pipeline(state);
 
-    clock_gettime(CLOCK_MONOTONIC, &end);
-
-    double elapsed =
-        (end.tv_sec - start.tv_sec) +
-        (end.tv_nsec - start.tv_nsec) / 1e9;
-    
     printLogs(state);
 
     allocator.close();
 
     if (!res) {
-        printf("  " COLOR_BOLD COLOR_GREEN "Finished" COLOR_RESET
-            " build in %.02fs\n", elapsed);
+        const char *format;
+        double elapsed = timer_elapsed(start, &format);
+        printf("  " COLOR_BOLD COLOR_GREEN "Total:      " COLOR_RESET
+            "%.02f%s\n", elapsed, format);
     }
 
     return res;

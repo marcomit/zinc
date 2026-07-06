@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <errno.h>
+#include <time.h>
 
 #ifndef min
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -44,5 +45,38 @@ typedef float f32;
 typedef double f64;
 
 typedef size_t usize;
+
+static inline void timer_start(struct timespec *t) {
+    clock_gettime(CLOCK_MONOTONIC, t);
+}
+
+static inline double timer_elapsed(struct timespec start,
+                                   const char **unit) {
+    struct timespec end;
+    clock_gettime(CLOCK_MONOTONIC, &end);
+
+    double ns =
+        (end.tv_sec - start.tv_sec) * 1e9 +
+        (end.tv_nsec - start.tv_nsec);
+
+    if (!unit)
+        return ns;
+
+    if (ns < 1e3) {
+        *unit = "ns";
+        return ns;
+    }
+    if (ns < 1e6) {
+        *unit = "us";
+        return ns / 1e3;
+    }
+    if (ns < 1e9) {
+        *unit = "ms";
+        return ns / 1e6;
+    }
+
+    *unit = "s";
+    return ns / 1e9;
+}
 
 #endif

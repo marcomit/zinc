@@ -133,8 +133,20 @@ typedef struct {
     /* Extra arguments should be passed in the linker. */
     char            **extraArgs;
 
+    /* Allocator used for shared allocations. */
     arena_t         *globalAllocator;
+
+    /* Each module carries its own arena allocator for thread-safety. */
     ZModuleAllocator **modules;
+
+    /* Every module is parsed exactly once; every later import reuses the parsed
+     * body from here. Shared across the per-file parser instances (each file
+     * gets its own ZParser), so a re-import from any file resolves its cached
+     * body regardless of which file first parsed it. */
+    struct ZParserModule **cachedModules;
+
+    /* Indicates the start time of the current phase to calculate the diagnostics. */
+    struct timespec phaseTime;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -187,7 +199,8 @@ typedef enum {
     NODE_ENUM_LIT,
     NODE_FACET,
     NODE_IMPL,
-    NODE_FORIN
+    NODE_FORIN,
+    NODE_MEMBER_INFERRED
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -202,7 +215,7 @@ typedef enum ZTypeKind {
     Z_TYPE_ENUM,
     Z_TYPE_NONE,
     Z_TYPE_NAMESPACE,
-    Z_TYPE_SUM
+    Z_TYPE_SUM,
 } ZTypeKind;
 
 struct ZType {
@@ -701,10 +714,6 @@ typedef struct ZParser {
      * does not greedily parse the destructure pattern as function args. */
     bool            noFuncType;
 
-    /* Every module must be parsed only once.
-     * Duplicate imports take the reference from the parsed module.
-     * */
-    ZParserModule   **cachedModules;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */

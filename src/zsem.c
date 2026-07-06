@@ -42,17 +42,18 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-static void analyze(ZThreadSem *, ZNode *);
-static void analyzeStmt(ZThreadSem *, ZNode *);
-static void analyzeBlock(ZThreadSem *, ZNode *, bool);
-static bool satisfyFacet(ZThreadSem *, ZType *, ZType *);
-static ZType *resolveTypeRef(ZThreadSem *, ZType *);
+static void analyze                 (ZThreadSem *, ZNode *);
+static void analyzeStmt             (ZThreadSem *, ZNode *);
+static void analyzeBlock            (ZThreadSem *, ZNode *, bool);
+static bool satisfyFacet            (ZThreadSem *, ZType *, ZType *);
+static ZType *resolveTypeRef        (ZThreadSem *, ZType *);
 static void checkFunctionUsedAsValue(ZThreadSem *, ZNode *);
-static ZFuncTable *resolveFuncTable(ZThreadSem *, ZType *);
-static ZType *resolveType(ZThreadSem *, ZNode *);
-static ZSymbol *resolve(ZThreadSem *, ZToken *);
-static ZType *typesCompatible(ZThreadSem *, ZType *, ZType *);
-static ZType *resolveLiteralType(ZThreadSem *, ZToken *);
+static ZFuncTable *resolveFuncTable (ZThreadSem *, ZType *);
+static ZType *resolveType           (ZThreadSem *, ZNode *);
+static ZSymbol *resolve             (ZThreadSem *, ZToken *);
+static ZType *typesCompatible       (ZThreadSem *, ZType *, ZType *);
+static ZType *resolveLiteralType    (ZThreadSem *, ZToken *);
+static ZType *resolveEnumLit        (ZThreadSem *, ZNode *);
 
 /* ================== Scope / Symbol helpers ================== */
 
@@ -353,7 +354,7 @@ static void putVarPattern(
         usize got       = veclen(pattern->tuple);
         if (expected != got) {
             error(ctx->state, pattern->tok,
-                    "Expected %zu, got %zu elements", expected, got);
+                    "Expected %zu, got %zu elements %s", expected, got, stoken(pattern->tok));
             return;
         }
 
@@ -672,7 +673,7 @@ static inline bool isFloat   (ZTokenType t) { return (bool)(t & TOK_FLOAT);     
 static inline bool isInteger (ZTokenType t) { return isSigned(t) || isUnsigned(t);  }
 static inline bool isPrimitive(ZType *t)    { return t->kind == Z_TYPE_PRIMITIVE;   }
 static inline bool isNumeric(ZType *t) {
-    if (!isPrimitive(t)) return false;
+    if (!t || !isPrimitive(t)) return false;
     return t->primitive.token->type & (TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT);
 }
 
@@ -1341,8 +1342,8 @@ static void resolveFuncArgs(
         if (!promoted) {
             error(ctx->state, args[i]->tok,
                 "Expected %s, got %s",
-                stype(args[i]->resolved),
-                stype(expected)
+                stype(expected),
+                stype(args[i]->resolved)
             );
         }
         args[i] = implicitCast(ctx, args[i], expected);
@@ -1404,7 +1405,7 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr) {
         }
     } else if (callee->type == NODE_STATIC_ACCESS) {
         ZType *resolved = resolveType(ctx, callee);
-        if (callee->type == NODE_ENUM_LIT) {
+        if (resolveEnumLit(ctx, callee)) {
             curr->type = NODE_ENUM_LIT;
             callee->type = NODE_STATIC_ACCESS;
         }
@@ -1801,6 +1802,41 @@ static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr) {
     }
 }
 
+static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr) {
+    if (!curr || curr->type != NODE_STATIC_ACCESS) return NULL;
+
+    ZToken *base        = curr->staticAccess.base;
+    ZToken *prop        = curr->staticAccess.prop;
+    ZSymbol *baseSym    = resolve(ctx, base);
+
+    if (!baseSym || baseSym->kind != Z_SYM_ENUM) return NULL;
+
+    ZType **fields  = baseSym->type->enm.fields;
+    ZType *strct    = NULL;
+    for (usize i = 0; i < veclen(fields) && !strct; i++) {
+        if (tokeneq(fields[i]->strct.name, prop)) {
+            strct = fields[i];
+        }
+    }
+
+    if (!strct) {
+        error(ctx->state, prop,
+            "Field '%s' not found for enum '%s'",
+            prop->str, base->str
+        );
+        return NULL;
+    }
+
+    /* Skip the first argument (always the flag). */
+    for (usize i = 1; i < veclen(strct->strct.fields); i++) {
+        strct->strct.fields[i]->field.type  = resolveTypeRef(
+            ctx, strct->strct.fields[i]->field.type);
+        strct->strct.fields[i]->resolved    = strct->strct.fields[i]->field.type;
+    }
+
+    return baseSym->type;
+}
+
 static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr) {
     ZToken *base            = curr->staticAccess.base;
     ZToken *prop            = curr->staticAccess.prop;
@@ -1831,30 +1867,11 @@ static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr) {
         
         return NULL;
     } else if (baseSym->type && baseSym->type->kind == Z_TYPE_ENUM) {
-        ZType **fields  = baseSym->type->enm.fields;
-        ZType *strct    = NULL;
-        for (usize i = 0; i < veclen(fields) && !strct; i++) {
-            if (tokeneq(fields[i]->strct.name, prop)) {
-                strct = fields[i];
-            }
-        }
-
-        if (!strct) {
-            error(ctx->state, prop,
-                "Field '%s' not found for enum '%s'",
-                prop->str, base->str
-            );
+        ZType *resolved =  resolveEnumLit(ctx, curr);
+        if (!resolved) {
+            error(ctx->state, curr->tok, "Invalid enum literal");
             return NULL;
-        }
-
-        /* Skip the first argument (always the flag). */
-        for (usize i = 1; i < veclen(strct->strct.fields); i++) {
-            strct->strct.fields[i]->field.type  = resolveTypeRef(
-                ctx, strct->strct.fields[i]->field.type);
-            strct->strct.fields[i]->resolved    = strct->strct.fields[i]->field.type;
-        }
-        curr->type = NODE_ENUM_LIT;
-        return baseSym->type;
+        } else return baseSym->type;
     } else if (baseSym->kind == Z_SYM_NAMESPACE) {
         ZType *resolved = NULL;
         for (usize i = 0; i < veclen(baseSym->node->block); i++) {

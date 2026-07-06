@@ -97,7 +97,6 @@ static ZParser *makeparser(ZState *state, ZToken **tokens) {
     self->state                         = state;
     self->noFuncType                    = false;
     self->noStructLit                   = false;
-    self->cachedModules                 = NULL;
 
     self->macroParser.currentMacro      = NULL;
     self->macroParser.expandingMacros   = NULL;
@@ -399,11 +398,6 @@ static ZNode *parsePrimary(ZParser *parser) {
         node->literalTok    = consume(parser);
         node->tok           = node->literalTok;
         return node;
-    } else if (check(parser, TOK_NONE)) {
-        ZNode *node         = makenode(NODE_LITERAL);
-        node->literalTok    = consume(parser);
-        node->tok           = node->literalTok;
-        return node;
     } else if (check(parser, TOK_SIZEOF)) {
         ZToken *tok         = consume(parser);
         ZType *type         = parseType(parser);
@@ -417,6 +411,11 @@ static ZNode *parsePrimary(ZParser *parser) {
         return node;
     } else if (check(parser, TOK_IF)) {
         return parseInlineIf(parser);
+    } else if (match(parser, TOK_DOT)) {
+        ZToken *name        = peek(parser);
+        expect(parser, TOK_IDENT);
+        ZNode *node         = makenode(NODE_MEMBER_INFERRED);
+        
     }
 
     return NULL;
@@ -1138,11 +1137,13 @@ static ZNode *parseBlock(ZParser *parser) {
     do {
         stmt = parseStmt(parser);
         if (stmt) vecpush(block->block, stmt);
+        if (check(parser, TOK_RBRACKET)) break;
     } while (stmt);
 
     if (!check(parser, TOK_RBRACKET)) {
+        ZToken *cur = peek(parser);
+        error(parser->state, cur, "Expected a '}' or statement, got '%s'", stoken(cur));
         sinchronize(parser, TOK_RBRACKET);
-        ensure(canPeek(parser), "Expected a '}' to close the block");
     }
 
     expect(parser, TOK_RBRACKET);
@@ -1694,6 +1695,25 @@ static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
     return generics;
 }
 
+static ZNode *parseFuncArgument(ZParser *parser) {
+    ensure(check(parser, TOK_IDENT), "Expected an identifier");
+    ZToken *ident = consume(parser);
+
+    expect(parser, TOK_COLON);
+
+    ZType *type = NULL;
+    type = tryParse(parser, parseType(parser));
+
+    guard(type);
+
+    ZNode *node             = makenode(NODE_FIELD);
+    node->field.type        = type;
+    node->field.identifier  = ident;
+    node->resolved          = type;
+    node->tok               = ident;
+    return node;
+}
+
 /* The caller must handle:
  * - the mangling name.
  * - the receiver node if it is a receiver function.
@@ -1728,8 +1748,8 @@ static ZNode *parseFuncDecl(ZParser *parser,
     }
 
     ZNode **args = parseGenericList(parser,
-        TOK_LPAREN,     TOK_RPAREN,
-        parseField,     true
+        TOK_LPAREN,         TOK_RPAREN,
+        parseFuncArgument,  true
     );
 
     ZNode **capabilities = NULL;
@@ -1902,6 +1922,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
 
         cur = makeVarDestructPattern(Z_VAR_TUPLE);
         cur->tuple = list;
+        cur->tok = tok;
     } else {
         error(parser->state, tok, "Cannot deconstruct variable");
         return NULL;
@@ -1913,8 +1934,8 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
 }
 
 static ZNode *parseVarInferred(ZParser *parser) {
+    ZToken *start = peek(parser);
     ZVarDestructPattern *pattern = parseDestructVar(parser, false);
-
     if (match(parser, TOK_COMMA)) {
         ZVarDestructPattern **list = NULL;
         vecpush(list, pattern);
@@ -1923,8 +1944,9 @@ static ZNode *parseVarInferred(ZParser *parser) {
             if (!next) break;
             vecpush(list, next);
         } while (match(parser, TOK_COMMA));
-        pattern = makeVarDestructPattern(Z_VAR_TUPLE);
-        pattern->tuple = list;
+        pattern         = makeVarDestructPattern(Z_VAR_TUPLE);
+        pattern->tuple  = list;
+        pattern->tok    = start;
     }
 
     expect(parser, TOK_ASSIGN);
@@ -2091,9 +2113,9 @@ static ZNode *parseStructLit(ZParser *parser) {
 }
 
 static ZNode **getCachedModule(ZParser *parser, char *filename) {
-    for (usize i = 0; i < veclen(parser->cachedModules); i++) {
-        if (strcmp(parser->cachedModules[i]->name, filename) == 0) {
-            return parser->cachedModules[i]->node;
+    for (usize i = 0; i < veclen(parser->state->cachedModules); i++) {
+        if (strcmp(parser->state->cachedModules[i]->name, filename) == 0) {
+            return parser->state->cachedModules[i]->node;
         }
     }
     return NULL;
@@ -2161,7 +2183,9 @@ static ZNode *getModuleByName(
         .node = node->module.root,
         .name = filename,
     };
-    vecpush(parser->cachedModules, parserModule);
+
+    node->module.cached = node->module.root;
+    vecpush(parser->state->cachedModules, parserModule);
 
     undoVisit(parser->state);
     return node;
