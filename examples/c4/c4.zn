@@ -1,0 +1,51 @@
+use <std::mem>
+use <std::mem::gpa>
+
+GameResult :: enum {
+    Playing
+    RedWin
+    BlueWin
+    Draw
+}
+
+Board :: struct {
+    red: u64
+    blue: u64
+    combined: [42]f32
+
+    isRed: u1
+    result: GameResult
+}
+
+Board :: impl {
+    new :: Board () [Allocator] {
+        self: *Board = alloc(sizeof Board)
+        self.red = 0
+        self.blue = 0
+        self.isRed = false
+        self.result = GameResult::Playing
+        i := 0
+        for i < self.combined.len {
+            self.combined[i] = 0
+            i: + 1
+        }
+    }
+}
+
+*Board self :: impl {
+    
+}
+
+main :: i32 (args: []char) {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
+        board := Board::new()
+
+        for GameResult::Playing :: board.result {
+
+        }
+
+    }
+
+    return 0
+}
