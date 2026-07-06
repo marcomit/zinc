@@ -116,6 +116,8 @@ typedef struct {
 static void         genStmt         (ZCodegen *, ZNode *);
 static LLVMTypeRef  genType         (ZCodegen *, ZType *);
 static LLVMValueRef genExpr         (ZCodegen *, ZNode *);
+static void         genNamespace    (ZCodegen *, ZNode *);
+static LLVMValueRef genForeign      (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto(ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
 
@@ -2993,6 +2995,14 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     case NODE_CONTINUE:     genContinue     (ctx, stmt);    break;
     case NODE_MATCH:        genMatchStmt    (ctx, stmt);    break;
     case NODE_CAPABILITY:   genCapability   (ctx, stmt);    break;
+    case NODE_NAMESPACE:    genNamespace    (ctx, stmt);    break;
+    case NODE_FOREIGN:      genForeign      (ctx, stmt);    break;
+
+    /* Type declarations inside a function does not compile. */
+    case NODE_STRUCT:
+    case NODE_ENUM:
+    case NODE_TYPEDEF:
+                            break;
     default: {
         LLVMValueRef compiled = genExpr(ctx, stmt);
         if (!compiled) {

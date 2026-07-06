@@ -43,8 +43,13 @@
 #include <pthread.h>
 
 static void analyze                 (ZThreadSem *, ZNode *);
+static void analyzeStruct           (ZThreadSem *, ZNode *);
+static void analyzeEnum             (ZThreadSem *, ZNode *);
+static void analyzeFacet            (ZThreadSem *, ZNode *);
+static void analyzeTypedef          (ZThreadSem *, ZNode *);
 static void analyzeStmt             (ZThreadSem *, ZNode *);
 static void analyzeBlock            (ZThreadSem *, ZNode *, bool);
+static void analyzeNamespace        (ZThreadSem *, ZNode *);
 static bool satisfyFacet            (ZThreadSem *, ZType *, ZType *);
 static ZType *resolveTypeRef        (ZThreadSem *, ZType *);
 static void checkFunctionUsedAsValue(ZThreadSem *, ZNode *);
@@ -2698,13 +2703,31 @@ static void analyzeStmt(ZThreadSem *ctx, ZNode *curr) {
     case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
     case NODE_IF:           analyzeIf(ctx, curr);                   break;
     case NODE_WHILE:        analyzeWhile(ctx, curr);                break;
-    case NODE_BLOCK:        analyzeBlock(ctx, curr, false);         break;
+    case NODE_BLOCK:        analyzeBlock(ctx, curr, true);          break;
     case NODE_DEFER:        analyzeStmt(ctx, curr->deferStmt.expr); break;
     case NODE_RETURN:       analyzeReturn(ctx, curr);               break;
     case NODE_MATCH:        analyzeMatchStmt(ctx, curr);            break;
     case NODE_CAPABILITY:   analyzeCapability(ctx, curr);           break;
     case NODE_FORIN:        analyzeForIn(ctx, curr);                break;
-    default:                resolveType(ctx, curr);                 break;
+
+    /* Type declarations */
+    case NODE_TYPEDEF:
+        putTypedef(ctx, curr);
+        analyzeTypedef(ctx, curr);
+        break;
+    case NODE_STRUCT:
+        putStruct(ctx, curr);
+        analyzeStruct(ctx, curr);
+        break;
+    case NODE_ENUM:
+        putEnum(ctx, curr);
+        analyzeEnum(ctx, curr);
+        break;
+    case NODE_NAMESPACE:
+        putNamespace(ctx, curr);
+        analyzeNamespace(ctx, curr);
+        break;
+    default:                resolveType     (ctx, curr);            break;
     }
 }
 
