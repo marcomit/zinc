@@ -353,7 +353,7 @@ static void putVarPattern(
         usize got       = veclen(pattern->tuple);
         if (expected != got) {
             error(ctx->state, pattern->tok,
-                    "Expected %zu, got %zu elements", expected, got);
+                    "Expected %zu, got %zu elements %s", expected, got, stoken(pattern->tok));
             return;
         }
 
@@ -672,7 +672,7 @@ static inline bool isFloat   (ZTokenType t) { return (bool)(t & TOK_FLOAT);     
 static inline bool isInteger (ZTokenType t) { return isSigned(t) || isUnsigned(t);  }
 static inline bool isPrimitive(ZType *t)    { return t->kind == Z_TYPE_PRIMITIVE;   }
 static inline bool isNumeric(ZType *t) {
-    if (!isPrimitive(t)) return false;
+    if (!t || !isPrimitive(t)) return false;
     return t->primitive.token->type & (TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT);
 }
 
@@ -1341,8 +1341,8 @@ static void resolveFuncArgs(
         if (!promoted) {
             error(ctx->state, args[i]->tok,
                 "Expected %s, got %s",
-                stype(args[i]->resolved),
-                stype(expected)
+                stype(expected),
+                stype(args[i]->resolved)
             );
         }
         args[i] = implicitCast(ctx, args[i], expected);

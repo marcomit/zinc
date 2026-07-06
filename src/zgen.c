@@ -3571,7 +3571,11 @@ static void compile(ZCodegen *ctx, ZNode *root) {
 }
 
 static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
+    if (!node) return;
     switch (node->type) {
+    case NODE_MODULE:
+        for (usize i = 0; i < veclen(node->module.root); i++)
+            genForwardDecl(ctx, node->module.root[i]);
     case NODE_NAMESPACE:
         for (usize i = 0; i < veclen(node->block); i++)
             genForwardDecl(ctx, node->block[i]);
@@ -3789,7 +3793,18 @@ static ZCodegen *compileModules(ZState *state) {
 void zcompile(ZState *state, ZNode *root, const char *output) {
     (void)root;
 
+    if (state->verbose) timer_start(&state->phaseTime);
+
     ZCodegen *ctx = compileModules(state);
+
+    
+    const char *format;
+    double elapsed;
+
+    if (state->verbose) {
+        elapsed = timer_elapsed(state->phaseTime, &format);
+        printf(COLOR_BOLD COLOR_CYAN "  Codegen:    " COLOR_RESET "%.2f%s\n", elapsed, format);
+    }
 
     if (!LLVMGetNamedFunction(ctx->mod, "main")) {
         error(state, NULL, "[LLVM: function main not registered]");
@@ -3806,41 +3821,37 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     LLVMDisposeMessage(errmsg);
 
     if (state->emit == Z_EMIT_IR) {
-        const char *llfile = output ? output : "output.ll";
-        if (LLVMPrintModuleToFile(ctx->mod, llfile, &errmsg)) {
+        if (!output) output = "output.ll";
+        if (LLVMPrintModuleToFile(ctx->mod, output, &errmsg)) {
             error(state, NULL, "Failed to write IR file: %s", errmsg);
             LLVMDisposeMessage(errmsg);
+            goto end;
         }
-        freeCodegen(ctx);
-        return;
+        goto success;
     }
 
     if (state->emit == Z_EMIT_ASM) {
-        const char *asmfile = output ? output : "output.s";
-        if (emitObjectFile(ctx, asmfile, LLVMAssemblyFile))
-            printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", asmfile);
-        freeCodegen(ctx);
-        return;
+        if (!output) output = "output.s";
+        if (emitObjectFile(ctx, output, LLVMAssemblyFile)) goto success;
+        goto end;
     }
 
     if (state->emit == Z_EMIT_OBJ) {
-        const char *out = output ? output : "output.o";
-        if (emitObjectFile(ctx, out, LLVMObjectFile))
-            printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", out);
-        freeCodegen(ctx);
-        return;
+        if (!output) output = "output.o";
+        if (emitObjectFile(ctx, output, LLVMObjectFile)) goto success;
+        goto end;
     }
 
-    const char *outname = output ? output : "a.out";
+    if (!output) output = "a.out";
     const char *objext = (state->ltoMode != Z_LTO_OFF) ? ".tmp.bc" : ".tmp.o";
-    size_t objnameLen = strlen(outname) + strlen(objext) + 1;
+    size_t objnameLen = strlen(output) + strlen(objext) + 1;
     char *objfileBuf = malloc(objnameLen);
     if (!objfileBuf) {
         error(state, NULL, "Failed to allocate temporary object filename");
         freeCodegen(ctx);
         return;
     }
-    snprintf(objfileBuf, objnameLen, "%s%s", outname, objext);
+    snprintf(objfileBuf, objnameLen, "%s%s", output, objext);
     const char *objfile = objfileBuf;
 
     if (!emitObjectFile(ctx, objfile, LLVMObjectFile)) {
@@ -3863,19 +3874,33 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     }
 #endif
 
-    int ret = zinc_lld_link(objfile, outname,
+    if (state->verbose) {
+        timer_start(&state->phaseTime);
+    }
+
+    int ret = zinc_lld_link(objfile, output,
             (const char**)state->extraArgs, veclen(state->extraArgs));
     if (ret != 0) {
         error(state, NULL, "Linker failed with code %d", ret);
-    } else {
-        printf(COLOR_BLUE COLOR_BOLD "  Generated " COLOR_RESET "%s\n", outname);
-    }
+    } else goto success;
+
 #ifdef _WIN32
     free(outname_buf);
 #endif
 
+    if (state->verbose) {
+        elapsed = timer_elapsed(state->phaseTime, &format);
+        printf(COLOR_BOLD COLOR_CYAN "  LLD Linker: " COLOR_RESET "%.2f%s\n", elapsed, format);
+    }
+
     remove(objfile);
     free(objfileBuf);
+success:
 
+    // if (state->verbose) {
+        printf(COLOR_BLUE COLOR_BOLD "  Generated   " COLOR_RESET "%s\n", output);
+    // }
+
+end:
     freeCodegen(ctx);
 }

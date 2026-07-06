@@ -934,29 +934,15 @@ void printScope(ZScope *scope) {
 
 ZState *makestate() {
     ZState *self                = zalloc(ZState);
+    *self                       = (ZState){ 0 };
 
-    self->output                = NULL;
     self->currentPhase          = Z_PHASE_LEXICAL;
-    self->filename              = NULL;
     self->homePath              = getHomePath();
-    self->logs                  = NULL;
-    self->verbose               = false;
-    self->pathFiles             = NULL;
-    self->debug                 = false;
-    self->canAdvance            = true;
-    self->currentPath           = NULL;
-                                
-    self->unusedFunc            = false;
-    self->unusedStruct          = false;
-    self->unusedVar             = false;
-                                
+    self->canAdvance            = true;                             
+
     self->emit                  = Z_EMIT_EXE;
-    self->visitedFiles          = NULL;
-    self->skipLLVMValidation    = false;
     self->optimizationLevel     = '2';
     self->ltoMode               = Z_LTO_OFF;
-    self->extraArgs             = NULL;
-    self->modules               = NULL;
 
     return self;
 }

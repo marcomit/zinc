@@ -133,8 +133,14 @@ typedef struct {
     /* Extra arguments should be passed in the linker. */
     char            **extraArgs;
 
+    /* Allocator used for shared allocations. */
     arena_t         *globalAllocator;
+
+    /* Each module carries its own arena allocator for thread-safety. */
     ZModuleAllocator **modules;
+
+    /* Indicates the start time of the current phase to calculate the diagnostics. */
+    struct timespec phaseTime;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -187,7 +193,8 @@ typedef enum {
     NODE_ENUM_LIT,
     NODE_FACET,
     NODE_IMPL,
-    NODE_FORIN
+    NODE_FORIN,
+    NODE_MEMBER_INFERRED
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -202,7 +209,7 @@ typedef enum ZTypeKind {
     Z_TYPE_ENUM,
     Z_TYPE_NONE,
     Z_TYPE_NAMESPACE,
-    Z_TYPE_SUM
+    Z_TYPE_SUM,
 } ZTypeKind;
 
 struct ZType {
