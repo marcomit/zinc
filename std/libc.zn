@@ -19,6 +19,8 @@ pub math :: foreign {
     atan2   :: f64 (f64, f64)
     sqrt    :: f64 (f64)
     fabs    :: f64 (f64)
+    pow     :: f64 (f64, f64)
+    exp     :: f64 (f64)
 
     sinf    :: f32 (f32)
     cosf    :: f32 (f32)
@@ -27,4 +29,6 @@ pub math :: foreign {
     atan2f  :: f32 (f32, f32)
     sqrtf   :: f32 (f32)
     fabsf   :: f32 (f32)
+    powf    :: f32 (f32, f32)
+    expf    :: f32 (f32)
 }

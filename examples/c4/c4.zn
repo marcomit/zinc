@@ -1,50 +1,219 @@
 use <std::mem>
 use <std::mem::gpa>
 
-GameResult :: enum {
-    Playing
-    RedWin
-    BlueWin
-    Draw
+libc :: foreign {
+    putchar :: i32 (i32)
+    scanf   :: i32 (*char, ...)
+    printf  :: u0  (*char, ...)
+    memset  :: *u8 (*u8, i32, u64)
 }
 
-Board :: struct {
-    red: u64
-    blue: u64
-    combined: [42]f32
+PLAYING     :: 0
+WIN         :: 1
+DRAW        :: 2
 
-    isRed: u1
-    result: GameResult
+COLS :: 7
+ROWS :: 6
+
+RED     :: 1.0
+BLUE    :: -1.0
+
+Game :: struct {
+    grid: *f32
+    current: f32
+    winner: f32
+    state: i32
+    moves: *u8
+    move_cnt: u8
 }
 
-Board :: impl {
-    new :: Board () [Allocator] {
-        self: *Board = alloc(sizeof Board)
-        self.red = 0
-        self.blue = 0
-        self.isRed = false
-        self.result = GameResult::Playing
-        i := 0
-        for i < self.combined.len {
-            self.combined[i] = 0
-            i: + 1
+makegame :: *Game() [Allocator] {
+    self: *Game = alloc(sizeof Game)
+    grid_len := COLS * ROWS
+    self.grid = alloc(sizeof f32 * grid_len)
+    self.moves = alloc(sizeof u8 * grid_len)
+    self.move_cnt = 0
+    self.current = RED
+    self.state = PLAYING
+
+    libc::memset(self.grid, 0, sizeof f32 * grid_len)
+    libc::memset(self.moves, 0, sizeof u8 * grid_len)
+
+    return self
+}
+
+*Game self :: impl {
+    undo :: u8 () {
+        if self.move_cnt == 0 { return 0xFF }   
+        self.move_cnt: - 1
+        move := self.moves[self.move_cnt]
+        self.grid[(move >> 3) * COLS + (move & 7)] = 0.0
+        return move
+    }
+
+    move :: u1 (col: u8) {
+        row := 0
+        for row < ROWS {
+            if self.grid[row * COLS + col] == 0 {
+                break
+            }
+            row: + 1
+        }
+        if row >= ROWS { return false }
+
+        self.grid[row * COLS + col] = self.current
+        self.check_win(row, col)
+        self.current: * -1.0
+        self.moves[self.move_cnt] = row << 3 | col
+        self.move_cnt: + 1
+        return true
+    }
+
+    check_win :: u0 (row: u8, col: u8) {
+        val := self.current
+        consecutive := 0
+
+        cur_x := 0
+        cur_y := 0
+
+        for cur_x < COLS {
+            consecutive =
+                if self.grid[row * COLS + cur_x] == val
+                        -> consecutive + 1    
+                else    -> 0
+            libc::printf("consecutive: %d\n", consecutive)
+
+            if consecutive == 4 {
+                self.state = WIN
+                return
+            }
+            cur_x: + 1
+        }
+
+        consecutive = 0
+        for cur_y < ROWS {
+            consecutive = 
+                if self.grid[cur_y * COLS + col] == val
+                        -> consecutive + 1
+                else    -> 0
+
+            if consecutive == 4 {
+                self.state = WIN
+                return
+            }
+            cur_y: + 1
+        }
+
+        consecutive = 0
+        min := if row < col -> row else -> col
+        cur_x = col - min
+        cur_y = row - min
+
+        for cur_x < COLS and cur_y < ROWS {
+            consecutive =
+                if self.grid[cur_y * COLS + cur_x] == val
+                        -> consecutive + 1
+                else    -> 0
+
+            if consecutive == 4 {
+                self.state = WIN
+                return
+            }
+                    
+            cur_x: + 1
+            cur_y: + 1
+        }
+
+        consecutive = 0
+        row = ROWS - row
+        min = if row < col -> row else -> col
+        cur_x = col - min
+        cur_y = row - min
+
+        for cur_x < COLS and cur_y < ROWS {
+            consecutive =
+                if self.grid[cur_y * COLS + cur_x] == val
+                        -> consecutive + 1
+                else    -> 0
+
+            if consecutive == 4 {
+                self.state = WIN
+                return
+            }
+                    
+            cur_x: + 1
+            cur_y: + 1
+        }
+
+        if self.move_cnt == ROWS * COLS {
+            self.state = DRAW
+        }
+    }
+
+    draw :: u0 () {
+        x := 0
+        y := ROWS - 1
+        for y >= 0 {
+            x = 0
+            for x < COLS {
+                cell := self.grid[y * COLS + x]
+                color := 0x000000
+                if cell == RED {
+                    color = 0xFF0000
+                } else if cell == BLUE {
+                    color = 0x0000FF
+                }
+                cursor_bg(color)
+                libc::printf("  ")
+                x: + 1
+            }
+            libc::printf("\n")
+            y: - 1
         }
     }
 }
 
-*Board self :: impl {
-    
+cursor :: u0 (fmt: *char) {
+    libc::putchar(27)
+    libc::printf(fmt)
 }
 
-main :: i32 (args: []char) {
+cursor_move :: u0 (y: u8, x: u8) {
+    libc::putchar(27)
+    libc::printf("[%d;%dH", y, x)
+}
+
+cursor_bg :: u0 (color: u32) {
+    libc::putchar(27)
+    libc::printf("[48;2;%d;%d;%dm", (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+}
+
+CURSOR_CLEAR    :: "[2J"
+CURSOR_HIDE     :: "[?25l"
+CURSOR_SHOW     :: "[?25h"
+
+main :: i32 () {
+    cursor(CURSOR_CLEAR)
+    cursor_move(1, 1)
+    cursor(CURSOR_HIDE)
+    defer cursor(CURSOR_SHOW)
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
-        board := Board::new()
+        state := makegame()
+        player_move := 0
+        
+        for state.state == PLAYING {
+            cursor_move(1, 1)
+            state.draw()
+            libc::printf("inserisci colonna: ")
+            libc::scanf("%d", &player_move)
 
-        for GameResult::Playing :: board.result {
-
+            if player_move <= 0 or player_move > COLS {
+                libc::printf("invalid range %d\n", player_move)
+            } else if not state.move(player_move - 1) {
+                libc::printf("invalid move\n")
+            }
         }
-
     }
 
     return 0

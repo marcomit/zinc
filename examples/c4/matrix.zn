@@ -1,0 +1,54 @@
+/* Neural network file
+ *
+ */
+use <std::mem>
+use <std::mem::gpa>
+
+matrix :: type *f32
+
+MatrixHeader :: struct {
+    rows: u64
+    cols: u64
+}
+
+matrix :: impl {
+    new :: matrix (rows: u64, cols: u64) [Allocator] {
+        self: *MatrixHeader = alloc(sizeof MatrixHeader + rows * cols)
+        self.rows = rows
+        self.cols = cols
+        return &(self[1])
+    }
+}
+
+matrix self :: impl {
+    #[inline(always)]
+    header :: *MatrixHeader () {
+        h := self as *MatrixHeader
+        h = &(h[-1])
+        return h
+    }
+
+    #[inline(always)]
+    rows :: u64 () -> self.header().rows
+
+    #[inline(always)]
+    cols :: u64 () ->self.header().cols
+}
+
+main :: i32 () {
+    gpa := GeneralPurposeAllocator::init()
+    
+    with _ := (&gpa).allocator() {
+        a := matrix::new(3, 3)
+        a[0] = 1
+        a[1] = 2
+        a[2] = 3
+        a[3] = 4
+        a[4] = 5
+        a[5] = 6
+        a[6] = 7
+        a[7] = 8
+        a[8] = 9
+    }
+    return 0
+}
