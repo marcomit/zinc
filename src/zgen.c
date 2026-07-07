@@ -119,6 +119,7 @@ static LLVMValueRef genExpr         (ZCodegen *, ZNode *);
 static void         genNamespace    (ZCodegen *, ZNode *);
 static LLVMValueRef genForeign      (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto(ZCodegen *, ZNode *, LLVMValueRef);
+static LLVMValueRef genFacetConstruct(ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
 static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
 
 /* ========== Native types ==========*/
@@ -1476,7 +1477,10 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef *args  = NULL;
     ZNode *callee       = node->call.callee;
 
-    if (callee->type == NODE_MEMBER &&
+    if (callee->type == NODE_IDENTIFIER && callee->resolved->kind == Z_TYPE_FACET) {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        return genFacetConstruct(ctx, stack, callee->resolved, node->call.args[0]);
+    } if (callee->type == NODE_MEMBER &&
         callee->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
         ZNode *obj          = callee->memberAccess.object;
         LLVMValueRef facet  = genLvalue(ctx, obj);
@@ -2155,6 +2159,42 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
     return LLVMBuildBitCast(ctx->builder, val, toType, l);
 }
 
+static LLVMValueRef genFacetConstruct(ZCodegen *ctx,
+    ZLLVMStack *stack, ZType *facet, ZNode *obj) {
+    LLVMValueRef objRef = genExpr(ctx, obj);
+    if (!stack) {
+        error(ctx->state, obj->tok, "Missing stack value");
+        return NULL;
+    }
+
+    char *vtableName = encodeFacetVTable(facet, obj->resolved);
+    LLVMValueRef vtable = getLLVMValueRef(ctx, vtableName);
+
+    if (!vtable) {
+        error(ctx->state, obj->tok, "vtable not found");
+        return NULL;
+    }
+
+    LLVMValueRef vtablePtr = LLVMBuildStructGEP2(
+        ctx->builder, stack->stackType,
+        stack->stack, 1, "facet.vtable"
+    );
+
+    LLVMValueRef objPtr = LLVMBuildStructGEP2(
+        ctx->builder, stack->stackType,
+        stack->stack, 0, "facet.obj"
+    );
+
+    LLVMBuildStore(ctx->builder, vtable, vtablePtr);
+    LLVMBuildStore(ctx->builder, objRef, objPtr);
+
+    /* Return the facet value (not the slot pointer) so assignment and other
+     * consumers copy the whole {obj, vtable} struct rather than storing the
+     * address of this temporary. Mirrors the sum-cast path above. */
+    LLVMTypeRef facetType = genType(ctx, facet);
+    return LLVMBuildLoad2(ctx->builder, facetType, stack->stack, label(ctx, obj->tok));
+}
+
 static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
     ZType *from = node->castExpr.expr->resolved;
     ZType *to   = node->castExpr.toType;
@@ -2177,40 +2217,8 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
     }
 
     if (to->kind == Z_TYPE_FACET && from->kind != Z_TYPE_FACET) {
-        LLVMValueRef objRef = genExpr(ctx, node->castExpr.expr);
         ZLLVMStack *stack = getStackValue(ctx, node);
-
-        if (!stack) {
-            error(ctx->state, node->tok, "Missing stack value");
-            return NULL;
-        }
-
-        char *vtableName = encodeFacetVTable(to, from);
-        LLVMValueRef vtable = getLLVMValueRef(ctx, vtableName);
-
-        if (!vtable) {
-            error(ctx->state, node->tok, "vtable not found");
-            return NULL;
-        }
-
-        LLVMValueRef vtablePtr = LLVMBuildStructGEP2(
-            ctx->builder, stack->stackType,
-            stack->stack, 1, "facet.vtable"
-        );
-
-        LLVMValueRef objPtr = LLVMBuildStructGEP2(
-            ctx->builder, stack->stackType,
-            stack->stack, 0, "facet.obj"
-        );
-
-        LLVMBuildStore(ctx->builder, vtable, vtablePtr);
-        LLVMBuildStore(ctx->builder, objRef, objPtr);
-
-        /* Return the facet value (not the slot pointer) so assignment and other
-         * consumers copy the whole {obj, vtable} struct rather than storing the
-         * address of this temporary. Mirrors the sum-cast path above. */
-        LLVMTypeRef facetType = genType(ctx, to);
-        return LLVMBuildLoad2(ctx->builder, facetType, stack->stack, label(ctx, node->tok));
+        return genFacetConstruct(ctx, stack, to, node->castExpr.expr);
     }
 
     /* Array-literal cast: [n]T as []U - write each element directly into

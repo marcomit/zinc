@@ -1,0 +1,50 @@
+foreign printf :: u0 (*char, ...)
+
+Shape :: facet {
+    area :: i32 ()
+    name :: u0 ()
+}
+
+Circle :: struct {
+    radius: i32
+}
+
+Rect :: struct {
+    width: i32
+    height: i32
+}
+
+*Circle self :: impl Shape {
+    area :: i32 () -> self.radius * self.radius
+    name :: u0 () -> printf("circle\n")
+}
+
+*Rect self :: impl Shape {
+    area :: i32 () -> self.width * self.height
+    name :: u0 () -> printf("rect\n")
+}
+
+report :: u0 (s: Shape) {
+    s.name()
+    printf("area=%d\n", s.area())
+}
+
+main :: i32 () {
+    c := Circle{radius: 5}
+    r := Rect{width: 3, height: 4}
+
+    sc := Shape(&c)
+    sr := Shape(&r)
+
+    printf("%d\n", sc.area())
+    printf("%d\n", sr.area())
+
+    printf("%d\n", Shape(&c).area())
+
+    report(sc)
+    report(sr)
+
+    report(Shape(&r))
+
+    return 0
+}
