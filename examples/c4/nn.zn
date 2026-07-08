@@ -1,0 +1,95 @@
+use <std::mem>
+use <std::mem::gpa>
+use <std::libc>
+
+Layer :: struct {
+    input_size:     i32
+    output_size:    i32
+
+    weights:        *f32
+    biases:         *f32
+
+    outputs:        *f32
+    deltas:         *f32
+    f:              ActivationFunction
+}
+
+ActivationFunction :: facet {
+    activate    ::  f32 (f32)
+    derivative  ::  f32 (f32)
+}
+
+ReLU        :: struct { }
+Tanh        :: struct { }
+Sigmoid     :: struct { }
+Sin         :: struct { }
+Gaussian    :: struct { }
+
+ReLU        :: impl { new :: ActivationFunction () -> ActivationFunction(none as *ReLU)     }
+Tanh        :: impl { new :: ActivationFunction () -> ActivationFunction(none as *Tanh)     }
+Sigmoid     :: impl { new :: ActivationFunction () -> ActivationFunction(none as *Sigmoid)  }
+Sin         :: impl { new :: ActivationFunction () -> ActivationFunction(none as *Sin)      }
+Gaussian    :: impl { new :: ActivationFunction () -> ActivationFunction(none as *Gaussian) }
+
+*ReLU self :: impl ActivationFunction {
+    activate    :: f32 (x: f32) -> if x <= 0 -> 0 else -> x
+    derivative  :: f32 (x: f32) -> if x < 0  -> 0 else -> 1
+}
+
+*Tanh self :: impl ActivationFunction {
+    activate    :: f32 (x: f32) ->
+        (math::expf(x) - math::expf(-x)) /
+        (math::expf(x) + math::expf(-x))
+
+    derivative  :: f32 (x: f32) -> 1 - math::powf(self.activate(x), 2.0)
+}
+
+*Sigmoid self :: impl ActivationFunction {
+    activate    :: f32 (x: f32) -> 1 / (1 + math::expf(-x))
+    derivative  :: f32 (x: f32)
+        -> self.activate(x) * (1 - self.activate(x))
+}
+
+*Sin self :: impl ActivationFunction {
+    activate    :: f32 (x: f32) -> math::sinf(x)
+    derivative  :: f32 (x: f32) -> math::cosf(x)
+}
+
+*Gaussian self :: impl ActivationFunction {
+    activate    :: f32 (x: f32) -> math::expf(-math::powf(x, 2.0))
+    derivative  :: f32 (x: f32) -> -2.0 * x * math::expf(-math::powf(x, 2.0))
+}
+
+Network :: struct {
+    layer_cnt: i32
+    layers: *Layer
+}
+
+Layer :: impl {
+    new :: *Layer (insize: i32, outsize: i32) [Allocator] {
+        self: *Layer        = alloc(sizeof Layer)
+        self.input_size     = insize
+        self.output_size    = outsize
+        return self
+    }
+}
+
+Network :: impl {
+    new :: *Network (layers: [](i32, ActivationFunction)) [Allocator] {
+        self: *Network = alloc(sizeof Network)
+        return self
+    }
+}
+
+main :: i32 () {
+    gpa := GeneralPurposeAllocator::init()
+    with _ := (&gpa).allocator() {
+        Network::new([
+            (42, ReLU::new()),
+            (256, ReLU::new()),
+            (256, ReLU::new()),
+            (1, Tanh::new())
+        ])
+    }
+    return 0
+}

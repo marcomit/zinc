@@ -173,7 +173,32 @@ ZState *loadState(int argc, char **argv) {
     visit(state, &filename, false);
 
     return state;
+}
 
+void printAllocation(ZState *state) {
+    if (!state->verbose) return;
+
+    usize allocated = arenaSize(allocator.ctx);
+    for (usize i = 0; i < veclen(state->modules); i++) {
+        allocated += arenaSize(state->modules[i]->allocator);
+    }
+
+    static const char *labels[] = {
+        "b",
+        "Kb",
+        "Mb",
+        "Gb"
+    };
+
+    int label = 0;
+    while (allocated > 1024 && label < 3) {
+        allocated >>= 10;
+        label++;
+    }
+
+    printf("  " COLOR_BOLD COLOR_CYAN "Allocated: " COLOR_RESET " %zu %s\n",
+        allocated, labels[label]
+    );
 }
 
 void handler(int sig) {
@@ -216,6 +241,15 @@ int pipeline(ZState *state) {
     zcompile(state, root, state->output);
 
     if (!canAdvance(state)) return 5;
+
+    if (state->verbose) {
+        
+    }
+    printAllocation(state);
+
+    for (usize i = 0; i < veclen(state->modules); i++) {
+        arenaFree(state->modules[i]->allocator);
+    }
 
     return 0;
 }

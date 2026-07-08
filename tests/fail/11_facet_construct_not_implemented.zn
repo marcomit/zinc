@@ -1,0 +1,24 @@
+foreign printf :: u0 (*char, ...)
+
+Shape :: facet {
+    area :: i32 ()
+}
+
+Circle :: struct {
+    radius: i32
+}
+
+Bad :: struct {
+    x: i32
+}
+
+*Circle self :: impl Shape {
+    area :: i32 () -> self.radius
+}
+
+main :: i32 () {
+    b := Bad{x: 1}
+    s := Shape(&b)
+    printf("%d\n", s.area())
+    return 0
+}

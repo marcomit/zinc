@@ -1372,7 +1372,25 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr) {
                   "Undefined function '%s'", callee->identNode.tok->str);
             return NULL;
         }
-        if (sym->kind != Z_SYM_FUNC) {
+
+        if (sym->kind == Z_SYM_FACET) {
+            if (veclen(args) != 1) {
+                error(ctx->state, callee->tok,
+                    "Expected 1 argument for facet construction, got %zu",
+                    veclen(args)
+                );
+                return sym->type;
+            }
+            ZType *arg = resolveType(ctx, args[0]);
+            args[0]->resolved = arg;
+            if (!satisfyFacet(ctx, arg, sym->type)) {
+                error(ctx->state, args[0]->tok,
+                    "'%s' doesn't implement facet '%s'", stype(arg), stype(sym->type)
+                );
+            }
+            curr->call.callee->resolved = sym->type;
+            return sym->type;
+        } else if (sym->kind != Z_SYM_FUNC) {
             if (sym->type && sym->type->kind == Z_TYPE_FUNCTION) {
                 expectedFunc = sym->type;
                 expectedFunc->func.ret = resolveTypeRef(ctx, expectedFunc->func.ret);
