@@ -31,9 +31,20 @@ arena_t *createArena() {
     return self;
 }
 
+static void _arenaSize(ArenaBucket *bucket, usize *curr) {
+    if (!bucket) return;
+    *curr += bucket->size;
+    _arenaSize(bucket->next, curr);
+}
+
+usize arenaSize(arena_t *arena) {
+    usize curr = 0;
+    _arenaSize(arena->head, &curr);
+    return curr;
+}
+
 static void freeArenaBucket(ArenaBucket *arena, bool recursive) {
     if (!arena) return;
-    // printf("BUCKET ALLOCATION: %zu\n", arena->len);
     if (recursive) freeArenaBucket(arena->next, recursive);
     free(arena);
 }

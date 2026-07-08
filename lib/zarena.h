@@ -25,9 +25,10 @@ typedef struct arena_t {
 } arena_t;
 
 arena_t *createArena();
-void *arenaAlloc(arena_t *, usize);
-void arenaFree(arena_t *);
-void arenaScope(arena_t *);
-void arenaEndScope(arena_t *);
+void    *arenaAlloc(arena_t *, usize);
+void    arenaFree(arena_t *);
+void    arenaScope(arena_t *);
+void    arenaEndScope(arena_t *);
+usize   arenaSize(arena_t *);
 
 #endif //Z_ARENA_H
