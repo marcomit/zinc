@@ -389,6 +389,7 @@ usize typeSize(ZType *type) {
     case Z_TYPE_POINTER:    return 8; /* 64-bit pointer */
     case Z_TYPE_FUNCTION:   return 8; /* function pointer */
     case Z_TYPE_ARRAY:      return 16;/* {length: u64, ptr: *u8}*/
+    case Z_TYPE_FACET:      return 16;/* {obj: *u8, vtable: *u8}, see genFacetType */
 
     case Z_TYPE_STRUCT: {
         res = alignFields(
