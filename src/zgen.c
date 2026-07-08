@@ -3509,7 +3509,7 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 }
 
 static void compile(ZCodegen *, ZNode *);
-static void genForwardDecl(ZCodegen *, ZNode *);
+static LLVMValueRef genForwardDecl(ZCodegen *, ZNode *);
 
 /* Returns the declarations of an imported module. A module is parsed exactly
  * once: the first import site owns the parsed list in module.root, while every
@@ -3529,12 +3529,16 @@ static void genNamespace(ZCodegen *ctx, ZNode *node) {
 
 static void genImpl(ZCodegen *ctx, ZNode *root) {
     usize len = veclen(root->impl.funcs);
-    LLVMValueRef ptrs[len];
+    LLVMValueRef *ptrs = arenaAlloc(
+        ctx->module->allocator, sizeof(LLVMValueRef) * len
+    );
     for (usize i = 0; i < len; i++) {
         ptrs[i] = genFunc(ctx, root->impl.funcs[i]);
 
     }
+}
 
+static void genFacetVtable(ZCodegen *ctx, ZNode *root, LLVMValueRef *ptrs) {
     for (usize i = 0; i < veclen(root->impl.facets); i++) {
         ZType *facet = root->impl.facets[i];
 
@@ -3545,6 +3549,8 @@ static void genImpl(ZCodegen *ctx, ZNode *root) {
         }
         char *buf = encodeFacetVTable(facet, root->impl.base);
 
+        if (LLVMGetNamedGlobal(ctx->mod, buf)) continue;
+
         ZNode **facetFuncs = facet->facet.funcs;
         usize vlen = veclen(facetFuncs);
         LLVMValueRef vtable[vlen ? vlen : 1];
@@ -3553,7 +3559,7 @@ static void genImpl(ZCodegen *ctx, ZNode *root) {
             ZToken *fname = facetFuncs[j]->field.identifier;
             LLVMValueRef fn = NULL;
 
-            for (usize k = 0; k < len; k++) {
+            for (usize k = 0; k < veclen(root->impl.funcs); k++) {
                 if (tokeneq(fname, root->impl.funcs[k]->funcDef.name)) {
                     fn = ptrs[k];
                     break;
@@ -3614,8 +3620,8 @@ static void compile(ZCodegen *ctx, ZNode *root) {
     endModule(ctx);
 }
 
-static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
-    if (!node) return;
+static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
+    if (!node) return NULL;
     switch (node->type) {
     case NODE_MODULE: {
         /* Follow module.cached for re-imports and guard against cycles, so
@@ -3640,14 +3646,18 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
             LLVMSetLinkage(global, LLVMInternalLinkage);
         }
         putLLVMValueRef(ctx, pat->ident->str, global);
+        return global;
         break;
     }
     case NODE_IMPL: {
         ZNode **funcs = node->impl.funcs;
+        LLVMValueRef *ptrs = znalloc(LLVMValueRef, veclen(funcs));
         for (usize i = 0; i < veclen(funcs); i++) {
-            genForwardDecl(ctx, funcs[i]);
+            LLVMValueRef func = genForwardDecl(ctx, funcs[i]);
+            ptrs[i] = func;
         }
-        break;
+        genFacetVtable(ctx, node, ptrs);
+        return NULL;
     }
     case NODE_FOREIGN_VAR: {
         char *name = node->foreignVar.name->str;
@@ -3658,7 +3668,7 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
             );
         }
         putLLVMValueRef(ctx, name, global);
-        break;
+        return global;
     }
     case NODE_FUNC: {
         if (!node->funcDef.mangled)
@@ -3671,7 +3681,7 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
         LLVMValueRef existing = LLVMGetNamedFunction(ctx->mod, node->funcDef.mangled);
         if (existing) {
             putLLVMValueRef(ctx, node->funcDef.mangled, existing);
-            break;
+            return existing;
         }
 
         LLVMTypeRef ret      = genType(ctx, node->funcDef.ret);
@@ -3694,10 +3704,13 @@ static void genForwardDecl(ZCodegen *ctx, ZNode *node) {
         LLVMTypeRef funcType = LLVMFunctionType(ret, args, veclen(args), false);
         LLVMValueRef decl    = LLVMAddFunction(ctx->mod, node->funcDef.mangled, funcType);
         putLLVMValueRef(ctx, node->funcDef.mangled, decl);
+
+        return decl;
         break;
     }
-    default: break;
+    default: return NULL;
     }
+    return NULL;
 }
 
 static LLVMCodeGenOptLevel toCodeGenLevel(char level) {
@@ -3939,13 +3952,6 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 
     int ret = zinc_lld_link(objfile, output,
             (const char**)state->extraArgs, veclen(state->extraArgs));
-    if (ret != 0) {
-        error(state, NULL, "Linker failed with code %d", ret);
-    } else goto success;
-
-#ifdef _WIN32
-    free(outname_buf);
-#endif
 
     if (state->verbose) {
         elapsed = timer_elapsed(state->phaseTime, &format);
@@ -3954,6 +3960,15 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 
     remove(objfile);
     free(objfileBuf);
+#ifdef _WIN32
+    free(outname_buf);
+#endif
+
+    if (ret != 0) {
+        error(state, NULL, "Linker failed with code %d", ret);
+        goto end;
+    }
+
 success:
 
     // if (state->verbose) {
