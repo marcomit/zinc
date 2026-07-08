@@ -1574,6 +1574,8 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < veclen(node->call.args); i++) {
         LLVMValueRef arg = genExpr(ctx, node->call.args[i]);
 
+        usize totalArgIndex = veclen(node->call.capabilities) + i;
+
         /* ABI adaptation: foreign functions declare small struct params as
          * i32/i64 (packed integer).  If the Zinc-side arg is a struct,
          * store it to a temp slot and reload as the packed integer so the
@@ -1581,8 +1583,8 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
          * FIXME: Implement a specific annotation [[packed]] instead of 'understand'
          * if the argument should be packed.
          * */
-        if (fixedParamTypes && i < fixedParamCount) {
-            LLVMTypeRef expected = fixedParamTypes[i];
+        if (fixedParamTypes && totalArgIndex < fixedParamCount) {
+            LLVMTypeRef expected = fixedParamTypes[totalArgIndex];
             LLVMTypeRef actual   = LLVMTypeOf(arg);
             if (LLVMGetTypeKind(actual)   == LLVMStructTypeKind &&
                 LLVMGetTypeKind(expected) == LLVMIntegerTypeKind) {
@@ -1591,8 +1593,6 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
                 arg = LLVMBuildLoad2(ctx->builder, expected, tmp, "");
             }
         }
-
-        usize totalArgIndex = veclen(node->call.capabilities) + i;
 
         /* C default argument promotions for variadic arguments:
          *  f32         -> f64
@@ -3826,19 +3826,29 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
     for (usize i = 0; i < veclen(state->modules); i++) {
         if (!gens[i]->mod) continue;
 
+        usize namelen;
+        const char *name = LLVMGetModuleIdentifier(gens[i]->mod, &namelen);
+
+        if (!state->skipLLVMValidation) {
+            char *verifyErr = NULL;
+            if (LLVMVerifyModule(gens[i]->mod, LLVMReturnStatusAction, &verifyErr)) {
+                error(state, NULL, "[LLVM: invalid module '%s'] %s", name, verifyErr);
+                LLVMDisposeMessage(verifyErr);
+                continue;
+            }
+            LLVMDisposeMessage(verifyErr);
+        }
+
         LLVMMemoryBufferRef buf = LLVMWriteBitcodeToMemoryBuffer(gens[i]->mod);
         LLVMModuleRef imported  = NULL;
-        char *parseErr          = NULL;
 
         if (LLVMParseBitcodeInContext2(ctx, buf, &imported)) {
-        // if (LLVMParseIRInContext(ctx, buf, &imported, &parseErr)) {
-            error(state, NULL, "[LLVM: Import of module failed] %s", parseErr);
-            LLVMDisposeErrorMessage(parseErr);
+            error(state, NULL, "[LLVM: Import of module '%s' failed]", name);
             continue;
         }
 
         if (LLVMLinkModules2(module, imported)) {
-            error(state, NULL, "[LLVM: Link of module failed] %s", parseErr);
+            error(state, NULL, "[LLVM: Link of module '%s' failed]", name);
         }
         freeCodegen(gens[i]);
     }
@@ -3883,6 +3893,11 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     if (state->verbose) {
         elapsed = timer_elapsed(state->phaseTime, &format);
         printf(COLOR_BOLD COLOR_CYAN "  Codegen:    " COLOR_RESET "%.2f%s\n", elapsed, format);
+    }
+
+    if (!canAdvance(state)) {
+        freeCodegen(ctx);
+        return;
     }
 
     if (!LLVMGetNamedFunction(ctx->mod, "main")) {
