@@ -507,7 +507,10 @@ static LLVMTypeRef genStructType(ZCodegen *ctx, ZType *type) {
     putStructInCache(ctx, (char *)name, structType);
 
     usize nfields           = veclen(type->strct.fields);
-    LLVMTypeRef *ftypes     = znalloc(LLVMTypeRef, nfields);
+    LLVMTypeRef *ftypes     = arenaAlloc(
+        ctx->module->allocator,
+        sizeof(LLVMTypeRef) * nfields
+    );
 
     for (usize i = 0; i < veclen(type->strct.fields); i++) {
         ZType *ft = type->strct.fields[i]->resolved;
@@ -3651,7 +3654,10 @@ static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
     }
     case NODE_IMPL: {
         ZNode **funcs = node->impl.funcs;
-        LLVMValueRef *ptrs = znalloc(LLVMValueRef, veclen(funcs));
+        LLVMValueRef *ptrs = arenaAlloc(
+            ctx->module->allocator,
+            sizeof(LLVMValueRef) * veclen(funcs)
+        );
         for (usize i = 0; i < veclen(funcs); i++) {
             LLVMValueRef func = genForwardDecl(ctx, funcs[i]);
             ptrs[i] = func;
