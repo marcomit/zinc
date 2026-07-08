@@ -217,6 +217,10 @@ int pipeline(ZState *state) {
 
     if (!canAdvance(state)) return 5;
 
+    for (usize i = 0; i < veclen(state->modules); i++) {
+        arenaFree(state->modules[i]->allocator);
+    }
+
     return 0;
 }
 
