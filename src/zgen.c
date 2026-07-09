@@ -3009,8 +3009,27 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
  * Capabilities are compiled like normal variables.
  */
 static void genCapability(ZCodegen *ctx, ZNode *node) {
-    genStmt(ctx, node->capability.capability);
+    ZNode *decl = node->capability.capability;
+
+    beginScope(Z_SCOPE_BLOCK, ctx);
+
+    genStmt(ctx, decl);
+
+    if (decl->type == NODE_VAR_DECL &&
+        decl->varDecl.pattern->type == Z_VAR_IDENT) {
+        ZLLVMCapability *capability = arenaAlloc(
+            ctx->module->allocator, sizeof(ZLLVMCapability)
+        );
+        capability->capability  = decl->resolved;
+        capability->ref         = getLLVMValueRef(
+            ctx, decl->varDecl.pattern->ident->str
+        );
+        vecpush(ctx->scope->capabilities, capability);
+    }
+
     genStmt(ctx, node->capability.block);
+
+    endScope(ctx);
 }
 
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
@@ -3383,6 +3402,8 @@ static void addFuncArgs(ZCodegen *ctx,
             LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
         }
 
+        putLLVMValueRef(ctx, name, slot);
+
         if (capabilityParams) {
             ZLLVMCapability *capability = arenaAlloc(
                 ctx->module->allocator, sizeof(ZLLVMCapability)
@@ -3390,8 +3411,6 @@ static void addFuncArgs(ZCodegen *ctx,
             capability->capability  = argType;
             capability->ref         = slot;
             vecpush(ctx->scope->capabilities, capability);
-        } else {
-            putLLVMValueRef(ctx, name, slot);
         }
     }
 }
