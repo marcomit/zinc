@@ -59,8 +59,16 @@ enum {
     Z_SCOPE_GLOB
 };
 
+typedef struct ZLLVMCapability {
+    ZType           *capability;
+    LLVMValueRef    ref;
+} ZLLVMCapability;
+
 typedef struct ZLLVMScope {
     struct ZLLVMScope   *parent;
+    
+    ZLLVMCapability     **capabilities;
+
     ZLLVMSymbol         **symbols;
 
     /* Capture the start label of the loop (used by the continue statement). */
@@ -141,12 +149,10 @@ static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {
 
 static ZLLVMScope *makescope(ZCodegen *ctx, int type, ZLLVMScope *parent) {
     ZLLVMScope *self    = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMScope));
+    *self               = (ZLLVMScope){ 0 };
     self->parent        = parent;
-    self->symbols       = NULL;
     self->startLoop     = parent ? parent->startLoop : NULL;
     self->endLoop       = parent ? parent->endLoop : NULL;
-    self->stackAlloca   = NULL;
-    self->defers        = NULL;
     self->type          = type;
 
     return self;
@@ -183,6 +189,20 @@ static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
         for (usize i = len; i-- > 0;) {
             if (strcmp(cur->symbols[i]->name, key) == 0) {
                 return cur->symbols[i]->value;
+            }
+        }
+        cur = cur->parent;
+    }
+    return NULL;
+}
+
+static LLVMValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
+    ZLLVMScope *cur = ctx->scope;
+    while (cur) {
+        usize len = veclen(cur->capabilities);
+        for (usize i = len; i-- > 0;) {
+            if (typesEqual(cur->capabilities[i]->capability, capability)) {
+                return cur->capabilities[i]->ref;
             }
         }
         cur = cur->parent;
@@ -1545,14 +1565,17 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
 
     for (usize i = 0; i < veclen(node->call.capabilities); i++) {
         if (!node->call.capabilities[i]) {
-            warning(ctx->state, node->tok, "Empty capability\n");
+            warning(ctx->state, node->tok, "Empty capability");
             continue;
         } else if (!node->call.capabilities[i]->tok) {
-            warning(ctx->state, node->tok, "Empty tok field\n");
+            warning(ctx->state, node->tok, "Empty tok field");
+            continue;
+        } else if (!node->call.capabilities[i]->resolved) {
+            warning(ctx->state, node->tok, "Capability not resolved");
             continue;
         }
-        LLVMValueRef capability = getLLVMValueRef(
-            ctx, node->call.capabilities[i]->tok->str
+        LLVMValueRef capability = getCapabilityRef(
+            ctx, node->call.capabilities[i]->resolved
         );
         if (!capability) {
             error(
@@ -3343,7 +3366,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
 
 static void addFuncArgs(ZCodegen *ctx,
         LLVMValueRef func,
-        ZNode **funcArgs, usize paramOffset) {
+        ZNode **funcArgs, usize paramOffset, bool capabilityParams) {
     for (usize i = 0; i < veclen(funcArgs); i++) {
         char *name = funcArgs[i]->field.identifier->str;
         ZType *argType = funcArgs[i]->field.type;
@@ -3359,7 +3382,17 @@ static void addFuncArgs(ZCodegen *ctx,
             slot = LLVMBuildAlloca(ctx->builder, paramType, name);
             LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
         }
-        putLLVMValueRef(ctx, name, slot);
+
+        if (capabilityParams) {
+            ZLLVMCapability *capability = arenaAlloc(
+                ctx->module->allocator, sizeof(ZLLVMCapability)
+            );
+            capability->capability  = argType;
+            capability->ref         = slot;
+            vecpush(ctx->scope->capabilities, capability);
+        } else {
+            putLLVMValueRef(ctx, name, slot);
+        }
     }
 }
 
@@ -3483,11 +3516,12 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
         paramOffset++;
     }
 
-    addFuncArgs(ctx, func, f->funcDef.capabilities, paramOffset);
+    addFuncArgs(ctx, func, f->funcDef.capabilities, paramOffset, true);
     addFuncArgs(
         ctx, func,
         f->funcDef.args,
-        paramOffset + veclen(f->funcDef.capabilities)
+        paramOffset + veclen(f->funcDef.capabilities),
+        false
     );
 
     /* All variable declarations are declared at the start of the function. */
