@@ -1334,7 +1334,6 @@ static void resolveFuncArgs(
     for (usize i = 0; i < expectedArgsLen; i++) {
         ZType *expected = expectedArgs[i];
 
-        printf("Inferred: %zu %s\n", i, stype(expected));
         args[i]->resolved = resolveType(ctx, args[i], expected);
         checkFunctionUsedAsValue(ctx, args[i]);
 
