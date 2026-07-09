@@ -43,9 +43,6 @@
     res;                                                                        \
 })
 
-#define sinchronize(parser, type) if (!check(parser, type))                     \
-    while (canPeek(parser) && !check(parser, type)) consume(parser);            \
-
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType                            (ZParser *);
@@ -80,6 +77,7 @@ static ZNode *parseFuncDecl                 (ZParser *, ZAnnotation **, bool);
 static ZNode *parseEnumDecl                 (ZParser *, ZAnnotation **, bool);
 static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignBlock             (ZParser *, bool);
+static ZNode *parseForeignInlineDecl        (ZParser *, bool);
 
 static ZType **parseGenericsDecl            (ZParser *, bool);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
@@ -213,6 +211,15 @@ static void rollbackErrors(ZParser *parser) {
         usize checkpoint = vecpop(parser->errstack);
         while (veclen(parser->state->logs) > checkpoint) vecpop(parser->state->logs);
         parser->depth--;
+    }
+}
+
+static inline void sinchronize(ZParser *parser, ZTokenType opening, ZTokenType closing) {
+    usize level = 1;
+    while (canPeek(parser) && level > 0) {
+        if (check(parser, opening)) level++;
+        else if (check(parser, closing)) level--;
+        consume(parser);
     }
 }
 
@@ -404,11 +411,24 @@ static ZNode *parsePrimary(ZParser *parser) {
         return node;
     } else if (check(parser, TOK_IF)) {
         return parseInlineIf(parser);
-    } else if (match(parser, TOK_DOT)) {
-        ZToken *name        = peek(parser);
-        expect(parser, TOK_IDENT);
-        ZNode *node         = makenode(NODE_MEMBER_INFERRED);
-        
+    } else if (check(parser, TOK_DOT)) {
+        if (checkAhead(parser, TOK_IDENT, 1)) {
+            ZToken *base = consume(parser);
+            ZNode *node                 = makenode(NODE_STATIC_ACCESS);
+
+            node->staticAccess.base     = base;
+            node->staticAccess.prop     = consume(parser);
+            node->staticAccess.mangled  = NULL;
+            node->tok                   = base;
+
+            return node;
+        } else if (checkAhead(parser, TOK_LBRACKET, 1)) {
+            return parseStructLit(parser);
+        } else {
+            error(parser->state, peek(parser),
+                "Error parsing '.' as a context-inferred type"
+            );
+        }
     }
 
     return NULL;
@@ -1028,7 +1048,10 @@ static ZNode *parseMatch(ZParser *parser, bool asExpr) {
         if (!arm) break;
         vecpush(arms, arm);
     } while (!check(parser, TOK_RBRACKET) && match(parser, TOK_COMMA));
-    expect(parser, TOK_RBRACKET);
+    if (!match(parser, TOK_RBRACKET)) {
+        error(parser->state, peek(parser), "Expected closing '}'");
+        sinchronize(parser, TOK_LBRACKET, TOK_RBRACKET);
+    }
 
     ZNode *match        = makenode(NODE_MATCH);
     match->tok          = start;
@@ -1081,6 +1104,8 @@ ZNode *parseStmt(ZParser *parser) {
     guard(canPeek(parser));
 
     ZTokenType t = peek(parser)->type;
+
+    if (check(parser, TOK_FOREIGN)) return parseForeignInlineDecl(parser, false);
 
     if (check(parser, TOK_IDENT) &&
         checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
@@ -1155,7 +1180,7 @@ static ZNode *parseBlock(ZParser *parser) {
     if (!check(parser, TOK_RBRACKET)) {
         ZToken *cur = peek(parser);
         error(parser->state, cur, "Expected a '}' or statement, got '%s'", stoken(cur));
-        sinchronize(parser, TOK_RBRACKET);
+        sinchronize(parser, TOK_LBRACKET, TOK_RBRACKET);
     }
 
     expect(parser, TOK_RBRACKET);
@@ -1303,6 +1328,7 @@ static ZNode *parseEnumDecl(ZParser *parser,
     type->enm.name              = start;
     type->enm.generics          = generics;
     type->enm.fields            = NULL;
+    type->tok                   = start;
 
     for (usize i = 0; i < veclen(fields); i++) {
         vecpush(type->enm.fields, fields[i]->resolved);
@@ -1832,6 +1858,38 @@ static ZNode *parseFuncDecl(ZParser *parser,
     return node;
 }
 
+static ZVarDestructPattern *parseDestructEnum(ZParser *parser, ZToken *base) {
+    if (base->type == TOK_IDENT && !match(parser, TOK_DOUBLE_COLON)) {
+        error(parser->state, base, "Expected '::'");
+        return NULL;
+    } else if (base->type != TOK_DOT) {
+        error(parser->state, base, "Invalid base type");
+        return NULL;
+    }
+
+    if (!check(parser, TOK_IDENT)) return NULL;
+
+    ZVarDestructPattern *cur = makeVarDestructPattern(Z_VAR_ENUM);
+    cur->base = base;
+    cur->prop = consume(parser);
+    cur->args = NULL;
+
+    if (!match(parser, TOK_LPAREN)) return cur;
+
+    do {
+        ZVarDestructPattern *item = parseDestructVar(parser, true);
+        if (!item) break;
+        vecpush(cur->args, item);
+    } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+
+    if (!match(parser, TOK_RPAREN)) {
+        error(parser->state, peek(parser), "Expected ')'");
+        sinchronize(parser, TOK_LPAREN, TOK_RPAREN);
+    }
+
+    return cur;
+}
+
 static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) {
     guard(canPeek(parser));
 
@@ -1935,6 +1993,8 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
         cur = makeVarDestructPattern(Z_VAR_TUPLE);
         cur->tuple = list;
         cur->tok = tok;
+    } else if (tok->type == TOK_DOT) {
+        cur = parseDestructEnum(parser, tok);
     } else {
         error(parser->state, tok, "Cannot deconstruct variable");
         return NULL;
@@ -2058,7 +2118,7 @@ static ZNode *parseArrayLit(ZParser *parser) {
     } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
 
     if (!check(parser, TOK_RSBRACKET)) {
-        sinchronize(parser, TOK_RSBRACKET);
+        sinchronize(parser, TOK_LBRACKET, TOK_RSBRACKET);
     }
 
     expect(parser, TOK_RSBRACKET);
@@ -2073,7 +2133,8 @@ static ZNode *parseArrayLit(ZParser *parser) {
 
 static ZNode *parseStructLit(ZParser *parser) {
     if (parser->noStructLit) return NULL;
-    if (!check(parser, TOK_IDENT)) return NULL;
+    if (!check(parser, TOK_IDENT) &&
+        !check(parser, TOK_DOT)) return NULL;
 
     ZToken *ident = consume(parser);
     ZType **generics = NULL;

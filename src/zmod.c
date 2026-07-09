@@ -707,7 +707,7 @@ void printNode(ZNode *node, u8 depth) {
 
     case NODE_STATIC_ACCESS:
         printf("%s::%s",
-                node->staticAccess.base->str, node->staticAccess.prop->str);
+                stoken(node->staticAccess.base), stoken(node->staticAccess.prop));
         break;
 
 
