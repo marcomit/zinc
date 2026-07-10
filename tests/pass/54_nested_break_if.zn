@@ -1,0 +1,31 @@
+// break-as-expression with a nested if: a branch may `break` the value of an
+// inner if-expression, so break-if nests to arbitrary depth.
+foreign printf :: u0 (*char, ...)
+
+// max of three via nested break-if.
+max3 :: i32 (a: i32, b: i32, c: i32) {
+    return if a > b {
+        break if a > c { break a } else { break c }
+    } else {
+        break if b > c { break b } else { break c }
+    }
+}
+
+main :: i32 () {
+    a := 5
+    b := 12
+    c := 8
+
+    best := if a > b {
+        break if a > c { break a } else { break c }
+    } else {
+        break if b > c { break b } else { break c }
+    }
+    printf("best=%d\n", best)
+
+    printf("max3=%d\n", max3(5, 12, 8))
+    printf("max3=%d\n", max3(30, 12, 8))
+    printf("max3=%d\n", max3(1, 2, 99))
+
+    return 0
+}
