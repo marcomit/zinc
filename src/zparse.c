@@ -59,8 +59,9 @@ static ZNode *parseReturn                   (ZParser *);
 static ZNode *parseVarDef                   (ZParser *);
 static ZNode *parseBinary                   (ZParser *);
 static ZNode *parsePrimary                  (ZParser *);
-static ZNode *parseContinue                 (ZParser *);
+static ZNode *parseAnonFunc                 (ZParser *);
 static ZNode *parseArrayLit                 (ZParser *);
+static ZNode *parseContinue                 (ZParser *);
 static ZNode *parseTupleLit                 (ZParser *);
 static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
@@ -86,6 +87,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
 static ZParseFunc exprFunc[] = {
     parseBinary,
     parseTupleLit,
+    parseAnonFunc
 };
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
@@ -956,13 +958,14 @@ static ZType *parseBaseType(ZParser *parser) {
     base->constant  = constant;
 
     if (!parser->noFuncType && check(parser, TOK_LPAREN)) {
-        base        = parseTypeFunc(parser, base);
+        base        = tryParse(parser, parseTypeFunc(parser, base));
     } else if (check(parser, TOK_LSBRACKET)) {
         // Generic type instantiation like List[int] or Map[str, int]
         ZType **generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
         base->primitive.generics = generics;
     }
-    base->tok = start;
+
+    if (base) base->tok = start;
     return base;
 }
 
@@ -1750,6 +1753,56 @@ static ZNode *parseFuncArgument(ZParser *parser) {
     node->resolved          = type;
     node->tok               = ident;
     return node;
+}
+
+static ZNode *parseAnonFunc(ZParser *parser) {
+    ZToken *start   = peek(parser);
+    ZType *type     = NULL;
+    printf("parse anon func %s\n", stoken(start));
+    if (!check(parser, TOK_LPAREN)) {
+        parser->noFuncType = true;
+        type = parseType(parser);
+        parser->noFuncType = false;
+        if (!type) {
+            error(parser->state, start, "Expected a type or '('");
+            return NULL;
+        }
+    }
+    
+    ZNode *func = NULL;
+
+    ZNode **args = parseGenericList(parser,
+        TOK_LPAREN,         TOK_RPAREN,
+        parseFuncArgument,  true
+    );
+
+
+    printf("ret type %s\n", stype(type));
+// end:
+    func                        = makenode(NODE_FUNC);
+    func->funcDef.args          = args;
+    func->funcDef.capabilities  = NULL;
+    func->funcDef.pub           = false;
+    func->funcDef.annotations   = NULL;
+    func->funcDef.receiver      = NULL;
+    func->funcDef.base          = NULL;
+    func->funcDef.name          = NULL;
+    func->funcDef.generics      = NULL;
+    func->funcDef.body          = parseBlockOrInline(parser);
+    func->funcDef.mangled       = NULL;
+    func->funcDef.ret           = type;
+    func->tok                   = start;
+
+    ZType *funcType             = maketype(Z_TYPE_FUNCTION);
+    funcType->func.ret          = type;
+    funcType->func.capabilities = NULL;
+    funcType->func.variadic     = false;
+    funcType->func.args         = NULL;
+    for (usize i = 0; i < veclen(args); i++) {
+        vecpush(funcType->func.args, args[i]->resolved);
+    }
+    func->resolved              = funcType;
+    return func;
 }
 
 /* The caller must handle:
