@@ -2035,7 +2035,11 @@ static ZType *resolveSlice(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     return res;
 }
 
-static ZType *resolveInlineIf(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
+static ZType *resolveIf(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
+    if (!node || !node->ifStmt.cond || !node->ifStmt.body || !node->ifStmt.elseBranch) {
+        error(ctx->state, node->tok, "Error");
+        return NULL;
+    }
     ZType *cond         = resolveType(ctx, node->ifStmt.cond, inferred);
     ZType *trueBranch   = resolveType(ctx, node->ifStmt.body, inferred);
     ZType *falseBranch  = resolveType(ctx, node->ifStmt.elseBranch, inferred);
@@ -2045,9 +2049,10 @@ static ZType *resolveInlineIf(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
             "is not a comparable value");
         return NULL;
     }
-    if (typesEqual(trueBranch, falseBranch)) {
-        return trueBranch;
-    }
+
+    if (!trueBranch || !falseBranch) return NULL;
+
+    if (typesEqual(trueBranch, falseBranch)) return trueBranch;
 
     ZType *sum = makeTypeThread(ctx, Z_TYPE_SUM);
     sum->sumType = NULL;
@@ -2068,6 +2073,23 @@ static ZType *resolveInlineIf(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
         vecpush(sum->sumType, falseBranch);
     }
     return sum;
+}
+
+static ZType *resolveBlock(ZThreadSem *ctx, ZNode *block, ZType *inferred) {
+    ZType *breakType = NULL;
+    for (usize i = 0; i < veclen(block->block); i++) {
+        ZNode *stmt = block->block[i];
+        if (stmt->type == NODE_BREAK || stmt->type == NODE_IF) {
+            breakType = resolveType(ctx, stmt, inferred);
+        } else {
+            analyzeStmt(ctx, stmt);
+        }
+    }
+
+    if (!breakType) {
+        error(ctx->state, block->tok, "Missing break statement");
+    }
+    return breakType;
 }
 
 static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
@@ -2119,6 +2141,7 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZType *result = NULL;
 
     switch (curr->type) {
+    case NODE_BLOCK:        result = resolveBlock       (ctx, curr, inferred);      break;
     case NODE_CALL:         result = resolveFuncCall    (ctx, curr, inferred);      break;
     case NODE_UNARY:        result = resolveUnary       (ctx, curr, inferred);      break;
     case NODE_BINARY:       result = resolveBinary      (ctx, curr, inferred);      break;
@@ -2132,7 +2155,7 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr, inferred);      break;
     case NODE_STATIC_ACCESS:result = resolveStaticAccess(ctx, curr, inferred);      break;
     case NODE_SLICE:        result = resolveSlice       (ctx, curr, inferred);      break;
-    case NODE_IF:           result = resolveInlineIf    (ctx, curr, inferred);      break;
+    case NODE_IF:           result = resolveIf          (ctx, curr, inferred);      break;
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
         if (curr->resolved) {
@@ -2174,7 +2197,9 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 
     case NODE_BREAK:
-        if (ctx->loopDepth == 0) {
+        if (curr->breakStmt.expr) {
+            result = resolveType(ctx, curr->breakStmt.expr, inferred);
+        } else if (ctx->loopDepth == 0) {
             error(ctx->state, curr->tok, "break must be inside a loop");
         }
         break;
@@ -2423,7 +2448,7 @@ static void analyzeIf(ZThreadSem *ctx, ZNode *curr) {
         curr->ifStmt.cond = implicitCast(ctx, curr->ifStmt.cond, u1Type);
     }
 
-    analyzeBlock(ctx, curr->ifStmt.body, true);
+    analyzeStmt(ctx, curr->ifStmt.body);
     if (isIfLet) endScope(ctx);
 
     if (curr->ifStmt.elseBranch) {
@@ -2431,7 +2456,7 @@ static void analyzeIf(ZThreadSem *ctx, ZNode *curr) {
         if (el->type == NODE_IF)
             analyzeIf(ctx, el);
         else
-            analyzeBlock(ctx, el, true);
+            analyzeStmt(ctx, el);
     }
 }
 
@@ -2508,9 +2533,7 @@ static bool satisfyReturn(ZThreadSem *ctx, ZNode *node) {
                 satisfyReturn(ctx, node->ifStmt.elseBranch);
     default: return false;
     }
-    
 }
-
 
 static void analyzeFunc(ZThreadSem *ctx, ZNode *curr) {
     for (usize i = 0; i < veclen(curr->funcDef.generics); i++) {
@@ -2651,7 +2674,7 @@ static void analyzeCapability(ZThreadSem *ctx, ZNode *curr) {
     beginScope(ctx, curr);
     analyzeVar(ctx, curr->capability.capability, false);
     putCapability(ctx, curr->capability.capability);
-    analyzeBlock(ctx, curr->capability.block, false);
+    analyzeStmt(ctx, curr->capability.block);
     endScope(ctx);
 }
 

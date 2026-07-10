@@ -324,27 +324,6 @@ static ZNode *parseArrayInit(ZParser *parser) {
     return node;
 }
 
-static ZNode *parseInlineIf(ZParser *parser) {
-    expect(parser, TOK_IF);
-    ZNode *cond         = parseExpr(parser);
-    guard(cond);
-    
-    expect(parser, TOK_ARROW);
-    ZNode *body         = parseExpr(parser);
-    guard(body);
-
-    expect(parser, TOK_ELSE);
-    expect(parser, TOK_ARROW);
-    ZNode *elseBranch   = parseExpr(parser);
-    guard(elseBranch);
-
-    ZNode *ifExpr               = makenode(NODE_IF);
-    ifExpr->ifStmt.cond         = cond;
-    ifExpr->ifStmt.body         = body;
-    ifExpr->ifStmt.elseBranch   = elseBranch;
-    return ifExpr;
-}
-
 static ZNode *parsePrimary(ZParser *parser) {
     ZToken *start = peek(parser);
     guard(start);
@@ -412,7 +391,7 @@ static ZNode *parsePrimary(ZParser *parser) {
         node->tok               = tok;
         return node;
     } else if (check(parser, TOK_IF)) {
-        return parseInlineIf(parser);
+        return parseIf(parser);
     } else if (check(parser, TOK_DOT)) {
         if (checkAhead(parser, TOK_IDENT, 1)) {
             ZToken *base = consume(parser);
@@ -1151,15 +1130,18 @@ ZNode *parseStmt(ZParser *parser) {
 }
 
 static ZNode *parseBlockOrInline(ZParser *parser) {
+    // ZToken *start = peek(parser);
     if (match(parser, TOK_ARROW)) {
         ZNode *expr = parseExpr(parser);
         if (!expr) {
             error(parser->state, peek(parser), "Invalid expression");
             return NULL;
         }
-        ZNode *body = makenode(NODE_BLOCK);
-        vecpush(body->block, expr);
-        return body;
+        return expr;
+        // ZNode *body = makenode(NODE_BLOCK);
+        // body->tok = start;
+        // vecpush(body->block, expr);
+        // return body;
     } else if (check(parser, TOK_LBRACKET)) {
         return parseBlock(parser);
     } else {
@@ -1169,11 +1151,11 @@ static ZNode *parseBlockOrInline(ZParser *parser) {
 }
 
 static ZNode *parseBlock(ZParser *parser) {
-    let start = peek(parser);
+    ZToken *start   = peek(parser);
     expect(parser, TOK_LBRACKET);
-
-    ZNode *block = makenode(NODE_BLOCK);
-    ZNode *stmt = NULL;
+    ZNode *block    = makenode(NODE_BLOCK);
+    block->tok      = start;
+    ZNode *stmt     = NULL;
     do {
         stmt = parseStmt(parser);
         if (stmt) vecpush(block->block, stmt);
@@ -1402,8 +1384,9 @@ ZNode *parseExpr(ZParser *parser) {
     if (!curr) return NULL;
 
     switch (curr->type) {
-    case TOK_IF:    return parseInlineIf(parser);
+    case TOK_IF:    return parseIf(parser);
     case TOK_MATCH: return parseMatch(parser, true);
+    case TOK_WITH:  return parseCapabilityBlock(parser);
     default:        return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
     }
 }
@@ -2124,6 +2107,8 @@ static ZNode *parseVarDef(ZParser *parser) {
 static ZNode *parseBreak(ZParser *parser) {
     ZNode *node = makenode(NODE_BREAK);
     node->tok = consume(parser);
+    node->breakStmt.expr = tryParse(parser, parseExpr(parser));
+
     return node;
 }
 

@@ -4,9 +4,14 @@ main :: i32 () {
     y := 4
     z := 3
 
+
     nested: i32 =
-            if x > z -> if x > y -> x else -> y
-            else -> if z > y -> z else -> y
+            if x > z ->
+                if x > y    -> x
+                else        -> y
+            else
+                if z > y    -> z
+                else        -> y
 
     printf("%d\n", nested)
 

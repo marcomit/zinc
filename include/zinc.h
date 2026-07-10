@@ -9,7 +9,7 @@
 #include "zvec.h"
 #include "zhset.h"
 #include "zmem.h"
-#include <atomic>
+#include <stdatomic.h>
 #include <stdatomic.h>
 #include <pthread.h>
 
@@ -661,6 +661,10 @@ struct ZNode {
             ZToken  *self;
             ZNode   **funcs;
         } impl;
+
+        struct {
+            ZNode *expr;
+        } breakStmt;
     };
 };
 
