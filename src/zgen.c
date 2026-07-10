@@ -77,6 +77,9 @@ typedef struct ZLLVMScope {
     /* Capture the end label of the loop (used by the break statement). */
     LLVMBasicBlockRef   endLoop;
 
+    /* Capture the block's label. */
+    LLVMBasicBlockRef   breakBlock;
+
     /* Capture all stack allocated variables (it is allocated only at function-level). */
     ZLLVMStack          **stackAlloca;
 
@@ -2567,25 +2570,32 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
     return genMatchCond(ctx, node->resolved, node->varDecl.pattern, ptr);
 }
 
+static LLVMValueRef genBlockExpr(ZCodegen *ctx, ZNode *node) {
+    for (usize i = 0; i < veclen(node->block); i++) {
+        ZNode *stmt = node->block[i];
+        if (stmt->type == NODE_BREAK && stmt->breakStmt.expr) {
+            return genExpr(ctx, stmt->breakStmt.expr);
+        } else {
+            genStmt(ctx, stmt);
+        }
+    }
+    return NULL;
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef res = NULL;
     switch (node->type) {
-        case NODE_IF:               res = genInlineIf      (ctx, node); break;
-        case NODE_CALL:             res = genCall          (ctx, node); break;
-        case NODE_CAST:             res = genCast          (ctx, node); break;
-        case NODE_UNARY:            res = genUnary         (ctx, node); break;
-        case NODE_BINARY:           res = genBinary        (ctx, node); break;
-        case NODE_LITERAL:          res = genLit           (ctx, node); break;
-        case NODE_ARRAY_INIT:       res = genArrayInit     (ctx, node); break;
-        case NODE_IDENTIFIER:       res = genIdent         (ctx, node); break;
-        case NODE_STATIC_ACCESS:    res = genStaticAccess  (ctx, node); break;
-        case NODE_VAR_DECL:         res = genVarDestruct   (ctx, node); break;
-        case NODE_BLOCK: {
-            for (usize i = 0; i < veclen(node->block); i++) {
-                genStmt(ctx, node->block[i]);
-            }
-            return NULL;
-        }
+        case NODE_IF:               res = genInlineIf       (ctx, node); break;
+        case NODE_CALL:             res = genCall           (ctx, node); break;
+        case NODE_CAST:             res = genCast           (ctx, node); break;
+        case NODE_UNARY:            res = genUnary          (ctx, node); break;
+        case NODE_BINARY:           res = genBinary         (ctx, node); break;
+        case NODE_LITERAL:          res = genLit            (ctx, node); break;
+        case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
+        case NODE_IDENTIFIER:       res = genIdent          (ctx, node); break;
+        case NODE_STATIC_ACCESS:    res = genStaticAccess   (ctx, node); break;
+        case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
+        case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
 
         case NODE_MEMBER:
             if (node->memberAccess.object->resolved->kind == Z_TYPE_FACET) {

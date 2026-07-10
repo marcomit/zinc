@@ -511,6 +511,10 @@ void printNode(ZNode *node, u8 depth) {
     depth++;
     switch (node->type) {
     case NODE_BREAK:
+        if (node->breakStmt.expr) {
+            printf("\n");
+            printNode(node->breakStmt.expr, depth);
+        }
     case NODE_CONTINUE:
     case NODE_ARRAY_INIT:
         break;

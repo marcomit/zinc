@@ -1,0 +1,45 @@
+// break-as-expression: `break <value>` yields the value of the enclosing
+// `if` expression, letting an `if`/`else` be used as a value.
+foreign printf :: u0 (*char, ...)
+
+// break yields the value returned from a function's if-expression.
+max :: i32 (a: i32, b: i32) {
+    return if a > b {
+        break a
+    } else {
+        break b
+    }
+}
+
+main :: i32 () {
+    // Assign an if-expression whose branches break with a value.
+    x := 102
+    y := 6
+    m := if x > y {
+        break x
+    } else {
+        break y
+    }
+    printf("m=%d\n", m)
+
+    // break through a function boundary.
+    printf("max=%d\n", max(3, 9))
+    printf("max=%d\n", max(20, 7))
+
+    // A branch may run statements before breaking with a value.
+    n := 5
+    fact := if n <= 1 {
+        break 1
+    } else {
+        acc := 1
+        i := 2
+        for i <= n {
+            acc = acc * i
+            i :+ 1
+        }
+        break acc
+    }
+    printf("fact=%d\n", fact)
+
+    return 0
+}

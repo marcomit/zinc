@@ -660,6 +660,10 @@ struct ZNode {
             ZToken  *self;
             ZNode   **funcs;
         } impl;
+
+        struct {
+            ZNode *expr;
+        } breakStmt;
     };
 };
 
