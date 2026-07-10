@@ -51,7 +51,7 @@ static void analyzeTypedef          (ZThreadSem *, ZNode *);
 static void analyzeStmt             (ZThreadSem *, ZNode *);
 static void analyzeBlock            (ZThreadSem *, ZNode *, bool);
 static void analyzeNamespace        (ZThreadSem *, ZNode *);
-static void analyzeFuncArgs         (ZThreadSem *, ZType **, ZNode **);
+static void analyzeFuncArgs         (ZThreadSem *, ZType **, ZNode **, ZType **);
 static bool satisfyFacet            (ZThreadSem *, ZType *, ZType *);
 static ZType *resolveTypeRef        (ZThreadSem *, ZType *);
 static void checkFunctionUsedAsValue(ZThreadSem *, ZNode *);
@@ -2093,14 +2093,24 @@ static ZType *resolveBlock(ZThreadSem *ctx, ZNode *block, ZType *inferred) {
 }
 
 static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    if (!curr->funcDef.ret) {
+    if (inferred) {
         inferred = resolveTypeRef(ctx, inferred);
         if (!inferred) {
             error(ctx->state, curr->tok, "Return type can't be inferred from the context");
             return NULL;
         }
-        curr->funcDef.ret = inferred;
-        curr->resolved->func.ret = inferred;
+
+        if (inferred->kind != Z_TYPE_FUNCTION) {
+            error(ctx->state, curr->tok, "Expected a function here");
+            return NULL;
+        }
+
+        curr->funcDef.ret = inferred->func.ret;
+        curr->resolved = inferred;
+
+        for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
+            curr->funcDef.args[i]->resolved = inferred->func.args[i];
+        }
     }
 
     ZScope *saved = ctx->current;
@@ -2117,12 +2127,14 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     });
 
     beginScope(ctx, curr);
-    analyzeFuncArgs(ctx, curr->resolved->func.args, curr->funcDef.args);
+    analyzeFuncArgs(ctx, curr->resolved->func.args, curr->funcDef.args, inferred->func.args);
     analyzeBlock(ctx, curr->funcDef.body, false);
     endScope(ctx);
 
     ctx->current = saved;
 
+
+    printf("anon resolved %s\n", stype(curr->resolved));
     return curr->resolved;
 }
 
@@ -2371,9 +2383,12 @@ static void analyzeVar(ZThreadSem *ctx, ZNode *curr, bool isGlobal) {
 
     if (curr->varDecl.rvalue) {
         rvalueType = resolveType(ctx, curr->varDecl.rvalue, curr->resolved);
+        printf("rvalue %s\n", stype(rvalueType));
         checkFunctionUsedAsValue(ctx, curr->varDecl.rvalue);
         rvalueType = resolveTypeRef(ctx, rvalueType);
     }
+
+    printf("Resolved %s\n", stype(curr->resolved));
 
     if (curr->resolved) {
         declaredType = resolveTypeRef(ctx, curr->resolved);
@@ -2495,15 +2510,28 @@ static void analyzeForeign(ZThreadSem *ctx, ZNode *curr) {
     }
 }
 
-static void analyzeFuncArgs(ZThreadSem *ctx, ZType **types, ZNode **fields) {
+static void analyzeFuncArgs(ZThreadSem *ctx, ZType **types, ZNode **fields, ZType **inferred) {
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *field        = fields[i];
         ZType *fieldType    = resolveTypeRef(ctx, field->field.type);
 
         if (!fieldType) {
-            error(ctx->state, field->field.identifier, "Unknown type resolved");
-            continue;
+            if (inferred) fieldType = inferred[i];
+            else {
+                error(ctx->state, field->field.identifier, "Unknown type resolved");
+                continue;
+            }
         }
+        if (inferred) {
+            inferred[i] = resolveTypeRef(ctx, inferred[i]);
+            if (!typesEqual(inferred[i], fieldType)) {
+                error(ctx->state, field->tok,
+                    "Expected '%s', got '%s'",
+                    stype(inferred[i]), stype(fieldType)
+                );
+            }
+        }
+
         field->field.type   = fieldType;
         field->resolved     = fieldType;
         types[i]            = fieldType;
@@ -2570,12 +2598,14 @@ static void analyzeFunc(ZThreadSem *ctx, ZNode *curr) {
 
     analyzeFuncArgs(ctx,
         curr->resolved->func.args,
-        curr->funcDef.args
+        curr->funcDef.args,
+        NULL
     );
 
     analyzeFuncArgs(ctx,
         curr->resolved->func.capabilities,
-        curr->funcDef.capabilities
+        curr->funcDef.capabilities,
+        NULL
     );
 
     for (usize i = 0; i < veclen(curr->funcDef.capabilities); i++) {

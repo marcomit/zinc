@@ -87,7 +87,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
 static ZParseFunc exprFunc[] = {
     parseBinary,
     parseTupleLit,
-    parseAnonFunc
+    parseAnonFunc,
 };
 
 static ZParser *makeparser(ZState *state, ZToken **tokens) {
@@ -1738,10 +1738,25 @@ static ZNode *parseFuncArgument(ZParser *parser) {
     return node;
 }
 
+static ZNode *parseAnonFuncArgument(ZParser *parser) {
+    if (!check(parser, TOK_IDENT)) return NULL;
+    ZToken *name = consume(parser);
+
+    ZNode *field = makenode(NODE_FIELD);
+    field->field.identifier = name;
+    field->tok              = name;
+
+    if (match(parser, TOK_COLON)) {
+        field->field.type   = parseType(parser);
+        field->resolved     = field->field.type;
+    }
+
+    return field;
+}
+
 static ZNode *parseAnonFunc(ZParser *parser) {
     ZToken *start   = peek(parser);
     ZType *type     = NULL;
-    printf("parse anon func %s\n", stoken(start));
     if (!check(parser, TOK_LPAREN)) {
         parser->noFuncType = true;
         type = parseType(parser);
@@ -1756,12 +1771,28 @@ static ZNode *parseAnonFunc(ZParser *parser) {
 
     ZNode **args = parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
-        parseFuncArgument,  true
+        parseAnonFuncArgument,  true
     );
 
+    ZNode *body = NULL;
 
-    printf("ret type %s\n", stype(type));
-// end:
+    if (match(parser, TOK_ARROW)) {
+        ZNode *expr = parseExpr(parser);
+        if (!expr) return NULL;
+        ZNode *ret = makenode(NODE_RETURN);
+        ret->returnStmt.expr = expr;
+
+        body = makenode(NODE_BLOCK);
+        body->block = NULL;
+        vecpush(body->block, ret);
+    } else if (check(parser, TOK_LBRACKET)) {
+        body = parseBlock(parser);
+    }
+
+    if (!body) {
+        error(parser->state, peek(parser), "Unexpected token");
+    }
+
     func                        = makenode(NODE_FUNC);
     func->funcDef.args          = args;
     func->funcDef.capabilities  = NULL;
@@ -1771,7 +1802,7 @@ static ZNode *parseAnonFunc(ZParser *parser) {
     func->funcDef.base          = NULL;
     func->funcDef.name          = NULL;
     func->funcDef.generics      = NULL;
-    func->funcDef.body          = parseBlockOrInline(parser);
+    func->funcDef.body          = body;
     func->funcDef.mangled       = NULL;
     func->funcDef.ret           = type;
     func->tok                   = start;
