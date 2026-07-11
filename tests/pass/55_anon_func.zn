@@ -19,15 +19,16 @@ printNums :: u0 (nums: []i32) {
 }
 
 main :: i32 () {
+    square := i32 (x: i32) -> x * x
     nums := [1, 2, 3, 4]
 
     printNums(nums)
 
-    square := i32 (x:i32) -> x * x
     map(nums, i32 (x) -> x * x)
     printNums(nums)
 
     map(nums, square)
+    printNums(nums)
 
 
     return 0

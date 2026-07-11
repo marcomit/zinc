@@ -2127,14 +2127,16 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     });
 
     beginScope(ctx, curr);
-    analyzeFuncArgs(ctx, curr->resolved->func.args, curr->funcDef.args, inferred->func.args);
+    analyzeFuncArgs(ctx,
+        curr->resolved->func.args,
+        curr->funcDef.args,
+        inferred ? inferred->func.args : NULL
+    );
     analyzeBlock(ctx, curr->funcDef.body, false);
     endScope(ctx);
 
     ctx->current = saved;
 
-
-    printf("anon resolved %s\n", stype(curr->resolved));
     return curr->resolved;
 }
 
@@ -2383,12 +2385,10 @@ static void analyzeVar(ZThreadSem *ctx, ZNode *curr, bool isGlobal) {
 
     if (curr->varDecl.rvalue) {
         rvalueType = resolveType(ctx, curr->varDecl.rvalue, curr->resolved);
-        printf("rvalue %s\n", stype(rvalueType));
         checkFunctionUsedAsValue(ctx, curr->varDecl.rvalue);
         rvalueType = resolveTypeRef(ctx, rvalueType);
     }
 
-    printf("Resolved %s\n", stype(curr->resolved));
 
     if (curr->resolved) {
         declaredType = resolveTypeRef(ctx, curr->resolved);
