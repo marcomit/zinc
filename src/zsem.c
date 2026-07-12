@@ -2111,6 +2111,8 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
             curr->funcDef.args[i]->resolved = inferred->func.args[i];
         }
+    } else {
+        curr->resolved->func.ret = resolveTypeRef(ctx, curr->resolved->func.ret);
     }
 
     ZScope *saved = ctx->current;
@@ -2127,6 +2129,12 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     });
 
     beginScope(ctx, curr);
+    ZNode *oldFunc = ctx->currentFunc;
+    ZType *oldFuncRet = ctx->currentFuncRet;
+
+    ctx->currentFunc = curr;
+    ctx->currentFuncRet = curr->resolved->func.ret;
+
     analyzeFuncArgs(ctx,
         curr->resolved->func.args,
         curr->funcDef.args,
@@ -2136,6 +2144,8 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     endScope(ctx);
 
     ctx->current = saved;
+    ctx->currentFunc = oldFunc;
+    ctx->currentFuncRet = oldFuncRet;
 
     return curr->resolved;
 }
