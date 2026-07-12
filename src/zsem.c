@@ -41,6 +41,7 @@
 #include "zarena.h"
 #include <stdbool.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 static void analyze                 (ZThreadSem *, ZNode *);
 static void analyzeStruct           (ZThreadSem *, ZNode *);
@@ -50,6 +51,7 @@ static void analyzeTypedef          (ZThreadSem *, ZNode *);
 static void analyzeStmt             (ZThreadSem *, ZNode *);
 static void analyzeBlock            (ZThreadSem *, ZNode *, bool);
 static void analyzeNamespace        (ZThreadSem *, ZNode *);
+static void analyzeFuncArgs         (ZThreadSem *, ZType **, ZNode **, ZType **);
 static bool satisfyFacet            (ZThreadSem *, ZType *, ZType *);
 static ZType *resolveTypeRef        (ZThreadSem *, ZType *);
 static void checkFunctionUsedAsValue(ZThreadSem *, ZNode *);
@@ -1800,7 +1802,7 @@ static ZType *resolveTupleLiteral(ZThreadSem *ctx, ZNode *node, ZType *inferred)
         ZType *parent = inferred && inferred->kind == Z_TYPE_TUPLE ?
             inferred->tuple[i] : inferred;
 
-        fieldType = resolveType(ctx, fields[i], inferred);
+        fieldType = resolveType(ctx, fields[i], parent);
         if (!fieldType) {
             error(ctx->state, fields[i]->tok,
                     "Unresolved type of tuple");
@@ -2090,32 +2092,94 @@ static ZType *resolveBlock(ZThreadSem *ctx, ZNode *block, ZType *inferred) {
     return breakType;
 }
 
+static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
+    if (inferred) {
+        inferred = resolveTypeRef(ctx, inferred);
+        if (!inferred) {
+            error(ctx->state, curr->tok, "Return type can't be inferred from the context");
+            return NULL;
+        }
+
+        if (inferred->kind != Z_TYPE_FUNCTION) {
+            error(ctx->state, curr->tok, "Expected a function here");
+            return NULL;
+        }
+
+        curr->funcDef.ret = inferred->func.ret;
+        curr->resolved = inferred;
+
+        for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
+            curr->funcDef.args[i]->resolved = inferred->func.args[i];
+        }
+    } else {
+        curr->resolved->func.ret = resolveTypeRef(ctx, curr->resolved->func.ret);
+    }
+
+    ZScope *saved = ctx->current;
+    ctx->current = ctx->current->parent;
+
+    char loc[32];
+    snprintf(loc, sizeof(loc), "%zu_%zu", curr->tok->row, curr->tok->col);
+
+    curr->funcDef.mangled = manglerA((char *[]){
+        curr->tok->filename,
+        ctx->currentFunc->funcDef.mangled,
+        loc,
+        NULL
+    });
+
+    beginScope(ctx, curr);
+    ZNode *oldFunc = ctx->currentFunc;
+    ZType *oldFuncRet = ctx->currentFuncRet;
+
+    ctx->currentFunc = curr;
+    ctx->currentFuncRet = curr->resolved->func.ret;
+
+    analyzeFuncArgs(ctx,
+        curr->resolved->func.args,
+        curr->funcDef.args,
+        inferred ? inferred->func.args : NULL
+    );
+    analyzeBlock(ctx, curr->funcDef.body, false);
+    endScope(ctx);
+
+    ctx->current = saved;
+    ctx->currentFunc = oldFunc;
+    ctx->currentFuncRet = oldFuncRet;
+
+    return curr->resolved;
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
  */
 static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     if (!curr)           return NULL;
+    /* NODE_FUNC always carries a pre-built shape (arg/ret types) set by the
+     * parser, so the generic "already resolved" cache check below would skip
+     * resolveAnonFunc entirely and leave the mangled name/body unanalyzed. */
+    if (curr->type == NODE_FUNC) return resolveAnonFunc(ctx, curr, inferred);
     if (curr->resolved)  return curr->resolved;
 
     ZType *result = NULL;
 
     switch (curr->type) {
     case NODE_BLOCK:        result = resolveBlock       (ctx, curr, inferred);      break;
-    case NODE_CALL:         result = resolveFuncCall    (ctx, curr, inferred);    break;
-    case NODE_UNARY:        result = resolveUnary       (ctx, curr, inferred);    break;
-    case NODE_BINARY:       result = resolveBinary      (ctx, curr, inferred);    break;
-    case NODE_MEMBER:       result = resolveMemberAccess(ctx, curr, inferred);    break;
-    case NODE_LITERAL:      result = resolveLiteralType (ctx, curr->literalTok);         break;
-    case NODE_ARRAY_LIT:    result = resolveArrayLiteral(ctx, curr, inferred);    break;
-    case NODE_SUBSCRIPT:    result = resolveArrSubscript(ctx, curr, inferred);    break;
-    case NODE_ARRAY_INIT:   result = resolveArrayInit   (ctx, curr, inferred);    break;
-    case NODE_IDENTIFIER:   result = resolveIdentifier  (ctx, curr, inferred);    break;
-    case NODE_STRUCT_LIT:   result = resolveStructLit   (ctx, curr, inferred);    break;
-    case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr, inferred);    break;
-    case NODE_STATIC_ACCESS:result = resolveStaticAccess(ctx, curr, inferred);    break;
-    case NODE_SLICE:        result = resolveSlice       (ctx, curr, inferred);    break;
-    case NODE_IF:           result = resolveIf    (ctx, curr, inferred);    break;
+    case NODE_CALL:         result = resolveFuncCall    (ctx, curr, inferred);      break;
+    case NODE_UNARY:        result = resolveUnary       (ctx, curr, inferred);      break;
+    case NODE_BINARY:       result = resolveBinary      (ctx, curr, inferred);      break;
+    case NODE_MEMBER:       result = resolveMemberAccess(ctx, curr, inferred);      break;
+    case NODE_LITERAL:      result = resolveLiteralType (ctx, curr->literalTok);    break;
+    case NODE_ARRAY_LIT:    result = resolveArrayLiteral(ctx, curr, inferred);      break;
+    case NODE_SUBSCRIPT:    result = resolveArrSubscript(ctx, curr, inferred);      break;
+    case NODE_ARRAY_INIT:   result = resolveArrayInit   (ctx, curr, inferred);      break;
+    case NODE_IDENTIFIER:   result = resolveIdentifier  (ctx, curr, inferred);      break;
+    case NODE_STRUCT_LIT:   result = resolveStructLit   (ctx, curr, inferred);      break;
+    case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr, inferred);      break;
+    case NODE_STATIC_ACCESS:result = resolveStaticAccess(ctx, curr, inferred);      break;
+    case NODE_SLICE:        result = resolveSlice       (ctx, curr, inferred);      break;
+    case NODE_IF:           result = resolveIf          (ctx, curr, inferred);      break;
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
         if (curr->resolved) {
@@ -2335,6 +2399,7 @@ static void analyzeVar(ZThreadSem *ctx, ZNode *curr, bool isGlobal) {
         rvalueType = resolveTypeRef(ctx, rvalueType);
     }
 
+
     if (curr->resolved) {
         declaredType = resolveTypeRef(ctx, curr->resolved);
         ZType *promoted = typesCompatible(ctx, declaredType, rvalueType);
@@ -2455,15 +2520,28 @@ static void analyzeForeign(ZThreadSem *ctx, ZNode *curr) {
     }
 }
 
-static void analyzeFuncArgs(ZThreadSem *ctx, ZType **types, ZNode **fields) {
+static void analyzeFuncArgs(ZThreadSem *ctx, ZType **types, ZNode **fields, ZType **inferred) {
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *field        = fields[i];
         ZType *fieldType    = resolveTypeRef(ctx, field->field.type);
 
         if (!fieldType) {
-            error(ctx->state, field->field.identifier, "Unknown type resolved");
-            continue;
+            if (inferred) fieldType = inferred[i];
+            else {
+                error(ctx->state, field->field.identifier, "Unknown type resolved");
+                continue;
+            }
         }
+        if (inferred) {
+            inferred[i] = resolveTypeRef(ctx, inferred[i]);
+            if (!typesEqual(inferred[i], fieldType)) {
+                error(ctx->state, field->tok,
+                    "Expected '%s', got '%s'",
+                    stype(inferred[i]), stype(fieldType)
+                );
+            }
+        }
+
         field->field.type   = fieldType;
         field->resolved     = fieldType;
         types[i]            = fieldType;
@@ -2530,12 +2608,14 @@ static void analyzeFunc(ZThreadSem *ctx, ZNode *curr) {
 
     analyzeFuncArgs(ctx,
         curr->resolved->func.args,
-        curr->funcDef.args
+        curr->funcDef.args,
+        NULL
     );
 
     analyzeFuncArgs(ctx,
         curr->resolved->func.capabilities,
-        curr->funcDef.capabilities
+        curr->funcDef.capabilities,
+        NULL
     );
 
     for (usize i = 0; i < veclen(curr->funcDef.capabilities); i++) {
@@ -3229,8 +3309,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     ZScopeTable **scopes        = ctx->scopes;
     ZThreadSem **semantics      = ctx->semantics;
     for (usize i = 0; i < len; i++) {
-        ZScopeTable *entry  = scopes[i];
-        entry->ctx          = semantics[i];
+        scopes[i]->ctx = semantics[i];
         pthread_create(threads + i, NULL, worker, semantics[i]);
     }
 

@@ -10,6 +10,7 @@
 #include "zhset.h"
 #include "zmem.h"
 #include <stdatomic.h>
+#include <stdatomic.h>
 #include <pthread.h>
 
 static char sep = '/';
@@ -808,6 +809,11 @@ typedef struct ZSemantic {
     ZScopeTable     **scopes;
     // ZSymTable       *table;
     ZThreadSem      **semantics;
+
+    /* Atomic integer used to fetch the current module in the thread worker.
+     * The thread worker fetch the index of the module to analyze and increment it.
+     * */
+    atomic_int      currentModule;
 } ZSemantic;
 
 struct ZThreadSem {
@@ -895,6 +901,7 @@ char *readfile(char *);
 
 void encodeType(ZType *, char **);
 char *mangler(char *[]);
+char *manglerA(char *[]);
 char *manglerM(ZType *, ZToken *);
 
 void _error  (ZState *, ZToken *, const char *, int, const char *, ...);

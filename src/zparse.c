@@ -59,8 +59,9 @@ static ZNode *parseReturn                   (ZParser *);
 static ZNode *parseVarDef                   (ZParser *);
 static ZNode *parseBinary                   (ZParser *);
 static ZNode *parsePrimary                  (ZParser *);
-static ZNode *parseContinue                 (ZParser *);
+static ZNode *parseAnonFunc                 (ZParser *);
 static ZNode *parseArrayLit                 (ZParser *);
+static ZNode *parseContinue                 (ZParser *);
 static ZNode *parseTupleLit                 (ZParser *);
 static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
@@ -84,6 +85,7 @@ static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
 
 static ZParseFunc exprFunc[] = {
+    parseAnonFunc,
     parseBinary,
     parseTupleLit,
 };
@@ -341,7 +343,7 @@ static ZNode *parsePrimary(ZParser *parser) {
     } else if (check(parser, TOK_LSBRACKET)) {
         return parseOrGrammar(parser, (ZParseFunc[]){
             parseArrayInit,
-            parseArrayLit
+            parseArrayLit,
         }, 2);
     } else if (check(parser, TOK_IDENT)) {
         if (checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
@@ -390,6 +392,8 @@ static ZNode *parsePrimary(ZParser *parser) {
         return node;
     } else if (check(parser, TOK_IF)) {
         return parseIf(parser);
+    } else if (check(parser, TOK_LBRACKET)) {
+        return parseBlock(parser);
     } else if (check(parser, TOK_DOT)) {
         if (checkAhead(parser, TOK_IDENT, 1)) {
             ZToken *base = consume(parser);
@@ -935,13 +939,14 @@ static ZType *parseBaseType(ZParser *parser) {
     base->constant  = constant;
 
     if (!parser->noFuncType && check(parser, TOK_LPAREN)) {
-        base        = parseTypeFunc(parser, base);
+        base        = tryParse(parser, parseTypeFunc(parser, base));
     } else if (check(parser, TOK_LSBRACKET)) {
         // Generic type instantiation like List[int] or Map[str, int]
         ZType **generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
         base->primitive.generics = generics;
     }
-    base->tok = start;
+
+    if (base) base->tok = start;
     return base;
 }
 
@@ -1733,6 +1738,85 @@ static ZNode *parseFuncArgument(ZParser *parser) {
     node->resolved          = type;
     node->tok               = ident;
     return node;
+}
+
+static ZNode *parseAnonFuncArgument(ZParser *parser) {
+    if (!check(parser, TOK_IDENT)) return NULL;
+    ZToken *name = consume(parser);
+
+    ZNode *field = makenode(NODE_FIELD);
+    field->field.identifier = name;
+    field->tok              = name;
+
+    if (match(parser, TOK_COLON)) {
+        field->field.type   = parseType(parser);
+        field->resolved     = field->field.type;
+    }
+
+    return field;
+}
+
+static ZNode *parseAnonFunc(ZParser *parser) {
+    ZToken *start   = peek(parser);
+    ZType *type     = NULL;
+    if (!check(parser, TOK_LPAREN)) {
+        bool saved = parser->noFuncType;
+        parser->noFuncType = true;
+        type = tryParse(parser, parseType(parser));
+        parser->noFuncType = saved;
+        if (!type) return NULL;
+    }
+    
+    if (!check(parser, TOK_LPAREN)) return NULL;
+
+    ZNode **args = tryParse(parser, parseGenericList(parser,
+        TOK_LPAREN,         TOK_RPAREN,
+        parseAnonFuncArgument,  true
+    ));
+
+    ZNode *body = NULL;
+
+    if (match(parser, TOK_ARROW)) {
+        ZNode *expr = tryParse(parser, parseExpr(parser));
+        if (!expr) return NULL;
+        ZNode *ret = makenode(NODE_RETURN);
+        ret->returnStmt.expr = expr;
+
+        body = makenode(NODE_BLOCK);
+        body->block = NULL;
+        vecpush(body->block, ret);
+    } else if (check(parser, TOK_LBRACKET) && !parser->noStructLit) {
+        body = tryParse(parser, parseBlock(parser));
+    }
+
+    if (!body) return NULL;
+
+    ZNode *func = NULL;
+    func                        = makenode(NODE_FUNC);
+    func->funcDef.args          = args;
+    func->funcDef.capabilities  = NULL;
+    func->funcDef.pub           = false;
+    func->funcDef.annotations   = NULL;
+    func->funcDef.receiver      = NULL;
+    func->funcDef.base          = NULL;
+    func->funcDef.name          = NULL;
+    func->funcDef.generics      = NULL;
+    func->funcDef.body          = body;
+    func->funcDef.mangled       = NULL;
+    func->funcDef.ret           = type;
+    func->tok                   = start;
+
+    ZType *funcType             = maketype(Z_TYPE_FUNCTION);
+    funcType->func.ret          = type;
+    funcType->func.capabilities = NULL;
+    funcType->func.variadic     = false;
+    funcType->func.args         = NULL;
+    funcType->tok               = start;
+    for (usize i = 0; i < veclen(args); i++) {
+        vecpush(funcType->func.args, args[i]->resolved);
+    }
+    func->resolved              = funcType;
+    return func;
 }
 
 /* The caller must handle:

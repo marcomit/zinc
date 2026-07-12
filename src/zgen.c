@@ -131,6 +131,9 @@ static void         genNamespace    (ZCodegen *, ZNode *);
 static LLVMValueRef genForeign      (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto(ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genFacetConstruct(ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
+static void         genBlock        (ZCodegen *, ZNode *);
+static void         genFuncVars     (ZCodegen *, ZNode *);
+static void         addFuncArgs     (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
 static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
 
 /* ========== Native types ==========*/
@@ -2570,6 +2573,55 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
     return genMatchCond(ctx, node->resolved, node->varDecl.pattern, ptr);
 }
 
+static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
+    LLVMTypeRef returnTypeRef   = genType(ctx, node->resolved->func.ret);
+    usize argLen                = veclen(node->resolved->func.args);
+    LLVMTypeRef *arguments      = arenaAlloc(
+        ctx->module->allocator, sizeof(LLVMTypeRef) * argLen
+    );
+
+    for (usize i = 0; i < argLen; i++) {
+        arguments[i] = genType(ctx, node->resolved->func.args[i]);
+    }
+    LLVMTypeRef funcTypeRef = LLVMFunctionType(
+        returnTypeRef, arguments, argLen, false);
+
+    LLVMValueRef func = LLVMAddFunction(ctx->mod, node->funcDef.mangled, funcTypeRef);
+    LLVMSetLinkage(func, LLVMInternalLinkage);
+
+    LLVMBasicBlockRef savedBlock   = LLVMGetInsertBlock(ctx->builder);
+    LLVMValueRef savedFunc         = ctx->currentFunc;
+    ZNode *savedFuncNode           = ctx->currentFuncNode;
+
+    ctx->currentFunc     = func;
+    ctx->currentFuncNode = node;
+
+    beginScope(Z_SCOPE_FUNC, ctx);
+    LLVMBasicBlockRef entry = makeblock(ctx, "entry");
+    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+
+    addFuncArgs(ctx, func, node->funcDef.args, 0, false);
+
+    genFuncVars(ctx, node->funcDef.body);
+    genBlock(ctx, node->funcDef.body);
+
+    genChainDefer(ctx, ctx->scope->parent);
+
+    if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(ctx->builder))) {
+        if (LLVMGetTypeKind(returnTypeRef) == LLVMVoidTypeKind)
+            LLVMBuildRetVoid(ctx->builder);
+        else
+            LLVMBuildRet(ctx->builder, LLVMConstNull(returnTypeRef));
+    }
+    endScope(ctx);
+
+    ctx->currentFunc     = savedFunc;
+    ctx->currentFuncNode = savedFuncNode;
+    LLVMPositionBuilderAtEnd(ctx->builder, savedBlock);
+
+    return func;
+}
+
 static LLVMValueRef genBlockExpr(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < veclen(node->block); i++) {
         ZNode *stmt = node->block[i];
@@ -2595,6 +2647,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_IDENTIFIER:       res = genIdent          (ctx, node); break;
         case NODE_STATIC_ACCESS:    res = genStaticAccess   (ctx, node); break;
         case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
+        case NODE_FUNC:             res = genAnonFunc       (ctx, node); break;
         case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
 
         case NODE_MEMBER:

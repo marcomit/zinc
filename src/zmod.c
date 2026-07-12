@@ -13,6 +13,10 @@
 
 #define indent(t) for (u8 i = 0; i < (t); i++) printf("  ");
 
+#define MANGLER_DEFAULT_PREFIX  "_ZN"
+#define MANGLER_TYPE_PREFIX     "_ZNM"
+#define MANGLER_ANON_PREFIX     "_ZNA"
+
 static char *nodeLabels[] = {
     "BLOCK",        "IF",           "WHILE",        "RETURN",
     "VAR_DECL",     "BINARY",       "UNARY",        "CALL",         "FUNC",
@@ -564,7 +568,7 @@ void printNode(ZNode *node, u8 depth) {
         } else if (node->funcDef.base) {
             printf("%s::", node->funcDef.base->primitive.token->str);
         }
-        printf("%s, Type: ", node->funcDef.name->str);
+        printf("%s, Type: ", stoken(node->funcDef.name));
         printType(node->funcDef.ret);
         printf("\n");
         for (usize i = 0; i < veclen(node->funcDef.generics); i++) {
@@ -813,10 +817,10 @@ void printNode(ZNode *node, u8 depth) {
     printf("\n");
 }
 
-char *mangler(char *segments[]) {
+static char *_mangler(char *segments[], const char *prefix) {
     char *mangled = NULL;
 
-    vecunion(mangled, "_ZN", 3);
+    vecunion(mangled, prefix, strlen(prefix));
     for (usize i = 0; segments[i] != NULL; i++) {
         int len = strlen(segments[i]);
         int tmp = len;
@@ -829,6 +833,9 @@ char *mangler(char *segments[]) {
     vecpush(mangled, '\0');
     return mangled;
 }
+
+char *manglerA(char *segments[]) { return _mangler(segments, MANGLER_ANON_PREFIX); }
+char *mangler(char *segments[]) { return _mangler(segments, MANGLER_DEFAULT_PREFIX); }
 
 /* Encode a ZType into a mangled name buffer.
  * Pointer types get a 'P' prefix; primitives get a length-prefixed name.
@@ -892,7 +899,7 @@ void encodeType(ZType *type, char **buf) {
  * `for *String self` produce distinct names. */
 char *manglerM(ZType *recvType, ZToken *funcName) {
     char *mangled = NULL;
-    vecunion(mangled, "_ZNM", 4);
+    vecunion(mangled, MANGLER_TYPE_PREFIX, strlen(MANGLER_TYPE_PREFIX));
     encodeType(recvType, &mangled);
     int len = strlen(funcName->str);
     int tmp = len;
