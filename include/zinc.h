@@ -100,6 +100,18 @@ typedef enum {
     Z_EMIT_ASM
 } ZEmitMode;
 
+typedef enum {
+    Z_LANG_NONE,
+    Z_LANG_TYPE_INFO,
+    Z_LANG_REFLECT,
+    Z_LANG_SOURCE_LOCATION_TYPE,
+    Z_LANG_SOURCE_LOCATION_FUNC,
+    Z_LANG_HERE,
+    Z_LANG_TYPE_INFO_ENUM_VARIANT,
+    Z_LANG_TYPE_INFO_STRUCT_MEMBER,
+    Z_LANG_COUNT
+} ZLangItem;
+
 typedef struct {
     ZNode   *module;
     arena_t *allocator;

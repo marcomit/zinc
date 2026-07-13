@@ -74,6 +74,7 @@ DEF(TOK_TYPEDEF,    "type",             TOK_TYPES_SIGNATURE_MASK                
 DEF(TOK_ENUM,       "enum",             TOK_TYPES_SIGNATURE_MASK | TOK_EXPANDABLE   | 0x30)
 DEF(TOK_CONST,      "const",            TOK_TYPES_SIGNATURE_MASK                    | 0x31)
 DEF(TOK_PUB,        "pub",              TOK_TYPES_SIGNATURE_MASK                    | 0x32)
+DEF(TOK_DYNAMIC,    "dyn",              TOK_TYPES_SIGNATURE_MASK                    | 0x33)
 #endif
 
 #ifdef TOK_DYN
