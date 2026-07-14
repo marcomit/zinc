@@ -16,7 +16,6 @@
 #include "zlink.h"
 #include "zvec.h"
 
-
 #include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
@@ -656,7 +655,9 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     case Z_TYPE_FACET:      return genFacetType (ctx);
 
     case Z_TYPE_GENERIC:
-        error(ctx->state, type->tok, "Generics not resolved");
+        if (veclen(type->generic.instantiations) == 0) {
+            error(ctx->state, type->tok, "Generics not resolved");
+        }
         return NULL;
 
     case Z_TYPE_PRIMITIVE: {

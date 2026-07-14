@@ -86,7 +86,6 @@ static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
 
 static ZParseFunc exprFunc[] = {
-    parseAnonFunc,
     parseBinary,
     parseTupleLit,
 };
@@ -413,6 +412,8 @@ static ZNode *parsePrimary(ZParser *parser) {
                 "Error parsing '.' as a context-inferred type"
             );
         }
+    } else if (check(parser, TOK_FN)) {
+        return parseAnonFunc(parser);
     }
 
     return NULL;
@@ -873,39 +874,6 @@ static ZType *parseTypeTuple(ZParser *parser) {
 
     ZType *type = maketype(Z_TYPE_TUPLE);
     type->tuple = types;
-    return type;
-}
-
-static ZType *parseTypeFunc(ZParser *parser, ZType *previous) {
-    if (!match(parser, TOK_LPAREN)) return previous;
-
-    ZType **args    = NULL;
-    bool variadic   = false;
-    while (!check(parser, TOK_RPAREN)) {
-        if (match(parser, TOK_TRIPLE_DOT)) {
-            variadic = true;
-            break;
-        }
-        ZType *arg = tryParse(parser, parseType(parser));
-        if (!arg) return previous;
-        vecpush(args, arg);
-        if (!match(parser, TOK_COMMA)) break;
-    }
-    if (!match(parser, TOK_RPAREN)) return previous;
-
-    ZType **generics = NULL;
-    if (check(parser, TOK_LSBRACKET)) {
-        generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
-        if (!generics) {
-            return previous;
-        }
-    }
-
-    ZType *type = maketype(Z_TYPE_FUNCTION);
-    type->func.ret      = previous;
-    type->func.args     = args;
-    type->func.generics = generics;
-    type->func.variadic = variadic;
     return type;
 }
 
@@ -1681,7 +1649,7 @@ static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
     }
 
     ZType *generic = NULL;
-    while (true) {
+    do {
         if (!check(parser, TOK_IDENT)) break;
 
         ZToken *ident               = consume(parser);
@@ -1710,9 +1678,7 @@ static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
         }
 
         vecpush(generics, generic);
-        if (!match(parser, TOK_COMMA)) break;
-        if (check(parser, TOK_RBRACKET)) break;
-    }
+    } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
 
 
     if (brackets) {
@@ -1760,20 +1726,21 @@ static ZNode *parseAnonFuncArgument(ZParser *parser) {
 static ZNode *parseAnonFunc(ZParser *parser) {
     ZToken *start   = peek(parser);
     ZType *type     = NULL;
-    if (!check(parser, TOK_LPAREN)) {
-        bool saved = parser->noFuncType;
-        parser->noFuncType = true;
-        type = tryParse(parser, parseType(parser));
-        parser->noFuncType = saved;
-        if (!type) return NULL;
-    }
-    
+
+    expect(parser, TOK_FN);
+
     if (!check(parser, TOK_LPAREN)) return NULL;
 
     ZNode **args = tryParse(parser, parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
         parseAnonFuncArgument,  true
     ));
+
+
+    if (!check(parser, TOK_ARROW) && !check(parser, TOK_LBRACKET)) {
+        type = tryParse(parser, parseType(parser));
+        if (!type) return NULL;
+    }
 
     ZNode *body = NULL;
 
@@ -1832,6 +1799,9 @@ static ZNode *parseFuncDecl(ZParser *parser,
     if (!check(parser, TOK_IDENT)) return NULL;
     ZToken *name = consume(parser);
 
+    expect(parser, TOK_DOUBLE_COLON);
+    expect(parser, TOK_FN);
+
     ZType **generics = NULL;
     if (check(parser, TOK_LSBRACKET)) {
         generics = parseGenericsDecl(parser, true);
@@ -1840,9 +1810,6 @@ static ZNode *parseFuncDecl(ZParser *parser,
                     "Expected generic type parameters after function name");
         }
     }
-
-    expect(parser, TOK_DOUBLE_COLON);
-    expect(parser, TOK_FN);
 
     ZNode **args = parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
@@ -1970,9 +1937,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
 
         if (isSumPattern) {
             ZToken *start       = peek(parser);
-            parser->noFuncType  = true;
             ZType *sumType      = parseType(parser);
-            parser->noFuncType  = false;
 
             expect(parser, TOK_LPAREN);
             ZVarDestructPattern *child = parseDestructVar(parser, conditional);
@@ -2380,6 +2345,12 @@ static ZType *parseFuncType(ZParser *parser) {
     ZToken *start   = peek(parser);
 
     expect(parser, TOK_FN);
+
+    ZType **generics = NULL;
+    if (check(parser, TOK_LSBRACKET)) {
+        generics = parseGenericsDecl(parser, true);
+    }
+
     expect(parser, TOK_LPAREN);
 
     ZType **args    = NULL;
@@ -2404,7 +2375,7 @@ static ZType *parseFuncType(ZParser *parser) {
     ZType *func         = maketype(Z_TYPE_FUNCTION);
     func->func.ret      = ret;
     func->func.args     = args;
-    func->func.generics = NULL;
+    func->func.generics = generics;
     func->func.variadic = variadic;
     func->tok           = start;
     return func;

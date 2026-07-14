@@ -2506,6 +2506,12 @@ static void analyzeWhile(ZThreadSem *ctx, ZNode *curr) {
 }
 
 static void analyzeForeign(ZThreadSem *ctx, ZNode *curr) {
+    beginScope(ctx, curr);
+    ZType **generics = curr->resolved->func.generics;
+    for (usize i = 0; i < veclen(generics); i++) {
+        putGeneric(ctx, generics[i]);
+    }
+
     if (!resolveTypeRef(ctx, curr->foreignFunc.ret)) {
         error(ctx->state, curr->tok, "Unknown type");
     }
@@ -2518,6 +2524,7 @@ static void analyzeForeign(ZThreadSem *ctx, ZNode *curr) {
             curr->foreignFunc.args[i] = t;
         }
     }
+    endScope(ctx);
 }
 
 static void analyzeFuncArgs(ZThreadSem *ctx, ZType **types, ZNode **fields, ZType **inferred) {

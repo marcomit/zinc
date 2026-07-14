@@ -1,8 +1,9 @@
+
 #[lang(type_info)]
 TypeInfo :: enum {
-    Int(i32, i1)
-    F32()
-    F64()
+    Int(i32, u1)
+    F32
+    F64
 
     Pointer(*TypeInfo)
     Struct([]char, []TypeInfoStructMember)
@@ -27,4 +28,25 @@ TypeInfoStructMember :: struct {
 }
 
 #[lang(reflect)]
-foreign reflect :: TypeInfo(t: T)
+foreign reflect :: fn[T](T) *TypeInfo
+
+#[lang(source_location_type)]
+pub SourceLocation :: struct {
+    file: []char
+    curr: []char
+    row: u64
+    col: u64
+}
+
+#[lang(source_location_func)]
+pub foreign here :: fn () SourceLocation
+
+Rect :: struct {
+    width: i32
+    height: i32
+}
+
+main :: fn () i32 {
+    square := fn(x: i32) i32 -> x * x
+    return 0
+}

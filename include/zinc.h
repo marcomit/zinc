@@ -15,7 +15,6 @@
 
 static char sep = '/';
 
-
 typedef enum {
 
 #define DEF(id, str, m) id = m,
@@ -160,6 +159,11 @@ typedef struct {
 
     /* Indicates the start time of the current phase to calculate the diagnostics. */
     struct timespec phaseTime;
+
+    /* Save every 'here' call token such that the code generator build a
+     * 'SourceLocation' struct and zinc can use the location to show diagnostics.
+     * */
+    ZToken **sourceLocations;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -298,6 +302,8 @@ struct ZType {
              * T: Display + Drop 
              * */
             ZType   **extensions;
+
+            ZType   **instantiations;
         } generic;
 
         ZType   **sumType;
@@ -726,11 +732,6 @@ typedef struct ZParser {
      * from being mistaken for a struct literal instead of a block. */
     bool            noStructLit;
 
-    /* When true, parseType will not consume a trailing '(' as a function-type
-     * suffix. Set in parseVarDefTyped so that `(i32,i32) (first,second) = ...`
-     * does not greedily parse the destructure pattern as function args. */
-    bool            noFuncType;
-
     /* When true, parseStmt will not attempt to parse a return statement.
      * Set by parseDefer so that `defer return ...` will be rejected by the parser.
      * */
@@ -946,4 +947,5 @@ void printSymbol(ZSymbol *);
 void printScope(ZScope *);
 
 i32 sumTypeIndexOf(ZType *sum, ZType *concrete);
+
 #endif
