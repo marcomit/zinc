@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
+
 typedef struct ZLLVMSymbol {
     ZToken *token;
     char *name;
@@ -4008,7 +4009,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 
     if (state->verbose) {
         elapsed = timer_elapsed(state->phaseTime, &format);
-        printf(COLOR_BOLD COLOR_CYAN "  Codegen:    " COLOR_RESET "%.2f%s\n", elapsed, format);
+        printf(COLOR_BOLD COLOR_CYAN "  LLVM IR:    " COLOR_RESET "%.2f%s\n", elapsed, format);
     }
 
     if (!canAdvance(state)) {
@@ -4021,6 +4022,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     }
 
     char *errmsg = NULL;
+    
 
     if (!state->skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
         error(state, NULL, "LLVM: %s", errmsg);

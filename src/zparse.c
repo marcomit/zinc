@@ -47,6 +47,7 @@ typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType                            (ZParser *);
 ZNode *parseExpr                            (ZParser *);
+static ZType *parseFuncType                        (ZParser *);
 static ZNode *parse                         (ZParser *);
 static ZNode *parseIf                       (ZParser *);
 static ZNode *parseBreak                    (ZParser *);
@@ -909,7 +910,9 @@ static ZType *parseTypeFunc(ZParser *parser, ZType *previous) {
 }
 
 static ZType *parseAtom(ZParser *parser) {
-    if (check(parser, TOK_LSBRACKET)) {
+    if (check(parser, TOK_FN)) {
+        return parseFuncType(parser);
+    } else if (check(parser, TOK_LSBRACKET)) {
         return parseTypeArray(parser);
     } else if (check(parser, TOK_LPAREN)) {
         return parseTypeTuple(parser);
@@ -938,11 +941,9 @@ static ZType *parseBaseType(ZParser *parser) {
 
     base->constant  = constant;
 
-    if (!parser->noFuncType && check(parser, TOK_LPAREN)) {
-        base        = tryParse(parser, parseTypeFunc(parser, base));
-    } else if (check(parser, TOK_LSBRACKET)) {
+    if (check(parser, TOK_LSBRACKET)) {
         // Generic type instantiation like List[int] or Map[str, int]
-        ZType **generics = parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET);
+        ZType **generics = tryParse(parser, parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET));
         base->primitive.generics = generics;
     }
 
@@ -1841,21 +1842,19 @@ static ZNode *parseFuncDecl(ZParser *parser,
     }
 
     expect(parser, TOK_DOUBLE_COLON);
-
-    bool prev = parser->noFuncType;
-    parser->noFuncType = true;
-    ZType *ret = tryParse(parser, parseType(parser));
-    parser->noFuncType = prev;
-
-    if (!ret) {
-        error(parser->state, start, "Expected return type after '::'");
-        return NULL;
-    }
+    expect(parser, TOK_FN);
 
     ZNode **args = parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
         parseFuncArgument,  true
     );
+
+    ZType *ret = tryParse(parser, parseType(parser));
+
+    if (!ret) {
+        error(parser->state, start, "Expected return type after '::'");
+        return NULL;
+    }
 
     ZNode **capabilities = NULL;
     if (check(parser, TOK_LSBRACKET)) {
@@ -2380,11 +2379,7 @@ static ZNode *parseTypedef(ZParser *parser, bool public) {
 static ZType *parseFuncType(ZParser *parser) {
     ZToken *start   = peek(parser);
 
-    bool prev = parser->noFuncType;
-    parser->noFuncType = true;
-    ZType *ret      = tryParse(parser, parseType(parser));
-    parser->noFuncType = prev;
-    guard(ret);
+    expect(parser, TOK_FN);
     expect(parser, TOK_LPAREN);
 
     ZType **args    = NULL;
@@ -2402,6 +2397,9 @@ static ZType *parseFuncType(ZParser *parser) {
     } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
 
     expect(parser, TOK_RPAREN);
+
+    ZType *ret      = tryParse(parser, parseType(parser));
+    guard(ret);
 
     ZType *func         = maketype(Z_TYPE_FUNCTION);
     func->func.ret      = ret;

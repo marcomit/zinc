@@ -52,6 +52,7 @@ DEF(TOK_WHERE,      "where",            TOK_FLOWS_MASK | 0x18)
 DEF(TOK_WITH,       "with",             TOK_FLOWS_MASK | 0x19)
 DEF(TOK_IMPL,       "impl",             TOK_FLOWS_MASK | 0x1A)
 DEF(TOK_FACET,      "facet",            TOK_FLOWS_MASK | 0x1B)
+DEF(TOK_FN,         "fn",               TOK_FLOWS_MASK | 0x1C)
 #endif
 
 #ifdef TOK_TYPES
