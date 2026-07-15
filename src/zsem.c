@@ -1684,6 +1684,8 @@ static ZNode *resolveOverloadOperator(ZThreadSem *ctx, ZType *type, ZTokenType o
 static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZTokenType op       = curr->binary.op->type;
     ZType     *left     = resolveType(ctx, curr->binary.left, inferred);
+
+    if (op == TOK_EQ) inferred = left;
     ZType     *right    = resolveType(ctx, curr->binary.right, inferred);
 
     if (op & TOK_BITOPERATOR_MASK) {

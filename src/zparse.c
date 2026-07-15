@@ -1912,11 +1912,13 @@ static ZVarDestructPattern *parseDestructEnum(ZParser *parser, ZToken *base) {
 
     if (!match(parser, TOK_LPAREN)) return cur;
 
-    do {
-        ZVarDestructPattern *item = parseDestructVar(parser, true);
-        if (!item) break;
-        vecpush(cur->args, item);
-    } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+    if (!check(parser, TOK_RPAREN)) {
+        do {
+            ZVarDestructPattern *item = parseDestructVar(parser, true);
+            if (!item) break;
+            vecpush(cur->args, item);
+        } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+    }
 
     if (!match(parser, TOK_RPAREN)) {
         error(parser->state, peek(parser), "Expected ')'");
