@@ -109,33 +109,34 @@ ZTokenType findKeyword(const char *ident, size_t len) {
 	return TOK_IDENT;
 }
 
-ZToken *maketoken(ZTokenType type, char *start) {
-	ZToken *self = zalloc(ZToken);
-	self->type = type;
-	self->start = start;
+ZToken *maketoken(ZTokenType type, char *start, char *end) {
+	ZToken *self    = zalloc(ZToken);
+	self->type      = type;
+	self->start     = start;
+    self->end       = end;
 	return self;
 }
 
-ZToken *makeident(char *name, char *start) {
-	ZToken *self = maketoken(TOK_IDENT, start);
+ZToken *makeident(char *name, char *start, char *end) {
+	ZToken *self = maketoken(TOK_IDENT, start, end);
 	self->str = name;
 	return self;
 }
 
-static ZToken *makeinteger(i64 value, char *start) {
-	ZToken *self = maketoken(TOK_INT_LIT, start);
+static ZToken *makeinteger(i64 value, char *start, char *end) {
+	ZToken *self = maketoken(TOK_INT_LIT, start, end);
 	self->integer = value;
 	return self;
 }
 
-static ZToken *makefloat(double value, char *start) {
-	ZToken *self = maketoken(TOK_FLOAT_LIT, start);
+static ZToken *makefloat(double value, char *start, char *end) {
+	ZToken *self = maketoken(TOK_FLOAT_LIT, start, end);
 	self->floating = value;
 	return self;
 }
 
-static ZToken *makestring(char *str, char *start) {
-	ZToken *self = maketoken(TOK_STR_LIT, start);
+static ZToken *makestring(char *str, char *start, char *end) {
+	ZToken *self = maketoken(TOK_STR_LIT, start, end);
 	self->str = str;
 	return self;
 }
@@ -294,7 +295,7 @@ static ZToken *parseString(ZLexer *l) {
 
     if (*src == '"') src++;
     else {
-        ZToken *tok = maketoken(TOK_STR_LIT, start - 1);
+        ZToken *tok = maketoken(TOK_STR_LIT, start - 1, l->current);
         tok->row    = l->row;
         tok->col    = l->col;
         tok->sourcePtr = start - 1;
@@ -305,11 +306,11 @@ static ZToken *parseString(ZLexer *l) {
     vecpush(buff, '\0');
     l->current = src;
 
-	return makestring(buff, start);
+	return makestring(buff, start, l->current);
 }
 
-static ZToken *makeRune(u32 codepoint, char *start) {
-    ZToken *self = maketoken(TOK_RUNE_LIT, start);
+static ZToken *makeRune(u32 codepoint, char *start, char *end) {
+    ZToken *self = maketoken(TOK_RUNE_LIT, start, end);
     self->integer = (i64)codepoint;
     return self;
 }
@@ -333,16 +334,16 @@ static ZToken *parseRune(ZLexer *l) {
     src++;
 
     l->current = src;
-    return makeRune(cp, start);
+    return makeRune(cp, start, src);
 }
 
 static ZToken *parseSymbol(ZLexer *l) {
 	if (false) { /* Empty if statement only for macro definition*/ }
-	#define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) { \
-		ZToken *tok = maketoken(id, l->current);													\
-		skip(l, strlen(s)); 																							\
-		tok->str = s; 																										\
-		return tok; 																											\
+	#define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) {         \
+		ZToken *tok = maketoken(id, l->current, l->current + strlen(s));        \
+		skip(l, strlen(s)); 											        \
+		tok->str = s; 													        \
+		return tok; 															\
 	}
 
 	#define TOK_SYMBOLS
@@ -359,7 +360,7 @@ static ZToken *parseSymbol(ZLexer *l) {
 	error(l->state, veclast(l->tokens), "Unexpected symbol");
 
 
-	ZToken *tok = maketoken(0, l->current);
+	ZToken *tok = maketoken(0, l->current, l->current);
 	tok->str = "";
 	return NULL;
 }
@@ -376,7 +377,7 @@ static ZToken *parseHexNumber(ZLexer *l) {
     unsigned long long value = strtoull(start, NULL, 16);
 	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return makeinteger((i64)value, start);
+	return makeinteger((i64)value, start, l->current);
 }
 
 static ZToken *parseBinNumber(ZLexer *l) {
@@ -390,7 +391,7 @@ static ZToken *parseBinNumber(ZLexer *l) {
     unsigned long long value = strtoull(start, NULL, 2);
 	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return makeinteger((i64)value, start);
+	return makeinteger((i64)value, start, l->current);
 }
 
 static ZToken *parseNumber(ZLexer *l) {
@@ -428,14 +429,14 @@ static ZToken *parseNumber(ZLexer *l) {
         errno = 0;
 		double value = strtod(start, NULL);
 		if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid float range %.10s", start);
-		return makefloat(value, start);
+		return makefloat(value, start, l->current);
 	}
 
     errno = 0;
 	long long value = strtoll(start, NULL, 10);
 	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return makeinteger(value, start);
+	return makeinteger(value, start, l->current);
 }
 
 static ZToken *parseLiteral(ZLexer *l) {
@@ -448,11 +449,11 @@ static ZToken *parseLiteral(ZLexer *l) {
 	ZTokenType type = findKeyword(start, len);
 
 	if (type == TOK_IDENT) {
-		return makeident(strndup(start, len), start);
+		return makeident(strndup(start, len), start, l->current);
 	}
 
 	// Also set str field for keywords so getMacroByName can compare them
-	ZToken *tok = maketoken(type, start);
+	ZToken *tok = maketoken(type, start, l->current);
 	tok->str = strndup(start, len);
 	return tok;
 }

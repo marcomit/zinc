@@ -1,0 +1,17 @@
+// A type declared inside a function must not be visible outside of it.
+// `Local` is declared in `foo`, so referencing it from `main` is an error.
+
+c :: foreign {
+    printf : fn (*char, ...) u0
+}
+
+foo :: fn () u0 {
+    Local :: struct { a: i32 }
+    l := Local { a: 1 }
+    c::printf("%d\n", l.a)
+}
+
+main :: fn () i32 {
+    x := Local { a: 5 }
+    return 0
+}

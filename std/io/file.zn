@@ -1,12 +1,12 @@
 use <std::mem>
 
 c :: foreign {
-    fopen   :: *u8  (*char, *char)
-    fclose  :: i32  (*u8)
-    fseek   :: i32  (*u8, i64, i32)
-    ftell   :: i64  (*u8)
-    rewind  :: u0   (*u8)
-    fread   :: i64  (*u8, i64, i64, *char)
+    fopen   : fn (*char, *char) *u8
+    fclose  : fn (*u8) i32
+    fseek   : fn (*u8, i64, i32) i32
+    ftell   : fn (*u8) i64
+    rewind  : fn (*u8) u0
+    fread   : fn (*u8, i64, i64, *char) i64
 }
 
 pub File :: struct {
@@ -16,7 +16,7 @@ pub File :: struct {
 }
 
 File :: impl {
-    new :: *File (path: *char, mode: *char)[Allocator] {
+    new :: fn (path: *char, mode: *char) *File [Allocator] {
         self: *File = alloc(sizeof File)
         if not self { return none }
         
@@ -28,20 +28,20 @@ File :: impl {
 }
 
 *File self :: impl {
-    pub open :: u1 () {
+    pub open :: fn () u1 {
         self.file = c::fopen(self.path, self.mode)
         if self.file { return true }
         return false
     }
 
-    pub close :: u0 () {
+    pub close :: fn () u0 {
         if self.file {
             c::fclose(self.file)
             self.file = none
         }
     }
 
-    pub readAll :: *char ()[Allocator] {
+    pub readAll :: fn () *char [Allocator] {
         if not self.file { return none }
 
         c::fseek(self.file, 0, 2)

@@ -1,14 +1,14 @@
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
 Range :: struct {
     end:        i32
     current:    i32
 }
 
-range :: Range (start: i32, end: i32) -> Range {end: end, current:start}
+range :: fn (start: i32, end: i32) Range -> Range {end: end, current:start}
 
 *Range self :: impl {
-    next :: u0 | i32 () {
+    next :: fn () u0 | i32 {
         if self.current >= self.end { return }
         res := self.current
         self.current: + 1
@@ -16,7 +16,7 @@ range :: Range (start: i32, end: i32) -> Range {end: end, current:start}
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     for i32(i) in range(0, 10) {
         printf("%d\n", i)
     }

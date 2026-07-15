@@ -1,7 +1,7 @@
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
 Shape :: facet {
-    area :: i32 ()
+    area : fn () i32
 }
 
 Circle :: struct {
@@ -13,10 +13,10 @@ Bad :: struct {
 }
 
 *Circle self :: impl Shape {
-    area :: i32 () -> self.radius
+    area :: fn () i32 -> self.radius
 }
 
-main :: i32 () {
+main :: fn () i32 {
     b := Bad{x: 1}
     s := Shape(&b)
     printf("%d\n", s.area())

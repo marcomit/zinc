@@ -1,9 +1,9 @@
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
-caller :: u0 () -> helper()
-helper :: u0 () -> printf("helper\n")
+caller :: fn () u0 -> helper()
+helper :: fn () u0 -> printf("helper\n")
 
-main :: i32 () {
+main :: fn () i32 {
     caller()
     return 0
 }

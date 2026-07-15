@@ -1,10 +1,10 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 T :: type i32
 
-main :: i32 () {
+main :: fn () i32 {
     Node :: struct {
         val: i32
         next: *Node

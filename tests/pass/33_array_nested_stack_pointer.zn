@@ -1,8 +1,8 @@
-c :: foreign { printf :: u0 (*char, ...) }
+c :: foreign { printf : fn (*char, ...) u0 }
 
 Pt :: struct { x: i32 y: i32 }
 
-main :: i32 () {
+main :: fn () i32 {
     arr := [
         Pt { x: 10, y: 20 },
         Pt { x: 30, y: 40 },

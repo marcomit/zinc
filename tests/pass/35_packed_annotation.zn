@@ -1,5 +1,5 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 #[packed]
@@ -11,17 +11,17 @@ Color :: struct {
 }
 
 Color :: impl {
-    new :: Color(r: u8, g: u8, b: u8, a: u8) {
+    new :: fn (r: u8, g: u8, b: u8, a: u8) Color {
         return Color { r: r, g: g, b: b, a: a }
     }
 }
 
 Color self :: impl {
-    print :: u0 () {
+    print :: fn () u0 {
         c::printf("Color{r: %d, g: %d, b: %d, a: %d}\n", self.r, self.g, self.b, self.a)
     }
 }
-main :: i32 () {
+main :: fn () i32 {
     white   := Color::new(255, 255, 255, 255)
     black   := Color::new(0, 0, 0, 255)
     red     := Color::new(255, 0, 0, 255)

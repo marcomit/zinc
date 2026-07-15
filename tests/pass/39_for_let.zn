@@ -1,4 +1,4 @@
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
 Option :: enum {
     Some(i32)
@@ -11,12 +11,12 @@ Range :: struct {
     current: i32
 }
 
-range :: Range (start: i32, end: i32) {
+range :: fn (start: i32, end: i32) Range {
     return Range{ start: start, end: end, current: 0 }
 }
 
 *Range self :: impl {
-    next :: Option () {
+    next :: fn () Option {
         if self.current >= self.end {
             return Option::None()
         }
@@ -33,7 +33,7 @@ ArrIter :: struct {
 }
 
 *ArrIter self :: impl {
-    next :: Option () {
+    next :: fn () Option {
         if self.current >= self.data.len {
             return Option::None()
         }
@@ -43,7 +43,7 @@ ArrIter :: struct {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     iter := range(0, 10)
 
     for Option::Some(i) := (&iter).next() {

@@ -22,11 +22,11 @@ static char *nodeLabels[] = {
     "VAR_DECL",     "BINARY",       "UNARY",        "CALL",         "FUNC",
     "LITERAL",      "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
     "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
-    "FOREIGN_VAR",  "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",
-    "ARRAY_INIT",   "MACRO",        "TYPE",         "ENUM",         "BREAK",
-    "CONTINUE",     "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATICACCESS",
-    "NAMESPACE",    "SLICE",        "CAPABILITY",   "MATCH",        "MATCH_ARM",
-    "ENUM_LIT",     "FACET",        "IMPL",         "FOR_IN"
+    "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
+    "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
+    "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATICACCESS", "NAMESPACE",
+    "SLICE",        "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",
+    "FACET",        "IMPL",         "FOR_IN"
 };
 
 static char *levels[] = {
@@ -77,20 +77,15 @@ static char *getHomePath() {
 
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
-    char *tok = allocator.alloc(32);
-    bool istype = token->type & TOK_TYPES_MASK;
+    if (token->type == TOK_STR_LIT) {
 
-    if (istype) {
-        snprintf(tok, 6, "type(");
     }
-
-    
     switch(token->type) {
     case TOK_STR_LIT:
-    case TOK_IDENT:     snprintf(tok, 64, "%s", token->str);                    break;
-    case TOK_INT_LIT:   snprintf(tok, 64, "%lld", (long long)token->integer);   break;
-    case TOK_FLOAT_LIT: snprintf(tok, 64, "%g", token->floating);               break;
-    #define DEF(id, str, _) case id: snprintf(tok, 64, "%s", str);              break;
+    case TOK_IDENT:     return token->str;
+    case TOK_INT_LIT:   return strndup(token->start, token->end - token->start);
+    case TOK_FLOAT_LIT: return strndup(token->start, token->end - token->start);
+    #define DEF(id, str, _) case id: return str;
 
     #define TOK_FLOWS
     #define TOK_TYPES
@@ -107,14 +102,13 @@ char *stoken(ZToken *token) {
         break;
     }
 
-    return tok;
+    return "(not found)";
 }
 
 char *tokname(ZTokenType type) {
-    char *tok = allocator.alloc(32);
 
     switch (type) {
-#define DEF(id, str, _) case id: snprintf(tok, 32, "%s", str); break;
+#define DEF(id, str, _) case id: return str;
 
     #define TOK_FLOWS
     #define TOK_TYPES
@@ -127,9 +121,8 @@ char *tokname(ZTokenType type) {
     #undef TOK_FLOWS
 
     #undef DEF
-        default: break;
+        default: return NULL;
     }
-    return tok;
 }
 
 void printToken(ZToken *token) {
@@ -657,13 +650,7 @@ void printNode(ZNode *node, u8 depth) {
         printType(node->typeDef.type);
         break;
     case NODE_FOREIGN:
-        printType(node->foreignFunc.ret);
-        printf(" %s(", node->foreignFunc.tok->str);
-        for (usize i = 0; i < veclen(node->foreignFunc.args); i++) {
-            printType(node->foreignFunc.args[i]);
-            if (i < veclen(node->foreignFunc.args) - 1) printf(", ");
-        }
-        printf(")");
+        printf("%s\n", stoken(node->foreignDecl.name));
         break;
     case NODE_DEFER:
         printf("\n");
@@ -804,11 +791,6 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->forin.body, depth);
         break;
 
-    case NODE_FOREIGN_VAR:
-        printf("%s: %s\n",
-            node->foreignVar.name->str,
-            stype(node->foreignVar.type));
-        break;
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
@@ -959,7 +941,7 @@ ZState *makestate() {
 }
 
 char *readfile(char *filename) {
-    FILE *fd = fopen(filename, "r");
+    FILE *fd = fopen(filename, "rb");
     
     if (!fd) return NULL;
 

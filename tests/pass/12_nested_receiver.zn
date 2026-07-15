@@ -1,10 +1,10 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 Inner :: struct {
     value:  i32
-    add:    i32(i32)
+    add:    fn (i32) i32
 }
 
 Outer :: struct {
@@ -13,21 +13,21 @@ Outer :: struct {
 }
 
 Inner self :: impl {
-    get :: i32 () -> self.value
-    add :: i32 (n: i32) -> self.value + n
+    get :: fn () i32 -> self.value
+    add :: fn (n: i32) i32 -> self.value + n
 }
 
 Outer self :: impl {
-    sum :: i32 () -> self.a.get() + self.b.get()
-    addToA :: i32 (n: i32) -> self.a.add(n)
+    sum :: fn () i32 -> self.a.get() + self.b.get()
+    addToA :: fn (n: i32) i32 -> self.a.add(n)
 }
 
 i32 self :: impl {
-    print :: u0 () -> c::printf("%d\n", self)
+    print :: fn () u0 -> c::printf("%d\n", self)
 }
-addInner :: i32 (val: i32) -> val
+addInner :: fn (val: i32) i32 -> val
 
-main :: i32 () {
+main :: fn () i32 {
     
     x: Inner = Inner { value: 3, add: addInner }
     y: Inner = Inner { value: 4 }

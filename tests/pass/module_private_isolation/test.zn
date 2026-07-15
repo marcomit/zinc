@@ -1,14 +1,14 @@
 use mod2
 
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
 // Private function with the SAME name as one in mod2. Each file's test
 // must stay independent after the per-module LLVM modules are merged.
-test :: u0 () {
+test :: fn () u0 {
     printf("mod1\n")
 }
 
-main :: i32 () {
+main :: fn () i32 {
     test()
     mod2()
     return 0

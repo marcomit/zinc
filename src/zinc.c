@@ -196,7 +196,7 @@ void printAllocation(ZState *state) {
         label++;
     }
 
-    printf("  " COLOR_BOLD COLOR_CYAN "Allocated: " COLOR_RESET " %zu %s\n",
+    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %zu %s\n",
         allocated, labels[label]
     );
 }

@@ -1,5 +1,5 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 Position :: struct {
@@ -40,7 +40,7 @@ Player :: struct  {
 }
 
 Player self :: impl {
-    update :: u0 () {
+    update :: fn () u0 {
         self.vx = self.vx + self.ax
         self.vy = self.vy + self.ay
         self.vz = self.vz + self.az
@@ -50,7 +50,7 @@ Player self :: impl {
         self.z = self.z + self.vz
     }
 
-    print :: u0 () {
+    print :: fn () u0 {
         c::printf("%s\n", self.name)
         c::printf("Pos: %d %d %d\n", self.x, self.y, self.z)
         c::printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)
@@ -58,7 +58,7 @@ Player self :: impl {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     p := Player {
         name: "Hero",
 

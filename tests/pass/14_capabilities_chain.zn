@@ -2,15 +2,15 @@ use <std::mem::gpa>
 use <std::mem>
 use <std::libc>
 
-allocInner :: *u8 (size: u64)[Allocator] -> alloc(size)
+allocInner :: fn (size: u64) *u8 with Allocator -> alloc(size)
 
-allocOuter :: i32 (size: u64)[Allocator] {
+allocOuter :: fn (size: u64) i32 with Allocator {
     buf := allocInner(size)
     defer buf
     return 7
 }
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     allocator := (&gpa).allocator()
     with _ := allocator {

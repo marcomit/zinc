@@ -1,46 +1,46 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 // Factorial: direct self-recursion
-factorial :: i32 (n: i32) {
+factorial :: fn (n: i32) i32 {
     if n <= 1 { return 1 }
     return n * factorial(n - 1)
 }
 
 // Fibonacci: two self-recursive calls
-fib :: i32 (n: i32) {
+fib :: fn (n: i32) i32 {
     if n <= 1 { return n }
     return fib(n - 1) + fib(n - 2)
 }
 
 // Accumulator-style: pass running total as argument
-sumTo :: i32 (n: i32, acc: i32) {
+sumTo :: fn (n: i32, acc: i32) i32 {
     if n == 0 { return acc }
     return sumTo(n - 1, acc + n)
 }
 
 // Descending print
-countDown :: u0 (n: i32) {
+countDown :: fn (n: i32) u0 {
     if n < 0 { return }
     c::printf("%d\n", n)
     countDown(n - 1)
 }
 
 // Ascending print
-countUp :: u0 (start: i32, limit: i32) {
+countUp :: fn (start: i32, limit: i32) u0 {
     if start > limit { return }
     c::printf("%d\n", start)
     countUp(start + 1, limit)
 }
 
 // Power: x ^ n
-power :: i32 (x: i32, n: i32) {
+power :: fn (x: i32, n: i32) i32 {
     if n == 0 { return 1 }
     return x * power(x, n - 1)
 }
 
-main :: i32 () {
+main :: fn () i32 {
     // Factorial
     c::printf("%d\n", factorial(0))
     c::printf("%d\n", factorial(1))

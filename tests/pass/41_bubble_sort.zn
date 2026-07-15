@@ -1,5 +1,5 @@
-foreign printf :: u0 (*char, ...)
-main :: i32 () {
+foreign printf :: fn (*char, ...) u0
+main :: fn () i32 {
     arr := [5, 2, 8, 1, 9, 3]
     n := arr.len
     i := 0

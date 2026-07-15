@@ -1,9 +1,9 @@
 // break-as-expression: `break <value>` yields the value of the enclosing
 // `if` expression, letting an `if`/`else` be used as a value.
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
 // break yields the value returned from a function's if-expression.
-max :: i32 (a: i32, b: i32) {
+max :: fn (a: i32, b: i32) i32 {
     return if a > b {
         break a
     } else {
@@ -11,7 +11,7 @@ max :: i32 (a: i32, b: i32) {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     // Assign an if-expression whose branches break with a value.
     x := 102
     y := 6

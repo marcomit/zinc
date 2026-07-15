@@ -15,7 +15,6 @@
 
 static char sep = '/';
 
-
 typedef enum {
 
 #define DEF(id, str, m) id = m,
@@ -47,6 +46,7 @@ typedef struct ZToken {
     char *sourcePtr;
     char *sourceLinePtr;
     char *start;
+    char *end;
     usize row;
     usize col;
     bool newlineBefore;
@@ -100,6 +100,18 @@ typedef enum {
     Z_EMIT_ASM
 } ZEmitMode;
 
+typedef enum {
+    Z_LANG_NONE,
+    Z_LANG_TYPE_INFO,
+    Z_LANG_REFLECT,
+    Z_LANG_SOURCE_LOCATION_TYPE,
+    Z_LANG_SOURCE_LOCATION_FUNC,
+    Z_LANG_HERE,
+    Z_LANG_TYPE_INFO_ENUM_VARIANT,
+    Z_LANG_TYPE_INFO_STRUCT_MEMBER,
+    Z_LANG_COUNT
+} ZLangItem;
+
 typedef struct {
     ZNode   *module;
     arena_t *allocator;
@@ -148,6 +160,13 @@ typedef struct {
 
     /* Indicates the start time of the current phase to calculate the diagnostics. */
     struct timespec phaseTime;
+
+    /* Save every 'here' call token such that the code generator build a
+     * 'SourceLocation' struct and zinc can use the location to show diagnostics.
+     * */
+    ZToken **sourceLocations;
+
+    ZNode **langItems;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -177,7 +196,6 @@ typedef enum {
     NODE_EMBED_FIELD,
     NODE_TYPEDEF,
     NODE_FOREIGN,
-    NODE_FOREIGN_VAR,
     NODE_DEFER,
     NODE_STRUCT_LIT,
     NODE_TUPLE_LIT,
@@ -286,6 +304,8 @@ struct ZType {
              * T: Display + Drop 
              * */
             ZType   **extensions;
+
+            ZType   **instantiations;
         } generic;
 
         ZType   **sumType;
@@ -451,8 +471,9 @@ struct ZNode {
             ZScope  *scope;
             /* The list of statements. */
             struct {
-                bool    pub;
-                ZNode   **block;
+                bool        pub;
+                ZNode       **block;
+                ZAnnotation **annotations;
             };
         };
         struct {
@@ -484,17 +505,10 @@ struct ZNode {
         } funcDef;
 
         struct {
-            ZType   *ret;
-            ZToken  *tok;
-            ZType   **args;
-            bool    pub;
-        } foreignFunc;
-
-        struct {
-            ZType   *type;
-            ZToken  *name;
-            bool    pub;
-        } foreignVar;
+            ZToken      *name;
+            bool        pub;
+            ZAnnotation **annotations;
+        } foreignDecl;
 
         struct {
             ZNode   *callee;
@@ -589,9 +603,10 @@ struct ZNode {
         } structlit;
 
         struct {
-            ZToken      *alias;
-            ZType       *type;
-            bool        pub;
+            ZToken          *alias;
+            ZType           *type;
+            bool            pub;
+            ZAnnotation     **annotations;
         } typeDef;
 
         struct {
@@ -646,20 +661,23 @@ struct ZNode {
         } capability;
 
         struct {
-            ZToken  *name;
-            bool    pub;
+            ZToken      *name;
+            bool        pub;
 
             /* Array of NODE_FIELD */
-            ZNode   **funcs;
+            ZNode       **funcs;
+
+            ZAnnotation **annotations;
         } facet;
 
         struct {
-            bool    pub;
-            ZType   **facets;
-            ZType   **generics;
-            ZType   *base;
-            ZToken  *self;
-            ZNode   **funcs;
+            bool        pub;
+            ZType       **facets;
+            ZType       **generics;
+            ZType       *base;
+            ZToken      *self;
+            ZNode       **funcs;
+            ZAnnotation **annotations;
         } impl;
 
         struct {
@@ -713,11 +731,6 @@ typedef struct ZParser {
      * Set by condition-parsing sites (if, for, while) to prevent `ident {`
      * from being mistaken for a struct literal instead of a block. */
     bool            noStructLit;
-
-    /* When true, parseType will not consume a trailing '(' as a function-type
-     * suffix. Set in parseVarDefTyped so that `(i32,i32) (first,second) = ...`
-     * does not greedily parse the destructure pattern as function args. */
-    bool            noFuncType;
 
     /* When true, parseStmt will not attempt to parse a return statement.
      * Set by parseDefer so that `defer return ...` will be rejected by the parser.
@@ -846,8 +859,8 @@ struct ZThreadSem {
 
 /* Lexer */
 ZToken **ztokenize(ZState *);
-ZToken *maketoken(ZTokenType, char *);
-ZToken *makeident(char *, char *);
+ZToken *maketoken(ZTokenType, char *, char *);
+ZToken *makeident(char *, char *, char *);
 ZTokenStream *maketokstream(ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
 
@@ -934,4 +947,5 @@ void printSymbol(ZSymbol *);
 void printScope(ZScope *);
 
 i32 sumTypeIndexOf(ZType *sum, ZType *concrete);
+
 #endif

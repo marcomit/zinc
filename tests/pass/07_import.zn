@@ -3,7 +3,7 @@ use <std::mem>
 use <std::mem::gpa>
 use <std::core::string>
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
         hello := string::new("Ciao")
@@ -13,7 +13,7 @@ main :: i32 () {
         
         hello.println()
 
-        if hello == hello2 {
+        if hello.equals(hello2) {
             io::printf("ok\n")
         }
     }

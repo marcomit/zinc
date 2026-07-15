@@ -1,6 +1,6 @@
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
-map :: u0 (nums: []i32, iter: i32(i32)) {
+map :: fn (nums: []i32, iter: fn(i32) i32) u0 {
     i := 0
     for i < nums.len {
         nums[i] = iter(nums[i])
@@ -8,7 +8,7 @@ map :: u0 (nums: []i32, iter: i32(i32)) {
     }
 }
 
-printNums :: u0 (nums: []i32) {
+printNums :: fn (nums: []i32) u0 {
     i := 0
     printf("NUMS: ")
     for i < nums.len {
@@ -18,13 +18,13 @@ printNums :: u0 (nums: []i32) {
     printf("\n")
 }
 
-main :: i32 () {
-    square := i32 (x: i32) -> x * x
+main :: fn () i32 {
+    square := fn (x: i32) i32 -> x * x
     nums := [1, 2, 3, 4]
 
     printNums(nums)
 
-    map(nums, i32 (x) -> x * x)
+    map(nums, fn (x) -> x * x)
     printNums(nums)
 
     map(nums, square)

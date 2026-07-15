@@ -1,15 +1,15 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
-pick :: i32 | *char | f32 (n: i32) {
+pick :: fn (n: i32) i32 | *char | f32 {
     return  if n == 0 -> "zero"
             else      ->
                 if n == 1 -> 3.5 as f32
                 else      -> n
 }
 
-show :: u0 (val: i32 | *char | f32) {
+show :: fn (val: i32 | *char | f32) u0 {
     match val {
         i32(num)    -> c::printf("i32:%d\n", num),
         *char(msg)  -> c::printf("str:%s\n", msg),
@@ -17,7 +17,7 @@ show :: u0 (val: i32 | *char | f32) {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     show(pick(0))
     show(pick(1))
     show(pick(42))

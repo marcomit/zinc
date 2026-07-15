@@ -3,5 +3,5 @@ pub A :: struct {
 }
 
 A :: impl {
-    pub new :: A (name: *char) -> A{name: name}
+    pub new :: fn (name: *char) A -> A{name: name}
 }

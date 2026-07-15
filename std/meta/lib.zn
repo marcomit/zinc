@@ -1,0 +1,42 @@
+
+#[lang(type_info)]
+TypeInfo :: enum {
+    Int(i32, u1)
+    F32
+    F64
+
+    Pointer(*TypeInfo)
+    Struct([]char, []TypeInfoStructMember)
+
+    Tuple([]*TypeInfo)
+    Enum([]char, []TypeInfoEnumVariant)
+    Sum([]*TypeInfo)
+
+    Func(*TypeInfo, []*TypeInfo)
+}
+
+#[lang(type_info_enum_variant)]
+TypeInfoEnumVariant :: struct {
+    name: []char
+    fields: []*TypeInfo
+}
+
+#[lang(type_info_struct_member)]
+TypeInfoStructMember :: struct {
+    name: []char
+    info: *TypeInfo
+}
+
+#[lang(reflect)]
+foreign reflect :: fn[T](T) *TypeInfo
+
+#[lang(source_location_type)]
+pub SourceLocation :: struct {
+    file: []char
+    curr: []char
+    row: u64
+    col: u64
+}
+
+#[lang(source_location_func)]
+pub foreign here :: SourceLocation

@@ -1,0 +1,22 @@
+// A break-expression branch must yield its value with an explicit `break`.
+// A bare nested `if` used as a branch value (no `break` in front of it) is
+// rejected: the inner `break`s are seen outside a break/loop context.
+//
+// Correct form (see tests/pass/54_nested_break_if.zn):
+//   best := if a > b { break if a > c { break a } else { break c } } else { ... }
+foreign printf :: fn (*char, ...) u0
+
+main :: fn () i32 {
+    a := 5
+    b := 12
+    c := 8
+
+    best := if a > b {
+        if a > c { break a } else { break c }
+    } else {
+        if b > c { break b } else { break c }
+    }
+
+    printf("best=%d\n", best)
+    return 0
+}

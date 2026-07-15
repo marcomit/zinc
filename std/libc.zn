@@ -1,34 +1,36 @@
 pub io :: foreign {
-    printf  :: u0 (*char, ...)
-    putchar :: i32 (i32)
+    printf:     fn (*char, ...) u0
+    putchar:    fn (i32)       i32
+    perror:     fn (*char)      u0
+    exit:       fn (i32)        u0
 }
 pub mem :: foreign {
-    memset  :: *u8 (*u8, i32, u64)
-    memcpy  :: *u8 (*u8, *u8, u64)
-    strlen  :: u64 (*char)
-    strcmp  :: i32 (*char, *char)
-    strncmp :: i32 (*char, *char, u64)
-    strstr  :: *char (*char, *char)
+    memset  : fn (*u8, i32, u64)        *u8
+    memcpy  : fn (*u8, *u8, u64)        *u8
+    strlen  : fn (*char)                u64
+    strcmp  : fn (*char, *char)         i32
+    strncmp : fn (*char, *char, u64)    i32
+    strstr  : fn (*char, *char)         *char
 }
 
 pub math :: foreign {
-    sin     :: f64 (f64)
-    cos     :: f64 (f64)
-    tan     :: f64 (f64)
-    atan    :: f64 (f64)
-    atan2   :: f64 (f64, f64)
-    sqrt    :: f64 (f64)
-    fabs    :: f64 (f64)
-    pow     :: f64 (f64, f64)
-    exp     :: f64 (f64)
+    sin:    fn (f64)      f64
+    cos:    fn (f64)      f64
+    tan:    fn (f64)      f64
+    atan:   fn (f64)      f64
+    atan2:  fn (f64, f64) f64
+    sqrt:   fn (f64)      f64
+    fabs:   fn (f64)      f64
+    pow:    fn (f64, f64) f64
+    exp:    fn (f64)      f64
 
-    sinf    :: f32 (f32)
-    cosf    :: f32 (f32)
-    tanf    :: f32 (f32)
-    atanf   :: f32 (f32)
-    atan2f  :: f32 (f32, f32)
-    sqrtf   :: f32 (f32)
-    fabsf   :: f32 (f32)
-    powf    :: f32 (f32, f32)
-    expf    :: f32 (f32)
+    sinf:   fn (f32)      f32
+    cosf:   fn (f32)      f32
+    tanf:   fn (f32)      f32
+    atanf:  fn (f32)      f32 
+    atan2f: fn (f32, f32) f32 
+    sqrtf:  fn (f32)      f32 
+    fabsf:  fn (f32)      f32 
+    powf:   fn (f32, f32) f32 
+    expf:   fn (f32)      f32 
 }

@@ -1,28 +1,28 @@
 use <std::mem>
 
 c :: foreign {
-    socket     :: i32  (i32, i32, i32)
-    bind       :: i32  (i32, *u8, u32)
-    listen     :: i32  (i32, i32)
-    accept     :: i32  (i32, *u8, *u32)
-    connect    :: i32  (i32, *u8, u32)
-    send       :: i64  (i32, *u8, u64, i32)
-    recv       :: i64  (i32, *u8, u64, i32)
-    sendto     :: i64  (i32, *u8, u64, i32, *u8, u32)
-    recvfrom   :: i64  (i32, *u8, u64, i32, *u8, *u32)
-    close      :: i32  (i32)
-    setsockopt :: i32  (i32, i32, i32, *u8, u32)
-    inet_pton  :: i32  (i32, *char, *u8)
-    inet_ntop  :: *char (i32, *u8, *char, u32)
+    socket     : fn (i32, i32, i32) i32
+    bind       : fn (i32, *u8, u32) i32
+    listen     : fn (i32, i32) i32
+    accept     : fn (i32, *u8, *u32) i32
+    connect    : fn (i32, *u8, u32) i32
+    send       : fn (i32, *u8, u64, i32) i64
+    recv       : fn (i32, *u8, u64, i32) i64
+    sendto     : fn (i32, *u8, u64, i32, *u8, u32) i64
+    recvfrom   : fn (i32, *u8, u64, i32, *u8, *u32) i64
+    close      : fn (i32) i32
+    setsockopt : fn (i32, i32, i32, *u8, u32) i32
+    inet_pton  : fn (i32, *char, *u8) i32
+    inet_ntop  : fn (i32, *u8, *char, u32) *char
 }
 
-pub htons :: u16 (x: u16) {
+pub htons :: fn (x: u16) u16 {
     lo := x & 0xFF
     hi := x >> 8
     return ((lo << 8) | hi) as u16
 }
 
-pub htonl :: u32 (x: u32) {
+pub htonl :: fn (x: u32) u32 {
     b0 := x & 0xFF
     b1 := (x >> 8) & 0xFF
     b2 := (x >> 16) & 0xFF
@@ -30,8 +30,8 @@ pub htonl :: u32 (x: u32) {
     return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
 }
 
-pub ntohs :: u16 (x: u16) -> htons(x)
-pub ntohl :: u32 (x: u32) -> htonl(x)
+pub ntohs :: fn (x: u16) u16 -> htons(x)
+pub ntohl :: fn (x: u32) u32 -> htonl(x)
 
 #[packed]
 pub SockAddrIn :: struct {
@@ -47,7 +47,7 @@ pub TcpStream :: struct {
 }
 
 TcpStream :: impl {
-    pub connect :: TcpStream (host: *char, port: u16) {
+    pub connect :: fn (host: *char, port: u16) TcpStream {
         fd := c::socket(2, 1, 6)
         if fd == -1 {
             return TcpStream { fd: -1 }
@@ -72,14 +72,14 @@ TcpStream :: impl {
         return TcpStream { fd: fd }
     }
 
-    pub fromFd :: TcpStream (fd: i32) -> TcpStream { fd: fd }
+    pub fromFd :: fn (fd: i32) TcpStream -> TcpStream { fd: fd }
 }
 
 TcpStream self :: impl {
-    pub valid  :: u1  ()               -> self.fd != -1
-    pub send   :: i64 (buf: *u8, n: u64) -> c::send(self.fd, buf, n, 0)
-    pub recv   :: i64 (buf: *u8, n: u64) -> c::recv(self.fd, buf, n, 0)
-    pub close  :: u0  () {
+    pub valid  :: fn () u1               -> self.fd != -1
+    pub send   :: fn (buf: *u8, n: u64) i64 -> c::send(self.fd, buf, n, 0)
+    pub recv   :: fn (buf: *u8, n: u64) i64 -> c::recv(self.fd, buf, n, 0)
+    pub close  :: fn () u0 {
         c::close(self.fd)
     }
 }
@@ -89,7 +89,7 @@ pub TcpListener :: struct {
 }
 
 TcpListener :: impl {
-    pub bind :: TcpListener (port: u16) {
+    pub bind :: fn (port: u16) TcpListener {
         fd := c::socket(2, 1, 6)
         if fd == -1 {
             return TcpListener { fd: -1 }
@@ -123,9 +123,9 @@ TcpListener :: impl {
 }
 
 TcpListener self :: impl {
-    pub valid :: u1 () -> self.fd != -1
+    pub valid :: fn () u1 -> self.fd != -1
 
-    pub accept :: TcpStream () {
+    pub accept :: fn () TcpStream {
         addr := SockAddrIn {
             sin_len: 0,
             sin_family: 0,
@@ -138,7 +138,7 @@ TcpListener self :: impl {
         return TcpStream { fd: client_fd }
     }
 
-    pub close :: u0 () {
+    pub close :: fn () u0 {
         c::close(self.fd)
     }
 }
@@ -148,12 +148,12 @@ pub UdpSocket :: struct {
 }
 
 UdpSocket :: impl {
-    pub new :: UdpSocket () {
+    pub new :: fn () UdpSocket {
         fd := c::socket(2, 2, 17)
         return UdpSocket { fd: fd }
     }
 
-    pub bind :: UdpSocket (port: u16) {
+    pub bind :: fn (port: u16) UdpSocket {
         fd := c::socket(2, 2, 17)
         if fd == -1 {
             return UdpSocket { fd: -1 }
@@ -178,9 +178,9 @@ UdpSocket :: impl {
 }
 
 UdpSocket self :: impl {
-    pub valid :: u1 () -> self.fd != -1
+    pub valid :: fn () u1 -> self.fd != -1
 
-    pub sendTo :: i64 (buf: *u8, n: u64, host: *char, port: u16) {
+    pub sendTo :: fn (buf: *u8, n: u64, host: *char, port: u16) i64 {
         addr := SockAddrIn {
             sin_len:    16,
             sin_family: 2,
@@ -192,7 +192,7 @@ UdpSocket self :: impl {
         return c::sendto(self.fd, buf, n, 0, &addr, 16)
     }
 
-    pub recvFrom :: i64 (buf: *u8, n: u64) {
+    pub recvFrom :: fn (buf: *u8, n: u64) i64 {
         addr := SockAddrIn {
             sin_len: 0,
             sin_family: 0,
@@ -204,7 +204,7 @@ UdpSocket self :: impl {
         return c::recvfrom(self.fd, buf, n, 0, &addr, &addrlen)
     }
 
-    pub close :: u0 () {
+    pub close :: fn () u0 {
         c::close(self.fd)
     }
 }

@@ -52,6 +52,7 @@ DEF(TOK_WHERE,      "where",            TOK_FLOWS_MASK | 0x18)
 DEF(TOK_WITH,       "with",             TOK_FLOWS_MASK | 0x19)
 DEF(TOK_IMPL,       "impl",             TOK_FLOWS_MASK | 0x1A)
 DEF(TOK_FACET,      "facet",            TOK_FLOWS_MASK | 0x1B)
+DEF(TOK_FN,         "fn",               TOK_FLOWS_MASK | 0x1C)
 #endif
 
 #ifdef TOK_TYPES
@@ -74,6 +75,7 @@ DEF(TOK_TYPEDEF,    "type",             TOK_TYPES_SIGNATURE_MASK                
 DEF(TOK_ENUM,       "enum",             TOK_TYPES_SIGNATURE_MASK | TOK_EXPANDABLE   | 0x30)
 DEF(TOK_CONST,      "const",            TOK_TYPES_SIGNATURE_MASK                    | 0x31)
 DEF(TOK_PUB,        "pub",              TOK_TYPES_SIGNATURE_MASK                    | 0x32)
+DEF(TOK_DYNAMIC,    "dyn",              TOK_TYPES_SIGNATURE_MASK                    | 0x33)
 #endif
 
 #ifdef TOK_DYN
