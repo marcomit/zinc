@@ -1,22 +1,22 @@
 pub Allocator :: facet {
-    alloc   :: *u8 (u64)
-    resize  :: *u8 (*u8, u64)
-    destroy ::  u0 (*u8)
-    init    ::  u0 ()
-    deinit  ::  u0 ()
+    alloc   : fn (u64)      *u8
+    resize  : fn (*u8, u64) *u8
+    destroy : fn (*u8)       u0
+    init    : fn ()          u0
+    deinit  : fn ()          u0
 }
 
 #[inline(always)]
-pub alloc :: *u8 (size: u64)[a: Allocator] {
+pub alloc :: fn (size: u64)[a: Allocator] *u8 {
     return a.alloc(size)
 }
 
 #[inline(always)]
-pub resize :: *u8 (ptr: *u8, size: u64)[a: Allocator] {
+pub resize :: fn (ptr: *u8, size: u64)[a: Allocator] *u8 {
     return a.resize(ptr, size)
 }
 
 #[inline(always)]
-pub destroy :: u0 (ptr: *u8)[a: Allocator] {
+pub destroy :: (ptr: *u8)[a: Allocator] u0 {
     a.destroy(ptr)
 }

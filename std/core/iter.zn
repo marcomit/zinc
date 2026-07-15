@@ -1,0 +1,24 @@
+pub Range :: struct {
+    end: i32
+    current: i32
+}
+
+pub range :: fn (start: i32, end: i32) Range -> .{ current: start, end: end }
+
+*Range self :: impl {
+    pub has_next :: fn () u1 -> self.current >= self.end
+
+    pub next :: fn () u0 | i32{
+        self.current: + 1
+        return self.current - 1
+    }
+}
+
+foreign printf :: fn (*char, ...) u0
+
+main :: fn () i32 {
+    for i in range(0, 10) {
+        printf("%d\n", i)
+    }
+    return 0
+}

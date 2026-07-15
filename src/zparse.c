@@ -2815,7 +2815,7 @@ static ZNode *parseFacet(ZParser *parser, ZAnnotation **annotations, bool public
         if (!check(parser, TOK_IDENT)) break;
         ZToken *name = consume(parser);
 
-        if (!match(parser, TOK_DOUBLE_COLON)) break;
+        if (!match(parser, TOK_COLON)) break;
 
         ZType *func = parseFuncType(parser);
 

@@ -6,15 +6,15 @@ pub Random :: struct {
 }
 
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf: fn (*char, ...) u0
 }
 
 Random :: impl {
-    pub by_value :: Random () {
+    pub by_value :: fn () Random {
         return Random { state: 0x853c49e6748fea9b, inc: 0xda3e39cb94b95bdb }
     }
 
-    pub by_ref :: *Random ()[Allocator] {
+    pub by_ref :: fn ()[Allocator] *Random {
         self := alloc(sizeof Random) as *Random
         self.state = 0x853c49e6748fea9b
         self.inc = 0xda3e39cb94b95bdb
@@ -23,11 +23,11 @@ Random :: impl {
 }
 
 *Random self :: impl {
-    pub seed :: u0 (new_seed: u64) {
+    pub seed :: fn (new_seed: u64) u0 {
         self.state = new_seed + self.inc as u64
     }
 
-    pub uint :: u32 () {
+    pub uint :: fn() u32 {
         oldState := self.state
         self.state = oldState * 6364136223846793005 as u64 + (self.inc | (1 as u64))
 
@@ -38,15 +38,15 @@ Random :: impl {
         return (xorshifted >> rot) | (xorshifted << ((-rot) & 31))
     }
 
-    pub int :: i32 () {
+    pub int :: fn () i32 {
         return self.uint() as i32
     }
 
-    pub float :: f32 () {
+    pub float :: fn () f32 {
         return self.uint() as f32 / ((0xFFFFFFFF as u32) as f32)
     }
 
-    pub range :: i32 (start: i32, end: i32) {
+    pub range :: fn (start: i32, end: i32) i32 {
         span := (end - start + 1) as u32
         return start + (self.uint() % span) as i32
     }

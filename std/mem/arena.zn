@@ -1,9 +1,9 @@
 use lib
 
 c :: foreign {
-    malloc :: *u8 (u64)
-    free   :: u0 (*u8)
-    memcpy :: *u8 (*u8, *u8, u64)
+    malloc : *u8 (u64)
+    free   : u0 (*u8)
+    memcpy : *u8 (*u8, *u8, u64)
 }
 
 DEFAULT_BLOCK :: 4096

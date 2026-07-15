@@ -39,14 +39,4 @@ pub SourceLocation :: struct {
 }
 
 #[lang(source_location_func)]
-pub foreign here :: fn () SourceLocation
-
-Rect :: struct {
-    width: i32
-    height: i32
-}
-
-main :: fn () i32 {
-    square := fn(x: i32) i32 -> x * x
-    return 0
-}
+pub foreign here :: SourceLocation
