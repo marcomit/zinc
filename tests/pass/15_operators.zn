@@ -1,5 +1,5 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 Vec :: struct {
@@ -7,7 +7,7 @@ Vec :: struct {
     y: f32
 }
 
-main :: i32 () {
+main :: fn () i32 {
     a := 10
     b := 3
 

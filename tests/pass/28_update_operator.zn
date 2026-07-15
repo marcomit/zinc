@@ -7,7 +7,7 @@ LinkedList :: struct {
     next: *LinkedList
 }
 LinkedList :: impl {
-    new :: *LinkedList(next: *LinkedList, val: i32)[Allocator] {
+    new :: fn (next: *LinkedList, val: i32) *LinkedList with Allocator {
         self: *LinkedList = alloc(sizeof LinkedList)
         self.next = next
         self.val = val
@@ -15,14 +15,14 @@ LinkedList :: impl {
     }
 }
 *LinkedList self :: impl {
-    print :: u0 () {
+    print :: fn () u0 {
         if not self { return }
         io::printf("%d\n", self.val)
         self.next.print()
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
         i := 0

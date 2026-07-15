@@ -1,6 +1,6 @@
 c :: foreign {
-    malloc :: *u8(u64)
-    printf :: u0 (*char, ...)
+    malloc : fn (u64) *u8
+    printf : fn (*char, ...) u0
 }
 
 Vec2 :: struct {
@@ -24,11 +24,11 @@ Linked :: struct {
     next: *Linked 
 }
 
-sum :: f32 (x: f64, y: f64) {
+sum :: fn (x: f64, y: f64) f32 {
     return x + y
 }
 
-main :: i32 () {
+main :: fn () i32 {
     p: Point = Point { x: 10, y: 20 }
     val: i32 = p.x
     c::printf("member ok\n")

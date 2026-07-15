@@ -1,9 +1,9 @@
 use lib
 
 c :: foreign {
-    mmap   :: *u8 (*u8, u64, i32, i32, i32, i64)
-    munmap :: i32 (*u8, u64)
-    memcpy :: *u8 (*u8, *u8, u64)
+    mmap   : fn (*u8, u64, i32, i32, i32, i64) *u8
+    munmap : fn (*u8, u64) i32
+    memcpy : fn (*u8, *u8, u64) *u8
 }
 
 PAGE_SIZE   :: 4096
@@ -16,13 +16,13 @@ pub PageAllocator :: struct {
 }
 
 PageAllocator :: impl {
-    pub init :: PageAllocator () {
+    pub init :: fn () PageAllocator {
         return PageAllocator{ mappings: 0 }
     }
 }
 
 *PageAllocator self :: impl Allocator {
-    alloc :: *u8 (size: u64) {
+    alloc :: fn (size: u64) *u8 {
         total := sizeof u64 + size
         pages := (total + (PAGE_SIZE as u64 - 1)) / PAGE_SIZE as u64
         mapped := pages * PAGE_SIZE as u64
@@ -36,7 +36,7 @@ PageAllocator :: impl {
         return &(base[sizeof u64])
     }
 
-    resize :: *u8 (ptr: *u8, size: u64) {
+    resize :: fn (ptr: *u8, size: u64) *u8 {
         if not ptr { return self.alloc(size) }
 
         off: i64 = 0 - (sizeof u64) as i64
@@ -54,7 +54,7 @@ PageAllocator :: impl {
         return fresh
     }
 
-    destroy :: u0 (ptr: *u8) {
+    destroy :: fn (ptr: *u8) u0 {
         if not ptr { return }
         off: i64 = 0 - (sizeof u64) as i64
         base := &(ptr[off])
@@ -65,9 +65,9 @@ PageAllocator :: impl {
 }
 
 *PageAllocator self :: impl {
-    pub allocator :: Allocator () -> self as Allocator
+    pub allocator :: fn () Allocator -> self as Allocator
 
-    unmap :: u0 (base: *u8, mapped: u64) {
+    unmap :: fn (base: *u8, mapped: u64) u0 {
         c::munmap(base, mapped)
         if self.mappings > 0 { self.mappings :- 1 }
     }

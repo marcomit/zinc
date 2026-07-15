@@ -1,8 +1,8 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
-main :: i32 () {
+main :: fn () i32 {
     // Nested while loops
     i := 0
     for i < 3 {

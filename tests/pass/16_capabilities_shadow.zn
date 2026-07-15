@@ -3,16 +3,16 @@
 // Uses a simple Tag struct so we can read which capability is active.
 
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf: fn (*char, ...) u0
 }
 
 Tag :: struct {
     val: i32
 }
 
-getVal :: i32 ()[t: Tag] -> t.val
+getVal :: fn () i32 with t: Tag -> t.val
 
-main :: i32 () {
+main :: fn () i32 {
     with ta := Tag { val: 10 } {
         c::printf("%d\n", getVal())    // 10  -  outer active
 

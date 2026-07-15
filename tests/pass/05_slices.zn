@@ -1,6 +1,6 @@
-foreign putchar :: i32(i32)
+foreign putchar :: fn (i32) i32
 
-printSlice :: u0 (s: []i32) {
+printSlice :: fn (s: []i32) u0 {
     i := 0
     for i < s.len {
         putchar(48 + s[i])
@@ -9,7 +9,7 @@ printSlice :: u0 (s: []i32) {
     }
 }
 
-sum :: i32 (s: []i32) {
+sum :: fn (s: []i32) i32 {
     total := 0
     i := 0
     for i < s.len {
@@ -19,7 +19,7 @@ sum :: i32 (s: []i32) {
     return total
 }
 
-main :: i32 () {
+main :: fn () i32 {
     arr := [0, 1, 2, 3, 4]
 
     // arr[2:] -> {ptr: &arr[2], len: 3} -> {2, 3, 4}

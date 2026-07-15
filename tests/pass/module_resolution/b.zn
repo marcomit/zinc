@@ -1,7 +1,7 @@
 use a
 
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
-pub print :: u0 (a: A) -> c::printf("%s\n", a.name)
+pub print :: fn (a: A) u0 -> c::printf("%s\n", a.name)

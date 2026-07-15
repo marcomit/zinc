@@ -2,16 +2,16 @@ use <std::mem::gpa>
 use <std::mem>
 use <std::libc>
 
-leaf :: i32 ()[alloc: Allocator] {
+leaf :: fn () i32 with alloc: Allocator {
     _ := alloc.alloc(8)
     return 99
 }
 
-level3 :: i32 ()[Allocator] -> leaf()
-level2 :: i32 ()[Allocator] -> level3()
-level1 :: i32 ()[Allocator] -> level2()
+level3 :: fn () i32 with Allocator -> leaf()
+level2 :: fn () i32 with Allocator -> level3()
+level1 :: fn () i32 with Allocator -> level2()
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
         r := level1()

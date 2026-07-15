@@ -1,10 +1,10 @@
 use <std::mem>
 
 c :: foreign {
-    pthread_mutex_init      :: i32 (*u8, *u0)
-    pthread_mutex_lock      :: i32 (*u8)
-    pthread_mutex_unlock    :: i32 (*u8)
-    pthread_mutex_destroy   :: i32 (*u8)
+    pthread_mutex_init      : fn (*u8, *u0) i32
+    pthread_mutex_lock      : fn (*u8) i32
+    pthread_mutex_unlock    : fn (*u8) i32
+    pthread_mutex_destroy   : fn (*u8) i32
 }
 
 pub Mutex :: struct {
@@ -12,7 +12,7 @@ pub Mutex :: struct {
 }
 
 Mutex :: impl {
-    pub new :: Mutex ()[Allocator] {
+    pub new :: fn () Mutex [Allocator] {
         handle := alloc(64)
         c::pthread_mutex_init(handle, none)
         return Mutex { handle: handle }
@@ -20,7 +20,7 @@ Mutex :: impl {
 }
 
 Mutex self :: impl {
-    pub lock    :: u0 () { c::pthread_mutex_lock(self.handle)   }
-    pub unlock  :: u0 () { c::pthread_mutex_unlock(self.handle) }
-    pub destroy :: u0 () { c::pthread_mutex_destroy(self.handle)}
+    pub lock    :: fn () u0 { c::pthread_mutex_lock(self.handle)   }
+    pub unlock  :: fn () u0 { c::pthread_mutex_unlock(self.handle) }
+    pub destroy :: fn () u0 { c::pthread_mutex_destroy(self.handle)}
 }

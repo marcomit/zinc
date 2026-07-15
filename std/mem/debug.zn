@@ -1,7 +1,7 @@
 use lib
 
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 pub DebugAllocator :: struct {
@@ -12,27 +12,27 @@ pub DebugAllocator :: struct {
 }
 
 DebugAllocator :: impl {
-    pub init :: DebugAllocator (inner: Allocator) {
+    pub init :: fn (inner: Allocator) DebugAllocator {
         return DebugAllocator{ inner: inner, allocs: 0, resizes: 0, frees: 0 }
     }
 }
 
 *DebugAllocator self :: impl Allocator {
-    alloc :: *u8 (size: u64) {
+    alloc :: fn (size: u64) *u8 {
         p := self.inner.alloc(size)
         c::printf("[debug] alloc(%lu) -> %p\n", size, p)
         if p { self.allocs :+ 1 }
         return p
     }
 
-    resize :: *u8 (ptr: *u8, size: u64) {
+    resize :: fn (ptr: *u8, size: u64) *u8 {
         p := self.inner.resize(ptr, size)
         c::printf("[debug] resize(%p, %lu) -> %p\n", ptr, size, p)
         self.resizes :+ 1
         return p
     }
 
-    destroy :: u0 (ptr: *u8) {
+    destroy :: fn (ptr: *u8) u0 {
         c::printf("[debug] destroy(%p)\n", ptr)
         if ptr { self.frees :+ 1 }
         self.inner.destroy(ptr)
@@ -40,11 +40,11 @@ DebugAllocator :: impl {
 }
 
 *DebugAllocator self :: impl {
-    pub allocator :: Allocator () -> self as Allocator
+    pub allocator :: fn () Allocator -> self as Allocator
 
-    pub live :: u64 () -> self.allocs - self.frees
+    pub live :: fn () u64 -> self.allocs - self.frees
 
-    pub report :: u0 () {
+    pub report :: fn () u0 {
         c::printf(
             "[debug] allocs=%lu resizes=%lu frees=%lu live=%lu\n",
             self.allocs, self.resizes, self.frees, self.live()

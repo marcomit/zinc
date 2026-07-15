@@ -10,7 +10,7 @@ SdsHdr :: struct {
 pub string :: type *char
 
 string :: impl {
-    make :: fn (init: *char, initlen: u32, cap: u32)[Allocator] string {
+    make :: fn (init: *char, initlen: u32, cap: u32) string with Allocator {
         sh := alloc(sizeof SdsHdr + cap + 1) as *SdsHdr
         if not sh { return none }
 
@@ -27,17 +27,17 @@ string :: impl {
         return s
     }
 
-    pub new :: fn (init: *char)[Allocator] string {
+    pub new :: fn (init: *char) string with Allocator {
         l: u32 = 0
         if init != none { l = mem::strlen(init) as u32 }
         return string::make(init, l, l)
     }
 
-    pub empty :: fn ()[Allocator] string {
+    pub empty :: fn () string with Allocator {
         return string::make(none, 0, 0)
     }
 
-    pub with_capacity :: fn (cap: u32)[Allocator] string {
+    pub with_capacity :: fn (cap: u32) string with Allocator {
         return string::make(none, 0, cap)
     }
 }
@@ -49,7 +49,7 @@ string self :: impl {
         return (&(self[off])) as *SdsHdr
     }
 
-    make_room_for :: fn (addlen: u32)[Allocator] string {
+    make_room_for :: fn (addlen: u32) string with Allocator {
         if not self { return none }
 
         hdr := self.header()
@@ -92,7 +92,7 @@ string self :: impl {
 
     pub is_empty :: fn () u1 -> self.len() == 0
 
-    pub append :: fn (t: *char)[Allocator] string {
+    pub append :: fn (t: *char) string with Allocator {
         if not t { return self }
 
         tlen := mem::strlen(t) as u32
@@ -110,11 +110,11 @@ string self :: impl {
         return s
     }
 
-    pub append_str :: fn (other: string)[Allocator] string {
+    pub append_str :: fn (other: string) string with Allocator {
         return self.append(other)
     }
 
-    pub append_char :: fn (ch: char)[Allocator] string {
+    pub append_char :: fn (ch: char) string with Allocator {
         s := self.make_room_for(1)
         if not s { return none }
 
@@ -125,7 +125,7 @@ string self :: impl {
         return s
     }
 
-    pub dup :: fn ()[Allocator] string {
+    pub dup :: fn () string with Allocator {
         if not self { return none }
         hdr := self.header()
         return string::make(self, hdr.len, hdr.len)
@@ -142,7 +142,7 @@ string self :: impl {
         return mem::strcmp(self, other)
     }
 
-    #[overload(==)]
+    // #[overload(==)]
     pub equals :: fn (other: *char) u1 {
         return mem::strcmp(self, other) == 0
     }
@@ -164,12 +164,8 @@ string self :: impl {
         io::printf("%s\n", self)
     }
 
-    pub free :: fn ()[Allocator] u0 {
+    pub free :: fn () u0 with Allocator {
         if not self { return }
         destroy(self.header())
     }
-}
-
-main :: fn () i32 {
-    return 0
 }

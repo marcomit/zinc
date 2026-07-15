@@ -1,5 +1,5 @@
-foreign printf :: u0 (*char, ...)
-foreign exit :: u0 (i32)
+foreign printf :: fn (*char, ...) u0
+foreign exit :: fn (i32) u0
 
 void  :: type u0
 bool  :: type u1
@@ -20,20 +20,20 @@ V2     :: type Point    // struct alias
 V2ptr  :: type *Point   // pointer-to-struct alias
 byteptr :: type *byte   // pointer alias of aliased primitive
 
-add_scalar :: float (a: scalar, b: scalar) -> a + b
+add_scalar :: fn (a: scalar, b: scalar) float -> a + b
 
-print_point :: void (p: V2ptr) {
+print_point :: fn (p: V2ptr) void {
     printf("(%.0f, %.0f)\n", p.x, p.y)
 }
 
-is_positive :: bool (n: int) -> n > 0
+is_positive :: fn (n: int) bool -> n > 0
 
 V2 self :: impl {
-    len :: float () -> self.x * self.x + self.y * self.y
-    scale :: V2 (factor: scalar) -> V2{x: self.x * factor, y: self.y * factor}
+    len :: fn () float -> self.x * self.x + self.y * self.y
+    scale :: fn (factor: scalar) V2 -> V2{x: self.x * factor, y: self.y * factor}
 }
 
-main :: int () {
+main :: fn () int {
     a: V2 = Point{x: 3.0, y: 4.0}
 
     b: Point = V2{x: 1.0, y: 2.0}

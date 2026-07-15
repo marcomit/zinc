@@ -3,12 +3,12 @@ use <std::mem>
 use <std::mem::gpa>
 
 
-fill :: i32 (size: u64)[alloc: Allocator] {
+fill :: fn (size: u64) i32 with alloc: Allocator {
     _ := alloc.alloc(size)
     return 42
 }
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
         result: i32 = fill(64)

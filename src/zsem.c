@@ -2859,18 +2859,19 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         );
     }
     ZType *itemType = funcRef->resolved->func.ret;
-    char *start = curr->forin.iter->tok->start;
+    ZToken *tok     = curr->forin.iter->tok;
 
     ZNode *call             = makeNodeThread(ctx, NODE_CALL);
     
     ZNode *iterAddr         = makeNodeThread(ctx, NODE_UNARY);
     iterAddr->unary.operand = curr->forin.iter;
-    iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, start);
+    iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, tok->start);
 
-    ZNode *iterCall         = makeNodeThread(ctx, NODE_MEMBER);
-    iterCall->memberAccess.object   = iterAddr;
-    iterCall->memberAccess.field    = makeident("next", start);
-    iterCall->memberAccess.mangled  = funcRef->funcDef.mangled;
+    ZNode *iterCall                     = makeNodeThread(ctx, NODE_MEMBER);
+    iterCall->memberAccess.object       = iterAddr;
+    iterCall->memberAccess.field        = makeTokenThread(ctx, TOK_IDENT, tok->start);
+    iterCall->memberAccess.field->str   = "next";
+    iterCall->memberAccess.mangled      = funcRef->funcDef.mangled;
 
     call->call.callee       = iterCall;
     call->call.args         = NULL;
@@ -3278,7 +3279,7 @@ static void analyze(ZThreadSem *ctx, ZNode *root) {
 
 static ZType *makePrimitiveType(ZTokenType type) {
     ZType *self = maketype(Z_TYPE_PRIMITIVE);
-    self->primitive.token = maketoken(type, NULL);
+    self->primitive.token = maketoken(type, NULL, NULL);
     return self;
 }
 

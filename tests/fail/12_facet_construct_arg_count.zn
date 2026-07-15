@@ -1,5 +1,5 @@
 Shape :: facet {
-    area :: i32 ()
+    area : fn () i32
 }
 
 Circle :: struct {
@@ -7,10 +7,10 @@ Circle :: struct {
 }
 
 *Circle self :: impl Shape {
-    area :: i32 () -> self.radius
+    area :: fn () i32 -> self.radius
 }
 
-main :: i32 () {
+main :: fn () i32 {
     c := Circle{radius: 1}
     s := Shape(&c, &c)
     return 0

@@ -3,19 +3,19 @@ use <std::mem>
 use <std::libc>
 
 
-allocate :: i32 (size: u64)[alloc: Allocator] {
+allocate :: fn (size: u64) i32 with alloc: Allocator {
     _ := alloc.alloc(size)
     return 7
 }
 
-run :: i32 () {
+run :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
         return allocate(32)
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     io::printf("%d\n", run())
     return 0
 }

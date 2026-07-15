@@ -77,20 +77,15 @@ static char *getHomePath() {
 
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
-    char *tok = allocator.alloc(32);
-    bool istype = token->type & TOK_TYPES_MASK;
+    if (token->type == TOK_STR_LIT) {
 
-    if (istype) {
-        snprintf(tok, 6, "type(");
     }
-
-    
     switch(token->type) {
     case TOK_STR_LIT:
-    case TOK_IDENT:     snprintf(tok, 64, "%s", token->str);                    break;
-    case TOK_INT_LIT:   snprintf(tok, 64, "%lld", (long long)token->integer);   break;
-    case TOK_FLOAT_LIT: snprintf(tok, 64, "%g", token->floating);               break;
-    #define DEF(id, str, _) case id: snprintf(tok, 64, "%s", str);              break;
+    case TOK_IDENT:     return token->str;
+    case TOK_INT_LIT:   return strndup(token->start, token->end - token->start);
+    case TOK_FLOAT_LIT: return strndup(token->start, token->end - token->start);
+    #define DEF(id, str, _) case id: return str;
 
     #define TOK_FLOWS
     #define TOK_TYPES
@@ -107,14 +102,13 @@ char *stoken(ZToken *token) {
         break;
     }
 
-    return tok;
+    return "(not found)";
 }
 
 char *tokname(ZTokenType type) {
-    char *tok = allocator.alloc(32);
 
     switch (type) {
-#define DEF(id, str, _) case id: snprintf(tok, 32, "%s", str); break;
+#define DEF(id, str, _) case id: return str;
 
     #define TOK_FLOWS
     #define TOK_TYPES
@@ -127,9 +121,8 @@ char *tokname(ZTokenType type) {
     #undef TOK_FLOWS
 
     #undef DEF
-        default: break;
+        default: return NULL;
     }
-    return tok;
 }
 
 void printToken(ZToken *token) {

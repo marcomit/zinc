@@ -1,5 +1,5 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 Result :: enum {
@@ -12,11 +12,11 @@ Option :: enum {
     None
 }
 
-some :: Option () {
+some :: fn () Option {
     return Option::Some(10)
 }
 
-main :: i32 () {
+main :: fn () i32 {
     r1 := Result::Ok(0)
     if Result::Ok(code) := r1 {
         c::printf("ok:%d\n", code)

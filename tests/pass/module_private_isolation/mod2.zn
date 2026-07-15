@@ -1,10 +1,10 @@
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
 // Same name as the private test in test.zn; must not collide with it.
-test :: u0 () {
+test :: fn () u0 {
     printf("mod2\n")
 }
 
-pub mod2 :: u0 () {
+pub mod2 :: fn () u0 {
     test()
 }

@@ -1,5 +1,5 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 Shape :: enum {
@@ -23,7 +23,7 @@ Entity :: struct {
     shape: Shape
 }
 
-tag :: i32 (s: Shape) {
+tag :: fn (s: Shape) i32 {
     if .Circle(r) := s {
         return r
     } else if .Rect(w, h) := s {
@@ -32,22 +32,22 @@ tag :: i32 (s: Shape) {
     return 0
 }
 
-mag :: i32 (v: Vec2) {
+mag :: fn (v: Vec2) i32 {
     return v.x + v.y
 }
 
-pick :: Shape (n: i32) {
+pick :: fn (n: i32) Shape {
     if n == 0 {
         return .Point()
     }
     return if n > 0 -> .Circle(n) else -> .Rect(n, n)
 }
 
-origin :: Vec2 () {
+origin :: fn () Vec2 {
     return .{ x: 0, y: 0 }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     c::printf("%d\n", tag(.Circle(3)))
     c::printf("%d\n", tag(.Rect(2, 3)))
     c::printf("%d\n", tag(.Point()))

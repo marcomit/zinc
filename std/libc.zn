@@ -13,23 +13,23 @@ pub mem :: foreign {
 }
 
 pub math :: foreign {
-    sin     : fn (f64)      f64
-    cos     : fn (f64)      f64
-    tan     : fn (f64)      f64
-    atan    : fn (f64)      f64
-    atan2   : fn (f64, f64) f64
-    sqrt    : fn (f64)      f64
-    fabs    : fn (f64)      f64
-    pow     : fn (f64, f64) f64
-    exp     : fn (f64)      f64
+    sin:    fn (f64)      f64
+    cos:    fn (f64)      f64
+    tan:    fn (f64)      f64
+    atan:   fn (f64)      f64
+    atan2:  fn (f64, f64) f64
+    sqrt:   fn (f64)      f64
+    fabs:   fn (f64)      f64
+    pow:    fn (f64, f64) f64
+    exp:    fn (f64)      f64
 
-    sinf    : fn (f32)      f32
-    cosf    : fn (f32)      f32
-    tanf    : fn (f32)      f32
-    atanf   : fn (f32)      f32 
-    atan2f  : fn (f32, f32) f32 
-    sqrtf   : fn (f32)      f32 
-    fabsf   : fn (f32)      f32 
-    powf    : fn (f32, f32) f32 
-    expf    : fn (f32)      f32 
+    sinf:   fn (f32)      f32
+    cosf:   fn (f32)      f32
+    tanf:   fn (f32)      f32
+    atanf:  fn (f32)      f32 
+    atan2f: fn (f32, f32) f32 
+    sqrtf:  fn (f32)      f32 
+    fabsf:  fn (f32)      f32 
+    powf:   fn (f32, f32) f32 
+    expf:   fn (f32)      f32 
 }

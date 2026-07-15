@@ -6,12 +6,12 @@ Logger :: struct  {
     level: i32
 }
 
-allocAndLog :: i32 (size: u64)[alloc: Allocator, log: Logger] {
+allocAndLog :: fn (size: u64) i32 with alloc: Allocator, log: Logger {
     buf: *u8 = alloc.alloc(size)
     return log.level
 }
 
-main :: i32 () {
+main :: fn () i32 {
     with log := Logger { level: 42 } {
         gpa := GeneralPurposeAllocator::init()
         with heap := (&gpa).allocator() {

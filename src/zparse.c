@@ -757,7 +757,7 @@ static ZNode *parseUpdate(ZParser *parser) {
     guard(rhs);
 
     ZNode *assign        = makenode(NODE_BINARY);
-    assign->binary.op    = maketoken(TOK_EQ, NULL);
+    assign->binary.op    = maketoken(TOK_EQ, NULL, NULL);
     assign->binary.left  = lhs;
     assign->binary.right = rhs;
     assign->tok          = lhs->tok;
@@ -1173,7 +1173,7 @@ static ZNode *parseFieldOptName(ZParser *parser) {
     } else {
         ZToken *tok = peek(parser);
         if (!tok) return NULL;
-        ident = makeident("_", tok->start);
+        ident = makeident("_", tok->start, tok->end);
     }
 
     ZType *type = tryParse(parser, parseType(parser));
@@ -1235,7 +1235,7 @@ static ZNode *parseEnumField(ZParser *parser) {
     field->field.identifier     = NULL;
 
     ZType *flag                 = maketype(Z_TYPE_PRIMITIVE);
-    flag->primitive.token       = maketoken(TOK_U8, NULL);
+    flag->primitive.token       = maketoken(TOK_U8, NULL, NULL);
     field->field.type           = flag;
 
     vecpush(enm->strct.fields, field);
@@ -1547,7 +1547,7 @@ static ZNode *parseLoops(ZParser *parser) {
     // Infinite loop without condition
     if (checkAhead(parser, TOK_LBRACKET, 1)) {
         ZNode *cond             = makenode(NODE_LITERAL);
-        cond->tok               = maketoken(TOK_TRUE, NULL);
+        cond->tok               = maketoken(TOK_TRUE, NULL, NULL);
         cond->literalTok        = cond->tok;
         ZNode *node             = makenode(NODE_WHILE);
         node->tok               = consume(parser);
@@ -1824,12 +1824,15 @@ static ZNode *parseFuncDecl(ZParser *parser,
     }
 
     ZNode **capabilities = NULL;
-    if (check(parser, TOK_LSBRACKET)) {
-        capabilities = parseGenericList(
-            parser,
-            TOK_LSBRACKET,      TOK_RSBRACKET,
-            parseFieldOptName,  true
-        );
+    if (match(parser, TOK_WITH)) {
+        do {
+            ZNode *capability = parseFieldOptName(parser);
+            if (!capability) break;
+            vecpush(capabilities, capability);
+        } while (
+                !check(parser, TOK_ARROW)       && 
+                !check(parser, TOK_LBRACKET)    &&
+                match(parser, TOK_COMMA)        );
     }
 
     ZNode *body = NULL;

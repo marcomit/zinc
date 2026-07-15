@@ -1,8 +1,8 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
-main :: i32 () {
+main :: fn () i32 {
     // Integer literals
     zero := 0
     pos := 42

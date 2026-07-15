@@ -1,19 +1,19 @@
-foreign printf :: u0 (*char, ...)
+foreign printf :: fn (*char, ...) u0
 
 Logger :: struct { level: i32 }
 Context :: struct { val: i32 }
 
-print_ctx :: u0 ()[c: Context] -> printf("%d\n", c.val)
-print_logger :: u0 ()[l: Logger] -> printf("%d\n", l.level)
+print_ctx :: fn () u0 with c: Context -> printf("%d\n", c.val)
+print_logger :: fn () u0 with l: Logger -> printf("%d\n", l.level)
 
-transitive :: u0 ()[Context, Logger] -> print_logger()
+transitive :: fn () u0 with Context, Logger -> print_logger()
 
-test :: u0 ()[Logger, Context] {
+test :: fn () u0 with Logger, Context {
     transitive()
     print_ctx()
 }
 
-main :: i32 () {
+main :: fn () i32 {
     with _ := Logger { level : 10 } {
         with _ := Context { val: 10 } {
             test()

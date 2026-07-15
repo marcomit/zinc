@@ -1,6 +1,6 @@
 c :: foreign {
-    malloc :: *u8 (u64)
-    printf :: u0 (*char, ...)
+    malloc : fn (u64) *u8
+    printf : fn (*char, ...) u0
 }
 
 Node :: struct  {
@@ -8,7 +8,7 @@ Node :: struct  {
     extra: i32
 }
 
-main :: i32 () {
+main :: fn () i32 {
     // Read through a pointer
     x := 42
     ptr := &x

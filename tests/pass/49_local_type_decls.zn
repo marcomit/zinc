@@ -1,8 +1,8 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
-main :: i32 () {
+main :: fn () i32 {
     Point :: struct {
         x: i32
         y: i32
@@ -16,7 +16,7 @@ main :: i32 () {
     myint :: type i32
 
     libc :: foreign {
-        puts :: u0 (*char)
+        puts : fn (*char) u0
     }
 
     p := Point { x: 3, y: 4 }

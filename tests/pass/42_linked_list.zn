@@ -1,6 +1,6 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
-    malloc :: *u8 (u64)
+    printf : fn (*char, ...) u0
+    malloc : fn (u64) *u8
 }
 
 Node :: struct {
@@ -8,7 +8,7 @@ Node :: struct {
     next: *Node
 }
 
-main :: i32 () {
+main :: fn () i32 {
     head: *Node = none
     i := 5
     for i > 0 {

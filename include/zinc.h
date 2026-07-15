@@ -46,6 +46,7 @@ typedef struct ZToken {
     char *sourcePtr;
     char *sourceLinePtr;
     char *start;
+    char *end;
     usize row;
     usize col;
     bool newlineBefore;
@@ -858,8 +859,8 @@ struct ZThreadSem {
 
 /* Lexer */
 ZToken **ztokenize(ZState *);
-ZToken *maketoken(ZTokenType, char *);
-ZToken *makeident(char *, char *);
+ZToken *maketoken(ZTokenType, char *, char *);
+ZToken *makeident(char *, char *, char *);
 ZTokenStream *maketokstream(ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
 

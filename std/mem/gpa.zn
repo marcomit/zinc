@@ -1,7 +1,7 @@
 use lib
 
 c :: foreign {
-    malloc: fn *u8 (u64) *u8
+    malloc: fn (u64) *u8
     realloc: fn (*u8, u64) *u8
     free: fn (*u8) u0
 }

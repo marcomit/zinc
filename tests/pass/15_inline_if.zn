@@ -1,5 +1,5 @@
-foreign printf :: u0 (*char, ...)
-main :: i32 () {
+foreign printf :: fn (*char, ...) u0
+main :: fn () i32 {
     x := 5
     y := 4
     z := 3

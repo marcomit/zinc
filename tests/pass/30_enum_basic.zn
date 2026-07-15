@@ -1,5 +1,5 @@
 c :: foreign {
-    printf :: u0 (*char, ...)
+    printf : fn (*char, ...) u0
 }
 
 Option :: enum {
@@ -7,9 +7,9 @@ Option :: enum {
     None
 }
 
-some :: Option () -> Option::Some(10)
+some :: fn () Option -> Option::Some(10)
 
-main :: i32 () {
+main :: fn () i32 {
     val := Option::Some(42)
     if Option::Some(n) := val {
         c::printf("some:%d\n", n)
