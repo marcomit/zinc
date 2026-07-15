@@ -941,7 +941,7 @@ ZState *makestate() {
 }
 
 char *readfile(char *filename) {
-    FILE *fd = fopen(filename, "r");
+    FILE *fd = fopen(filename, "rb");
     
     if (!fd) return NULL;
 
