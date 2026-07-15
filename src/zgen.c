@@ -2718,12 +2718,16 @@ static bool isHFA(ZType *type) {
 }
 
 static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
-    LLVMTypeRef ret = genType(ctx, node->foreignFunc.ret);
-    usize argc = veclen(node->foreignFunc.args);
+    /* Foreign variables are emitted as globals in genForwardDecl; only
+     * foreign functions produce a function declaration here. */
+    if (node->resolved->kind != Z_TYPE_FUNCTION) return NULL;
+
+    LLVMTypeRef ret = genType(ctx, node->resolved->func.ret);
+    usize argc = veclen(node->resolved->func.args);
 
     LLVMTypeRef *paramTypes = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc ? argc : 1));
     for (usize i = 0; i < argc; i++) {
-        ZType *at = node->foreignFunc.args[i];
+        ZType *at = node->resolved->func.args[i];
         paramTypes[i] = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION) {
             paramTypes[i] = LLVMPointerType(paramTypes[i], 0);
@@ -2743,12 +2747,13 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
         node->resolved->func.variadic
     );
 
-    LLVMValueRef func = LLVMGetNamedFunction(ctx->mod, node->foreignFunc.tok->str);
+    char *name = stoken(node->foreignDecl.name);
+    LLVMValueRef func = LLVMGetNamedFunction(ctx->mod, name);
     if (!func) {
-        func = LLVMAddFunction(ctx->mod, node->foreignFunc.tok->str, funcType);
+        func = LLVMAddFunction(ctx->mod, name, funcType);
     }
 
-    putLLVMValueRef(ctx, node->foreignFunc.tok->str, func);
+    putLLVMValueRef(ctx, name, func);
 
     return func;
 }
@@ -3720,7 +3725,6 @@ static void compile(ZCodegen *ctx, ZNode *root) {
     case NODE_NAMESPACE:    genNamespace(ctx, root);            break;
     case NODE_VAR_DECL:     genGlobalVar(ctx, root);            break;
     case NODE_TYPEDEF:
-    case NODE_FOREIGN_VAR:
     case NODE_MACRO:        /* Doesn't generate anything. */    break;
     case NODE_IMPL:         genImpl     (ctx, root);            break;
     case NODE_MODULE: {
@@ -3784,16 +3788,19 @@ static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
         genFacetVtable(ctx, node, ptrs);
         return NULL;
     }
-    case NODE_FOREIGN_VAR: {
-        char *name = node->foreignVar.name->str;
-        LLVMValueRef global = LLVMGetNamedGlobal(ctx->mod, name);
-        if (!global) {
-            global = LLVMAddGlobal(ctx->mod,
-                genType(ctx, node->resolved), name
-            );
+    case NODE_FOREIGN: {
+        if (node->resolved->kind != Z_TYPE_FUNCTION) {
+            char *name = stoken(node->foreignDecl.name);
+            LLVMValueRef global = LLVMGetNamedGlobal(ctx->mod, name);
+            if (!global) {
+                global = LLVMAddGlobal(ctx->mod,
+                    genType(ctx, node->resolved), name
+                );
+            }
+            putLLVMValueRef(ctx, name, global);
+            return global;
         }
-        putLLVMValueRef(ctx, name, global);
-        return global;
+        return NULL;
     }
     case NODE_FUNC: {
         if (!node->funcDef.mangled)

@@ -1414,21 +1414,29 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
                 return NULL;
             }
         } else {
+            /* Foreign declarations store their fully-resolved signature in
+             * sym->type (resolved in analyzeForeign); only NODE_FUNC keeps the
+             * raw parsed return type in funcDef.ret. Reading funcDef.ret on a
+             * NODE_FOREIGN would alias the wrong union member and corrupt the
+             * return type. */
+            ZType *rawRet = sym->type->func.ret;
             if (sym->node->type == NODE_FUNC) {
                 callee->identNode.mangled = sym->node->funcDef.mangled;
+                rawRet = sym->node->funcDef.ret;
             }
 
-            /* sym->type is the raw parsed return type - resolve it so that named
-             * types (e.g. "Vec2" -> Z_TYPE_STRUCT) are expanded before the
-             * result is used downstream (e.g. for member access on return value).
-             * */
+            /* Resolve the signature so that named types (e.g. "Vec2" ->
+             * Z_TYPE_STRUCT) are expanded before the result is used downstream
+             * (e.g. for member access on the return value). */
             for (usize i = 0; i < veclen(sym->type->func.args); i++) {
                 sym->type->func.args[i] = resolveTypeRef(
                     ctx, sym->type->func.args[i]
                 );
             }
-            sym->type->func.ret     = resolveTypeRef(ctx, sym->node->funcDef.ret);
-            sym->node->funcDef.ret  = sym->type->func.ret;
+            sym->type->func.ret     = resolveTypeRef(ctx, rawRet);
+            if (sym->node->type == NODE_FUNC) {
+                sym->node->funcDef.ret = sym->type->func.ret;
+            }
             expectedFunc            = sym->type;
             callee->resolved        = expectedFunc->func.ret;
         }
@@ -1970,14 +1978,13 @@ static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         ZType *resolved = NULL;
         for (usize i = 0; i < veclen(baseSym->node->block); i++) {
             ZNode *child = baseSym->node->block[i];
-            if (child->type == NODE_FOREIGN &&
-                    tokeneq(child->foreignFunc.tok, prop)) {
+            bool isFunction = child->resolved->kind == Z_TYPE_FUNCTION;
+            if (tokeneq(child->foreignDecl.name, prop)) {
                 resolved = child->resolved;
+                if (!isFunction) {
+                    curr->staticAccess.mangled = child->foreignDecl.name->str;
+                }
                 break;
-            } else if (child->type == NODE_FOREIGN_VAR &&
-                    tokeneq(child->foreignVar.name, prop)) {
-                resolved = child->resolved;
-                curr->staticAccess.mangled = child->foreignVar.name->str;
             }
         }
         if (!resolved) {
@@ -2511,19 +2518,7 @@ static void analyzeForeign(ZThreadSem *ctx, ZNode *curr) {
     for (usize i = 0; i < veclen(generics); i++) {
         putGeneric(ctx, generics[i]);
     }
-
-    if (!resolveTypeRef(ctx, curr->foreignFunc.ret)) {
-        error(ctx->state, curr->tok, "Unknown type");
-    }
-    for (usize i = 0; i < veclen(curr->foreignFunc.args); i++) {
-        ZType *arg = curr->foreignFunc.args[i];
-        ZType *t = resolveTypeRef(ctx, arg);
-        if (!t) {
-            error(ctx->state, arg->tok, "Unknown type");
-        } else {
-            curr->foreignFunc.args[i] = t;
-        }
-    }
+    curr->resolved = resolveTypeRef(ctx, curr->resolved);
     endScope(ctx);
 }
 
@@ -3055,15 +3050,12 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
         case NODE_IMPL:         putImpl     (ctx, node);       break;
 
         case NODE_FOREIGN: {
-            /* Foreign functions are callable like regular functions.
-               pub foreign declarations are placed in the global scope
-               so importers of this module can call them without
-               re-declaring the foreign themselves. */
-            ZSymbol *symbol   = makesymbol(allocator.ctx, Z_SYM_FUNC);
-            symbol->name      = node->foreignFunc.tok;
+            ZSymType kind = node->resolved->kind == Z_TYPE_FUNCTION ? Z_SYM_FUNC : Z_SYM_VAR;
+            ZSymbol *symbol   = makesymbol(allocator.ctx, kind);
+            symbol->name      = node->foreignDecl.name;
             symbol->node      = node;
             symbol->type      = node->resolved;
-            symbol->isPublic  = node->foreignFunc.pub;
+            symbol->isPublic  = node->foreignDecl.pub;
             putSymbol(ctx, symbol);
             
             break;

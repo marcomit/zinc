@@ -164,6 +164,8 @@ typedef struct {
      * 'SourceLocation' struct and zinc can use the location to show diagnostics.
      * */
     ZToken **sourceLocations;
+
+    ZNode **langItems;
 } ZState;
 
 // FIXME: use these masks in the enum
@@ -193,7 +195,6 @@ typedef enum {
     NODE_EMBED_FIELD,
     NODE_TYPEDEF,
     NODE_FOREIGN,
-    NODE_FOREIGN_VAR,
     NODE_DEFER,
     NODE_STRUCT_LIT,
     NODE_TUPLE_LIT,
@@ -469,8 +470,9 @@ struct ZNode {
             ZScope  *scope;
             /* The list of statements. */
             struct {
-                bool    pub;
-                ZNode   **block;
+                bool        pub;
+                ZNode       **block;
+                ZAnnotation **annotations;
             };
         };
         struct {
@@ -502,17 +504,10 @@ struct ZNode {
         } funcDef;
 
         struct {
-            ZType   *ret;
-            ZToken  *tok;
-            ZType   **args;
-            bool    pub;
-        } foreignFunc;
-
-        struct {
-            ZType   *type;
-            ZToken  *name;
-            bool    pub;
-        } foreignVar;
+            ZToken      *name;
+            bool        pub;
+            ZAnnotation **annotations;
+        } foreignDecl;
 
         struct {
             ZNode   *callee;
@@ -607,9 +602,10 @@ struct ZNode {
         } structlit;
 
         struct {
-            ZToken      *alias;
-            ZType       *type;
-            bool        pub;
+            ZToken          *alias;
+            ZType           *type;
+            bool            pub;
+            ZAnnotation     **annotations;
         } typeDef;
 
         struct {
@@ -664,20 +660,23 @@ struct ZNode {
         } capability;
 
         struct {
-            ZToken  *name;
-            bool    pub;
+            ZToken      *name;
+            bool        pub;
 
             /* Array of NODE_FIELD */
-            ZNode   **funcs;
+            ZNode       **funcs;
+
+            ZAnnotation **annotations;
         } facet;
 
         struct {
-            bool    pub;
-            ZType   **facets;
-            ZType   **generics;
-            ZType   *base;
-            ZToken  *self;
-            ZNode   **funcs;
+            bool        pub;
+            ZType       **facets;
+            ZType       **generics;
+            ZType       *base;
+            ZToken      *self;
+            ZNode       **funcs;
+            ZAnnotation **annotations;
         } impl;
 
         struct {
