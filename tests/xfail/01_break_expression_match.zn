@@ -1,0 +1,30 @@
+// XFAIL: break-as-expression inside a `match`.
+//
+// `break <value>` already yields the value of an enclosing `if` expression
+// (see tests/pass/53_break_expression.zn). The same should work for a `match`
+// used as an expression, but it is not implemented yet: the match expression
+// produces no value type, so the binding below fails with
+//   "No type provided for putVarPattern" / "Undefined identifier 'code'".
+//
+// When match-as-expression with break is implemented this test should start
+// passing (XPASS) and be promoted to tests/pass/.
+foreign printf :: fn (*char, ...) u0
+
+Color :: enum {
+    Red
+    Green
+    Blue
+}
+
+main :: fn () i32 {
+    c := Color::Green
+
+    code := match c {
+        Color::Red   -> break 1,
+        Color::Green -> break 2,
+        Color::Blue  -> break 3
+    }
+
+    printf("code=%d\n", code)
+    return 0
+}
