@@ -124,20 +124,20 @@ typedef struct {
     char            *currentPath;
     char            *filename;
     char            *homePath;
-                    
+
     char            **pathFiles;
     char            **visitedFiles;
     bool            canAdvance;
-                    
+
     bool            debug;
-                    
+
     bool            unusedVar;
     bool            unusedFunc;
     bool            unusedStruct;
-                    
+
     bool            skipLLVMValidation;
     bool            verbose;
-                    
+
     char            optimizationLevel;
     ZLTOMode        ltoMode;
     ZEmitMode       emit;
@@ -301,7 +301,7 @@ struct ZType {
             ZToken  *name;
 
             /* A generic can extend a facets:
-             * T: Display + Drop 
+             * T: Display + Drop
              * */
             ZType   **extensions;
 
@@ -428,9 +428,9 @@ struct ZNode {
             ZNode   *cond;
             ZNode   *body;
             ZNode   *elseBranch;
-        } ifStmt;   
-                    
-        struct {    
+        } ifStmt;
+
+        struct {
             ZNode   *cond;
             ZNode   *branch;
         } whileStmt;
@@ -771,8 +771,9 @@ typedef enum {
     Z_SYM_STRUCT    = 1 << 3,
     Z_SYM_TYPEDEF   = 1 << 4,
     Z_SYM_GENERIC   = 1 << 5,
-    Z_SYM_NAMESPACE = 1 << 6,
-    Z_SYM_FACET     = 1 << 7
+    Z_SYM_FOREIGN   = 1 << 6,
+    Z_SYM_FACET     = 1 << 7,
+    Z_SYM_IMPORT    = 1 << 8,
 } ZSymType;
 
 typedef struct ZSymbol {
@@ -780,6 +781,7 @@ typedef struct ZSymbol {
     ZToken          *name;
     ZType           *type;
     ZNode           *node;
+    ZScope          *scope;
 
     /* All types that resovled a generic.
      * Example:
@@ -787,7 +789,7 @@ typedef struct ZSymbol {
      * Every time in the code appear a Hashmap called with two generics
      * it saves these two type in the array.
      * So it is the list of all types that must be generated
-     * */ 
+     * */
     ZType           ***generics;
 
     usize           useCount;

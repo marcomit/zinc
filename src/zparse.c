@@ -148,7 +148,7 @@ static ZToken *peekAhead(ZParser *parser, usize next) {
     while (stream->current + next >= stream->end && stream->prev) {
         stream = stream->prev;
     }
-    
+
     if (stream->current + next >= veclen(stream->list)) return NULL;
 
     return stream->list[stream->current + next];
@@ -169,7 +169,7 @@ ZToken *consume(ZParser *parser) {
     guard(canPeek(parser));
 
     ZToken *curr = peek(parser);
-    
+
     parser->source->current++;
     parser->tokenIndex++;
     return curr;
@@ -330,7 +330,7 @@ static ZNode *parsePrimary(ZParser *parser) {
 
     if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_IDENT)) {
         ensure(check(parser, TOK_IDENT), "Expected an identifier after @");
-        
+
         ZToken *tok = consume(parser);
         return getMacroCapturedVar(parser->macroParser.currentMacro, tok);
     } else if (match(parser, TOK_LPAREN)) {
@@ -447,18 +447,18 @@ static ZNode *parseArrSubscript(ZParser *parser, ZNode *previous) {
 
 static ZNode **parseArgs(ZParser *parser) {
     ZNode **args = NULL;
-    
+
     ZNode *expr = tryParse(parser, parseExpr(parser));
     if (!expr) return args;
-    
+
     vecpush(args, expr);
-    
+
     while (match(parser, TOK_COMMA)) {
         expr = tryParse(parser, parseExpr(parser));
         if (!expr) break;
         vecpush(args, expr);
     }
-    
+
     return args;
 }
 
@@ -779,7 +779,7 @@ static ZNode **parseGenericList(ZParser *parser,
                                 bool commaSeparated) {
     expect(parser, left);
     ZNode **list = NULL;
-    
+
     do {
         if (check(parser, right)) break;
         ZNode *cur = tryParse(parser, func(parser));
@@ -1243,7 +1243,7 @@ static ZNode *parseEnumField(ZParser *parser) {
     for (usize i = 0; i < veclen(types); i++) {
         field                   = makenode(NODE_FIELD);
         field->field.identifier = NULL;
-        field->field.type       = types[i];    
+        field->field.type       = types[i];
 
         vecpush(enm->strct.fields, field);
     }
@@ -1291,7 +1291,7 @@ static ZNode *parseEnumDecl(ZParser *parser,
     }
 
     node->resolved          = type;
-    
+
     return node;
 }
 
@@ -1448,7 +1448,7 @@ static ZNode *parseCondDestructVar(ZParser *parser) {
     parser->noStructLit = false;
 
     guard(expr);
-    
+
     return makenodevar(pattern, NULL, expr);
 }
 
@@ -1669,7 +1669,7 @@ static ZType *parseGenericDecl(ZParser *parser) {
  * */
 static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
     ZType **generics = NULL;
-    
+
     if (brackets) {
         expect(parser, TOK_LSBRACKET);
     }
@@ -1856,7 +1856,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
             if (!capability) break;
             vecpush(capabilities, capability);
         } while (
-                !check(parser, TOK_ARROW)       && 
+                !check(parser, TOK_ARROW)       &&
                 !check(parser, TOK_LBRACKET)    &&
                 match(parser, TOK_COMMA)        );
     }
@@ -2115,13 +2115,13 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
     ZNode *expr = NULL;
 
     expect(parser, TOK_EQ);
-    
+
     expr = tryParse(parser, parseExpr(parser));
     if (!expr) {
         error(parser->state, peek(parser), "Expected expression after '='");
         return NULL;
     }
-    
+
     return makenodevar(var, type, expr);
 }
 
@@ -2304,6 +2304,7 @@ static ZNode *getModuleByName(
     ZNode *node                 = makenode(NODE_MODULE);
     if (!canVisit) {
         node->module.filename   = filename;
+        node->module.name       = NULL;
         node->module.root       = NULL;
         node->module.cached     = getCachedModule(parser, filename);
         node->module.pub        = public;
@@ -2370,7 +2371,7 @@ static ZNode *parseTypedef(ZParser *parser, ZAnnotation **annotations, bool publ
     expect(parser, TOK_TYPEDEF);
 
     ZType *type = tryParse(parser, parseType(parser));
-    
+
     ensure(type, "Invalid type");
 
     ZNode *node                 = makenode(NODE_TYPEDEF);
@@ -2458,7 +2459,7 @@ static ZNode *parseForeignBlock(ZParser *parser, ZAnnotation **annotations, bool
         node->foreignDecl.pub   = public;
         node->tok               = name;
         node->resolved          = type;
-        
+
 
         vecpush(namespace->block, node);
     }
@@ -2505,7 +2506,7 @@ static ZNode *parseForeignUse(ZParser *parser, bool public) {
  * - expr: captures an expression (expressions is whatever you get a result).
  * - block: captures a block of code like function body or the body of a loop.
  * - stmt: captures a statement.
- * 
+ *
  * These operations can compbined with each other into a list:
  * - a sequence: the pattern must follow all elements in the sequence.
  *   When the parser see elements separated by a space it parses elements like a sequence.
@@ -2654,7 +2655,7 @@ static ZNode *parseMacro(ZParser *parser) {
 
     node->macro.consumed = parser->source->current - saved;
 
-    
+
     vecpush(parser->macroParser.macros, node);
 
     return node;
@@ -2867,7 +2868,7 @@ static ZNode *parseFacet(ZParser *parser, ZAnnotation **annotations, bool public
 
         vecpush(facet->facet.funcs, field);
     } while (!check(parser, TOK_RBRACKET));
-    
+
     expect(parser, TOK_RBRACKET);
 
     if (veclen(facet->facet.funcs) == 0) {

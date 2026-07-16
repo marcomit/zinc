@@ -263,7 +263,7 @@ static void beginModule(ZCodegen *ctx, ZNode *node) {
     LLVMModuleRef prev = ctx->mod;
     if (!ctx->mod) {
         ctx->mod = LLVMModuleCreateWithNameInContext(
-            node->module.name, ctx->ctx
+            node->module.filename, ctx->ctx
         );
     }
     vecpush(ctx->modules, prev);
@@ -3733,7 +3733,7 @@ static void compile(ZCodegen *ctx, ZNode *root) {
         /* Emit each module body at most once per LLVM module: repeated imports
          * and cyclic imports would otherwise append a second definition to a
          * function that already has one. */
-        if (!hashset_insert(&ctx->seenModuleDefs, root->module.name)) break;
+        if (!hashset_insert(&ctx->seenModuleDefs, root->module.filename)) break;
         ZNode **body = moduleBody(root);
         for (usize i = 0; i < veclen(body); i++)
             genForwardDecl(ctx, body[i]);
@@ -3754,7 +3754,7 @@ static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
     case NODE_MODULE: {
         /* Follow module.cached for re-imports and guard against cycles, so
          * every reachable declaration lands in ctx->mod exactly once. */
-        if (!hashset_insert(&ctx->seenModuleDecls, node->module.name)) break;
+        if (!hashset_insert(&ctx->seenModuleDecls, node->module.filename)) break;
         ZNode **body = moduleBody(node);
         for (usize i = 0; i < veclen(body); i++)
             genForwardDecl(ctx, body[i]);

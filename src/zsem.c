@@ -250,7 +250,7 @@ static void putReceiverFunc(ZThreadSem *ctx, ZNode *node) {
 
 static void putStaticFunc(ZThreadSem *ctx, ZNode *node) {
     ZType *baseType = node->funcDef.base;
-    
+
     if (baseType->kind != Z_TYPE_PRIMITIVE) {
         error(ctx->state, node->tok,
                 "Static function must be attached to a primitive type");
@@ -449,7 +449,7 @@ static void putVarPattern(
                 pattern->args[i], condition
             );
         }
-        
+
     } else if (pattern->type == Z_VAR_SUM) {
         if (type->kind != Z_TYPE_SUM) {
             error(ctx->state, pattern->tok,
@@ -529,7 +529,7 @@ static void putFacet(ZThreadSem *ctx, ZNode *node) {
 
 static void putNamespace(ZThreadSem *ctx, ZNode *node) {
     putRawSymbol(ctx,
-        Z_SYM_NAMESPACE,
+        Z_SYM_FOREIGN,
         node->tok,
         node->resolved,
         node,
@@ -571,7 +571,7 @@ static ZCapability *putCapability(ZThreadSem *ctx, ZNode *var) {
 
 static ZThreadSem *getRegisteredModule(ZSemantic *ctx, char *module) {
     for (usize i = 0; i < veclen(ctx->scopes); i++) {
-        if (strcmp(ctx->scopes[i]->module->module.name, module) == 0) {
+        if (strcmp(ctx->scopes[i]->module->module.filename, module) == 0) {
             return ctx->scopes[i]->ctx;
         }
     }
@@ -733,7 +733,7 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
 
     if (a->kind == Z_TYPE_POINTER && isNumeric(b)) return a;
     if (b->kind == Z_TYPE_POINTER && isNumeric(a)) return b;
-    
+
     if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
         return a;
     } else if (b->kind == Z_TYPE_POINTER && a->kind == Z_TYPE_NONE) {
@@ -968,21 +968,25 @@ static ZNode *coerceToSum(ZThreadSem *ctx, ZNode *node, ZType *sum) {
 }
 
 /* ================== Symbol lookup ================== */
+
+static inline ZSymbol *resolveByScope(ZScope *scope, ZToken *ident) {
+    while (scope) {
+        for (usize i = 0; i < veclen(scope->symbols); i++) {
+            if (tokeneq(scope->symbols[i]->name, ident)) {
+                scope->symbols[i]->useCount++;
+                return scope->symbols[i];
+            }
+        }
+        scope = scope->parent;
+    }
+    return NULL;
+}
+
 static ZSymbol *resolve(ZThreadSem *ctx, ZToken *ident) {
     if (ident && ident->type == TOK_IDENT && strcmp(ident->str, "_") == 0) {
         error(ctx->state, ident, "Use '_' only for unused variables");
     }
-    ZScope *curr = ctx->current;
-    while (curr) {
-        for (usize i = 0; i < veclen(curr->symbols); i++) {
-            if (tokeneq(curr->symbols[i]->name, ident)) {
-                curr->symbols[i]->useCount++;
-                return curr->symbols[i];
-            }
-        }
-        curr = curr->parent;
-    }
-    return NULL;
+    return resolveByScope(ctx->current, ident);
 }
 
 /* ================== Type resolution ================== */
@@ -1970,7 +1974,7 @@ static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
     if (baseSym->kind == Z_SYM_STRUCT) {
         error(ctx->state, prop,
             "Static method '%s' not found", prop->str);
-        
+
         return NULL;
     } else if (baseSym->type && baseSym->type->kind == Z_TYPE_ENUM) {
         ZType *resolved =  resolveEnumLit(ctx, curr, inferred);
@@ -1978,7 +1982,7 @@ static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
             error(ctx->state, curr->tok, "Invalid enum literal");
             return NULL;
         } else return baseSym->type;
-    } else if (baseSym->kind == Z_SYM_NAMESPACE) {
+    } else if (baseSym->kind == Z_SYM_FOREIGN) {
         ZType *resolved = NULL;
         for (usize i = 0; i < veclen(baseSym->node->block); i++) {
             ZNode *child = baseSym->node->block[i];
@@ -2014,6 +2018,21 @@ static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         } else {
             return resolveTypeRef(ctx, resolved);
         }
+    } else if (baseSym->kind == Z_SYM_IMPORT) {
+        if (!hashset_has(baseSym->scope->seen, prop->str)) {
+            error(ctx->state, prop, "Symbol not found in the scope");
+        }
+
+        ZSymbol *symbol = resolveByScope(baseSym->scope, prop);
+        if (!symbol) return NULL;
+
+        curr->staticAccess.mangled = mangler((char *[]){
+            baseSym->node->module.filename,
+            prop->str,
+            NULL
+        });
+
+        return symbol->type;
     } else {
         error(ctx->state, base, "Base should refer to a type");
         return NULL;
@@ -2024,7 +2043,7 @@ static ZType *resolveSlice(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZType *res      = resolveType(ctx, curr->slice.base, inferred);
     ZType *start    = resolveType(ctx, curr->slice.start, inferred);
     ZType *end      = resolveType(ctx, curr->slice.end, inferred);
-    
+
     if (curr->slice.start &&
             (!start                                 ||
             !isPrimitive(start)                     ||
@@ -2270,7 +2289,7 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
               "Base type not found");
         return NULL;
     }
-    
+
     if (base->kind == Z_TYPE_STRUCT) {
         ZNode *structField = getStructField(ctx, base, field);
         if (structField) {
@@ -2469,7 +2488,7 @@ static void analyzeIf(ZThreadSem *ctx, ZNode *curr) {
     bool isIfLet = curr->ifStmt.cond->type == NODE_VAR_DECL;
     if (isIfLet) beginScope(ctx, curr);
     ZType *cond = resolveType(ctx, curr->ifStmt.cond, NULL);
-    
+
     if (!cond) return;
 
     if (!isComparable(ctx, cond)) {
@@ -2644,7 +2663,7 @@ static void analyzeFunc(ZThreadSem *ctx, ZNode *curr) {
 
     ctx->currentFuncRet    = savedRet;
     ctx->currentFunc       = savedFunc;
-    
+
     endScope(ctx);
 }
 
@@ -2669,7 +2688,7 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
     curr->resolved  = retType;
 
     if (!ctx->currentFuncRet) return;
-    
+
     bool sumAcceptVoid =
         ctx->currentFuncRet->kind == Z_TYPE_SUM &&
         sumTypeIndexOf(ctx->currentFuncRet, u0Type) != -1;
@@ -2866,7 +2885,7 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZToken *tok     = curr->forin.iter->tok;
 
     ZNode *call             = makeNodeThread(ctx, NODE_CALL);
-    
+
     ZNode *iterAddr         = makeNodeThread(ctx, NODE_UNARY);
     iterAddr->unary.operand = curr->forin.iter;
     iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, tok->start);
@@ -2934,7 +2953,7 @@ static void analyzeBlock(ZThreadSem *ctx, ZNode *block, bool scoped) {
     ZNode **stmts = block->block;
     usize len = veclen(stmts);
     for (usize i = 0; i < len; i++) {
-        if (i + 1 < len && 
+        if (i + 1 < len &&
             (stmts[i]->type == NODE_BREAK ||
             stmts[i]->type == NODE_CONTINUE ||
             stmts[i]->type == NODE_RETURN)) {
@@ -3027,13 +3046,29 @@ static void mergeFuncTable(ZThreadSem *parent, ZThreadSem *child, bool pub) {
     }
 }
 
-static void discoverImport(ZThreadSem *parent, ZThreadSem *child, bool pub) {
+static void discoverImport(
+    ZThreadSem *parent, ZThreadSem *child, ZNode *node, bool pub) {
+
     ZScope *parentScope     = pub ? parent->global : parent->local;
     ZSymbol **childSymbols   = child->global->symbols;
 
-    for (usize i = 0; i < veclen(childSymbols); i++) {
-        vecpush(parentScope->symbols, childSymbols[i]);
+    if (!node->module.name) {
+        for (usize i = 0; i < veclen(childSymbols); i++) {
+            vecpush(parentScope->symbols, childSymbols[i]);
+        }
     }
+
+    if (node->module.name) {
+        ZSymbol *import = makeRawSymbol(
+            parent->arena,      Z_SYM_IMPORT,
+            node->module.name,  NULL,
+            node,               pub
+        );
+        import->scope = child->global;
+
+        putSymbol(parent, import);
+    }
+
     mergeFuncTable(parent, child, pub);
 }
 
@@ -3062,7 +3097,7 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
             symbol->type      = node->resolved;
             symbol->isPublic  = node->foreignDecl.pub;
             putSymbol(ctx, symbol);
-            
+
             break;
         }
 
@@ -3073,7 +3108,7 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
 
             if (!import) import = discoverGlobalScope(ctx, node);
 
-            discoverImport(ctx, import, node->module.pub);
+            discoverImport(ctx, import, node, node->module.pub);
             break;
         }
         default: break;
@@ -3192,8 +3227,8 @@ static void analyzeEnum(ZThreadSem *ctx, ZNode *enumDef) {
         ZNode **enumField = fields[i]->strct.fields;
 
         for (usize j = 0; j < veclen(enumField); j++) {
-            if (!enumField[j] || 
-                !enumField[j]->field.type) continue; 
+            if (!enumField[j] ||
+                !enumField[j]->field.type) continue;
             ZType **szSeen = NULL;
             ZType *resolved = resolveTypeRef(ctx, enumField[j]->field.type);
             if (!resolved) continue;
@@ -3272,7 +3307,7 @@ static void analyze(ZThreadSem *ctx, ZNode *root) {
             }
             break;
 
-        default: 
+        default:
             warning(ctx->state, root->tok,
                     "node '%zu' not yet analyzed",
                     root->type);
