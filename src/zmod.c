@@ -481,17 +481,22 @@ static void printMacroPattern(ZMacroPattern *pattern, u8 depth) {
     }
 }
 
-static void printAnnotation(ZAnnotation *annotation) {
-    if (!annotation) return;
-    printf("%s", annotation->name->str);
-    if (veclen(annotation->args) > 0) {
-        printf("(");
-        usize len = veclen(annotation->args);
-        for (usize i = 0; i < len; i++) {
-            printAnnotation(annotation->args[i]);
-            if (i != len - 1) printf(", ");
+static void printAnnotation(ZAnnotation *arg) {
+    switch (arg->kind) {
+    case Z_ANN_IDENT:   printToken(arg->ident);     break;
+    case Z_ANN_LIT:     printToken(arg->literal);   break;
+    case Z_ANN_NESTED:
+        printf("%s(", stoken(arg->tok));
+        for (usize i = 0; i < veclen(arg->nested); i++) {
+            printAnnotation(arg->nested[i]);
+            if (i != veclen(arg->nested) - 1) printf(", ");
         }
         printf(")");
+        break;
+    case Z_ANN_ASSIGN:
+        printf("%s = ", stoken(arg->assign.name));
+        printAnnotation(arg->assign.value);
+        break;
     }
 }
 
@@ -572,7 +577,7 @@ void printNode(ZNode *node, u8 depth) {
         indent(depth);
         for (usize i = 0; i < veclen(node->funcDef.annotations); i++) {
             printAnnotation(node->funcDef.annotations[i]);
-            printf(" ");
+            if (i != veclen(node->funcDef.annotations) - 1) printf(", ");
         }
         printf("\n");
         printNode(node->funcDef.body, depth);

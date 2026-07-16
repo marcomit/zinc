@@ -395,10 +395,27 @@ struct ZVarDestructPattern {
     };
 };
 
+typedef enum ZAnnotationKind {
+    Z_ANN_IDENT,
+    Z_ANN_LIT,
+    Z_ANN_NESTED,
+    Z_ANN_ASSIGN
+} ZAnnotationKind;
+
 struct ZAnnotation {
-    ZToken      *name;
-    ZAnnotation **args;
-    bool        used;
+    ZToken              *name;
+    ZAnnotationKind     kind;
+    ZToken              *tok;
+    union {
+        ZToken          *ident;
+        ZToken          *literal;
+        ZAnnotation     **nested;
+        struct {
+            ZToken      *name;
+            ZAnnotation *value;
+        } assign;
+    };
+    bool                used;
 };
 
 struct ZNode {
@@ -742,14 +759,14 @@ typedef struct ZParser {
 typedef struct ZScope ZScope;
 
 typedef enum {
-    Z_SYM_VAR,
-    Z_SYM_FUNC,
-    Z_SYM_ENUM,
-    Z_SYM_STRUCT,
-    Z_SYM_TYPEDEF,
-    Z_SYM_GENERIC,
-    Z_SYM_NAMESPACE,
-    Z_SYM_FACET
+    Z_SYM_VAR       = 1 << 0,
+    Z_SYM_FUNC      = 1 << 1,
+    Z_SYM_ENUM      = 1 << 2,
+    Z_SYM_STRUCT    = 1 << 3,
+    Z_SYM_TYPEDEF   = 1 << 4,
+    Z_SYM_GENERIC   = 1 << 5,
+    Z_SYM_NAMESPACE = 1 << 6,
+    Z_SYM_FACET     = 1 << 7
 } ZSymType;
 
 typedef struct ZSymbol {
