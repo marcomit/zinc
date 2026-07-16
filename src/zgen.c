@@ -218,7 +218,7 @@ static LLVMValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
 
 static i32 hasAnnotation(ZAnnotation **annotations, const char *name) {
     for (usize i = 0; i < veclen(annotations); i++) {
-        if (strcmp(annotations[i]->name->str, name) == 0) {
+        if (strcmp(annotations[i]->tok->str, name) == 0) {
             annotations[i]->used = true;
             return i;
         }
@@ -229,9 +229,9 @@ static i32 hasAnnotation(ZAnnotation **annotations, const char *name) {
 static void checkUnusedAnnotations(ZCodegen *ctx, ZAnnotation **annotations) {
     for (usize i = 0; i < veclen(annotations); i++) {
         if (!annotations[i]->used) {
-            error(ctx->state, annotations[i]->name,
-                "Unsupported annotation"
-            );
+            // error(ctx->state, annotations[i]->name,
+            //     "Unsupported annotation"
+            // );
         }
     }
 }
@@ -3502,20 +3502,20 @@ static void LLVMAddFuncAttribute(ZCodegen *ctx,
 // TODO: Create a function to query annotations
 static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
     (void)ctx; (void)f; (void)func;
-//     ZAnnotation **annotations = f->funcDef.annotations;
-//
-//     if (strcmp(f->funcDef.mangled, "main") == 0) {
-//         LLVMSetLinkage(func, LLVMExternalLinkage);
-//     } else if (f->funcDef.pub) {
-//         LLVMSetLinkage(func, LLVMWeakODRLinkage);
-//     } else {
-//         LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
-//     }
-//
-//     i32 inl = hasAnnotation(annotations, "inline");
-//
-//     if (inl == -1) goto cold;
-//
+    ZAnnotation **annotations = f->funcDef.annotations;
+
+    if (strcmp(f->funcDef.mangled, "main") == 0) {
+        LLVMSetLinkage(func, LLVMExternalLinkage);
+    } else if (f->funcDef.pub) {
+        LLVMSetLinkage(func, LLVMWeakODRLinkage);
+    } else {
+        LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
+    }
+
+    i32 inl = hasAnnotation(annotations, "inline");
+
+    if (inl == -1) goto cold;
+
 //     ZAnnotation *annotation = annotations[inl];
 //
 //     usize argLen = veclen(annotation->args);
@@ -3541,12 +3541,12 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
 //         );
 //     }
 //
-// cold:
-//     if (hasAnnotation(annotations, "cold") != -1) {
-//         LLVMAddFuncAttribute(ctx, func, "cold");
-//     }
-//
-//     checkUnusedAnnotations(ctx, f->funcDef.annotations);
+cold:
+    if (hasAnnotation(annotations, "cold") != -1) {
+        LLVMAddFuncAttribute(ctx, func, "cold");
+    }
+
+    checkUnusedAnnotations(ctx, f->funcDef.annotations);
 }
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {

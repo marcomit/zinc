@@ -1377,7 +1377,7 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
     ZAnnotation *arg    = zalloc(ZAnnotation);
     arg->tok            = curr;
 
-    if (curr->type & TOK_LITERAL) {
+    if (curr->type & TOK_LITERAL || curr->type & TOK_OVERLOADABLE) {
         arg->kind       = Z_ANN_LIT;
         arg->literal    = consume(parser);
         return arg;
