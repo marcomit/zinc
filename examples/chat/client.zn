@@ -3,21 +3,21 @@ use <std::io::net>
 use <std::io::thread>
 
 libc :: foreign {
-    printf :: u0  (*char, ...)
-    strcmp :: i32 (*char, *char)
-    strlen :: u64 (*char)
+    printf : fn (*char, ...) u0
+    strcmp : fn (*char, *char) i32
+    strlen : fn (*char) u64
 }
 
-foreign readline :: *char (*char)
+foreign readline :: fn (*char) *char
 
 *char self :: impl {
     #[overload(==)]
-    eq :: u1 (other: *char) {
+    eq :: fn (other: *char) u1 {
         return libc::strcmp(self, other) == 0
     }
 }
 
-reader :: *u8 (arg: *u8) {
+reader :: fn (arg: *u8) *u8 {
     stream := *(arg as *TcpStream)
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
@@ -32,7 +32,7 @@ reader :: *u8 (arg: *u8) {
     return none
 }
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
         stream := TcpStream::connect("127.0.0.1", 8080)

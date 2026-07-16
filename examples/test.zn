@@ -1,0 +1,16 @@
+#[lang(source_location_type)]
+pub SourceLocation :: struct {
+    file: []char
+    curr: []char
+    row: u64
+    col: u64
+}
+
+#[lang(source_location_func)]
+pub foreign here :: SourceLocation
+
+
+main :: fn () i32 {
+    loc: SourceLocation = here
+    return 0
+}

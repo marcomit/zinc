@@ -22,7 +22,7 @@ KEY_R     :: 82
 MAX_ENEMIES :: 64
 
 c :: foreign {
-    sprintf :: i32 (*char, *char, ...)
+    sprintf : fn (*char, *char, ...) i32
 }
 
 Enemy :: struct {
@@ -43,7 +43,7 @@ Player :: struct {
 }
 
 Constraint :: impl {
-    new :: *Constraint () [Allocator] {
+    new :: fn () *Constraint [Allocator] {
         self: *Constraint = alloc(sizeof Constraint)
         self.position = Vec2{x: WIDTH as f32 / 2.0, y: HEIGHT as f32 / 2.0}
         self.radius   = 180.0
@@ -52,11 +52,11 @@ Constraint :: impl {
 }
 
 *Constraint self :: impl {
-    draw :: u0 () -> raylib::DrawCircleLinesV(self.position, self.radius, BORDER_COLOR)
+    draw :: fn () u0 -> raylib::DrawCircleLinesV(self.position, self.radius, BORDER_COLOR)
 }
 
 Player :: impl {
-    new :: *Player () [Allocator] {
+    new :: fn () *Player [Allocator] {
         self: *Player = alloc(sizeof Player)
         self.position = Vec2{x: WIDTH as f32 / 2.0, y: HEIGHT as f32 / 2.0}
         self.radius   = 22.0
@@ -66,14 +66,14 @@ Player :: impl {
 }
 
 *Player self :: impl {
-    draw :: u0 () -> raylib::DrawCircleV(self.position, self.radius, PLAYER_COLOR)
+    draw :: fn () u0 -> raylib::DrawCircleV(self.position, self.radius, PLAYER_COLOR)
 
-    reset :: u0 () {
+    reset :: fn () u0 {
         self.position.x = WIDTH as f32 / 2.0
         self.position.y = HEIGHT as f32 / 2.0
     }
 
-    update :: u0 (dx: f32, dy: f32, dt: f32, arena: *Constraint) {
+    update :: fn (dx: f32, dy: f32, dt: f32, arena: *Constraint) u0 {
         if dx != 0.0 or dy != 0.0 {
             len := math::sqrtf(dx * dx + dy * dy)
             self.position.x :+ (dx / len) * self.speed * dt
@@ -91,7 +91,7 @@ Player :: impl {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     raylib::InitWindow(WIDTH, HEIGHT, "Circloid")
     raylib::SetTargetFPS(60)
     defer raylib::CloseWindow()

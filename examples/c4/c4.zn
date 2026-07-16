@@ -2,10 +2,10 @@ use <std::mem>
 use <std::mem::gpa>
 
 libc :: foreign {
-    putchar :: i32 (i32)
-    scanf   :: i32 (*char, ...)
-    printf  :: u0  (*char, ...)
-    memset  :: *u8 (*u8, i32, u64)
+    putchar : fn (i32) i32
+    scanf   : fn (*char, ...) i32
+    printf  : fn (*char, ...) u0
+    memset  : fn (*u8, i32, u64) *u8
 }
 
 PLAYING     :: 0
@@ -27,7 +27,7 @@ Game :: struct {
     move_cnt: u8
 }
 
-makegame :: *Game() [Allocator] {
+makegame :: fn () *Game [Allocator] {
     self: *Game = alloc(sizeof Game)
     grid_len := COLS * ROWS
     self.grid = alloc(sizeof f32 * grid_len)
@@ -43,7 +43,7 @@ makegame :: *Game() [Allocator] {
 }
 
 *Game self :: impl {
-    undo :: u8 () {
+    undo :: fn () u8 {
         if self.move_cnt == 0 { return 0xFF }   
         self.move_cnt: - 1
         move := self.moves[self.move_cnt]
@@ -51,7 +51,7 @@ makegame :: *Game() [Allocator] {
         return move
     }
 
-    move :: u1 (col: u8) {
+    move :: fn (col: u8) u1 {
         row := 0
         for row < ROWS {
             if self.grid[row * COLS + col] == 0 {
@@ -69,7 +69,7 @@ makegame :: *Game() [Allocator] {
         return true
     }
 
-    check_win :: u0 (row: u8, col: u8) {
+    check_win :: fn (row: u8, col: u8) u0 {
         val := self.current
         consecutive := 0
 
@@ -150,7 +150,7 @@ makegame :: *Game() [Allocator] {
         }
     }
 
-    draw :: u0 () {
+    draw :: fn () u0 {
         x := 0
         y := ROWS - 1
         for y >= 0 {
@@ -173,17 +173,17 @@ makegame :: *Game() [Allocator] {
     }
 }
 
-cursor :: u0 (fmt: *char) {
+cursor :: fn (fmt: *char) u0 {
     libc::putchar(27)
     libc::printf(fmt)
 }
 
-cursor_move :: u0 (y: u8, x: u8) {
+cursor_move :: fn (y: u8, x: u8) u0 {
     libc::putchar(27)
     libc::printf("[%d;%dH", y, x)
 }
 
-cursor_bg :: u0 (color: u32) {
+cursor_bg :: fn (color: u32) u0 {
     libc::putchar(27)
     libc::printf("[48;2;%d;%d;%dm", (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
 }
@@ -192,7 +192,7 @@ CURSOR_CLEAR    :: "[2J"
 CURSOR_HIDE     :: "[?25l"
 CURSOR_SHOW     :: "[?25h"
 
-main :: i32 () {
+main :: fn () i32 {
     cursor(CURSOR_CLEAR)
     cursor_move(1, 1)
     cursor(CURSOR_HIDE)

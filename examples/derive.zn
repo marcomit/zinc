@@ -13,23 +13,23 @@ Expr :: enum {
 }
 
 Expr :: impl {
-    new :: *Expr (expr: Expr) [Allocator] {
+    new :: fn (expr: Expr) *Expr [Allocator] {
         self: *Expr = Rc::new(sizeof Expr)
         *self = expr
         return self
     }
 
-    sym :: *Expr (a: *char)             [Allocator] -> Expr::new(Expr::Sym(a))
-    num :: *Expr (n: f64)               [Allocator] -> Expr::new(Expr::Num(n))
-    log :: *Expr (e: *Expr)             [Allocator] -> Expr::new(Expr::Log(e))
-    add :: *Expr (l: *Expr, r: *Expr)   [Allocator] -> Expr::new(Expr::Add(l, r))
-    sub :: *Expr (l: *Expr, r: *Expr)   [Allocator] -> Expr::new(Expr::Sub(l, r))
-    mul :: *Expr (l: *Expr, r: *Expr)   [Allocator] -> Expr::new(Expr::Mul(l, r))
-    div :: *Expr (l: *Expr, r: *Expr)   [Allocator] -> Expr::new(Expr::Div(l, r))
+    sym :: fn (a: *char) *Expr             [Allocator] -> Expr::new(Expr::Sym(a))
+    num :: fn (n: f64) *Expr               [Allocator] -> Expr::new(Expr::Num(n))
+    log :: fn (e: *Expr) *Expr             [Allocator] -> Expr::new(Expr::Log(e))
+    add :: fn (l: *Expr, r: *Expr) *Expr   [Allocator] -> Expr::new(Expr::Add(l, r))
+    sub :: fn (l: *Expr, r: *Expr) *Expr   [Allocator] -> Expr::new(Expr::Sub(l, r))
+    mul :: fn (l: *Expr, r: *Expr) *Expr   [Allocator] -> Expr::new(Expr::Mul(l, r))
+    div :: fn (l: *Expr, r: *Expr) *Expr   [Allocator] -> Expr::new(Expr::Div(l, r))
 }
 
 *Expr self :: impl {
-    print :: u0 () {
+    print :: fn () u0 {
         if not self { return }
 
         match *self {
@@ -63,7 +63,7 @@ Expr :: impl {
         }
     }
 
-    derive :: *Expr (sym: *char) [Allocator] {
+    derive :: fn (sym: *char) *Expr [Allocator] {
         if not self { return none }
         match *self {
             Expr::Sym(s) { return Expr::num(mem::strcmp(s, sym) as f64) },
@@ -98,14 +98,14 @@ Expr :: impl {
         return none
     }
 
-    println :: u0 () {
+    println :: fn () u0 {
         self.print()
         io::printf("\n")
     }
 }
 
-foreign readline :: *char (*char)
-repl :: u0 () [Allocator] {
+foreign readline :: fn (*char) *char
+repl :: fn () u0 [Allocator] {
     for {
         prompt := readline(">> ")
 
@@ -118,7 +118,7 @@ repl :: u0 () [Allocator] {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
 
     sym := "x"

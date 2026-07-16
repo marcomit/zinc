@@ -1,0 +1,33 @@
+Opt :: enum {
+    Some(i32)
+    None
+}
+
+// BUG: referencing a payload-less enum variant WITHOUT parentheses crashes the
+// compiler (SIGSEGV), instead of compiling or producing a clean error.
+//
+//   x := Opt::None      // CRASHES the compiler
+//   x := Opt::None()    // works fine
+//
+// Repro:
+//   zinc tests/bugs/02_payloadless_enum_no_parens_crash.zn -o /tmp/out
+// Observed:
+//   Error: signal received
+//   ... genType ... buildNestedFuncVar (zgen.c:2911) ... genFuncVars ...
+//
+// Root cause:
+//   In zsem.c (~line 1704) a static-access node `Opt::None` that resolves to an
+//   enum variant is retyped in place to NODE_ENUM_LIT, but the node's `call`
+//   union fields (call.callee / call.args) are never initialized. The node was
+//   originally a NODE_STATIC_ACCESS, so those union members hold stale/garbage
+//   data. Codegen's NODE_ENUM_LIT case (zgen.c buildNestedFuncVar) then iterates
+//   `node->call.args` (bogus non-zero length) and dereferences
+//   `variantType->strct.fields[i]->resolved` out of bounds -> garbage pointer
+//   0x2 passed to genType -> SIGSEGV.
+//
+//   The `Opt::None()` form goes through the NODE_CALL path which sets call.args
+//   to the (empty) argument list, so it does not crash.
+main :: fn () i32 {
+    x := Opt::None
+    return 0
+}

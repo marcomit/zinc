@@ -1,0 +1,27 @@
+c :: foreign { printf : fn (*char, ...) u0 }
+
+// BUG: decimal integer literals in the valid u64 range [2^63, 2^64 - 1] are
+// rejected by the lexer with a bogus "Invalid integer range" error.
+//
+// Repro:
+//   zinc tests/bugs/03_u64_literal_above_i64max_rejected.zn -o /tmp/out
+// Observed:
+//   error: Invalid integer range 9223372036
+//   (and for 18446744073709551615: "Invalid integer range 1844674407")
+//
+// Expected: this is a perfectly valid u64 value and should compile, printing
+//   9223372036854775808
+//
+// Root cause:
+//   src/zlex.c parseNumber() lexes every decimal literal with strtoll() (signed
+//   64-bit), whose maximum is 2^63 - 1 = 9223372036854775807. Any literal from
+//   2^63 up to the u64 max sets errno == ERANGE and is reported as invalid, even
+//   though it fits in u64. (Hex/binary literals use strtoull and do not hit this,
+//   though they are then truncated by the separate i32 codegen bug — see bug 01.)
+//   The error text also prints the overflowed accumulator ("9223372036") rather
+//   than the source literal.
+main :: fn () i32 {
+    x: u64 = 9223372036854775808
+    c::printf("%llu\n", x)
+    return 0
+}
