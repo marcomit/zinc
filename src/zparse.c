@@ -47,7 +47,6 @@ typedef ZNode *(*ZParseFunc)(ZParser *);
 
 ZType *parseType                            (ZParser *);
 ZNode *parseExpr                            (ZParser *);
-static ZType *parseFuncType                        (ZParser *);
 static ZNode *parse                         (ZParser *);
 static ZNode *parseIf                       (ZParser *);
 static ZNode *parseBreak                    (ZParser *);
@@ -64,6 +63,7 @@ static ZNode *parseAnonFunc                 (ZParser *);
 static ZNode *parseArrayLit                 (ZParser *);
 static ZNode *parseContinue                 (ZParser *);
 static ZNode *parseTupleLit                 (ZParser *);
+static ZType *parseFuncType                 (ZParser *);
 static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
 static ZNode *parseVarInferred              (ZParser *);

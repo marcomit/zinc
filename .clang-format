@@ -1,0 +1,7 @@
+# zinc is formatted by hand (see CONTRIBUTING.md "Code Style").
+# This file exists to neutralize clang-format integrations (format-on-save,
+# IDE extensions) so they cannot reformat the sources.
+DisableFormat: true
+# DisableFormat does not cover include sorting in all clang-format versions,
+# so switch it off explicitly.
+SortIncludes: Never

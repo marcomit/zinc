@@ -5,37 +5,37 @@
 #include <ctype.h>
 
 #define FNV_OFFSET 2166136261u
-#define FNV_PRIME	 16777619u
+#define FNV_PRIME    16777619u
 
 #define HASHMAP_TOK_LEN 256
 #define HASHMAP_TOK_MASK (HASHMAP_TOK_LEN - 1)
 
 typedef struct {
-	ZState *state;
+    ZState *state;
 
-	/* Pointer to the entire file */
-	char *program;
+    /* Pointer to the entire file */
+    char *program;
 
-	/* Pointer to the current text */
-	char *current;
+    /* Pointer to the current text */
+    char *current;
 
-	/* List of generated tokens */
-	ZToken **tokens;
+    /* List of generated tokens */
+    ZToken **tokens;
 
-	/* Pointer to the start of the current line */
-	char *line;
+    /* Pointer to the start of the current line */
+    char *line;
 
-	/* Current position of the text */
-	usize row, col;
+    /* Current position of the text */
+    usize row, col;
 
-	/* Track if newline was seen since last token */
-	bool sawNewline;
+    /* Track if newline was seen since last token */
+    bool sawNewline;
 
 } ZLexer;
 
 typedef struct {
-	const char *keyword;
-	ZTokenType type;
+    const char *keyword;
+    ZTokenType type;
 } KeywordEntry;
 
 /* hashmap with fixed size.
@@ -44,139 +44,139 @@ typedef struct {
 static KeywordEntry keywordEntries[HASHMAP_TOK_LEN];
 
 ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
-	ZTokenStream *self = zalloc(ZTokenStream);
-	self->list = tokens;
-	self->current = 0;
-	self->prev = prev;
-	self->end = veclen(tokens);
-	return self;
+    ZTokenStream *self = zalloc(ZTokenStream);
+    self->list = tokens;
+    self->current = 0;
+    self->prev = prev;
+    self->end = veclen(tokens);
+    return self;
 }
 
 // FNV-1a is defined to wrap modulo 2^32; the unsigned overflow is intentional
 // (and legal C), so exempt it from -fsanitize=unsigned-integer-overflow.
 NOSANITIZE("unsigned-integer-overflow")
 u32 hashStr(const char *buff, size_t len) {
-	u32 hash = FNV_OFFSET;
-	for (size_t i = 0; i < len; i++) {
-		hash ^= (u8)(buff[i]);
-		hash *= FNV_PRIME;
-	}
-	return hash;
+    u32 hash = FNV_OFFSET;
+    for (size_t i = 0; i < len; i++) {
+        hash ^= (u8)(buff[i]);
+        hash *= FNV_PRIME;
+    }
+    return hash;
 }
 
 static KeywordEntry keywords[] = {
-	#define DEF(id, str, _) { str, id },
+    #define DEF(id, str, _) { str, id },
 
-	#define TOK_FLOWS
-	#define TOK_TYPES
+    #define TOK_FLOWS
+    #define TOK_TYPES
 
-	#include "ztok.h"
+    #include "ztok.h"
 
-	#undef TOK_TYPES
-	#undef TOK_FLOWS
+    #undef TOK_TYPES
+    #undef TOK_FLOWS
 
-	#undef DEF
+    #undef DEF
 };
 
 static void initKeywords() {
-	static bool initialized = false;
-	if (initialized) return;
-	initialized = true;
-	usize len = sizeof(keywords) / sizeof(keywords[0]);
-	for (size_t i = 0; i < len; i++) {
-		const char *name = keywords[i].keyword;
-		u32 hash = hashStr(name, strlen(name)) & HASHMAP_TOK_MASK;
+    static bool initialized = false;
+    if (initialized) return;
+    initialized = true;
+    usize len = sizeof(keywords) / sizeof(keywords[0]);
+    for (size_t i = 0; i < len; i++) {
+        const char *name = keywords[i].keyword;
+        u32 hash = hashStr(name, strlen(name)) & HASHMAP_TOK_MASK;
 
-		while (keywordEntries[hash].keyword != NULL) {
-			hash = (hash + 1) & HASHMAP_TOK_MASK;
-		}
-		keywordEntries[hash].keyword = keywords[i].keyword;
-		keywordEntries[hash].type = keywords[i].type;
-	}
+        while (keywordEntries[hash].keyword != NULL) {
+            hash = (hash + 1) & HASHMAP_TOK_MASK;
+        }
+        keywordEntries[hash].keyword = keywords[i].keyword;
+        keywordEntries[hash].type = keywords[i].type;
+    }
 }
 
 ZTokenType findKeyword(const char *ident, size_t len) {
-	u32 hash = hashStr(ident, len) & HASHMAP_TOK_MASK;
+    u32 hash = hashStr(ident, len) & HASHMAP_TOK_MASK;
 
-	while (keywordEntries[hash].keyword != NULL) {
-		if (strlen(keywordEntries[hash].keyword) == len &&
-				memcmp(keywordEntries[hash].keyword, ident, len) == 0) {
-			return keywordEntries[hash].type;
-		}
-		hash = (hash + 1) & HASHMAP_TOK_MASK;
-	}
+    while (keywordEntries[hash].keyword != NULL) {
+        if (strlen(keywordEntries[hash].keyword) == len &&
+                memcmp(keywordEntries[hash].keyword, ident, len) == 0) {
+            return keywordEntries[hash].type;
+        }
+        hash = (hash + 1) & HASHMAP_TOK_MASK;
+    }
 
-	return TOK_IDENT;
+    return TOK_IDENT;
 }
 
 ZToken *maketoken(ZTokenType type, char *start, char *end) {
-	ZToken *self    = zalloc(ZToken);
-	self->type      = type;
-	self->start     = start;
+    ZToken *self    = zalloc(ZToken);
+    self->type      = type;
+    self->start     = start;
     self->end       = end;
-	return self;
+    return self;
 }
 
 ZToken *makeident(char *name, char *start, char *end) {
-	ZToken *self = maketoken(TOK_IDENT, start, end);
-	self->str = name;
-	return self;
+    ZToken *self = maketoken(TOK_IDENT, start, end);
+    self->str = name;
+    return self;
 }
 
 static ZToken *makeinteger(i64 value, char *start, char *end) {
-	ZToken *self = maketoken(TOK_INT_LIT, start, end);
-	self->integer = value;
-	return self;
+    ZToken *self = maketoken(TOK_INT_LIT, start, end);
+    self->integer = value;
+    return self;
 }
 
 static ZToken *makefloat(double value, char *start, char *end) {
-	ZToken *self = maketoken(TOK_FLOAT_LIT, start, end);
-	self->floating = value;
-	return self;
+    ZToken *self = maketoken(TOK_FLOAT_LIT, start, end);
+    self->floating = value;
+    return self;
 }
 
 static ZToken *makestring(char *str, char *start, char *end) {
-	ZToken *self = maketoken(TOK_STR_LIT, start, end);
-	self->str = str;
-	return self;
+    ZToken *self = maketoken(TOK_STR_LIT, start, end);
+    self->str = str;
+    return self;
 }
 
 bool tokeneq(ZToken *a, ZToken *b) {
-	if (!a || !b) return false;
-	if (a->type != b->type) return false;
-	
-	if (a->type == TOK_IDENT || a->type & TOK_FLOWS_MASK) {
-		return strcmp(a->str, b->str) == 0;
-	}
+    if (!a || !b) return false;
+    if (a->type != b->type) return false;
+    
+    if (a->type == TOK_IDENT || a->type & TOK_FLOWS_MASK) {
+        return strcmp(a->str, b->str) == 0;
+    }
 
-	return true;
+    return true;
 }
 
 static void addToken(ZLexer *l, ZToken *token) {
-	token->row      = l->row;
-	token->col      = l->col;
+    token->row      = l->row;
+    token->col      = l->col;
     token->filename = l->state->filename;
-	vecpush(l->tokens, token);
+    vecpush(l->tokens, token);
 }
 
 static void next(ZLexer *l) {
-	if (!l || !l->current || !*l->current) return;
-	if (*l->current == '\n') {
-		l->row++;
-		l->col = 0;
-		l->line = l->current + 1;
-		l->sawNewline = true;
-	} else {
-		l->col++;
-	}
-	l->current++;
+    if (!l || !l->current || !*l->current) return;
+    if (*l->current == '\n') {
+        l->row++;
+        l->col = 0;
+        l->line = l->current + 1;
+        l->sawNewline = true;
+    } else {
+        l->col++;
+    }
+    l->current++;
 }
 
 static void skip(ZLexer *l, u8 chars) {
-	while (chars) {
-		next(l);
-		chars--;
-	}
+    while (chars) {
+        next(l);
+        chars--;
+    }
 }
 
 static u32 decodeUtf8(char **src) {
@@ -275,14 +275,14 @@ static void pushCodepointUtf8(char **buff, u32 cp) {
 }
 
 static ZToken *parseString(ZLexer *l) {
-	if (*l->current != '"') return NULL;
-	next(l);
+    if (*l->current != '"') return NULL;
+    next(l);
 
-	char *start = l->current;
-	char *buff = NULL;
-	char *src = l->current;
+    char *start = l->current;
+    char *buff = NULL;
+    char *src = l->current;
 
-	while (*src && *src != '"') {
+    while (*src && *src != '"') {
         u32 cp;
         if (*src == '\\' && *(src + 1)) {
             src++;
@@ -291,7 +291,7 @@ static ZToken *parseString(ZLexer *l) {
             cp = decodeUtf8(&src);
         }
         pushCodepointUtf8(&buff, cp);
-	}
+    }
 
     if (*src == '"') src++;
     else {
@@ -306,7 +306,7 @@ static ZToken *parseString(ZLexer *l) {
     vecpush(buff, '\0');
     l->current = src;
 
-	return makestring(buff, start, l->current);
+    return makestring(buff, start, l->current);
 }
 
 static ZToken *makeRune(u32 codepoint, char *start, char *end) {
@@ -338,31 +338,31 @@ static ZToken *parseRune(ZLexer *l) {
 }
 
 static ZToken *parseSymbol(ZLexer *l) {
-	if (false) { /* Empty if statement only for macro definition*/ }
-	#define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) {         \
-		ZToken *tok = maketoken(id, l->current, l->current + strlen(s));        \
-		skip(l, strlen(s)); 											        \
-		tok->str = s; 													        \
-		return tok; 															\
-	}
+    if (false) { /* Empty if statement only for macro definition*/ }
+    #define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) {         \
+        ZToken *tok = maketoken(id, l->current, l->current + strlen(s));        \
+        skip(l, strlen(s));                                                     \
+        tok->str = s;                                                           \
+        return tok;                                                             \
+    }
 
-	#define TOK_SYMBOLS
-	#define TOK_FLOWS
-	#define TOK_TYPES
+    #define TOK_SYMBOLS
+    #define TOK_FLOWS
+    #define TOK_TYPES
 
-	#include "ztok.h"
+    #include "ztok.h"
 
-	#undef TOK_TYPES
-	#undef TOK_FLOWS
-	#undef TOK_SYMBOLS
-	#undef DEF
-	
-	error(l->state, veclast(l->tokens), "Unexpected symbol");
+    #undef TOK_TYPES
+    #undef TOK_FLOWS
+    #undef TOK_SYMBOLS
+    #undef DEF
+    
+    error(l->state, veclast(l->tokens), "Unexpected symbol");
 
 
-	ZToken *tok = maketoken(0, l->current, l->current);
-	tok->str = "";
-	return NULL;
+    ZToken *tok = maketoken(0, l->current, l->current);
+    tok->str = "";
+    return NULL;
 }
 
 static ZToken *parseHexNumber(ZLexer *l) {
@@ -375,9 +375,9 @@ static ZToken *parseHexNumber(ZLexer *l) {
 
     errno = 0;
     unsigned long long value = strtoull(start, NULL, 16);
-	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
+    if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return makeinteger((i64)value, start, l->current);
+    return makeinteger((i64)value, start, l->current);
 }
 
 static ZToken *parseBinNumber(ZLexer *l) {
@@ -389,173 +389,173 @@ static ZToken *parseBinNumber(ZLexer *l) {
 
     errno = 0;
     unsigned long long value = strtoull(start, NULL, 2);
-	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
+    if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return makeinteger((i64)value, start, l->current);
+    return makeinteger((i64)value, start, l->current);
 }
 
 static ZToken *parseNumber(ZLexer *l) {
-	char *start = l->current;
+    char *start = l->current;
     if (strncmp(start, "0x", 2) == 0) {
         return parseHexNumber(l);
     } else if (strncmp(start, "0b", 2) == 0) {
         return parseBinNumber(l);
     }
 
-	if (!isdigit(*l->current)) return NULL;
+    if (!isdigit(*l->current)) return NULL;
 
-	while (isdigit(*l->current)) next(l);
+    while (isdigit(*l->current)) next(l);
 
-	bool isFloat = false;
-	if (*l->current == '.' && isdigit(*(l->current + 1))) {
-		isFloat = true;
-		next(l);  // consume '.'
-		while (isdigit(*l->current)) next(l);
-	}
+    bool isFloat = false;
+    if (*l->current == '.' && isdigit(*(l->current + 1))) {
+        isFloat = true;
+        next(l);  // consume '.'
+        while (isdigit(*l->current)) next(l);
+    }
 
-	// Handle scientific notation (e.g., 1e10, 1.5e-3)
-	if (*l->current == 'e' || *l->current == 'E') {
-		isFloat = true;
-		next(l);  // consume 'e' or 'E'
-		if (*l->current == '+' || *l->current == '-') next(l);
-		if (!isdigit(*l->current)) {
-			error(l->state, veclast(l->tokens), "Expected exponent digits");
-			return NULL;
-		}
-		while (isdigit(*l->current)) next(l);
-	}
+    // Handle scientific notation (e.g., 1e10, 1.5e-3)
+    if (*l->current == 'e' || *l->current == 'E') {
+        isFloat = true;
+        next(l);  // consume 'e' or 'E'
+        if (*l->current == '+' || *l->current == '-') next(l);
+        if (!isdigit(*l->current)) {
+            error(l->state, veclast(l->tokens), "Expected exponent digits");
+            return NULL;
+        }
+        while (isdigit(*l->current)) next(l);
+    }
 
-	if (isFloat) {
+    if (isFloat) {
         errno = 0;
-		double value = strtod(start, NULL);
-		if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid float range %.10s", start);
-		return makefloat(value, start, l->current);
-	}
+        double value = strtod(start, NULL);
+        if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid float range %.10s", start);
+        return makefloat(value, start, l->current);
+    }
 
     errno = 0;
-	long long value = strtoll(start, NULL, 10);
-	if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
+    long long value = strtoll(start, NULL, 10);
+    if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
 
-	return makeinteger(value, start, l->current);
+    return makeinteger(value, start, l->current);
 }
 
 static ZToken *parseLiteral(ZLexer *l) {
-	if (!isalpha(*l->current) && *l->current != '_') return NULL;
+    if (!isalpha(*l->current) && *l->current != '_') return NULL;
 
-	char *start = l->current;
-	while (isalnum(*l->current) || *l->current == '_') next(l);
+    char *start = l->current;
+    while (isalnum(*l->current) || *l->current == '_') next(l);
 
-	size_t len = l->current - start;
-	ZTokenType type = findKeyword(start, len);
+    size_t len = l->current - start;
+    ZTokenType type = findKeyword(start, len);
 
-	if (type == TOK_IDENT) {
-		return makeident(strndup(start, len), start, l->current);
-	}
+    if (type == TOK_IDENT) {
+        return makeident(strndup(start, len), start, l->current);
+    }
 
-	// Also set str field for keywords so getMacroByName can compare them
-	ZToken *tok = maketoken(type, start, l->current);
-	tok->str = strndup(start, len);
-	return tok;
+    // Also set str field for keywords so getMacroByName can compare them
+    ZToken *tok = maketoken(type, start, l->current);
+    tok->str = strndup(start, len);
+    return tok;
 }
 
 static inline void skipSpaces(ZLexer *l) {
-	while (*l->current && isspace(*l->current)) next(l);
+    while (*l->current && isspace(*l->current)) next(l);
 }
 
 static void skipInlineComments(ZLexer *l) {
-	if (!*l->current || !*(l->current + 1)) return;
-	if (*l->current != '/' || *(l->current + 1) != '/') return;
+    if (!*l->current || !*(l->current + 1)) return;
+    if (*l->current != '/' || *(l->current + 1) != '/') return;
 
-	while (*l->current && *l->current != '\n') next(l);
-	if (*l->current) next(l);
+    while (*l->current && *l->current != '\n') next(l);
+    if (*l->current) next(l);
 }
 
 static void skipMultilineComments(ZLexer *l) {
-	if (!*l->current || !*(l->current + 1)) return;
-	if (*l->current != '/' || *(l->current + 1) != '*') return;
+    if (!*l->current || !*(l->current + 1)) return;
+    if (*l->current != '/' || *(l->current + 1) != '*') return;
 
-	next(l); next(l);
-	while (*l->current && l->current + 1) {
-		if (*l->current == '*' && *(l->current + 1) == '/') break;
-		next(l);
-	}
-	if (!l->current[0] || !l->current[1]) {
-		error(l->state, veclast(l->tokens), "Unterminated multiline comment");
-		return;
-	}
+    next(l); next(l);
+    while (*l->current && l->current + 1) {
+        if (*l->current == '*' && *(l->current + 1) == '/') break;
+        next(l);
+    }
+    if (!l->current[0] || !l->current[1]) {
+        error(l->state, veclast(l->tokens), "Unterminated multiline comment");
+        return;
+    }
 
-	next(l); next(l);
+    next(l); next(l);
 }
 
 ZLexer *makelexer(ZState *state) {
-	char *program = readfile(state->filename);
+    char *program = readfile(state->filename);
 
-	if (!program) {
+    if (!program) {
         error(state, NULL, strerror(errno));
         return NULL;
     }
 
-	ZLexer *self = zalloc(ZLexer);
+    ZLexer *self = zalloc(ZLexer);
 
-	self->row = 1;
-	self->col = 0;
-	self->tokens = NULL;
-	self->program = program;
-	self->current = program;
-	self->line = program;
-	self->state = state;
-	self->sawNewline = true;  // First token is "after" a newline
-	return self;
+    self->row           = 1;
+    self->col           = 0;
+    self->tokens        = NULL;
+    self->program       = program;
+    self->current       = program;
+    self->line          = program;
+    self->state         = state;
+    self->sawNewline    = true;  // First token is "after" a newline
+    return self;
 }
 
 ZToken **ztokenize(ZState *state) {
-	state->currentPhase = Z_PHASE_LEXICAL;
-	ZLexer *l = makelexer(state);
+    state->currentPhase = Z_PHASE_LEXICAL;
+    ZLexer *l = makelexer(state);
 
-	if (!l) return NULL;
+    if (!l) return NULL;
 
-	ZToken *curr;
+    ZToken *curr;
 
-	initKeywords();
+    initKeywords();
 
-	while (*l->current) {
-		curr = NULL;
-		
-		while (true) {
-			char *start = l->current;
-			skipSpaces(l);
-			skipInlineComments(l);
-			skipMultilineComments(l);
-			if (l->current == start) break;
-		}
+    while (*l->current) {
+        curr = NULL;
+        
+        while (true) {
+            char *start = l->current;
+            skipSpaces(l);
+            skipInlineComments(l);
+            skipMultilineComments(l);
+            if (l->current == start) break;
+        }
 
-		if (!*l->current) break;
+        if (!*l->current) break;
 
-		char *sourcePtr = l->current;
-		char *sourceLinePtr = l->line;
-		if (*l->current == '"') {
-			curr = parseString(l);
-		} else if (*l->current == '\'') {
-			curr = parseRune(l);
-			if (!curr) curr = parseSymbol(l);
-		} else if (isalpha(*l->current) || *l->current == '_') {
-			curr = parseLiteral(l);
-		} else if (isdigit(*l->current)) {
-			curr = parseNumber(l);
-		} else {
-			curr = parseSymbol(l);
-		}
+        char *sourcePtr = l->current;
+        char *sourceLinePtr = l->line;
+        if (*l->current == '"') {
+            curr = parseString(l);
+        } else if (*l->current == '\'') {
+            curr = parseRune(l);
+            if (!curr) curr = parseSymbol(l);
+        } else if (isalpha(*l->current) || *l->current == '_') {
+            curr = parseLiteral(l);
+        } else if (isdigit(*l->current)) {
+            curr = parseNumber(l);
+        } else {
+            curr = parseSymbol(l);
+        }
 
-		if (!curr) {
-			error(l->state, veclast(l->tokens), "Unexpected symbol\n");
-			next(l);
-		} else {
-			curr->sourceLinePtr = sourceLinePtr;
-			curr->sourcePtr  		= sourcePtr;
-			curr->newlineBefore = l->sawNewline;
-			l->sawNewline = false;
-			addToken(l, curr);
-		}
-	}
-	return l->tokens;
+        if (!curr) {
+            error(l->state, veclast(l->tokens), "Unexpected symbol\n");
+            next(l);
+        } else {
+            curr->sourceLinePtr = sourceLinePtr;
+            curr->sourcePtr     = sourcePtr;
+            curr->newlineBefore = l->sawNewline;
+            l->sawNewline       = false;
+            addToken(l, curr);
+        }
+    }
+    return l->tokens;
 }
