@@ -3068,7 +3068,7 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
 
         case NODE_MODULE: {
             ZThreadSem *import = getRegisteredModule(
-                ctx->semantic, node->module.name
+                ctx->semantic, node->module.filename
             );
 
             if (!import) import = discoverGlobalScope(ctx, node);

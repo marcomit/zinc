@@ -2303,7 +2303,7 @@ static ZNode *getModuleByName(
     bool canVisit               = visit(parser->state, &filename, external);
     ZNode *node                 = makenode(NODE_MODULE);
     if (!canVisit) {
-        node->module.name       = filename;
+        node->module.filename   = filename;
         node->module.root       = NULL;
         node->module.cached     = getCachedModule(parser, filename);
         node->module.pub        = public;
@@ -2329,6 +2329,13 @@ static ZNode *getModuleByName(
 }
 
 static ZNode *parseImport(ZParser *parser, bool public) {
+    ZToken *name = NULL;
+    if (check(parser, TOK_IDENT) &&
+        checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
+        name = consume(parser);
+        consume(parser);
+    }
+
     expect(parser, TOK_MODULE);
 
     bool isStd = match(parser, TOK_LT);
@@ -2351,7 +2358,9 @@ static ZNode *parseImport(ZParser *parser, bool public) {
 
     if (isStd) expect(parser, TOK_GT);
 
-    return getModuleByName(parser, module, isStd, public);
+    ZNode *node = getModuleByName(parser, module, isStd, public);
+    if (node) node->module.name = name;
+    return node;
 }
 
 static ZNode *parseTypedef(ZParser *parser, ZAnnotation **annotations, bool public) {
@@ -2698,7 +2707,7 @@ static ZNode *parseModule(ZParser *parser) {
     ZNode *root = makenode(NODE_MODULE);
 
     root->module.root = NULL;
-    root->module.name = parser->state->filename;
+    root->module.filename = parser->state->filename;
 
     while (canPeek(parser)) {
         ZNode *child = parse(parser);
@@ -2930,6 +2939,7 @@ static ZNode *parse(ZParser *parser) {
     case TOK_MACRO:     return skipMacro        (parser, public);
     case TOK_STRUCT:    return parseStructDecl  (parser, annotations, public);
     case TOK_ENUM:      return parseEnumDecl    (parser, annotations, public);
+    case TOK_MODULE:    return parseImport      (parser, public);
     default: {
 
         ZNode *res = tryParse(

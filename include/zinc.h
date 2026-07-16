@@ -498,34 +498,36 @@ struct ZNode {
             ZToken  *identifier;
         } field;
 
-        struct {
-            ZType   *ret;
-            ZToken  *name;
-            char    *mangled;
+        union {
+            struct {
+                ZType   *ret;
+                ZToken  *name;
+                char    *mangled;
 
-            /* Always parsed as Z_TYPE_PRIMITIVE. */
-            ZType   *base;
+                /* Always parsed as Z_TYPE_PRIMITIVE. */
+                ZType   *base;
 
-            ZNode   **args;
+                ZNode   **args;
 
-            ZNode   *body;
+                ZNode   *body;
 
-            /* NODE_FIELD */
-            ZNode   *receiver;
+                /* NODE_FIELD */
+                ZNode   *receiver;
 
-            ZType   **generics;
+                ZType   **generics;
 
-            ZAnnotation **annotations;
-            ZNode   **capabilities;
+                ZAnnotation **annotations;
+                ZNode   **capabilities;
 
-            bool    pub;
-        } funcDef;
+                bool    pub;
+            } funcDef;
 
-        struct {
-            ZToken      *name;
-            bool        pub;
-            ZAnnotation **annotations;
-        } foreignDecl;
+            struct {
+                ZToken      *name;
+                bool        pub;
+                ZAnnotation **annotations;
+            } foreignDecl;
+        };
 
         struct {
             ZNode   *callee;
@@ -627,7 +629,11 @@ struct ZNode {
         } typeDef;
 
         struct {
-            char        *name;
+            /* Named imports. */
+            ZToken *name;
+
+            /* Full path. */
+            char        *filename;
 
             /* List of file-level declarations.
              * It is NULL if the module is already parsed
