@@ -1373,26 +1373,52 @@ static ZNode *parseReturn(ZParser *parser) {
 }
 
 static ZAnnotation *parseAnnotation(ZParser *parser) {
-    guard(canPeek(parser));
-    guard(check(parser, TOK_IDENT) || peek(parser)->type & TOK_OVERLOADABLE);
+    ZToken *curr        = peek(parser);
+    ZAnnotation *arg    = zalloc(ZAnnotation);
+    arg->tok            = curr;
 
-    ZToken *name                = consume(parser);
-    ZAnnotation **annotations   = NULL;
-    ZAnnotation *annotation     = NULL;
+    if (curr->type & TOK_LITERAL) {
+        arg->kind       = Z_ANN_LIT;
+        arg->literal    = consume(parser);
+        return arg;
+    }
+
+    if (curr->type != TOK_IDENT) return NULL;
+
+    curr = consume(parser);
+
+    if (check(parser, TOK_COMMA) || check(parser, TOK_RPAREN)) {
+        arg->kind   = Z_ANN_IDENT;
+        arg->ident  = curr;
+        return arg;
+    }
+
+    if (match(parser, TOK_EQ)) {
+        ZAnnotation *value = parseAnnotation(parser);
+        if (!value) return NULL;
+        arg->kind           = Z_ANN_ASSIGN;
+        arg->assign.name    = curr;
+        arg->assign.value   = value;
+        return arg;
+    }
 
     if (match(parser, TOK_LPAREN)) {
+        arg->kind   = Z_ANN_NESTED;
+        arg->nested = NULL;
+        if (match(parser, TOK_RPAREN)) return arg;
+
         do {
-            annotation = parseAnnotation(parser);
-            if (!annotation) break;
-            vecpush(annotations, annotation);
-        } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
-        expect(parser, TOK_RPAREN);
+            ZAnnotation *val = parseAnnotation(parser);
+            vecpush(arg->nested, val);
+        } while(!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+
+        if (!match(parser, TOK_RPAREN)) {
+            return NULL;
+        }
+        return arg;
     }
-    annotation          = zalloc(ZAnnotation);
-    annotation->name    = name;
-    annotation->args    = annotations;
-    annotation->used    = false;
-    return annotation;
+
+    return NULL;
 }
 
 static ZAnnotation **parseAnnotations(ZParser *parser) {

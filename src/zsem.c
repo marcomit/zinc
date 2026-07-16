@@ -1645,23 +1645,23 @@ static ZType* resolveIdentifier(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
 
 static bool hasOverloadAnnotation(
     ZThreadSem *ctx, ZAnnotation **annotations, ZTokenType op) {
-    for (usize i = 0; i < veclen(annotations); i++) {
-        ZAnnotation *annotation = annotations[i];
-        if (strcmp(annotation->name->str, "overload") != 0) continue;
-        if (veclen(annotation->args) != 1) {
-            error(ctx->state, annotation->name,
-                "Annotation 'overload' must contain 1 argument"
-            );
-        } else if (!(annotation->args[0]->name->type & TOK_OVERLOADABLE)) {
-            error(ctx->state, annotation->name,
-                "'%s' is not an overridable operator",
-                stoken(annotation->args[0]->name)
-            );
-        } else if (annotation->args[0]->name->type == op) {
-            annotation->used = true;
-            return true;
-        }
-    }
+    // for (usize i = 0; i < veclen(annotations); i++) {
+    //     ZAnnotation *annotation = annotations[i];
+    //     if (strcmp(annotation->name->str, "overload") != 0) continue;
+    //     if (veclen(annotation->args) != 1) {
+    //         error(ctx->state, annotation->name,
+    //             "Annotation 'overload' must contain 1 argument"
+    //         );
+    //     } else if (!(annotation->args[0]->name->type & TOK_OVERLOADABLE)) {
+    //         error(ctx->state, annotation->name,
+    //             "'%s' is not an overridable operator",
+    //             stoken(annotation->args[0]->name)
+    //         );
+    //     } else if (annotation->args[0]->name->type == op) {
+    //         annotation->used = true;
+    //         return true;
+    //     }
+    // }
     return false;
 }
 

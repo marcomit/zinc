@@ -3499,52 +3499,54 @@ static void LLVMAddFuncAttribute(ZCodegen *ctx,
     );
 }
 
+// TODO: Create a function to query annotations
 static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
-    ZAnnotation **annotations = f->funcDef.annotations;
-
-    if (strcmp(f->funcDef.mangled, "main") == 0) {
-        LLVMSetLinkage(func, LLVMExternalLinkage);
-    } else if (f->funcDef.pub) {
-        LLVMSetLinkage(func, LLVMWeakODRLinkage);
-    } else {
-        LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
-    }
-
-    i32 inl = hasAnnotation(annotations, "inline");
-
-    if (inl == -1) goto cold;
-
-    ZAnnotation *annotation = annotations[inl];
-
-    usize argLen = veclen(annotation->args);
-    if (argLen == 0) {
-        LLVMAddFuncAttribute(ctx, func, "inlinehint");
-    } else if (argLen == 1) {
-        const char *arg = annotation->args[0]->name->str;
-
-        if (strcmp(arg, "always") == 0) {
-            LLVMAddFuncAttribute(ctx, func, "alwaysinline");
-        } else if (strcmp(arg, "never") == 0) {
-            LLVMAddFuncAttribute(ctx, func, "noinline");
-        } else {
-            error(ctx->state,
-                annotation->name,
-                "inline supports only 'never', 'always' as arguments"
-            );
-        }
-    } else {
-        error(ctx->state,
-            annotation->name,
-            "inline annotation expects 0 or 1 arguments"
-        );
-    }
-
-cold:
-    if (hasAnnotation(annotations, "cold") != -1) {
-        LLVMAddFuncAttribute(ctx, func, "cold");
-    }
-
-    checkUnusedAnnotations(ctx, f->funcDef.annotations);
+    (void)ctx; (void)f; (void)func;
+//     ZAnnotation **annotations = f->funcDef.annotations;
+//
+//     if (strcmp(f->funcDef.mangled, "main") == 0) {
+//         LLVMSetLinkage(func, LLVMExternalLinkage);
+//     } else if (f->funcDef.pub) {
+//         LLVMSetLinkage(func, LLVMWeakODRLinkage);
+//     } else {
+//         LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
+//     }
+//
+//     i32 inl = hasAnnotation(annotations, "inline");
+//
+//     if (inl == -1) goto cold;
+//
+//     ZAnnotation *annotation = annotations[inl];
+//
+//     usize argLen = veclen(annotation->args);
+//     if (argLen == 0) {
+//         LLVMAddFuncAttribute(ctx, func, "inlinehint");
+//     } else if (argLen == 1) {
+//         const char *arg = annotation->args[0]->name->str;
+//
+//         if (strcmp(arg, "always") == 0) {
+//             LLVMAddFuncAttribute(ctx, func, "alwaysinline");
+//         } else if (strcmp(arg, "never") == 0) {
+//             LLVMAddFuncAttribute(ctx, func, "noinline");
+//         } else {
+//             error(ctx->state,
+//                 annotation->name,
+//                 "inline supports only 'never', 'always' as arguments"
+//             );
+//         }
+//     } else {
+//         error(ctx->state,
+//             annotation->name,
+//             "inline annotation expects 0 or 1 arguments"
+//         );
+//     }
+//
+// cold:
+//     if (hasAnnotation(annotations, "cold") != -1) {
+//         LLVMAddFuncAttribute(ctx, func, "cold");
+//     }
+//
+//     checkUnusedAnnotations(ctx, f->funcDef.annotations);
 }
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
