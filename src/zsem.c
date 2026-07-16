@@ -1464,17 +1464,18 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             callee->resolved    = resolved;
             curr->resolved      = resolved->func.ret;
         } else if (resolved->kind == Z_TYPE_ENUM) {
-            ZType **variants      = resolved->enm.fields;
-            ZNode **fields        = NULL;
+            ZType **variants    = resolved->enm.fields;
+            ZNode **fields      = NULL;
+            ZToken *prop        = veclast(curr->staticAccess.chain);
             for (usize i = 0; i < veclen(resolved->enm.fields) && !fields; i++) {
-                if (tokeneq(variants[i]->strct.name, callee->staticAccess.prop)) {
+                if (tokeneq(variants[i]->strct.name, prop)) {
                     fields = variants[i]->strct.fields;
                 }
             }
             if (!fields) {
                 error(ctx->state, callee->tok,
                     "Invalid enum variant '%s'",
-                    stoken(callee->staticAccess.prop)
+                    stoken(prop)
                 );
                 return NULL;
             }
@@ -1921,36 +1922,39 @@ static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     return baseSym->type;
 }
 
+static ZType *_resolveStaticAccess(ZThreadSem *ctx, ZToken *base, ZToken *prop) {
+    ZSymbol *baseSym = resolve(ctx, base);
+}
+
 static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZToken *base            = curr->staticAccess.base;
     ZToken *prop            = curr->staticAccess.prop;
     curr->staticAccess.func = NULL;
 
-    if (base && base->type == TOK_DOT) {
-        ZType *want = resolveTypeRef(ctx, inferred);
-        if (!want) {
-            error(ctx->state, base, "Can't be inferred");
-            return NULL;
-        }
-
-        if (want->kind == Z_TYPE_ENUM) {
-            curr->staticAccess.base = want->enm.name;
-            return resolveEnumLit(ctx, curr, want) ? want : NULL;
-        } else if (want->kind == Z_TYPE_STRUCT) {
-            curr->staticAccess.base = want->strct.name;
-            ZNode *m = resolveStaticFuncTable(ctx, want->strct.name, prop);
-            if (m) {
-                curr->staticAccess.func = m;
-                return m->resolved;
-            }
-        }
-        error(ctx->state, base,
-            "'.%s' can't be inferred from type '%s'",
-            prop->str, stype(want)
-        );
-        return NULL;
-    } else {
-    }
+    // if (base && base->type == TOK_DOT) {
+    //     ZType *want = resolveTypeRef(ctx, inferred);
+    //     if (!want) {
+    //         error(ctx->state, base, "Can't be inferred");
+    //         return NULL;
+    //     }
+    //
+    //     if (want->kind == Z_TYPE_ENUM) {
+    //         curr->staticAccess.base = want->enm.name;
+    //         return resolveEnumLit(ctx, curr, want) ? want : NULL;
+    //     } else if (want->kind == Z_TYPE_STRUCT) {
+    //         curr->staticAccess.base = want->strct.name;
+    //         ZNode *m = resolveStaticFuncTable(ctx, want->strct.name, prop);
+    //         if (m) {
+    //             curr->staticAccess.func = m;
+    //             return m->resolved;
+    //         }
+    //     }
+    //     error(ctx->state, base,
+    //         "'.%s' can't be inferred from type '%s'",
+    //         prop->str, stype(want)
+    //     );
+    //     return NULL;
+    // }
 
     ZSymbol *baseSym = resolve(ctx, base);
     if (!baseSym) {

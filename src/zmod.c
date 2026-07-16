@@ -804,6 +804,18 @@ void printNode(ZNode *node, u8 depth) {
     printf("\n");
 }
 
+static inline void sanitize(char *source, char **buff) {
+    while (*source) {
+        if (isalnum(*source)) {
+            vecpush(*buff, *source);
+        } else {
+            vecpush(*buff, '_');
+            vecpush(*buff, '_');
+        }
+        source++;
+    }
+}
+
 static char *_mangler(char *segments[], const char *prefix) {
     char *mangled = NULL;
 
@@ -815,7 +827,7 @@ static char *_mangler(char *segments[], const char *prefix) {
             vecpush(mangled, ('0' + tmp % 10));
             tmp /= 10;
         }
-        vecunion(mangled, segments[i], (usize)len);
+        sanitize(segments[i], &mangled);
     }
     vecpush(mangled, '\0');
     return mangled;

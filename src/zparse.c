@@ -324,6 +324,29 @@ static ZNode *parseArrayInit(ZParser *parser) {
     return node;
 }
 
+static ZNode *parseStaticAccess(ZParser *parser) {
+    ZNode *node                 = makenode(NODE_STATIC_ACCESS);
+    node->tok                   = peek(parser);
+    ZToken **chain              = NULL;
+
+    do {
+        if (!check(parser, TOK_IDENT)) break;
+
+        ZToken *prop = consume(parser);
+        vecpush(chain, prop);
+    } while (match(parser, TOK_DOUBLE_COLON));
+
+    char *segments[] = {
+        chain[veclen(chain) - 2]->str,
+        chain[veclen(chain) - 1]->str,
+        NULL
+    };
+
+    node->staticAccess.mangled  = mangler(segments);
+    node->staticAccess.chain    = chain;
+    return node;
+}
+
 static ZNode *parsePrimary(ZParser *parser) {
     ZToken *start = peek(parser);
     guard(start);
@@ -351,20 +374,7 @@ static ZNode *parsePrimary(ZParser *parser) {
                 error(parser->state, start, "Expected static call or enum literal");
                 return NULL;
             }
-            ZNode *node             = makenode(NODE_STATIC_ACCESS);
-            node->tok               = start;
-            node->staticAccess.base = consume(parser);
-            consume(parser);
-            node->staticAccess.prop = consume(parser);
-
-            char *segments[] = {
-                node->staticAccess.base->str,
-                node->staticAccess.prop->str,
-                NULL
-            };
-
-            node->staticAccess.mangled = mangler(segments);
-            return node;
+            return parseStaticAccess(parser);
         }
         if (!parser->noStructLit && checkAhead(parser, TOK_LBRACKET, 1)) {
             ZNode *structlit = tryParse(parser, parseStructLit(parser));
@@ -396,11 +406,12 @@ static ZNode *parsePrimary(ZParser *parser) {
         return parseBlock(parser);
     } else if (check(parser, TOK_DOT)) {
         if (checkAhead(parser, TOK_IDENT, 1)) {
-            ZToken *base = consume(parser);
+            ZToken *base = peek(parser);
             ZNode *node                 = makenode(NODE_STATIC_ACCESS);
 
-            node->staticAccess.base     = base;
-            node->staticAccess.prop     = consume(parser);
+            node->staticAccess.chain     = NULL;
+            vecpush(node->staticAccess.chain, consume(parser));
+            vecpush(node->staticAccess.chain, consume(parser));
             node->staticAccess.mangled  = NULL;
             node->tok                   = base;
 

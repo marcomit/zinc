@@ -242,6 +242,11 @@ struct ZType {
     ZToken      *tok;
 
     union {
+        struct {
+            ZType   *base;
+            ZToken  *prop;
+        } space;
+
         // For PRIMITIVE (e.g. void or int)
         struct {
             ZToken  *token;
@@ -584,8 +589,7 @@ struct ZNode {
         } memberAccess;
 
         struct {
-            ZToken      *base;
-            ZToken      *prop;
+            ZToken      **chain;
             ZNode       *func;
             char        *mangled;
         } staticAccess;
