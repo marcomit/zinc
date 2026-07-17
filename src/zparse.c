@@ -69,6 +69,7 @@ static ZNode *parseStructLit                (ZParser *);
 static ZNode *parseVarInferred              (ZParser *);
 static ZNode *parseVarDefTyped              (ZParser *);
 static ZNode *parseBlockOrInline            (ZParser *);
+static ZNode *_parseStructLit               (ZParser *, ZToken **);
 
 /* File-level parsing functions */
 static ZNode *skipMacro                     (ZParser *, bool);
@@ -561,6 +562,12 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     case TOK_CAST:      res = parseCast         (parser, previous); break;
     case TOK_LPAREN:    res = parseFuncCall     (parser, previous); break;
     case TOK_LSBRACKET: res = parseSquareBracket(parser, previous); break;
+    case TOK_LBRACKET:
+        if (previous->type == NODE_STATIC_ACCESS) {
+            ZNode *structlit = tryParse(parser,
+                    _parseStructLit(parser, previous->staticAccess.chain));
+            if (structlit) return structlit;
+        }
     default:            return NULL;
     }
 
@@ -2206,12 +2213,7 @@ static ZNode *parseArrayLit(ZParser *parser) {
     return node;
 }
 
-static ZNode *parseStructLit(ZParser *parser) {
-    if (parser->noStructLit) return NULL;
-    if (!check(parser, TOK_IDENT) &&
-        !check(parser, TOK_DOT)) return NULL;
-
-    ZToken *ident = consume(parser);
+static ZNode *_parseStructLit(ZParser *parser, ZToken **chain) {
     ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
@@ -2227,11 +2229,11 @@ static ZNode *parseStructLit(ZParser *parser) {
     expect(parser, TOK_LBRACKET);
 
     ZNode *structlit = makenode(NODE_STRUCT_LIT);
-    structlit->structlit.ident      = ident;
+    structlit->structlit.chain      = chain;
     structlit->structlit.generics   = generics;
-    structlit->tok                  = ident;
+    structlit->tok                  = veclast(chain);
 
-    while (true) {
+    do {
         if (!check(parser, TOK_IDENT)) break;
         ZVarDestructPattern *node = makeDestructIdent(consume(parser));
 
@@ -2249,15 +2251,29 @@ static ZNode *parseStructLit(ZParser *parser) {
 
         ZNode *var = makenodevar(node, NULL, expr);
         vecpush(structlit->structlit.fields, var);
-        if (check(parser, TOK_RBRACKET)) break;
-        if (!match(parser, TOK_COMMA)) {
-            break;
-        }
-    }
+    } while (!check(parser, TOK_RBRACKET) && match(parser, TOK_COMMA));
 
     expect(parser, TOK_RBRACKET);
 
     return structlit;
+}
+
+static ZNode *parseStructLit(ZParser *parser) {
+    if (parser->noStructLit) return NULL;
+    if (!check(parser, TOK_IDENT) &&
+        !check(parser, TOK_DOT)) return NULL;
+
+    ZToken **chain = NULL;
+
+    do {
+        ZToken *ident = consume(parser);
+        vecpush(chain, ident);
+    } while (   !check(parser, TOK_LBRACKET)    &&
+                !check(parser, TOK_LSBRACKET)   &&
+                match(parser, TOK_DOUBLE_COLON) &&
+                check(parser, TOK_IDENT)        );
+
+    return _parseStructLit(parser, chain);
 }
 
 static ZNode **getCachedModule(ZParser *parser, char *filename) {

@@ -1379,7 +1379,8 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
-    ZLLVMStack *stack = getStackValue(ctx, node);
+    ZLLVMStack *stack   = getStackValue(ctx, node);
+    ZToken *variant     = veclast(node->call.callee->staticAccess.chain);
     if (!stack) {
         error(ctx->state, node->tok, "Missing stack value");
         return NULL;
@@ -1387,11 +1388,11 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
 
     i32 index = enumIndexField(
         node->resolved,
-        node->call.callee->staticAccess.prop
+        variant
     );
 
     if (index == -1) {
-        error(ctx->state, node->staticAccess.prop, "Field not found");
+        error(ctx->state, variant, "Field not found");
         return NULL;
     }
 
@@ -3264,7 +3265,7 @@ static void buildNestedFuncVar(
         break;
     }
     case NODE_ENUM_LIT: {
-        ZToken *variant = node->call.callee->staticAccess.prop;
+        ZToken *variant = veclast(node->call.callee->staticAccess.chain);
         i32 variantIndex = enumIndexField(
             node->resolved, variant
         );

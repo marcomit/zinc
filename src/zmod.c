@@ -668,7 +668,7 @@ void printNode(ZNode *node, u8 depth) {
         }
         break;
     case NODE_STRUCT_LIT:
-        printToken(node->structlit.ident);
+        printToken(veclast(node->structlit.chain));
         printf("\n");
         for (usize i = 0; i < veclen(node->structlit.fields); i++) {
             printNode(node->structlit.fields[i], depth);
@@ -706,8 +706,13 @@ void printNode(ZNode *node, u8 depth) {
         break;
 
     case NODE_STATIC_ACCESS:
-        printf("%s::%s",
-                stoken(node->staticAccess.base), stoken(node->staticAccess.prop));
+        for (usize i = 0; i < veclen(node->staticAccess.chain); i++) {
+            printf("%s", stoken(node->staticAccess.chain[i]));
+            if (i != veclen(node->staticAccess.chain) - 1) {
+                printf("::");
+            }
+        }
+        printf("\n");
         break;
 
 

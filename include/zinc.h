@@ -62,6 +62,7 @@ static ZType *none      = NULL;
 static ZType *u0Type    = NULL;
 static ZType *u1Type    = NULL;
 static ZType *u64Type   = NULL;
+static ZType *modType   = NULL;
 
 typedef enum {
     Z_ERROR,
@@ -620,7 +621,7 @@ struct ZNode {
         ZType           *arrayinit;
 
         struct {
-            ZToken      *ident;
+            ZToken      **chain;
             ZNode       **fields;
             ZType       **generics;
         } structlit;
