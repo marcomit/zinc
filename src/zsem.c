@@ -1165,11 +1165,11 @@ static ZType *resolveMemberAccess(ZThreadSem *, ZNode *, ZType *);
 static ZType *resolveArrSubscript(ZThreadSem *, ZNode *, ZType *);
 
 static ZNode **resolveModuleStaticFuncTable(ZFuncTable **tables,
-    ZToken *base, ZToken *prop) {
+    ZType *base, ZToken *prop) {
     for (usize i = 0; i < veclen(tables); i++) {
         ZFuncTable *table = tables[i];
         if (table->base->kind != Z_TYPE_PRIMITIVE       ||
-            !tokeneq(table->base->primitive.token, base)) continue;
+            !typesEqual(table->base, base)) continue;
 
         if (!hashset_has(table->seenStaticFuncs, prop->str)) return NULL;
         return table->staticFuncDef;
@@ -1178,7 +1178,7 @@ static ZNode **resolveModuleStaticFuncTable(ZFuncTable **tables,
 }
 
 static ZNode *resolveStaticFuncTable(ZThreadSem *ctx,
-    ZToken *base, ZToken *prop) {
+    ZType *base, ZToken *prop) {
     ZNode **staticFuncs = resolveModuleStaticFuncTable(
         ctx->funcs, base, prop);
 
@@ -1187,7 +1187,7 @@ static ZNode *resolveStaticFuncTable(ZThreadSem *ctx,
     ZNode *node     = NULL;
     for (usize i = 0; i < veclen(staticFuncs) && !node; i++) {
         ZNode *func = staticFuncs[i];
-        if (tokeneq(func->funcDef.base->primitive.token, base) &&
+        if (typesEqual(func->funcDef.base, base) &&
             tokeneq(func->funcDef.name, prop)) {
             node    = func;
         }
@@ -1922,125 +1922,118 @@ static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     return baseSym->type;
 }
 
-static ZType *_resolveStaticAccess(ZThreadSem *ctx, ZToken *base, ZToken *prop) {
-    ZSymbol *baseSym = resolve(ctx, base);
+static ZType *_resolveStaticAccess(ZThreadSem *ctx, ZType *base, ZToken *prop) {
+    if (!base) return NULL;
+    switch (base->kind) {
+    Z_TYPE_NAMESPACE: break;
+    default: return NULL;
+    }
+    return NULL;
 }
 
 static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    ZToken *base            = curr->staticAccess.base;
-    ZToken *prop            = curr->staticAccess.prop;
+    ZToken **chain          = curr->staticAccess.chain;
+    ZSymbol *baseSym        = resolve(ctx, chain[0]);
+    ZToken *base            = chain[0];
+    ZType *baseType         = NULL;
     curr->staticAccess.func = NULL;
+    ZNode *staticMethod     = NULL;
 
-    // if (base && base->type == TOK_DOT) {
-    //     ZType *want = resolveTypeRef(ctx, inferred);
-    //     if (!want) {
-    //         error(ctx->state, base, "Can't be inferred");
-    //         return NULL;
+    if (base && base->type == TOK_DOT) {
+        ZType *want = resolveTypeRef(ctx, inferred);
+        if (!want) {
+            error(ctx->state, base, "Can't be inferred");
+            return NULL;
+        }
+
+        baseType = want;
+    } else {
+        baseType = resolveTypeRef(ctx, baseSym->type);
+    }
+
+    for (usize i = 1; i < veclen(chain); i++) {
+        staticMethod = resolveStaticFuncTable(ctx, baseType, chain[i]);
+    }
+
+    // ZNode *staticMethod = resolveStaticFuncTable(ctx, base, prop);
+
+    // if (staticMethod) {
+    //     curr->staticAccess.func = staticMethod;
+    //     return staticMethod->resolved;
+    // }
+    // if (baseSym->kind == Z_SYM_TYPEDEF) {
+    //     baseSym->type = resolveTypeRef(ctx, baseSym->type);
+    //     if (!baseSym->type) {
+    //         error(ctx->state, baseSym->node->tok, "Undefined base");
     //     }
-    //
-    //     if (want->kind == Z_TYPE_ENUM) {
-    //         curr->staticAccess.base = want->enm.name;
-    //         return resolveEnumLit(ctx, curr, want) ? want : NULL;
-    //     } else if (want->kind == Z_TYPE_STRUCT) {
-    //         curr->staticAccess.base = want->strct.name;
-    //         ZNode *m = resolveStaticFuncTable(ctx, want->strct.name, prop);
-    //         if (m) {
-    //             curr->staticAccess.func = m;
-    //             return m->resolved;
-    //         }
-    //     }
-    //     error(ctx->state, base,
-    //         "'.%s' can't be inferred from type '%s'",
-    //         prop->str, stype(want)
-    //     );
     //     return NULL;
     // }
-
-    ZSymbol *baseSym = resolve(ctx, base);
-    if (!baseSym) {
-        error(ctx->state, base, "Base not found");
-        return NULL;
-    }
-
-    ZNode *staticMethod = resolveStaticFuncTable(ctx, base, prop);
-
-    if (staticMethod) {
-        curr->staticAccess.func = staticMethod;
-        return staticMethod->resolved;
-    }
-    if (baseSym->kind == Z_SYM_TYPEDEF) {
-        baseSym->type = resolveTypeRef(ctx, baseSym->type);
-        if (!baseSym->type) {
-            error(ctx->state, baseSym->node->tok, "Undefined base");
-        }
-        return NULL;
-    }
-    if (baseSym->kind == Z_SYM_STRUCT) {
-        error(ctx->state, prop,
-            "Static method '%s' not found", prop->str);
-
-        return NULL;
-    } else if (baseSym->type && baseSym->type->kind == Z_TYPE_ENUM) {
-        ZType *resolved =  resolveEnumLit(ctx, curr, inferred);
-        if (!resolved) {
-            error(ctx->state, curr->tok, "Invalid enum literal");
-            return NULL;
-        } else return baseSym->type;
-    } else if (baseSym->kind == Z_SYM_FOREIGN) {
-        ZType *resolved = NULL;
-        for (usize i = 0; i < veclen(baseSym->node->block); i++) {
-            ZNode *child = baseSym->node->block[i];
-            bool isFunction = child->resolved->kind == Z_TYPE_FUNCTION;
-            if (tokeneq(child->foreignDecl.name, prop)) {
-                resolved = child->resolved;
-                if (!isFunction) {
-                    curr->staticAccess.mangled = child->foreignDecl.name->str;
-                }
-                break;
-            }
-        }
-        if (!resolved) {
-            error(ctx->state, prop,
-                "'%s' not found in the namespace '%s'",
-                prop->str, base->str
-            );
-            return NULL;
-        } else if (resolved->kind == Z_TYPE_FUNCTION) {
-            for (usize i = 0; i < veclen(resolved->func.args); i++) {
-                resolved->func.args[i] = resolveTypeRef(
-                    ctx,
-                    resolved->func.args[i]
-                );
-            }
-            resolved->func.ret = resolveTypeRef(
-                ctx, resolved->func.ret
-            );
-            /* genStaticAccess looks up by mangled name, but genForeign
-             * registers foreign functions under their plain C name. */
-            curr->staticAccess.mangled = prop->str;
-            return resolved;
-        } else {
-            return resolveTypeRef(ctx, resolved);
-        }
-    } else if (baseSym->kind == Z_SYM_IMPORT) {
-        if (!hashset_has(baseSym->scope->seen, prop->str)) {
-            error(ctx->state, prop, "Symbol not found in the scope");
-        }
-
-        ZSymbol *symbol = resolveByScope(baseSym->scope, prop);
-        if (!symbol) return NULL;
-
-        curr->staticAccess.mangled = mangler((char *[]){
-            baseSym->node->module.filename,
-            prop->str,
-            NULL
-        });
-
-        return symbol->type;
-    } else {
-        error(ctx->state, base, "Base should refer to a type");
-        return NULL;
-    }
+    // if (baseSym->kind == Z_SYM_STRUCT) {
+    //     error(ctx->state, prop,
+    //         "Static method '%s' not found", prop->str);
+    //
+    //     return NULL;
+    // } else if (baseSym->type && baseSym->type->kind == Z_TYPE_ENUM) {
+    //     ZType *resolved =  resolveEnumLit(ctx, curr, inferred);
+    //     if (!resolved) {
+    //         error(ctx->state, curr->tok, "Invalid enum literal");
+    //         return NULL;
+    //     } else return baseSym->type;
+    // } else if (baseSym->kind == Z_SYM_FOREIGN) {
+    //     ZType *resolved = NULL;
+    //     for (usize i = 0; i < veclen(baseSym->node->block); i++) {
+    //         ZNode *child = baseSym->node->block[i];
+    //         bool isFunction = child->resolved->kind == Z_TYPE_FUNCTION;
+    //         if (tokeneq(child->foreignDecl.name, prop)) {
+    //             resolved = child->resolved;
+    //             if (!isFunction) {
+    //                 curr->staticAccess.mangled = child->foreignDecl.name->str;
+    //             }
+    //             break;
+    //         }
+    //     }
+    //     if (!resolved) {
+    //         error(ctx->state, prop,
+    //             "'%s' not found in the namespace '%s'",
+    //             prop->str, base->str
+    //         );
+    //         return NULL;
+    //     } else if (resolved->kind == Z_TYPE_FUNCTION) {
+    //         for (usize i = 0; i < veclen(resolved->func.args); i++) {
+    //             resolved->func.args[i] = resolveTypeRef(
+    //                 ctx,
+    //                 resolved->func.args[i]
+    //             );
+    //         }
+    //         resolved->func.ret = resolveTypeRef(
+    //             ctx, resolved->func.ret
+    //         );
+    //         /* genStaticAccess looks up by mangled name, but genForeign
+    //          * registers foreign functions under their plain C name. */
+    //         curr->staticAccess.mangled = prop->str;
+    //         return resolved;
+    //     } else {
+    //         return resolveTypeRef(ctx, resolved);
+    //     }
+    // } else if (baseSym->kind == Z_SYM_IMPORT) {
+    //     if (!hashset_has(baseSym->scope->seen, prop->str)) {
+    //         error(ctx->state, prop, "Symbol not found in the scope");
+    //     }
+    //
+    //     ZSymbol *symbol = resolveByScope(baseSym->scope, prop);
+    //     if (!symbol) return NULL;
+    //
+    //     curr->staticAccess.mangled = mangler((char *[]){
+    //         baseSym->node->module.filename,
+    //         prop->str,
+    //         NULL
+    //     });
+    //
+    //     return symbol->type;
+    // } else {
+    //     error(ctx->state, base, "Base should refer to a type");
+    //     return NULL;
+    // }
 }
 
 static ZType *resolveSlice(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
