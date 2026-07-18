@@ -98,7 +98,7 @@ string self :: impl {
         tlen := mem.strlen(t) as u32
         if tlen == 0 { return self }
 
-        s := self.make_room_for(tlen) or return
+        s := self.make_room_for(tlen)
         if not s { return none }
 
         hdr := s.header()
