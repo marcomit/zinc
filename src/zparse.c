@@ -519,18 +519,18 @@ static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
     return res;
 }
 
-static ZNode *parsePropagation(ZParser *parser, ZNode *previous) {
-    if (!match(parser, TOK_OR)) return previous;
-
-    if (check(parser, TOK_BREAK)) {
-
-    } else if (check(parser, TOK_CONTINUE)) {
-
-    } else if (check(parser, TOK_RETURN)) {
-
-    }
-    return previous;
-}
+// static ZNode *parsePropagation(ZParser *parser, ZNode *previous) {
+//     if (!match(parser, TOK_OR)) return previous;
+//
+//     if (check(parser, TOK_BREAK)) {
+//
+//     } else if (check(parser, TOK_CONTINUE)) {
+//
+//     } else if (check(parser, TOK_RETURN)) {
+//
+//     }
+//     return previous;
+// }
 
 static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     ZParserSnapshot *snap = store(parser);
@@ -546,7 +546,7 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     case TOK_CAST:      res = parseCast         (parser, previous); break;
     case TOK_LPAREN:    res = parseFuncCall     (parser, previous); break;
     case TOK_LSBRACKET: res = parseSquareBracket(parser, previous); break;
-    case TOK_OR:        res = parsePropagation  (parser, previous); break;
+    // case TOK_OR:        res = parsePropagation  (parser, previous); break;
     default:            return NULL;
     }
 
@@ -1898,7 +1898,8 @@ static ZNode *parseFuncDecl(ZParser *parser,
         return NULL;
     }
 
-    if (!ret) ret = u0Type;
+    // TODO: Allow empty return for void functions
+    if (!ret) return NULL;
 
     ZNode **capabilities = NULL;
     if (match(parser, TOK_WITH)) {
@@ -2039,7 +2040,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
         cur = makeVarDestructPattern(Z_VAR_LIT);
         cur->ident = tok;
     } else if (tok->type == TOK_IDENT) {
-        if (conditional && match(parser, TOK_DOUBLE_COLON)) {
+        if (conditional && match(parser, TOK_DOT)) {
             if (!check(parser, TOK_IDENT)) {
                 error(parser->state, peek(parser), "Expected identifier");
             }

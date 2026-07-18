@@ -1280,6 +1280,23 @@ static LLVMValueRef genTupleLitPtr(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
+    ZNode *target = node->memberAccess.func;
+    if (!target && node->memberAccess.sym) target = node->memberAccess.sym->node;
+    if (target) {
+        char *key = NULL;
+        if (target->type == NODE_FUNC)          key = target->funcDef.mangled;
+        else if (target->type == NODE_FOREIGN)  key = stoken(target->foreignDecl.name);
+        else if (node->memberAccess.sym)        key = stoken(node->memberAccess.sym->name);
+
+        LLVMValueRef val = key ? getLLVMValueRef(ctx, key) : NULL;
+        if (!val) {
+            error(ctx->state, node->tok,
+                "'%s' not found in the current scope",
+                key ? key : stoken(node->memberAccess.field));
+        }
+        return val;
+    }
+
     ZType *objType  = node->memberAccess.object->resolved;
     ZToken *tok     = node->memberAccess.field;
 
@@ -1380,7 +1397,7 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
 
 static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack   = getStackValue(ctx, node);
-    ZToken *variant     = veclast(node->call.callee->staticAccess.chain);
+    ZToken *variant     = node->call.callee->memberAccess.field;
     if (!stack) {
         error(ctx->state, node->tok, "Missing stack value");
         return NULL;
@@ -1514,6 +1531,8 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         ZLLVMStack *stack = getStackValue(ctx, node);
         return genFacetConstruct(ctx, stack, callee->resolved, node->call.args[0]);
     } if (callee->type == NODE_MEMBER &&
+        callee->memberAccess.object &&
+        callee->memberAccess.object->resolved &&
         callee->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
         ZNode *obj          = callee->memberAccess.object;
         LLVMValueRef facet  = genLvalue(ctx, obj);
@@ -1530,6 +1549,31 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
 
         vecpush(args, self);
         func = genFacetMember(ctx, callee);
+    } else if (callee->type == NODE_MEMBER &&
+        (callee->memberAccess.sym || callee->memberAccess.func)) {
+        /* Module member (mod.func), static function (Type.func) or foreign
+         * namespace member (c.printf): a direct call, no self injection.
+         * The semantic analyzer stored the target in sym (imports) or
+         * func (static/foreign). */
+        ZNode *target = callee->memberAccess.func;
+        if (!target) target = callee->memberAccess.sym->node;
+
+        char *key = NULL;
+        if (target->type == NODE_FUNC)          key = target->funcDef.mangled;
+        else if (target->type == NODE_FOREIGN)  key = stoken(target->foreignDecl.name);
+
+        if (!key) {
+            error(ctx->state, callee->tok,
+                "'%s' is not callable", stoken(callee->memberAccess.field));
+            return NULL;
+        }
+
+        func = getLLVMValueRef(ctx, key);
+        if (!func) {
+            error(ctx->state, callee->tok,
+                "Function '%s' not found", key);
+            return NULL;
+        }
     } else if (callee->type == NODE_MEMBER && callee->memberAccess.mangled) {
         /* Receiver method call: look up the global function and inject self. */
         func = getLLVMValueRef(ctx, callee->memberAccess.mangled);
@@ -1554,9 +1598,12 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
      * type from the semantic info instead. mangled == NULL means indirect. */
     LLVMTypeRef funcType;
     if (callee->type == NODE_MEMBER &&
+        callee->memberAccess.object &&
+        callee->memberAccess.object->resolved &&
         callee->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
         funcType = buildFacetFuncType(ctx, callee->resolved);
-    } else if (callee->type == NODE_MEMBER && !callee->memberAccess.mangled) {
+    } else if (callee->type == NODE_MEMBER && !callee->memberAccess.mangled &&
+        !callee->memberAccess.sym && !callee->memberAccess.func) {
         funcType = buildFuncType(ctx, callee->resolved);
     } else if (LLVMGetValueKind(func) != LLVMFunctionValueKind) {
         /* Indirect call through a function pointer variable. */
@@ -2329,31 +2376,31 @@ static LLVMValueRef genStructLitInto(
     return ptr;
 }
 
-static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
-    if (!node || !node->resolved) {
-        error(ctx->state, node ? node->tok : NULL, "Invalid genStaticAccess");
-        return NULL;
-    }
-
-    char *mangled = node->staticAccess.mangled;
-
-    if (!mangled) {
-        error(ctx->state, node->tok, "Mangled name not saved");
-    }
-
-    LLVMValueRef val = getLLVMValueRef(ctx, mangled);
-
-    if (!val) {
-        error(ctx->state, node->tok, "Unknown name '%s'", mangled);
-        return NULL;
-    }
-    LLVMValueKind kind = LLVMGetValueKind(val);
-    if (kind == LLVMInstructionValueKind || kind == LLVMGlobalVariableValueKind) {
-        LLVMTypeRef type = genType(ctx, node->resolved);
-        return LLVMBuildLoad2(ctx->builder, type, val, node->tok->str);
-    }
-    return val;
-}
+// static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
+//     if (!node || !node->resolved) {
+//         error(ctx->state, node ? node->tok : NULL, "Invalid genStaticAccess");
+//         return NULL;
+//     }
+//
+//     char *mangled = node->staticAccess.mangled;
+//
+//     if (!mangled) {
+//         error(ctx->state, node->tok, "Mangled name not saved");
+//     }
+//
+//     LLVMValueRef val = getLLVMValueRef(ctx, mangled);
+//
+//     if (!val) {
+//         error(ctx->state, node->tok, "Unknown name '%s'", mangled);
+//         return NULL;
+//     }
+//     LLVMValueKind kind = LLVMGetValueKind(val);
+//     if (kind == LLVMInstructionValueKind || kind == LLVMGlobalVariableValueKind) {
+//         LLVMTypeRef type = genType(ctx, node->resolved);
+//         return LLVMBuildLoad2(ctx->builder, type, val, node->tok->str);
+//     }
+//     return val;
+// }
 
 static LLVMValueRef genArrayInit(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack = getStackValue(ctx, node);
@@ -2648,13 +2695,15 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_LITERAL:          res = genLit            (ctx, node); break;
         case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
         case NODE_IDENTIFIER:       res = genIdent          (ctx, node); break;
-        case NODE_STATIC_ACCESS:    res = genStaticAccess   (ctx, node); break;
+        // case NODE_STATIC_ACCESS:    res = genStaticAccess   (ctx, node); break;
         case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
         case NODE_FUNC:             res = genAnonFunc       (ctx, node); break;
         case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
 
         case NODE_MEMBER:
-            if (node->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
+            if (node->memberAccess.object &&
+                node->memberAccess.object->resolved &&
+                node->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
                 res = genFacetMember(ctx, node);
                 break;
             }
@@ -2778,6 +2827,10 @@ static inline bool LLVMCanInsertRet(ZCodegen *ctx) {
 static void genRet(ZCodegen *ctx, ZNode *ret) {
     ZType *expectedFuncType = ctx->currentFuncNode->resolved;
     ZType *expectedRetType  = expectedFuncType->func.ret;
+    if (!expectedRetType) {
+        error(ctx->state, ret->tok, "Return type not resolved");
+        return;
+    }
 
 
     LLVMValueRef val = ret->returnStmt.expr ? genExpr(ctx, ret->returnStmt.expr) : NULL;
@@ -3265,7 +3318,7 @@ static void buildNestedFuncVar(
         break;
     }
     case NODE_ENUM_LIT: {
-        ZToken *variant = veclast(node->call.callee->staticAccess.chain);
+        ZToken *variant = node->call.callee->memberAccess.field;
         i32 variantIndex = enumIndexField(
             node->resolved, variant
         );

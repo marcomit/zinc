@@ -61,7 +61,7 @@ static ZSymbol *resolve             (ZThreadSem *, ZToken *);
 static ZType *typesCompatible       (ZThreadSem *, ZType *, ZType *);
 static ZType *resolveLiteralType    (ZThreadSem *, ZToken *);
 static ZType *resolveEnumLit        (ZThreadSem *, ZNode *, ZType *);
-static ZSymbol *_resolveModuleChain (ZThreadSem *, ZToken **, usize *);
+static ZSymbol *resolveModuleChain (ZThreadSem *, ZToken **, usize *);
 /* ================== Scope / Symbol helpers ================== */
 
 static ZNode *makeNodeThread(ZThreadSem *ctx, ZNodeType type) {
@@ -991,7 +991,7 @@ static ZSymbol *resolve(ZThreadSem *ctx, ZToken *ident) {
 
 /* ================== Type resolution ================== */
 
-static ZType *derefType(ZType *t) {
+static inline ZType *derefType(ZType *t) {
     while (t && t->kind == Z_TYPE_POINTER) t = t->base;
     return t;
 }
@@ -1164,15 +1164,16 @@ static ZType *resolveTypeRef(ZThreadSem *ctx, ZType *type) {
 static ZType *resolveMemberAccess(ZThreadSem *, ZNode *, ZType *);
 static ZType *resolveArrSubscript(ZThreadSem *, ZNode *, ZType *);
 
-static ZNode **resolveModuleStaticFuncTable(ZFuncTable **tables,
-    ZType *base, ZToken *prop) {
+static bool funcTableBaseMatches(ZThreadSem *, ZType *, ZType *);
+
+static ZNode **resolveModuleStaticFuncTable(ZThreadSem *ctx,
+    ZFuncTable **tables, ZType *base, ZToken *prop) {
     for (usize i = 0; i < veclen(tables); i++) {
         ZFuncTable *table = tables[i];
-        if (table->base->kind != Z_TYPE_PRIMITIVE       ||
-            !typesEqual(table->base, base)) continue;
+        if (!funcTableBaseMatches(ctx, table->base, base)) continue;
 
-        if (!hashset_has(table->seenStaticFuncs, prop->str)) return NULL;
-        return table->staticFuncDef;
+        if (hashset_has(table->seenStaticFuncs, prop->str))
+            return table->staticFuncDef;
     }
     return NULL;
 }
@@ -1180,14 +1181,14 @@ static ZNode **resolveModuleStaticFuncTable(ZFuncTable **tables,
 static ZNode *resolveStaticFuncTable(ZThreadSem *ctx,
     ZType *base, ZToken *prop) {
     ZNode **staticFuncs = resolveModuleStaticFuncTable(
-        ctx->funcs, base, prop);
+        ctx, ctx->funcs, base, prop);
 
     if (!staticFuncs) return NULL;
 
     ZNode *node     = NULL;
     for (usize i = 0; i < veclen(staticFuncs) && !node; i++) {
         ZNode *func = staticFuncs[i];
-        if (typesEqual(func->funcDef.base, base) &&
+        if (funcTableBaseMatches(ctx, func->funcDef.base, base) &&
             tokeneq(func->funcDef.name, prop)) {
             node    = func;
         }
@@ -1285,9 +1286,7 @@ static ZNode *resolveFuncCallEmbedded(ZThreadSem *ctx,
         }
     }
 
-    if (ptr) {
-        curr->memberAccess.mangled = ptr->funcDef.mangled;
-    }
+    if (ptr) curr->memberAccess.mangled = ptr->funcDef.mangled;
     return ptr;
 }
 
@@ -1444,11 +1443,11 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             expectedFunc            = sym->type;
             callee->resolved        = expectedFunc->func.ret;
         }
-    } else if (callee->type == NODE_STATIC_ACCESS) {
+    } else if (callee->type == NODE_MEMBER) {
         ZType *resolved = resolveType(ctx, callee, inferred);
         if (resolveEnumLit(ctx, callee, inferred)) {
             curr->type = NODE_ENUM_LIT;
-            callee->type = NODE_STATIC_ACCESS;
+            callee->type = NODE_MEMBER;
         }
         if (!resolved) {
             error(ctx->state, callee->tok, "Unresolved type");
@@ -1466,7 +1465,7 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         } else if (resolved->kind == Z_TYPE_ENUM) {
             ZType **variants    = resolved->enm.fields;
             ZNode **fields      = NULL;
-            ZToken *prop        = veclast(curr->staticAccess.chain);
+            ZToken *prop        = callee->memberAccess.field;
             for (usize i = 0; i < veclen(resolved->enm.fields) && !fields; i++) {
                 if (tokeneq(variants[i]->strct.name, prop)) {
                     fields = variants[i]->strct.fields;
@@ -1562,7 +1561,7 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     } else {
         usize i;
-        structSym = _resolveModuleChain(ctx, curr->structlit.chain, &i);
+        structSym = resolveModuleChain(ctx, curr->structlit.chain, &i);
 
         if (!structSym) {
             error(ctx->state, curr->tok,
@@ -1626,15 +1625,15 @@ static void checkFunctionUsedAsValue(ZThreadSem *ctx, ZNode *node) {
     }
 }
 
-static ZType* resolveIdentifier(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
-    (void)inferred;
+static ZType *resolveIdentByScope(ZThreadSem *ctx, ZScope *scope, ZNode *node) {
     ZToken *tok = node->identNode.tok;
-    ZSymbol *sym = resolve(ctx, tok);
+    ZSymbol *sym = resolveByScope(scope, tok);
     if (!sym) {
         error(ctx->state, tok,
               "Undefined identifier '%s'", tok->str);
         return NULL;
     }
+    node->identNode.sym = sym;
     if (sym->node->type == NODE_FUNC) {
         node->identNode.mangled = sym->node->funcDef.mangled;
         ZNode *fn = sym->node;
@@ -1649,6 +1648,11 @@ static ZType* resolveIdentifier(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
         }
     }
     return sym->type;
+}
+
+static ZType* resolveIdent(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
+    (void)inferred;
+    return resolveIdentByScope(ctx, ctx->current, node);
 }
 
 // TODO: Replace with the funciton that queries annotations.
@@ -1876,7 +1880,7 @@ static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 }
 
-static ZSymbol *_resolveModuleChain(ZThreadSem *ctx, ZToken **chain, usize *i) {
+static ZSymbol *resolveModuleChain(ZThreadSem *ctx, ZToken **chain, usize *i) {
     ZScope *scope   = ctx->current;
     usize tmp = 0;
     if (!i) i = &tmp;
@@ -1895,36 +1899,23 @@ static ZSymbol *_resolveModuleChain(ZThreadSem *ctx, ZToken **chain, usize *i) {
             return NULL;
         }
 
-        if (base->kind != Z_SYM_IMPORT) return previous;
+        if (base->kind != Z_SYM_IMPORT) return base;
 
         scope = base->scope;
     }
-    return NULL;
+    return previous;
 }
 
 static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    if (!curr || curr->type != NODE_STATIC_ACCESS) return NULL;
+    if (!curr || curr->type != NODE_MEMBER) return NULL;
 
-    usize i;
-    ZToken **chain      = curr->staticAccess.chain;
-    ZSymbol *baseSym    = _resolveModuleChain(ctx, chain, &i);
-    ZToken *base        = chain[i];
-    ZToken *prop        = chain[i + 1];
-    ZType **fields      = NULL;
+    ZType **fields  = NULL;
+    ZType *base     = resolveType(ctx, curr->memberAccess.object, inferred);
+    ZToken *prop    = curr->memberAccess.field;
 
-    if (base && base->type == TOK_DOT) {
-        ZType *want = resolveTypeRef(ctx, inferred);
-        if (!want) error(ctx->state, base, "Enum literal can't be inferred");
-        if (!want || want->kind != Z_TYPE_ENUM) return NULL;
 
-        baseSym = resolve(ctx, want->enm.name);
-        fields  = want->enm.fields;
-    } else {
-        if (!baseSym || baseSym->kind != Z_SYM_ENUM) return NULL;
-        fields = baseSym->type->enm.fields;
-    }
-
-    if (!baseSym || baseSym->kind != Z_SYM_ENUM) return NULL;
+    if (!base || base->kind != Z_TYPE_ENUM) return NULL;
+    fields = base->enm.fields;
 
     ZType *strct    = NULL;
     for (usize i = 0; i < veclen(fields) && !strct; i++) {
@@ -1936,7 +1927,7 @@ static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     if (!strct) {
         error(ctx->state, prop,
             "Field '%s' not found for enum '%s'",
-            prop->str, base->str
+            stoken(prop), stoken(base->tok)
         );
         return NULL;
     }
@@ -1948,116 +1939,7 @@ static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         strct->strct.fields[i]->resolved    = strct->strct.fields[i]->field.type;
     }
 
-    return baseSym->type;
-}
-
-static ZType *resolveStaticAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    ZToken **chain          = curr->staticAccess.chain;
-    ZToken *base            = chain[0];
-    ZType *baseType         = NULL;
-    ZSymbol *baseSym        = NULL;
-    curr->staticAccess.func = NULL;
-
-    if (base && base->type == TOK_DOT) {
-        ZType *want = resolveTypeRef(ctx, inferred);
-        if (!want) {
-            error(ctx->state, base, "Can't be inferred");
-            return NULL;
-        }
-
-        baseType = want;
-    }
-    usize i = 0;
-    baseSym = _resolveModuleChain(ctx, chain, &i);
-
-    if (!baseSym) {
-        error(ctx->state, curr->tok, "Symbol not found");
-        return NULL;
-    }
-    baseType = resolveTypeRef(ctx, baseSym->type);
-
-    ZToken *prop = chain[i];
-    ZNode *staticMethod = resolveStaticFuncTable(ctx, baseType, prop);
-
-    if (staticMethod) {
-        curr->staticAccess.func = staticMethod;
-        return staticMethod->resolved;
-    }
-    if (baseSym->kind == Z_SYM_TYPEDEF) {
-        baseSym->type = resolveTypeRef(ctx, baseSym->type);
-        if (!baseSym->type) {
-            error(ctx->state, baseSym->node->tok, "Undefined base");
-        }
-        return NULL;
-    }
-    if (baseSym->kind == Z_SYM_STRUCT) {
-        error(ctx->state, prop,
-            "Static method '%s' not found", prop->str);
-
-        return NULL;
-    } else if (baseSym->type && baseSym->type->kind == Z_TYPE_ENUM) {
-        ZType *resolved =  resolveEnumLit(ctx, curr, inferred);
-        if (!resolved) {
-            error(ctx->state, curr->tok, "Invalid enum literal");
-            return NULL;
-        } else return baseSym->type;
-    } else if (baseSym->kind == Z_SYM_FOREIGN) {
-        ZType *resolved = NULL;
-        for (usize i = 0; i < veclen(baseSym->node->block); i++) {
-            ZNode *child = baseSym->node->block[i];
-            bool isFunction = child->resolved->kind == Z_TYPE_FUNCTION;
-            if (tokeneq(child->foreignDecl.name, prop)) {
-                resolved = child->resolved;
-                if (!isFunction) {
-                    curr->staticAccess.mangled = child->foreignDecl.name->str;
-                }
-                break;
-            }
-        }
-        if (!resolved) {
-            error(ctx->state, prop,
-                "'%s' not found in the namespace '%s'",
-                prop->str, base->str
-            );
-            return NULL;
-        } else if (resolved->kind == Z_TYPE_FUNCTION) {
-            for (usize i = 0; i < veclen(resolved->func.args); i++) {
-                resolved->func.args[i] = resolveTypeRef(
-                    ctx,
-                    resolved->func.args[i]
-                );
-            }
-            resolved->func.ret = resolveTypeRef(
-                ctx, resolved->func.ret
-            );
-            /* genStaticAccess looks up by mangled name, but genForeign
-             * registers foreign functions under their plain C name. */
-            curr->staticAccess.mangled = prop->str;
-            return resolved;
-        } else {
-            return resolveTypeRef(ctx, resolved);
-        }
-    } else if (baseSym->kind == Z_SYM_IMPORT) {
-        if (!hashset_has(baseSym->scope->seen, prop->str)) {
-            error(ctx->state, prop, "Symbol not found in the scope");
-        }
-
-        ZSymbol *symbol = resolveByScope(baseSym->scope, prop);
-        if (!symbol) return NULL;
-
-        curr->staticAccess.mangled = mangler((char *[]){
-            baseSym->node->module.filename,
-            prop->str,
-            NULL
-        });
-
-        return symbol->type;
-    } else if (baseSym->kind == Z_SYM_FUNC) {
-        return baseSym->type;
-    } else {
-        error(ctx->state, base, "Base should refer to a type %d", baseSym->kind);
-        return NULL;
-    }
+    return base;
 }
 
 static ZType *resolveSlice(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
@@ -2225,10 +2107,9 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_ARRAY_LIT:    result = resolveArrayLiteral(ctx, curr, inferred);      break;
     case NODE_SUBSCRIPT:    result = resolveArrSubscript(ctx, curr, inferred);      break;
     case NODE_ARRAY_INIT:   result = resolveArrayInit   (ctx, curr, inferred);      break;
-    case NODE_IDENTIFIER:   result = resolveIdentifier  (ctx, curr, inferred);      break;
+    case NODE_IDENTIFIER:   result = resolveIdent       (ctx, curr, inferred);      break;
     case NODE_STRUCT_LIT:   result = resolveStructLit   (ctx, curr, inferred);      break;
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr, inferred);      break;
-    case NODE_STATIC_ACCESS:result = resolveStaticAccess(ctx, curr, inferred);      break;
     case NODE_SLICE:        result = resolveSlice       (ctx, curr, inferred);      break;
     case NODE_IF:           result = resolveIf          (ctx, curr, inferred);      break;
     case NODE_VAR_DECL:
@@ -2294,8 +2175,108 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     return result;
 }
 
+static inline ZSymbol *nodeSymbol(ZNode *node) {
+    if (!node) return NULL;
+    switch (node->type) {
+    case NODE_IDENTIFIER:   return node->identNode.sym;
+    case NODE_MEMBER:       return node->memberAccess.sym;
+    default:                return NULL;
+    }
+}
+
+/* Member access where the object names a type (struct/enum/typedef alias):
+ * resolves static functions and enum variants, never instance fields. */
+static ZType *resolveTypeStatic(
+    ZThreadSem *ctx, ZNode *curr, ZType *type, ZToken *field) {
+
+    type = resolveTypeRef(ctx, type);
+    if (!type) {
+        error(ctx->state, curr->tok, "Base type not found");
+        return NULL;
+    }
+
+    ZNode *func = resolveStaticFuncTable(ctx, type, field);
+    if (func) {
+        curr->memberAccess.func = func;
+        return func->resolved;
+    }
+
+    if (type->kind == Z_TYPE_ENUM) {
+        ZType **variants = type->enm.fields;
+        for (usize i = 0; i < veclen(variants); i++) {
+            if (tokeneq(variants[i]->strct.name, field)) return type;
+        }
+        error(ctx->state, field,
+            "Variant '%s' not found for enum '%s'",
+            stoken(field), stype(type));
+        return NULL;
+    }
+
+    error(ctx->state, field,
+        "Static function '%s' not found for '%s'",
+        stoken(field), stype(type));
+    return NULL;
+}
+
 static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    ZType *objType = resolveType(ctx, curr->memberAccess.object, inferred);
+    ZType *objType  = NULL;
+    ZToken *field   = curr->memberAccess.field;
+    if (curr->memberAccess.object->type == NODE_IDENTIFIER &&
+        strcmp(curr->memberAccess.object->tok->str, ".") == 0) {
+        if (!inferred) {
+            error(ctx->state, curr->tok, "Member field can't be inferred");
+            return NULL;
+        }
+
+        inferred = resolveTypeRef(ctx, inferred);
+        curr->memberAccess.object->resolved = inferred;
+        objType = inferred;
+
+        if (objType &&
+            (objType->kind == Z_TYPE_ENUM || objType->kind == Z_TYPE_STRUCT)) {
+            return resolveTypeStatic(ctx, curr, objType, field);
+        }
+    } else {
+        objType = resolveType(ctx, curr->memberAccess.object, inferred);
+    }
+
+    ZSymbol *objSym = nodeSymbol(curr->memberAccess.object);
+    if (objSym) {
+        if (!curr->memberAccess.object->resolved)
+            curr->memberAccess.object->resolved = modType;
+        switch (objSym->kind) {
+        case Z_SYM_IMPORT: {
+            ZSymbol *sym = resolveByScope(objSym->scope, field);
+            if (!sym) {
+                error(ctx->state, field,
+                    "'%s' not found in module '%s'",
+                    stoken(field), stoken(objSym->name));
+                return NULL;
+            }
+            curr->memberAccess.sym = sym;
+            return resolveTypeRef(ctx, sym->type);
+        }
+        case Z_SYM_STRUCT:
+        case Z_SYM_ENUM:
+        case Z_SYM_TYPEDEF:
+            return resolveTypeStatic(ctx, curr, objSym->type, field);
+        case Z_SYM_FOREIGN: {
+            ZNode **funcs = objSym->node->block;
+            for (usize i = 0; i < veclen(funcs); i++) {
+                if (tokeneq(funcs[i]->foreignDecl.name, field)) {
+                    curr->memberAccess.func = funcs[i];
+                    return funcs[i]->resolved;
+                }
+            }
+            error(ctx->state, field,
+                "'%s' not found in namespace '%s'",
+                stoken(field), stoken(objSym->name));
+            return NULL;
+        }
+        default: break;
+        }
+    }
+
     if (!objType) {
         error(ctx->state, curr->tok,
               "Cannot resolve object type in member access");
@@ -2303,7 +2284,6 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
     }
 
     ZType *base = derefType(objType);
-    ZToken *field = curr->memberAccess.field;
 
     if (!base) {
         error(ctx->state, curr->tok,
@@ -2376,7 +2356,8 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
                 return pointer;
             }
             error(ctx->state, curr->tok,
-                    "Expected a struct or tuple for '.' access");
+                "Expected a struct or tuple for '.' access, got none"
+            );
             return NULL;
         }
         return resolved->resolved;
@@ -3335,12 +3316,6 @@ static void analyze(ZThreadSem *ctx, ZNode *root) {
     }
 }
 
-static ZType *makePrimitiveType(ZTokenType type) {
-    ZType *self = maketype(Z_TYPE_PRIMITIVE);
-    self->primitive.token = maketoken(type, NULL, NULL);
-    return self;
-}
-
 static inline void *worker(void *arg) {
     ZThreadSem *ctx = (ZThreadSem *)arg;
     analyze(ctx, ctx->root);
@@ -3356,6 +3331,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
     if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
+
     ZScope *globalScope     = makescope(allocator.ctx, NULL, root);
     ZThreadSem *first       = makethreadsem(
         ctx, globalScope, root, allocator.ctx
