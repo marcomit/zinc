@@ -1951,6 +1951,108 @@ static LLVMValueRef genNullCoalescing(ZCodegen *ctx, ZNode *root) {
     return phi;
 }
 
+static LLVMValueRef genNumericOperator(ZCodegen *ctx,
+        LLVMValueRef left, LLVMValueRef right,
+        ZType *leftType, ZType *rightType,
+        ZTokenType op, ZToken *tok) {
+    if (!left || !right) return NULL;
+
+    LLVMTypeRef left_type = LLVMTypeOf(left);
+    bool is_float = (LLVMGetTypeKind(left_type) == LLVMFloatTypeKind ||
+                     LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
+
+
+    bool bothUnsigned = typeIsUnsigned(leftType) &&
+                        typeIsUnsigned(rightType);
+
+    char *l = label(ctx, tok);
+
+    if (is_float) {
+        switch (op) {
+        case TOK_PLUS:  return LLVMBuildFAdd(ctx->builder, left, right, l);
+        case TOK_MINUS: return LLVMBuildFSub(ctx->builder, left, right, l);
+        case TOK_STAR:  return LLVMBuildFMul(ctx->builder, left, right, l);
+        case TOK_DIV:   return LLVMBuildFDiv(ctx->builder, left, right, l);
+        case TOK_MOD:   return LLVMBuildFRem(ctx->builder, left, right, l);
+        case TOK_LT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOLT, left, right, l);
+        case TOK_GT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
+        case TOK_LTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOLE, left, right, l);
+        case TOK_GTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGE, left, right, l);
+        case TOK_EQEQ:  return LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, left, right, l);
+        case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealONE, left, right, l);
+        default:        error(ctx->state, tok, "Unknown binary operator"); return NULL;
+        }
+    }
+
+
+    let div         = bothUnsigned ? LLVMBuildUDiv : LLVMBuildSDiv;
+    let mod         = bothUnsigned ? LLVMBuildURem : LLVMBuildSRem;
+    let rightShift  = bothUnsigned ? LLVMBuildLShr : LLVMBuildAShr;
+    let lt          = bothUnsigned ? LLVMIntULT : LLVMIntSLT;
+    let gt          = bothUnsigned ? LLVMIntUGT : LLVMIntSGT;
+    let lte         = bothUnsigned ? LLVMIntULE : LLVMIntSLE;
+    let gte         = bothUnsigned ? LLVMIntUGE : LLVMIntSGE;
+
+    switch (op) {
+    case TOK_PLUS:  return LLVMBuildAdd (ctx->builder, left, right, l);
+    case TOK_MINUS: return LLVMBuildSub (ctx->builder, left, right, l);
+    case TOK_STAR:  return LLVMBuildMul (ctx->builder, left, right, l);
+    case TOK_DIV:   return div          (ctx->builder, left, right, l);
+    case TOK_MOD:   return mod          (ctx->builder, left, right, l);
+    case TOK_LT:    return LLVMBuildICmp(ctx->builder, lt,  left, right, l);
+    case TOK_GT:    return LLVMBuildICmp(ctx->builder, gt,  left, right, l);
+    case TOK_LTE:   return LLVMBuildICmp(ctx->builder, lte, left, right, l);
+    case TOK_GTE:   return LLVMBuildICmp(ctx->builder, gte, left, right, l);
+    case TOK_EQEQ:  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, l);
+    case TOK_NOTEQ: return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, l);
+    case TOK_BITL:  return LLVMBuildShl (ctx->builder, left, right, l);
+    case TOK_BITR:  return rightShift   (ctx->builder, left, right, l);
+    case TOK_BITOR: return LLVMBuildOr  (ctx->builder, left, right, l);
+    case TOK_BITXOR:return LLVMBuildXor (ctx->builder, left, right, l);
+    case TOK_REF:   return LLVMBuildAnd (ctx->builder, left, right, l);
+    default:        error(ctx->state, tok, "Unknown binary operator"); return NULL;
+    }
+}
+
+static LLVMValueRef genCompoundOperator(ZCodegen *ctx, ZNode *root) {
+    LLVMValueRef leftRef    = genLvalue(ctx, root->binary.left);
+    if (!leftRef) return NULL;
+    LLVMValueRef leftValue  = LLVMBuildLoad2(ctx->builder,
+        genType(ctx, root->binary.left->resolved),
+        leftRef, label(ctx, "left")
+    );
+
+    LLVMValueRef right = genExpr(ctx, root->binary.right);
+
+
+    ZTokenType op;
+    switch (root->binary.op->type) {
+    case TOK_SELF_BITAND:   op = TOK_REF;       break;
+    case TOK_SELF_BITL:     op = TOK_BITL;      break;
+    case TOK_SELF_BITR:     op = TOK_BITR;      break;
+    case TOK_SELF_BITOR:    op = TOK_BITOR;     break;
+    case TOK_SELF_BITXOR:   op = TOK_BITXOR;    break;
+    case TOK_SELF_PLUS:     op = TOK_PLUS;      break;
+    case TOK_SELF_MINUS:    op = TOK_MINUS;     break;
+    case TOK_SELF_MUL:      op = TOK_STAR;      break;
+    case TOK_SELF_DIV:      op = TOK_DIV;       break;
+    default:
+        error(ctx->state, root->tok, "Invalid self-assign operator");
+        return NULL;
+    }
+
+    LLVMValueRef value = genNumericOperator(ctx,
+        leftValue, right,
+        root->binary.left->resolved,
+        root->binary.right->resolved,
+        op, root->tok
+    );
+    if (!value) return NULL;
+
+    LLVMBuildStore(ctx->builder, value, leftRef);
+    return value;
+}
+
 /**
  * @brief Generates all binary operators.
  *
@@ -2002,6 +2104,10 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         return genNullCoalescing(ctx, root);
     }
 
+    if (op & TOK_SELF_OPERATOR) {
+        return genCompoundOperator(ctx, root);
+    }
+
     /* Logical operator. */
     if (op == TOK_AND || op == TOK_OR) {
         bool is_and = op == TOK_AND;
@@ -2040,63 +2146,12 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     LLVMValueRef left = genExpr(ctx, root->binary.left);
     LLVMValueRef right = genExpr(ctx, root->binary.right);
 
-    if (!left || !right) return NULL;
-
-    LLVMTypeRef left_type = LLVMTypeOf(left);
-    bool is_float = (LLVMGetTypeKind(left_type) == LLVMFloatTypeKind ||
-                     LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind);
-
-
-    bool bothUnsigned = typeIsUnsigned(root->binary.left->resolved) &&
-                        typeIsUnsigned(root->binary.right->resolved);
-
-    char *l = label(ctx, root->tok);
-
-    if (is_float) {
-        switch (op) {
-        case TOK_PLUS:  return LLVMBuildFAdd(ctx->builder, left, right, l);
-        case TOK_MINUS: return LLVMBuildFSub(ctx->builder, left, right, l);
-        case TOK_STAR:  return LLVMBuildFMul(ctx->builder, left, right, l);
-        case TOK_DIV:   return LLVMBuildFDiv(ctx->builder, left, right, l);
-        case TOK_MOD:   return LLVMBuildFRem(ctx->builder, left, right, l);
-        case TOK_LT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOLT, left, right, l);
-        case TOK_GT:    return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, l);
-        case TOK_LTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOLE, left, right, l);
-        case TOK_GTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGE, left, right, l);
-        case TOK_EQEQ:  return LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, left, right, l);
-        case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealONE, left, right, l);
-        default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
-        }
-    }
-
-
-    let div         = bothUnsigned ? LLVMBuildUDiv : LLVMBuildSDiv;
-    let mod         = bothUnsigned ? LLVMBuildURem : LLVMBuildSRem;
-    let rightShift  = bothUnsigned ? LLVMBuildLShr : LLVMBuildAShr;
-    let lt          = bothUnsigned ? LLVMIntULT : LLVMIntSLT;
-    let gt          = bothUnsigned ? LLVMIntUGT : LLVMIntSGT;
-    let lte         = bothUnsigned ? LLVMIntULE : LLVMIntSLE;
-    let gte         = bothUnsigned ? LLVMIntUGE : LLVMIntSGE;
-
-    switch (op) {
-    case TOK_PLUS:  return LLVMBuildAdd (ctx->builder, left, right, l);
-    case TOK_MINUS: return LLVMBuildSub (ctx->builder, left, right, l);
-    case TOK_STAR:  return LLVMBuildMul (ctx->builder, left, right, l);
-    case TOK_DIV:   return div          (ctx->builder, left, right, l);
-    case TOK_MOD:   return mod          (ctx->builder, left, right, l);
-    case TOK_LT:    return LLVMBuildICmp(ctx->builder, lt,  left, right, l);
-    case TOK_GT:    return LLVMBuildICmp(ctx->builder, gt,  left, right, l);
-    case TOK_LTE:   return LLVMBuildICmp(ctx->builder, lte, left, right, l);
-    case TOK_GTE:   return LLVMBuildICmp(ctx->builder, gte, left, right, l);
-    case TOK_EQEQ:  return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, l);
-    case TOK_NOTEQ: return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, l);
-    case TOK_BITL:  return LLVMBuildShl (ctx->builder, left, right, l);
-    case TOK_BITR:  return rightShift   (ctx->builder, left, right, l);
-    case TOK_BITOR: return LLVMBuildOr  (ctx->builder, left, right, l);
-    case TOK_BITXOR:return LLVMBuildXor (ctx->builder, left, right, l);
-    case TOK_REF:   return LLVMBuildAnd (ctx->builder, left, right, l);
-    default:        error(ctx->state, root->tok, "Unknown binary operator"); return NULL;
-    }
+    return genNumericOperator(ctx,
+        left, right,
+        root->binary.left->resolved,
+        root->binary.right->resolved,
+        op, root->tok
+    );
 }
 
 static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {

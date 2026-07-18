@@ -11,7 +11,7 @@ range :: fn (start: i32, end: i32) Range -> Range {end: end, current:start}
     next :: fn () u0 | i32 {
         if self.current >= self.end { return }
         res := self.current
-        self.current: + 1
+        self.current += 1
         return res
     }
 }

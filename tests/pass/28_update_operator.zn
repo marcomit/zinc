@@ -30,16 +30,16 @@ main :: fn () i32 {
 
         for i < 10 {
             root = LinkedList.new(root, i)
-            i: + 1
+            i <- + 1
         }
 
         for root {
             io.printf("%d\n", root.val)
-            root : .next
+            root <- .next
         }
 
         flag := false
-        flag : not
+        flag <- not
     }
     return 0
 }

@@ -1699,16 +1699,38 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZTokenType op       = curr->binary.op->type;
     ZType     *left     = resolveType(ctx, curr->binary.left, inferred);
 
-    if (op == TOK_EQ) inferred = left;
+    if (op == TOK_EQ || op & TOK_SELF_OPERATOR) inferred = left;
     ZType     *right    = resolveType(ctx, curr->binary.right, inferred);
 
-    if (op & TOK_BITOPERATOR_MASK) {
-        if (!isNumeric(left) ||
-            !isNumeric(right)) {
+    if (op & TOK_BITOPERATOR_MASK &&
+            (!isNumeric(left) ||
+             !isNumeric(right))) {
+        error(ctx->state, curr->binary.op,
+            "Bit operators can be used only with integers");
+        return NULL;
+    }
+
+    if (op & TOK_SELF_OPERATOR) {
+        if (!isNumeric(left) || !isNumeric(right)) {
             error(ctx->state, curr->binary.op,
-                "Bit operators can be used only with integers");
+                "Compound operator can be used only with numeric types");
             return NULL;
         }
+        if (!isLvalue(curr->binary.left)) {
+            error(ctx->state, curr->binary.left->tok,
+                    "is not a valid lvalue");
+            return NULL;
+        }
+        if (!typesCompatible(ctx, left, right)) {
+            error(ctx->state, curr->binary.op,
+                "Incompatible type '%s' with '%s'",
+                stype(left), stype(right));
+            return NULL;
+        }
+        /* The result and the stored value keep the type of the lhs:
+         * only the rhs is coerced, the lhs must stay a plain lvalue. */
+        curr->binary.right = implicitCast(ctx, curr->binary.right, left);
+        return left;
     }
 
     if (op & TOK_OVERLOADABLE) {

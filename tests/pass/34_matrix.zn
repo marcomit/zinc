@@ -8,9 +8,9 @@ printMatrix :: fn (matrix: [][]i32) u0 {
         j := 0
         for j < matrix[i].len {
             c.printf("%d\n", matrix[i][j])
-            j :+ 1
+            j += 1
         }
-        i :+ 1
+        i += 1
     }
 }
 

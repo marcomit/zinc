@@ -747,7 +747,7 @@ static ZNode *parseUpdate(ZParser *parser) {
     guard(lhs);
 
     ZToken *colon = peek(parser);
-    if (!colon || colon->type != TOK_COLON || colon->newlineBefore) return NULL;
+    if (!colon || colon->type != TOK_LARROW || colon->newlineBefore) return NULL;
     consume(parser);
 
     ZNode *rhs = parseUpdateRhs(parser, lhs);
@@ -1050,6 +1050,25 @@ static ZNode *parseCapabilityBlock(ZParser *parser) {
     return capabilityBlock;
 }
 
+static ZNode *parseCompoundOperator(ZParser *parser) {
+    ZNode *left = parseExpr(parser);
+    if (!left) return NULL;
+
+    if (!checkMask(parser, TOK_SELF_OPERATOR)) return left;
+    ZToken *op = consume(parser);
+
+    ZNode *right = parseExpr(parser);
+
+    if (!right) return NULL;
+
+    ZNode *node         = makenode(NODE_BINARY);
+    node->binary.left   = left;
+    node->binary.right  = right;
+    node->binary.op     = op;
+    node->tok           = op;
+    return node;
+}
+
 ZNode *parseStmt(ZParser *parser) {
     guard(canPeek(parser));
 
@@ -1062,9 +1081,9 @@ ZNode *parseStmt(ZParser *parser) {
         ZToken *next = peekAhead(parser, 2);
         if (!next) return NULL;
         switch (next->type) {
-        case TOK_STRUCT:    return parseStructDecl(parser, NULL, false);
-        case TOK_ENUM:      return parseEnumDecl(parser, NULL, false);
-        case TOK_TYPEDEF:   return parseTypedef(parser, NULL, false);
+        case TOK_STRUCT:    return parseStructDecl  (parser, NULL, false);
+        case TOK_ENUM:      return parseEnumDecl    (parser, NULL, false);
+        case TOK_TYPEDEF:   return parseTypedef     (parser, NULL, false);
         case TOK_FOREIGN:   return parseForeignBlock(parser, NULL, false);
         default: break;
         }
@@ -1090,6 +1109,7 @@ ZNode *parseStmt(ZParser *parser) {
             parseVarDefTyped,
             parseBlock,
             parseUpdate,
+            parseCompoundOperator,
             parseExpr
         };
         return parseOrGrammar(parser, funcs, arrlen(funcs));

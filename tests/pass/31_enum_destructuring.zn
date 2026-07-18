@@ -35,8 +35,8 @@ main :: fn () i32 {
     i := 0
     for i < 5 {
         ri := Result.Ok(i)
-        if Result.Ok(vi) := ri { sum = sum + vi }
-        i :+ 1
+        if Result.Ok(vi) := ri { sum += vi }
+        i += 1
     }
     c.printf("sum:%d\n", sum)
 
@@ -49,7 +49,7 @@ main :: fn () i32 {
                 evens = evens + vn
             }
         }
-        n = n + 1
+        n += 1
     }
     c.printf("evens:%d\n", evens)
 

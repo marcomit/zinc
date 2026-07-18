@@ -61,7 +61,7 @@ string self :: impl {
         if newalloc < 32 {
             newalloc = 32
         } else {
-            newalloc :* 2
+            newalloc *= 2 as u32
         }
 
         new_sh := resize(hdr, sizeof SdsHdr + newalloc + 1) as *SdsHdr
@@ -105,7 +105,7 @@ string self :: impl {
         dst := s as *u8
         mem.memcpy(&(dst[hdr.len]), t as *u8, tlen as u64)
 
-        hdr.len :+ tlen
+        hdr.len += tlen
         s[hdr.len] = 0 as char
         return s
     }
@@ -120,7 +120,7 @@ string self :: impl {
 
         hdr := s.header()
         s[hdr.len] = ch
-        hdr.len :+ 1
+        hdr.len += 1 as u32
         s[hdr.len] = 0 as char
         return s
     }

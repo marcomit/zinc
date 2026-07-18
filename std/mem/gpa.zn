@@ -21,8 +21,8 @@ GeneralPurposeAllocator :: impl {
     alloc :: fn (size: u64) *u8 {
         p := c.malloc(size)
         if not p { return none }
-        self.active :+ 1
-        self.bytes  :+ size
+        self.active <- + 1
+        self.bytes  <- + size
         return p
     }
 
@@ -32,7 +32,7 @@ GeneralPurposeAllocator :: impl {
 
     destroy :: fn (ptr: *u8) u0 {
         if not ptr { return }
-        if self.active > 0 { self.active :- 1 }
+        if self.active > 0 { self.active <- - 1 }
         c.free(ptr)
     }
     init ::     fn () u0 {  }
