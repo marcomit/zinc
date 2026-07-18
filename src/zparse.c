@@ -325,29 +325,6 @@ static ZNode *parseArrayInit(ZParser *parser) {
     return node;
 }
 
-static ZNode *parseStaticAccess(ZParser *parser) {
-    ZNode *node                 = makenode(NODE_STATIC_ACCESS);
-    node->tok                   = peek(parser);
-    ZToken **chain              = NULL;
-
-    do {
-        if (!check(parser, TOK_IDENT)) break;
-
-        ZToken *prop = consume(parser);
-        vecpush(chain, prop);
-    } while (match(parser, TOK_DOUBLE_COLON));
-
-    char *segments[] = {
-        chain[veclen(chain) - 2]->str,
-        chain[veclen(chain) - 1]->str,
-        NULL
-    };
-
-    node->staticAccess.mangled  = mangler(segments);
-    node->staticAccess.chain    = chain;
-    return node;
-}
-
 static ZNode *parsePrimary(ZParser *parser) {
     ZToken *start = peek(parser);
     guard(start);
@@ -370,13 +347,6 @@ static ZNode *parsePrimary(ZParser *parser) {
             parseArrayLit,
         }, 2);
     } else if (check(parser, TOK_IDENT)) {
-        if (checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
-            if (!checkAhead(parser, TOK_IDENT, 2)) {
-                error(parser->state, start, "Expected static call or enum literal");
-                return NULL;
-            }
-            return parseStaticAccess(parser);
-        }
         if (!parser->noStructLit && checkAhead(parser, TOK_LBRACKET, 1)) {
             ZNode *structlit = tryParse(parser, parseStructLit(parser));
             if (structlit) return structlit;
@@ -408,12 +378,13 @@ static ZNode *parsePrimary(ZParser *parser) {
     } else if (check(parser, TOK_DOT)) {
         if (checkAhead(parser, TOK_IDENT, 1)) {
             ZToken *base = peek(parser);
-            ZNode *node                 = makenode(NODE_STATIC_ACCESS);
+            ZNode *node                 = makenode(NODE_MEMBER);
 
-            node->staticAccess.chain     = NULL;
-            vecpush(node->staticAccess.chain, consume(parser));
-            vecpush(node->staticAccess.chain, consume(parser));
-            node->staticAccess.mangled  = NULL;
+            ZNode *ident                = makenode(NODE_IDENTIFIER);
+            ident->tok                  = consume(parser);
+            ident->identNode.tok        = ident->tok;
+            node->memberAccess.object   = ident;
+            node->memberAccess.field    = consume(parser);
             node->tok                   = base;
 
             return node;
@@ -548,6 +519,19 @@ static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
     return res;
 }
 
+static ZNode *parsePropagation(ZParser *parser, ZNode *previous) {
+    if (!match(parser, TOK_OR)) return previous;
+
+    if (check(parser, TOK_BREAK)) {
+
+    } else if (check(parser, TOK_CONTINUE)) {
+
+    } else if (check(parser, TOK_RETURN)) {
+
+    }
+    return previous;
+}
+
 static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     ZParserSnapshot *snap = store(parser);
     ZNode *res = NULL;
@@ -562,12 +546,7 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     case TOK_CAST:      res = parseCast         (parser, previous); break;
     case TOK_LPAREN:    res = parseFuncCall     (parser, previous); break;
     case TOK_LSBRACKET: res = parseSquareBracket(parser, previous); break;
-    case TOK_LBRACKET:
-        if (previous->type == NODE_STATIC_ACCESS) {
-            ZNode *structlit = tryParse(parser,
-                    _parseStructLit(parser, previous->staticAccess.chain));
-            if (structlit) return structlit;
-        }
+    case TOK_OR:        res = parsePropagation  (parser, previous); break;
     default:            return NULL;
     }
 
@@ -1223,6 +1202,22 @@ static ZNode *parseStructField(ZParser *parser) {
     }
 }
 
+static ZNode *parseEnumVariantField(ZParser *parser) {
+    ZNode *field = makenode(NODE_FIELD);
+    field->tok = peek(parser);
+    if (check(parser, TOK_IDENT) && checkAhead(parser, TOK_COLON, 1)) {
+        field->field.identifier = consume(parser);
+        consume(parser);
+    }
+
+    ZType *type = tryParse(parser, parseType(parser));
+    if (!type) return NULL;
+
+    field->resolved     = type;
+    field->field.type   = type;
+    return field;
+}
+
 static ZNode *parseEnumField(ZParser *parser) {
     if (!check(parser, TOK_IDENT)) {
         error(parser->state, peek(parser), "Expected an identifier");
@@ -1230,19 +1225,12 @@ static ZNode *parseEnumField(ZParser *parser) {
     }
     ZToken *name = consume(parser);
 
-    ZType **types = NULL;
-    if (check(parser, TOK_LPAREN)) {
-        types = parseTypeList(parser, TOK_LPAREN, TOK_RPAREN);
-        if (!types) {
-            error(parser->state, peek(parser), "Failed to parse the type list");
-            return NULL;
-        }
-    }
+    ZNode **fields = NULL;
+
 
     ZNode *node                 = makenode(NODE_ENUM_FIELD);
     node->enumField.name        = name;
     node->tok                   = name;
-    node->enumField.captured    = types;
 
     ZType *enm                  = maketype(Z_TYPE_STRUCT);
     enm->strct.name             = name;
@@ -1258,12 +1246,18 @@ static ZNode *parseEnumField(ZParser *parser) {
 
     vecpush(enm->strct.fields, field);
 
-    for (usize i = 0; i < veclen(types); i++) {
-        field                   = makenode(NODE_FIELD);
-        field->field.identifier = NULL;
-        field->field.type       = types[i];
+    if (check(parser, TOK_LPAREN)) {
+        fields = parseGenericList(
+            parser, TOK_LPAREN, TOK_RPAREN, parseEnumVariantField, true
+        );
+        if (!fields) {
+            error(parser->state, peek(parser), "Failed to parse the type list");
+            return NULL;
+        }
 
-        vecpush(enm->strct.fields, field);
+        for (usize i = 0; i < veclen(fields); i++) {
+            vecpush(enm->strct.fields, fields[i]);
+        }
     }
 
     node->resolved = enm;
@@ -1381,11 +1375,28 @@ ZNode *parseExpr(ZParser *parser) {
 }
 
 static ZNode *parseReturn(ZParser *parser) {
-    ZToken *start = peek(parser);
+    ZToken *start           = peek(parser);
     expect(parser, TOK_RETURN);
-    ZNode *ret = makenode(NODE_RETURN);
+    ZNode *ret              = makenode(NODE_RETURN);
+    ret->returnStmt.expr    = NULL;
+    ZNode *expr             = NULL;
+    ZNode **list            = NULL;
 
-    ret->returnStmt.expr = parseExpr(parser);
+    do {
+        expr = tryParse(parser, parseExpr(parser));
+        if (!expr) break;
+        vecpush(list, expr);
+
+    } while (match(parser, TOK_COMMA));
+
+    if (veclen(list) > 1) {
+        expr                    = makenode(NODE_TUPLE_LIT);
+        expr->tuplelit          = list;
+        expr->tok               = start;
+        ret->returnStmt.expr    = expr;
+    } else {
+        ret->returnStmt.expr    = expr;
+    }
     ret->tok = start;
     return ret;
 }
@@ -1831,6 +1842,26 @@ static ZNode *parseAnonFunc(ZParser *parser) {
     return func;
 }
 
+static ZType *parseFuncMultiReturn(ZParser *parser) {
+    ZToken *start   = peek(parser);
+    ZType **list    = NULL;
+    ZType *ret      = NULL;
+
+    do {
+        ret = tryParse(parser, parseType(parser));
+        vecpush(list, ret);
+    } while (   !check(parser, TOK_WITH)        &&
+                !check(parser, TOK_LBRACKET)    &&
+                match(parser, TOK_COMMA)        );
+
+    if (veclen(list) > 1) {
+        ret         = maketype(Z_TYPE_TUPLE);
+        ret->tuple  = list;
+        ret->tok    = start;
+    }
+    return ret;
+}
+
 /* The caller must handle:
  * - the mangling name.
  * - the receiver node if it is a receiver function.
@@ -1860,12 +1891,14 @@ static ZNode *parseFuncDecl(ZParser *parser,
         parseFuncArgument,  true
     );
 
-    ZType *ret = tryParse(parser, parseType(parser));
+    ZType *ret = parseFuncMultiReturn(parser);
 
-    if (!ret) {
+    if (!ret && !check(parser, TOK_WITH) && !check(parser, TOK_LBRACKET)) {
         error(parser->state, start, "Expected return type after '::'");
         return NULL;
     }
+
+    if (!ret) ret = u0Type;
 
     ZNode **capabilities = NULL;
     if (match(parser, TOK_WITH)) {
@@ -2379,7 +2412,7 @@ static ZNode *parseImport(ZParser *parser, bool public) {
         segment = consume(parser);
         vecpush(module, segment);
         if (check(parser, TOK_GT)) break;
-        if (!match(parser, TOK_DOUBLE_COLON)) {
+        if (!match(parser, TOK_DOT) && !match(parser, TOK_DOUBLE_COLON)) {
             break;
         }
     }

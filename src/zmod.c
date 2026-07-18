@@ -24,9 +24,9 @@ static char *nodeLabels[] = {
     "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
-    "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATICACCESS", "NAMESPACE",
-    "SLICE",        "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",
-    "FACET",        "IMPL",         "FOR_IN"
+    "ENUM_FIELD",   "CAST",         "SIZEOF",       "NAMESPACE",    "SLICE",
+    "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",     "FACET",
+    "IMPL",         "FOR_IN"
 };
 
 static char *levels[] = {
@@ -705,17 +705,6 @@ void printNode(ZNode *node, u8 depth) {
         printType(node->sizeofExpr.type);
         break;
 
-    case NODE_STATIC_ACCESS:
-        for (usize i = 0; i < veclen(node->staticAccess.chain); i++) {
-            printf("%s", stoken(node->staticAccess.chain[i]));
-            if (i != veclen(node->staticAccess.chain) - 1) {
-                printf("::");
-            }
-        }
-        printf("\n");
-        break;
-
-
     case NODE_ENUM:
         printf("%s\n", stoken(node->enumDef.name));
 
@@ -726,11 +715,6 @@ void printNode(ZNode *node, u8 depth) {
 
     case NODE_ENUM_FIELD:
         printf("%s\n", stoken(node->enumField.name));
-        for (usize j = 0; j < veclen(node->enumField.captured); j++) {
-            indent(depth);
-            printType(node->enumField.captured[j]);
-            printf("\n");
-        }
         break;
 
     case NODE_NAMESPACE:

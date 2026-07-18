@@ -14,6 +14,12 @@ static ZType **copytypevec(ZType **types) {
     return copy;
 }
 
+ZType *makePrimitiveType(ZTokenType type) {
+    ZType *self = maketype(Z_TYPE_PRIMITIVE);
+    self->primitive.token = maketoken(type, NULL, NULL);
+    return self;
+}
+
 static ZType *copytype(ZType *type) {
     if (!type) return NULL;
     ZType *copy = maketype(type->kind);
