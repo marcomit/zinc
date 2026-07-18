@@ -52,11 +52,12 @@ typedef struct ZToken {
     bool newlineBefore;
 } ZToken;
 
-typedef struct ZNode ZNode;
-typedef struct ZType ZType;
-typedef struct ZScope ZScope;
-typedef struct ZAnnotation ZAnnotation;
-typedef struct ZThreadSem ZThreadSem;
+typedef struct ZNode        ZNode;
+typedef struct ZType        ZType;
+typedef struct ZScope       ZScope;
+typedef struct ZSymbol      ZSymbol;
+typedef struct ZThreadSem   ZThreadSem;
+typedef struct ZAnnotation  ZAnnotation;
 
 static ZType *none      = NULL;
 static ZType *u0Type    = NULL;
@@ -210,7 +211,6 @@ typedef enum {
     NODE_ENUM_FIELD,
     NODE_CAST,
     NODE_SIZEOF,
-    NODE_STATIC_ACCESS,
     NODE_NAMESPACE,
     NODE_SLICE,
     NODE_CAPABILITY,
@@ -220,7 +220,6 @@ typedef enum {
     NODE_FACET,
     NODE_IMPL,
     NODE_FORIN,
-    NODE_MEMBER_INFERRED
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -579,7 +578,6 @@ struct ZNode {
          * */
          struct {
              ZToken *name;
-             ZType  **captured;
          } enumField;
 
         struct {
@@ -587,13 +585,9 @@ struct ZNode {
             ZToken      *field;
             char        *mangled;
             u32         *path;
-        } memberAccess;
-
-        struct {
-            ZToken      **chain;
             ZNode       *func;
-            char        *mangled;
-        } staticAccess;
+            ZSymbol     *sym;
+        } memberAccess;
 
         struct {
             ZNode       *expr; // Can be NULL for void returns
@@ -672,6 +666,7 @@ struct ZNode {
         struct {
             ZToken          *tok;
             char            *mangled;
+            ZSymbol         *sym;
         } identNode;
 
         struct {
@@ -767,7 +762,6 @@ typedef struct ZParser {
 } ZParser;
 
 /* ================== Semantic analysis    ================== */
-typedef struct ZScope ZScope;
 
 typedef enum {
     Z_SYM_VAR       = 1 << 0,
@@ -781,7 +775,7 @@ typedef enum {
     Z_SYM_IMPORT    = 1 << 8,
 } ZSymType;
 
-typedef struct ZSymbol {
+struct ZSymbol {
     ZSymType        kind;
     ZToken          *name;
     ZType           *type;
@@ -800,7 +794,7 @@ typedef struct ZSymbol {
     usize           useCount;
     bool            isPublic;
     bool            reachable;
-} ZSymbol;
+};
 
 typedef struct ZCapability {
     ZType *type;
@@ -922,6 +916,7 @@ bool macropatterneq(ZMacroPattern *, ZMacroPattern *);
 
 ZNode *makenode(ZNodeType);
 ZType *maketype(ZTypeKind);
+ZType *makePrimitiveType(ZTokenType);
 
 /* Semantic  -  public entry points. The per-traversal helpers (resolveType,
  * resolve, typesCompatible) now take the internal ZThreadSem and stay private

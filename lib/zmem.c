@@ -32,14 +32,28 @@ arena_t *createArena() {
 }
 
 static void _arenaSize(ArenaBucket *bucket, usize *curr) {
-    if (!bucket) return;
-    *curr += bucket->size;
-    _arenaSize(bucket->next, curr);
+    while (bucket) {
+        *curr += bucket->size;
+        bucket = bucket->next;
+    }
+}
+
+static void _arenaLength(ArenaBucket *bucket, usize *curr) {
+    while (bucket) {
+        *curr += bucket->len;
+        bucket = bucket->next;
+    }
 }
 
 usize arenaSize(arena_t *arena) {
     usize curr = 0;
     _arenaSize(arena->head, &curr);
+    return curr;
+}
+
+usize arenaLength(arena_t *arena) {
+    usize curr = 0;
+    _arenaLength(arena->head, &curr);
     return curr;
 }
 
@@ -98,7 +112,7 @@ void arenaEndScope(arena_t *arena) {
     if (vecempty(arena->scopes)) return;
 
     ArenaScope *scope = vecpop(arena->scopes);
-    
+
     ArenaBucket *curr = arena->head;
     while (curr && curr != scope->bucket) curr = curr->next;
 

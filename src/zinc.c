@@ -178,8 +178,10 @@ ZState *loadState(int argc, char **argv) {
 void printAllocation(ZState *state) {
     if (!state->verbose) return;
 
+    usize used = arenaLength(allocator.ctx);
     usize allocated = arenaSize(allocator.ctx);
     for (usize i = 0; i < veclen(state->modules); i++) {
+        used += arenaLength(state->modules[i]->allocator);
         allocated += arenaSize(state->modules[i]->allocator);
     }
 
@@ -187,17 +189,18 @@ void printAllocation(ZState *state) {
         "b",
         "Kb",
         "Mb",
-        "Gb"
+        "Gb",
     };
 
     int label = 0;
     while (allocated > 1024 && label < 3) {
+        used >>= 10;
         allocated >>= 10;
         label++;
     }
 
-    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %zu %s\n",
-        allocated, labels[label]
+    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %zu/%zu %s\n",
+        used, allocated, labels[label]
     );
 }
 
@@ -243,7 +246,7 @@ int pipeline(ZState *state) {
     if (!canAdvance(state)) return 5;
 
     if (state->verbose) {
-        
+
     }
     printAllocation(state);
 
