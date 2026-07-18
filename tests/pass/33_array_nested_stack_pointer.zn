@@ -9,8 +9,8 @@ main :: fn () i32 {
         Pt { x: 50, y: 60 },
         Pt { x: 70, y: 80 }
     ]
-    c::printf("%d,%d\n", arr[0].x, arr[0].y)
-    c::printf("%d,%d\n", arr[0].x, arr[0].y)
-    c::printf("%d,%d\n", arr[0].x, arr[0].y)
+    c.printf("%d,%d\n", arr[0].x, arr[0].y)
+    c.printf("%d,%d\n", arr[0].x, arr[0].y)
+    c.printf("%d,%d\n", arr[0].x, arr[0].y)
     return 0
 }

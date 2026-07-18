@@ -1,6 +1,6 @@
-use <std::mem::gpa>
-use <std::mem>
-use <std::libc>
+use <std.mem.gpa>
+use <std.mem>
+use <std.libc>
 
 allocate :: fn (size: u64) i32 with alloc: Allocator {
     buf: *u8 = alloc.alloc(size)
@@ -9,7 +9,7 @@ allocate :: fn (size: u64) i32 with alloc: Allocator {
 
 main :: fn () i32 {
     flag: i32 = 1
-    gpa := GeneralPurposeAllocator::init()
+    gpa := GeneralPurposeAllocator.init()
     with heap := (&gpa).allocator() {
         r: i32 = 0
         if flag == 1 {
@@ -17,7 +17,7 @@ main :: fn () i32 {
         } else {
             r = allocate(32)
         }
-        io::printf("%d\n", r)
+        io.printf("%d\n", r)
     }
     return 0
 }

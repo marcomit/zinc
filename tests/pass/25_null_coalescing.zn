@@ -8,23 +8,23 @@ main :: fn () i32 {
 
     p := none
     r1 := p ?? &b
-    c::printf("%d\n", *r1)
+    c.printf("%d\n", *r1)
 
     q := &a
     r2 := q ?? &b
-    c::printf("%d\n", *r2)
+    c.printf("%d\n", *r2)
 
     n1: *i32 = none
     n2: *i32 = none
     r3: *i32 = n1 ?? n2 ?? &b
-    c::printf("%d\n", *r3)
+    c.printf("%d\n", *r3)
 
     r4: *i32 = n1 ?? &a
-    c::printf("%d\n", *r4)
+    c.printf("%d\n", *r4)
 
     x: i32 = 5
     px: *i32 = none
-    c::printf("%d\n", *(px ?? &x))
+    c.printf("%d\n", *(px ?? &x))
 
     return 0
 }

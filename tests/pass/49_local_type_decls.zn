@@ -20,22 +20,22 @@ main :: fn () i32 {
     }
 
     p := Point { x: 3, y: 4 }
-    c::printf("%d %d\n", p.x, p.y)
+    c.printf("%d %d\n", p.x, p.y)
 
     n: myint = 7
-    v := Option::Some(n)
-    if Option::Some(got) := v {
-        c::printf("some:%d\n", got)
+    v := Option.Some(n)
+    if Option.Some(got) := v {
+        c.printf("some:%d\n", got)
     }
 
-    empty := Option::None()
-    if Option::Some(_) := empty {
-        c::printf("WRONG\n")
+    empty := Option.None()
+    if Option.Some(_) := empty {
+        c.printf("WRONG\n")
     } else {
-        c::printf("none\n")
+        c.printf("none\n")
     }
 
-    libc::puts("done")
+    libc.puts("done")
 
     return 0
 }

@@ -8,7 +8,7 @@ main :: fn () i32 {
     for i < 3 {
         j := 0
         for j < 3 {
-            c::printf("%d%d\n", i, j)
+            c.printf("%d%d\n", i, j)
             j = j + 1
         }
         i = i + 1
@@ -20,10 +20,10 @@ main :: fn () i32 {
         inner := 0
         for inner < 5 {
             if inner == 2 { break }
-            c::printf("i%d\n", inner)
+            c.printf("i%d\n", inner)
             inner = inner + 1
         }
-        c::printf("o%d\n", outer)
+        c.printf("o%d\n", outer)
         outer = outer + 1
     }
 
@@ -34,7 +34,7 @@ main :: fn () i32 {
         for col < 4 {
             col = col + 1
             if col % 2 == 0 { continue }
-            c::printf("%d\n", col)
+            c.printf("%d\n", col)
         }
         row = row + 1
     }
@@ -44,7 +44,7 @@ main :: fn () i32 {
     for x < 3 {
         y := 0
         for y < 3 {
-            if x == y { c::printf("diag%d\n", x) }
+            if x == y { c.printf("diag%d\n", x) }
             y :+ 1
         }
         x :+ 1
@@ -53,15 +53,15 @@ main :: fn () i32 {
     // Nested if-else chains
     score: i32 = 75
     if score >= 90 {
-        c::printf("A\n")
+        c.printf("A\n")
     } else {
         if score >= 80 {
-            c::printf("B\n")
+            c.printf("B\n")
         } else {
             if score >= 70 {
-                c::printf("C\n")
+                c.printf("C\n")
             } else {
-                c::printf("F\n")
+                c.printf("F\n")
             }
         }
     }
@@ -76,7 +76,7 @@ main :: fn () i32 {
         }
         idx :+ 1
     }
-    c::printf("found=%d\n", found)
+    c.printf("found=%d\n", found)
 
     // Loop with multiple continues and break
     cnt: i32 = 0
@@ -87,13 +87,13 @@ main :: fn () i32 {
         if k > 10 { break }
         cnt = cnt + 1
     }
-    c::printf("cnt=%d\n", cnt)
+    c.printf("cnt=%d\n", cnt)
 
     // Many conditions chained
     v: i32 = 5
-    if v == 1      { c::printf("one\n") }
-    else { if v == 5 { c::printf("five\n") }
-    else { c::printf("other\n") } }
+    if v == 1      { c.printf("one\n") }
+    else { if v == 5 { c.printf("five\n") }
+    else { c.printf("other\n") } }
 
     return 0
 }

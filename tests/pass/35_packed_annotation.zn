@@ -18,13 +18,13 @@ Color :: impl {
 
 Color self :: impl {
     print :: fn () u0 {
-        c::printf("Color{r: %d, g: %d, b: %d, a: %d}\n", self.r, self.g, self.b, self.a)
+        c.printf("Color{r: %d, g: %d, b: %d, a: %d}\n", self.r, self.g, self.b, self.a)
     }
 }
 main :: fn () i32 {
-    white   := Color::new(255, 255, 255, 255)
-    black   := Color::new(0, 0, 0, 255)
-    red     := Color::new(255, 0, 0, 255)
+    white   := Color.new(255, 255, 255, 255)
+    black   := Color.new(0, 0, 0, 255)
+    red     := Color.new(255, 0, 0, 255)
 
     white.print()
     black.print()

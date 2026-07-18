@@ -51,10 +51,10 @@ Player self :: impl {
     }
 
     print :: fn () u0 {
-        c::printf("%s\n", self.name)
-        c::printf("Pos: %d %d %d\n", self.x, self.y, self.z)
-        c::printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)
-        c::printf("HP: %d\n", self.health)
+        c.printf("%s\n", self.name)
+        c.printf("Pos: %d %d %d\n", self.x, self.y, self.z)
+        c.printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)
+        c.printf("HP: %d\n", self.health)
     }
 }
 

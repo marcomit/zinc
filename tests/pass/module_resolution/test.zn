@@ -2,7 +2,7 @@ use a
 use b
 
 main :: fn () i32 {
-    a: A = A::new("ciao")
+    a: A = A.new("ciao")
     print(a)
     return 0
 }

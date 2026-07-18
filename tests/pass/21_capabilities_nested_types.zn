@@ -1,6 +1,6 @@
-use <std::mem::gpa>
-use <std::mem>
-use <std::libc>
+use <std.mem.gpa>
+use <std.mem>
+use <std.libc>
 
 Logger :: struct  {
     level: i32
@@ -13,10 +13,10 @@ allocAndLog :: fn (size: u64) i32 with alloc: Allocator, log: Logger {
 
 main :: fn () i32 {
     with log := Logger { level: 42 } {
-        gpa := GeneralPurposeAllocator::init()
+        gpa := GeneralPurposeAllocator.init()
         with heap := (&gpa).allocator() {
             r := allocAndLog(16)
-            io::printf("%d\n", r)
+            io.printf("%d\n", r)
         }
     }
     return 0

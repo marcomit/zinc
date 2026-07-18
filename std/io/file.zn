@@ -1,4 +1,4 @@
-use <std::mem>
+use <std.mem>
 
 c :: foreign {
     fopen   : fn (*char, *char) *u8
@@ -19,7 +19,7 @@ File :: impl {
     new :: fn (path: *char, mode: *char) *File [Allocator] {
         self: *File = alloc(sizeof File)
         if not self { return none }
-        
+
         self.file = none
         self.path = path
         self.mode = mode
@@ -54,8 +54,8 @@ File :: impl {
         if not buffer { return none }
 
         bytesRead: i64 = c::fread(buffer, 1, size, self.file)
-        
-        buffer[bytesRead] = 0 
+
+        buffer[bytesRead] = 0
 
         return buffer
     }

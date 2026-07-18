@@ -11,9 +11,9 @@ pick :: fn (n: i32) i32 | *char | f32 {
 
 show :: fn (val: i32 | *char | f32) u0 {
     match val {
-        i32(num)    -> c::printf("i32:%d\n", num),
-        *char(msg)  -> c::printf("str:%s\n", msg),
-        f32(f)      -> c::printf("f32:%f\n", f)
+        i32(num)    -> c.printf("i32:%d\n", num),
+        *char(msg)  -> c.printf("str:%s\n", msg),
+        f32(f)      -> c.printf("f32:%f\n", f)
     }
 }
 
@@ -24,9 +24,9 @@ main :: fn () i32 {
 
     val: i32 | *char | f32 = pick(7)
     match val {
-        i32(num)    -> c::printf("var:%d\n", num),
-        *char(msg)  -> c::printf("var:%s\n", msg),
-        f32(f)      -> c::printf("var:%f\n", f)
+        i32(num)    -> c.printf("var:%d\n", num),
+        *char(msg)  -> c.printf("var:%s\n", msg),
+        f32(f)      -> c.printf("var:%f\n", f)
     }
     return 0
 }

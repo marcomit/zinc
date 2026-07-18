@@ -13,23 +13,23 @@ Vec :: impl {
 
 flatTuple       :: fn () (i32, i32) -> (1, 2)
 labeledTuple    :: fn () (*char, i32) -> ("hello", 42)
-nested          :: fn () ((*char, Vec), i32) -> (("ciao", Vec::new()), 99)
+nested          :: fn () ((*char, Vec), i32) -> (("ciao", Vec.new()), 99)
 
 main :: fn () i32 {
     (a, b) := flatTuple()
-    c::printf("%d %d\n", a, b)
+    c.printf("%d %d\n", a, b)
 
     (name, num) := labeledTuple()
-    c::printf("%s %d\n", name, num)
+    c.printf("%s %d\n", name, num)
 
-    {x, y} := Vec::new()
-    c::printf("%d %d\n", x, y)
+    {x, y} := Vec.new()
+    c.printf("%d %d\n", x, y)
 
-    {x: renamed, y: ry} := Vec::new()
-    c::printf("%d %d\n", renamed, ry)
+    {x: renamed, y: ry} := Vec.new()
+    c.printf("%d %d\n", renamed, ry)
 
     ((first, {x: overridden, y: y2}), second) := nested()
-    c::printf("%s %d %d %d\n", first, overridden, y2, second)
+    c.printf("%s %d %d %d\n", first, overridden, y2, second)
 
     return 0
 }

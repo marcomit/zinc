@@ -12,10 +12,10 @@ level2 :: fn () i32 with Allocator -> level3()
 level1 :: fn () i32 with Allocator -> level2()
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator::init()
+    gpa := GeneralPurposeAllocator.init()
     with _ := (&gpa).allocator() {
         r := level1()
-        io::printf("%d\n", r)
+        io.printf("%d\n", r)
     }
     return 0
 }

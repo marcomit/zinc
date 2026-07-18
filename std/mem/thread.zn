@@ -1,4 +1,4 @@
-use <std::io::mutex>
+use <std.io.mutex>
 use lib
 
 pub ThreadAllocator :: struct {

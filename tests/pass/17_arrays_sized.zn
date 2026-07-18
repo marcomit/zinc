@@ -9,13 +9,13 @@ sumAndPrint :: fn (s: []i32) u0 {
         total = total + s[i]
         i = i + 1
     }
-    c::printf("%d\n", total)
+    c.printf("%d\n", total)
 }
 
 printSlice :: fn (s: []i32) u0 {
     i := 0
     for i < s.len {
-        c::printf("%d\n", s[i])
+        c.printf("%d\n", s[i])
         i = i + 1
     }
 }
@@ -27,7 +27,7 @@ main :: fn () i32 {
     // Element access via index
     i := 0
     for i < 5 {
-        c::printf("%d\n", arr[i])
+        c.printf("%d\n", arr[i])
         i = i + 1
     }
 
@@ -35,13 +35,13 @@ main :: fn () i32 {
     fib := [1, 1, 2, 3, 5, 8, 13]
     j := 0
     for j < 7 {
-        c::printf("%d\n", fib[j])
+        c.printf("%d\n", fib[j])
         j = j + 1
     }
 
     // Element mutation via subscript
     fib[0] = 99
-    c::printf("%d\n", fib[0])
+    c.printf("%d\n", fib[0])
 
     // Full-slice and pass to function
     sumAndPrint(arr[0:])
@@ -52,11 +52,11 @@ main :: fn () i32 {
 
     // Multi-element arithmetic
     vals := [10, 20, 30]
-    c::printf("%d\n", vals[0] + vals[1] + vals[2])
+    c.printf("%d\n", vals[0] + vals[1] + vals[2])
 
     // Slice len field
     head := fib[:4]
-    c::printf("%d\n", head.len)
+    c.printf("%d\n", head.len)
 
     // Slice of slice
     inner := arr[1:4]
@@ -66,11 +66,11 @@ main :: fn () i32 {
     // Mutation through slice propagates to original array
     s := arr[0:]
     s[0] = 42
-    c::printf("%d\n", arr[0])
+    c.printf("%d\n", arr[0])
 
     // Array of larger integers
     bytes := [72, 105, 10, 0]
-    c::printf("%d\n", bytes[0])
+    c.printf("%d\n", bytes[0])
 
     return 0
 }

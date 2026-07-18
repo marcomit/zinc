@@ -1,5 +1,5 @@
-use <std::mem>
-use <std::libc>
+use <std.mem>
+use <std.libc>
 
 #[packed]
 SdsHdr :: struct {
@@ -21,7 +21,7 @@ string :: impl {
         s := (&(base[sizeof SdsHdr])) as string
 
         if initlen > 0 and init != none {
-            mem::memcpy(s as *u8, init as *u8, initlen as u64)
+            mem.memcpy(s as *u8, init as *u8, initlen as u64)
         }
         s[initlen] = 0 as char
         return s
@@ -29,16 +29,16 @@ string :: impl {
 
     pub new :: fn (init: *char) string with Allocator {
         l: u32 = 0
-        if init != none { l = mem::strlen(init) as u32 }
-        return string::make(init, l, l)
+        if init != none { l = mem.strlen(init) as u32 }
+        return string.make(init, l, l)
     }
 
     pub empty :: fn () string with Allocator {
-        return string::make(none, 0, 0)
+        return string.make(none, 0, 0)
     }
 
     pub with_capacity :: fn (cap: u32) string with Allocator {
-        return string::make(none, 0, cap)
+        return string.make(none, 0, cap)
     }
 }
 
@@ -95,7 +95,7 @@ string self :: impl {
     pub append :: fn (t: *char) string with Allocator {
         if not t { return self }
 
-        tlen := mem::strlen(t) as u32
+        tlen := mem.strlen(t) as u32
         if tlen == 0 { return self }
 
         s := self.make_room_for(tlen)
@@ -103,7 +103,7 @@ string self :: impl {
 
         hdr := s.header()
         dst := s as *u8
-        mem::memcpy(&(dst[hdr.len]), t as *u8, tlen as u64)
+        mem.memcpy(&(dst[hdr.len]), t as *u8, tlen as u64)
 
         hdr.len :+ tlen
         s[hdr.len] = 0 as char
@@ -128,7 +128,7 @@ string self :: impl {
     pub dup :: fn () string with Allocator {
         if not self { return none }
         hdr := self.header()
-        return string::make(self, hdr.len, hdr.len)
+        return string.make(self, hdr.len, hdr.len)
     }
 
     pub clear :: fn () u0 {
@@ -139,29 +139,29 @@ string self :: impl {
     }
 
     pub cmp :: fn (other: *char) i32 {
-        return mem::strcmp(self, other)
+        return mem.strcmp(self, other)
     }
 
     // #[overload(==)]
     pub equals :: fn (other: *char) u1 {
-        return mem::strcmp(self, other) == 0
+        return mem.strcmp(self, other) == 0
     }
 
     pub starts_with :: fn (prefix: *char) u1 {
-        plen := mem::strlen(prefix)
-        return mem::strncmp(self, prefix, plen) == 0
+        plen := mem.strlen(prefix)
+        return mem.strncmp(self, prefix, plen) == 0
     }
 
     pub contains :: fn (needle: *char) u1 {
-        return mem::strstr(self, needle) != none
+        return mem.strstr(self, needle) != none
     }
 
     pub print :: fn () u0 {
-        io::printf("%s", self)
+        io.printf("%s", self)
     }
 
     pub println :: fn () u0 {
-        io::printf("%s\n", self)
+        io.printf("%s\n", self)
     }
 
     pub free :: fn () u0 with Allocator {

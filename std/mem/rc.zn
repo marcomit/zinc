@@ -1,4 +1,4 @@
-use <std::mem>
+use <std.mem>
 
 RcDrop :: type fn (*u8) u0
 

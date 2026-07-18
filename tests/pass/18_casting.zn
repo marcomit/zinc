@@ -6,66 +6,66 @@ main :: fn () i32 {
     // i32 -> i64 widening
     small := 42
     big := small as i64
-    c::printf("%lld\n", big)
+    c.printf("%lld\n", big)
 
     // i64 -> i32 truncation
     large: i64 = 1000
     trunc := large as i32
-    c::printf("%d\n", trunc)
+    c.printf("%d\n", trunc)
 
     // i32 -> f64 conversion
     ival := 7
     fval := ival as f64
-    c::printf("%.1f\n", fval)
+    c.printf("%.1f\n", fval)
 
     // f64 -> i32 truncation toward zero
     pi: f64 = 3.14
     ipi := pi as i32
-    c::printf("%d\n", ipi)
+    c.printf("%d\n", ipi)
 
     // f64 -> f32 narrowing
     d: f64 = 2.5
     f: f32 = d as f32
-    c::printf("%.1f\n", f)
+    c.printf("%.1f\n", f)
 
     // i32 -> u8 truncation (mod 256)
     big2 := 300
     byte := big2 as u8
-    c::printf("%d\n", byte)
+    c.printf("%d\n", byte)
 
     // u8 -> i32 zero-extension
     b: u8 = 200
     extended := b as i32
-    c::printf("%d\n", extended)
+    c.printf("%d\n", extended)
 
     // i32 -> u32 reinterpret
     neg := -1
     uns := neg as u32
-    c::printf("%u\n", uns)
+    c.printf("%u\n", uns)
 
     // sizeof basic types
-    c::printf("%llu\n", sizeof i32)
-    c::printf("%llu\n", sizeof i64)
-    c::printf("%llu\n", sizeof u8)
-    c::printf("%llu\n", sizeof f32)
-    c::printf("%llu\n", sizeof f64)
+    c.printf("%llu\n", sizeof i32)
+    c.printf("%llu\n", sizeof i64)
+    c.printf("%llu\n", sizeof u8)
+    c.printf("%llu\n", sizeof f32)
+    c.printf("%llu\n", sizeof f64)
 
     // sizeof struct (Point: two i32 = 8 bytes)
     // (We use the size in an expression)
     ptr_size: u64 = sizeof *i32
-    if ptr_size > 0 { c::printf("ptr_ok\n") }
+    if ptr_size > 0 { c.printf("ptr_ok\n") }
 
     // Chain: float -> int -> back to float
     start: f64 = 9.9
     mid: i32 = start as i32
     back: f64 = mid as f64
-    c::printf("%.1f\n", back)
+    c.printf("%.1f\n", back)
 
     // Cast in expression context
     a: i32 = 3
     b2: i32 = 4
     result: f64 = (a as f64) / (b2 as f64)
-    c::printf("%.2f\n", result)
+    c.printf("%.2f\n", result)
 
     return 0
 }

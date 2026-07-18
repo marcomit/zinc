@@ -1,6 +1,6 @@
-use <std::mem::gpa>
-use <std::mem>
-use <std::libc>
+use <std.mem.gpa>
+use <std.mem>
+use <std.libc>
 
 LinkedList :: struct {
     val: i32
@@ -17,24 +17,24 @@ LinkedList :: impl {
 *LinkedList self :: impl {
     print :: fn () u0 {
         if not self { return }
-        io::printf("%d\n", self.val)
+        io.printf("%d\n", self.val)
         self.next.print()
     }
 }
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator::init()
+    gpa := GeneralPurposeAllocator.init()
     with _ := (&gpa).allocator() {
         i := 0
-        root := LinkedList::new(none, 0)
+        root := LinkedList.new(none, 0)
 
-        for (i) < 10 {
-            root : LinkedList::new(i)
+        for i < 10 {
+            root = LinkedList.new(root, i)
             i: + 1
         }
 
         for root {
-            io::printf("%d\n", root.val)
+            io.printf("%d\n", root.val)
             root : .next
         }
 

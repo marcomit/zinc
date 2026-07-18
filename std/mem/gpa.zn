@@ -13,13 +13,13 @@ pub GeneralPurposeAllocator :: struct {
 
 GeneralPurposeAllocator :: impl {
     pub init :: fn () GeneralPurposeAllocator {
-        return GeneralPurposeAllocator{ active: 0, bytes: 0 }
+        return .{ active: 0, bytes: 0 }
     }
 }
 
 *GeneralPurposeAllocator self :: impl Allocator {
     alloc :: fn (size: u64) *u8 {
-        p := c::malloc(size)
+        p := c.malloc(size)
         if not p { return none }
         self.active :+ 1
         self.bytes  :+ size
@@ -27,20 +27,20 @@ GeneralPurposeAllocator :: impl {
     }
 
     resize :: fn (ptr: *u8, size: u64) *u8 {
-        return c::realloc(ptr, size)
+        return c.realloc(ptr, size)
     }
 
     destroy :: fn (ptr: *u8) u0 {
         if not ptr { return }
         if self.active > 0 { self.active :- 1 }
-        c::free(ptr)
+        c.free(ptr)
     }
-    init ::     fn () u0 { return }
-    deinit ::   fn () u0 { return }
+    init ::     fn () u0 {  }
+    deinit ::   fn () u0{  }
 }
 
 *GeneralPurposeAllocator self :: impl {
-    pub allocator :: fn () Allocator -> self as Allocator
+    pub allocator :: fn () Allocator -> Allocator(self)
 
     pub leaked :: fn () u64 -> self.active
 }

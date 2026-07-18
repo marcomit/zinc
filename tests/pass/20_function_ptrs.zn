@@ -14,7 +14,7 @@ BinOp :: struct  {
 
 BinOp self :: impl {
     invoke :: fn (x: i32, y: i32) i32 -> self.func(x, y)
-    print :: fn (x: i32, y: i32) u0 -> c::printf("%s(%d,%d)=%d\n", self.name, x, y, self.func(x, y))
+    print :: fn (x: i32, y: i32) u0 -> c.printf("%s(%d,%d)=%d\n", self.name, x, y, self.func(x, y))
 }
 
 one     :: fn () i32 -> 1
@@ -25,34 +25,34 @@ four    :: fn () i32 -> 4
 main :: fn () i32 {
     // Function stored in struct field, called directly
     bAdd := BinOp { func: add, name: "add" }
-    c::printf("%d\n", bAdd.func(10, 3))
+    c.printf("%d\n", bAdd.func(10, 3))
 
     bSub := BinOp { func: sub, name: "sub" }
-    c::printf("%d\n", bSub.func(10, 3))
+    c.printf("%d\n", bSub.func(10, 3))
 
     bMul := BinOp { func: mul, name: "mul" }
-    c::printf("%d\n", bMul.func(10, 3))
+    c.printf("%d\n", bMul.func(10, 3))
 
     // Call through receiver method
-    c::printf("%d\n", bAdd.invoke(5, 2))
-    c::printf("%d\n", bSub.invoke(5, 2))
+    c.printf("%d\n", bAdd.invoke(5, 2))
+    c.printf("%d\n", bSub.invoke(5, 2))
 
     // Print via receiver method
     bMul.print(4, 5)
 
     // Replace field value and re-invoke
     bAdd.func = mul
-    c::printf("%d\n", bAdd.func(4, 5))
+    c.printf("%d\n", bAdd.func(4, 5))
 
     // Different functions via struct fields
     sq := BinOp { func: square, name: "sq" }
     s := sq.func(7, 0)
-    c::printf("%d\n", s)
+    c.printf("%d\n", s)
 
     // Multiple structs independent of each other
     a := BinOp { func: add, name: "a" }
     b := BinOp { func: mul, name: "b" }
-    c::printf("%d %d\n", a.func(2, 3), b.func(2, 3))
+    c.printf("%d %d\n", a.func(2, 3), b.func(2, 3))
 
     nums := [
         one, two, three, four

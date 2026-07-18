@@ -4,4 +4,4 @@ c :: foreign {
     printf : fn (*char, ...) u0
 }
 
-pub print :: fn (a: A) u0 -> c::printf("%s\n", a.name)
+pub print :: fn (a: A) u0 -> c.printf("%s\n", a.name)
