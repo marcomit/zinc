@@ -4,7 +4,6 @@
 #include "zinc.h"
 #include "zmem.h"
 
-#include <execinfo.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
