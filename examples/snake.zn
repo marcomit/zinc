@@ -1,7 +1,8 @@
-use <std::libc>
-use <std::mem>
-use <std::core::rand>
-use <std::mem::gpa>
+use <std.libc>
+use <std.mem>
+use <std.core.rand>
+use <std.mem.gpa>
+
 
 rl :: foreign {
     InitWindow:         fn (i32, i32, *char) u0
@@ -52,7 +53,7 @@ Vec2 self :: impl {
         return self.x == other.x and self.y == other.y
     }
 
-    draw :: fn (color: Color) u0 -> rl::DrawRectangleV(.{
+    draw :: fn (color: Color) u0 -> rl.DrawRectangleV(.{
         x: self.x * BLOCK,
         y: self.y * BLOCK,
         width: BLOCK,
@@ -96,10 +97,10 @@ Snake :: impl {
 
 *Snake self :: impl {
     append :: fn () u0 with Allocator {
-        self.len: + 1
+        self.len = self.len + 1
         self.head = resize(self.head, sizeof Vec2 * self.len)
         self.head[self.len - 1] = self.head[self.len - 2]
-        io::printf("append(%d)\n", self.len)
+        io.printf("append(%d)\n", self.len)
     }
 
     draw :: fn () u0 {
@@ -161,29 +162,29 @@ Snake :: impl {
 }
 
 main :: fn () i32 {
-    rl::InitWindow(WIDTH, HEIGHT, "Snake")
-    rl::SetTargetFPS(10)
+    rl.InitWindow(WIDTH, HEIGHT, "Snake")
+    rl.SetTargetFPS(10)
 
-    defer rl::CloseWindow()
+    defer rl.CloseWindow()
 
-    gpa := GeneralPurposeAllocator::init()
-    
+    gpa := GeneralPurposeAllocator.init()
+
     with _ := (&gpa).allocator() {
         score := 0
-        snake := Snake::new()
-        rand := Random::by_ref()
-        apple := Vec2::rand(rand)
-        for not rl::WindowShouldClose() {
-            rl::BeginDrawing()
-            rl::ClearBackground(Black)
+        snake := Snake.new()
+        rand := Random.by_ref()
+        apple := Vec2.rand(rand)
+        for not rl.WindowShouldClose() {
+            rl.BeginDrawing()
+            rl.ClearBackground(Black)
 
-            if rl::IsKeyPressed(KEY_LEFT) {
+            if rl.IsKeyPressed(KEY_LEFT) {
                 snake.change_dir(.Left())
-            } else if rl::IsKeyPressed(KEY_RIGHT) {
+            } else if rl.IsKeyPressed(KEY_RIGHT) {
                 snake.change_dir(.Right())
-            } else if rl::IsKeyPressed(KEY_UP) {
+            } else if rl.IsKeyPressed(KEY_UP) {
                 snake.change_dir(.Up())
-            } else if rl::IsKeyPressed(KEY_DOWN) {
+            } else if rl.IsKeyPressed(KEY_DOWN) {
                 snake.change_dir(.Down())
             }
 
@@ -191,16 +192,16 @@ main :: fn () i32 {
 
             apple.draw(Red)
             snake.draw()
-            rl::DrawText(rl::TextFormat("%d", score), BLOCK, BLOCK, BLOCK, White)
+            rl.DrawText(rl.TextFormat("%d", score), BLOCK, BLOCK, BLOCK, White)
 
             if snake.eat(apple) {
-                apple = Vec2::rand(rand)
+                apple = Vec2.rand(rand)
                 snake.append()
                 score: + 1
             }
 
             if snake.collide() { break }
-            rl::EndDrawing()
+            rl.EndDrawing()
         }
     }
 

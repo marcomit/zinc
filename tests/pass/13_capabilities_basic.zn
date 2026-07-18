@@ -9,10 +9,10 @@ fill :: fn (size: u64) i32 with alloc: Allocator {
 }
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator::init()
+    gpa := GeneralPurposeAllocator.init()
     with _ := (&gpa).allocator() {
         result: i32 = fill(64)
-        io::printf("%d\n", result)
+        io.printf("%d\n", result)
     }
     return 0
 }

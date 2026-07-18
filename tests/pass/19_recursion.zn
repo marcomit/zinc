@@ -23,14 +23,14 @@ sumTo :: fn (n: i32, acc: i32) i32 {
 // Descending print
 countDown :: fn (n: i32) u0 {
     if n < 0 { return }
-    c::printf("%d\n", n)
+    c.printf("%d\n", n)
     countDown(n - 1)
 }
 
 // Ascending print
 countUp :: fn (start: i32, limit: i32) u0 {
     if start > limit { return }
-    c::printf("%d\n", start)
+    c.printf("%d\n", start)
     countUp(start + 1, limit)
 }
 
@@ -42,29 +42,29 @@ power :: fn (x: i32, n: i32) i32 {
 
 main :: fn () i32 {
     // Factorial
-    c::printf("%d\n", factorial(0))
-    c::printf("%d\n", factorial(1))
-    c::printf("%d\n", factorial(5))
-    c::printf("%d\n", factorial(10))
+    c.printf("%d\n", factorial(0))
+    c.printf("%d\n", factorial(1))
+    c.printf("%d\n", factorial(5))
+    c.printf("%d\n", factorial(10))
 
     // Fibonacci sequence
-    c::printf("%d\n", fib(0))
-    c::printf("%d\n", fib(1))
-    c::printf("%d\n", fib(7))
-    c::printf("%d\n", fib(10))
+    c.printf("%d\n", fib(0))
+    c.printf("%d\n", fib(1))
+    c.printf("%d\n", fib(7))
+    c.printf("%d\n", fib(10))
 
     // Accumulator sum
-    c::printf("%d\n", sumTo(5, 0))
-    c::printf("%d\n", sumTo(10, 0))
+    c.printf("%d\n", sumTo(5, 0))
+    c.printf("%d\n", sumTo(10, 0))
 
     // Print ranges
     countDown(3)
     countUp(1, 4)
 
     // Power
-    c::printf("%d\n", power(2, 0))
-    c::printf("%d\n", power(2, 8))
-    c::printf("%d\n", power(3, 4))
+    c.printf("%d\n", power(2, 0))
+    c.printf("%d\n", power(2, 8))
+    c.printf("%d\n", power(3, 4))
 
     return 0
 }

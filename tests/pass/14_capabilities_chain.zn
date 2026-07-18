@@ -1,6 +1,6 @@
-use <std::mem::gpa>
-use <std::mem>
-use <std::libc>
+use <std.mem.gpa>
+use <std.mem>
+use <std.libc>
 
 allocInner :: fn (size: u64) *u8 with Allocator -> alloc(size)
 
@@ -11,12 +11,12 @@ allocOuter :: fn (size: u64) i32 with Allocator {
 }
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator::init()
+    gpa := GeneralPurposeAllocator.init()
     allocator := (&gpa).allocator()
     with _ := allocator {
         a: i32 = allocOuter(32)
         b: i32 = allocOuter(64)
-        io::printf("%d %d\n", a, b)
+        io.printf("%d %d\n", a, b)
     }
 
     with _ := allocator -> allocInner(1024)

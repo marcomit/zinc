@@ -1,8 +1,8 @@
 use <std::io::thread>
 
 libc :: foreign {
-    putchar :: i32 (i32)
-    printf  ::  u0 (*char, ...)
+    putchar : fn (i32) i32
+    printf  :  fn (*char, ...) u0
 }
 
 EXIT_CODE :: 27
@@ -11,23 +11,23 @@ BOARD_LEN :: 30
 Cursor :: struct { }
 
 Cursor :: impl {
-    move :: u0 (x: i32, y: i32) {
+    move :: fn (x: i32, y: i32) u0 {
         libc::putchar(EXIT_CODE)
         libc::printf("[%d;%dH", y, x)
     }
-    clear :: u0 () {
+    clear :: fn () u0 {
         libc::putchar(EXIT_CODE)
         libc::printf("[2J")
     }
-    bg :: u0 (r: u8, g: u8, b: u8) {
+    bg :: fn (r: u8, g: u8, b: u8) u0 {
         libc::putchar(EXIT_CODE)
         libc::printf("[48;2;%d;%d;%dm", r, g, b)
     }
-    hide :: u0 () {
+    hide :: fn () u0 {
         libc::putchar(EXIT_CODE)
         libc::printf("[?25l")
     }
-    show :: u0 () {
+    show :: fn () u0 {
         libc::putchar(EXIT_CODE)
         libc::printf("[?25h")
     }
@@ -36,13 +36,13 @@ Cursor :: impl {
 Board :: type []u64
 
 Board self :: impl {
-    get :: u1 (x: i32, y: i32) {
+    get :: fn (x: i32, y: i32) u1 {
         x = (x + BOARD_LEN) % BOARD_LEN
         y = (y + BOARD_LEN) % BOARD_LEN
 
         return self[y] >> x & 0b1
     }
-    set :: u0 (x: i32, y: i32, val: u1) {
+    set :: fn (x: i32, y: i32, val: u1) u0 {
         x = (x + BOARD_LEN) % BOARD_LEN
         y = (y + BOARD_LEN) % BOARD_LEN
         if val {
@@ -51,7 +51,7 @@ Board self :: impl {
             self[y]: & ~((1 as u64) << x)
         }
     }
-    draw :: u0 () {
+    draw :: fn () u0 {
         i := 0
         for i < BOARD_LEN {
             j := 0
@@ -69,7 +69,7 @@ Board self :: impl {
         }
     }
 
-    neighbors :: i32 (x: i32, y: i32) {
+    neighbors :: fn (x: i32, y: i32) i32 {
         res := 0
 
         directions := [
@@ -93,7 +93,7 @@ Board self :: impl {
         return res
     }
 
-    update :: u0 (next: Board) {
+    update :: fn (next: Board) u0 {
         i := 0
         for i < BOARD_LEN {
             j := 0
@@ -114,7 +114,7 @@ Board self :: impl {
         }
     }
 
-    copy :: u0 (next: Board) {
+    copy :: fn (next: Board) u0 {
         i := 0
         for i < BOARD_LEN {
             self[i] = next[i]
@@ -123,7 +123,7 @@ Board self :: impl {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     Cursor::hide()
     Cursor::clear()
     Cursor::move(0, 0)

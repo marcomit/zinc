@@ -18,12 +18,12 @@ range :: fn (start: i32, end: i32) Range {
 *Range self :: impl {
     next :: fn () Option {
         if self.current >= self.end {
-            return Option::None()
+            return Option.None()
         }
 
         res := self.current
         self.current :+ 1
-        return Option::Some(res)
+        return Option.Some(res)
     }
 }
 
@@ -35,26 +35,26 @@ ArrIter :: struct {
 *ArrIter self :: impl {
     next :: fn () Option {
         if self.current >= self.data.len {
-            return Option::None()
+            return Option.None()
         }
         res := self.data[self.current]
         self.current :+ 1
-        return Option::Some(res)
+        return Option.Some(res)
     }
 }
 
 main :: fn () i32 {
     iter := range(0, 10)
 
-    for Option::Some(i) := (&iter).next() {
+    for Option.Some(i) := (&iter).next() {
         printf("%d\n", i)
     }
 
     nums := [5, 4, 3, 2, 1]
 
     iterator := ArrIter{ data: nums, current: 0 }
-    
-    for Option::Some(n) := (&iterator).next() {
+
+    for Option.Some(n) := (&iterator).next() {
         printf("%d\n", n)
     }
     return 0

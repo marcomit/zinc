@@ -24,9 +24,9 @@ static char *nodeLabels[] = {
     "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
-    "ENUM_FIELD",   "CAST",         "SIZEOF",       "STATICACCESS", "NAMESPACE",
-    "SLICE",        "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",
-    "FACET",        "IMPL",         "FOR_IN"
+    "ENUM_FIELD",   "CAST",         "SIZEOF",       "NAMESPACE",    "SLICE",
+    "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",     "FACET",
+    "IMPL",         "FOR_IN"
 };
 
 static char *levels[] = {
@@ -172,7 +172,7 @@ static void _stype(ZType *type, char **buff) {
         break;
     case Z_TYPE_ARRAY: {
         vecpush(*buff, '[');
-        
+
         usize len = type->array.size;
 
         while (len > 0) {
@@ -634,12 +634,12 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->unary.operand, depth);
         break;
     case NODE_MODULE:
-        printf("Name: %s\n", node->module.name);
+        printf("Name: %s: %s\n", stoken(node->module.name), node->module.filename);
         for (usize i = 0; i < veclen(node->module.root); i++) {
             printNode(node->module.root[i], depth);
         }
         break;
-    
+
     case NODE_MEMBER: {
         for (usize i = 0; i < veclen(node->memberAccess.path); i++) {
             printf("%d ", node->memberAccess.path[i]);
@@ -668,7 +668,7 @@ void printNode(ZNode *node, u8 depth) {
         }
         break;
     case NODE_STRUCT_LIT:
-        printToken(node->structlit.ident);
+        printToken(veclast(node->structlit.chain));
         printf("\n");
         for (usize i = 0; i < veclen(node->structlit.fields); i++) {
             printNode(node->structlit.fields[i], depth);
@@ -705,12 +705,6 @@ void printNode(ZNode *node, u8 depth) {
         printType(node->sizeofExpr.type);
         break;
 
-    case NODE_STATIC_ACCESS:
-        printf("%s::%s",
-                stoken(node->staticAccess.base), stoken(node->staticAccess.prop));
-        break;
-
-
     case NODE_ENUM:
         printf("%s\n", stoken(node->enumDef.name));
 
@@ -721,11 +715,6 @@ void printNode(ZNode *node, u8 depth) {
 
     case NODE_ENUM_FIELD:
         printf("%s\n", stoken(node->enumField.name));
-        for (usize j = 0; j < veclen(node->enumField.captured); j++) {
-            indent(depth);
-            printType(node->enumField.captured[j]);
-            printf("\n");
-        }
         break;
 
     case NODE_NAMESPACE:
@@ -804,6 +793,18 @@ void printNode(ZNode *node, u8 depth) {
     printf("\n");
 }
 
+static inline void sanitize(char *source, char **buff) {
+    while (*source) {
+        if (isalnum(*source)) {
+            vecpush(*buff, *source);
+        } else {
+            vecpush(*buff, '_');
+            vecpush(*buff, '_');
+        }
+        source++;
+    }
+}
+
 static char *_mangler(char *segments[], const char *prefix) {
     char *mangled = NULL;
 
@@ -815,7 +816,7 @@ static char *_mangler(char *segments[], const char *prefix) {
             vecpush(mangled, ('0' + tmp % 10));
             tmp /= 10;
         }
-        vecunion(mangled, segments[i], (usize)len);
+        sanitize(segments[i], &mangled);
     }
     vecpush(mangled, '\0');
     return mangled;
@@ -936,7 +937,7 @@ ZState *makestate() {
 
     self->currentPhase          = Z_PHASE_LEXICAL;
     self->homePath              = getHomePath();
-    self->canAdvance            = true;                             
+    self->canAdvance            = true;
 
     self->emit                  = Z_EMIT_EXE;
     self->optimizationLevel     = '2';
@@ -947,7 +948,7 @@ ZState *makestate() {
 
 char *readfile(char *filename) {
     FILE *fd = fopen(filename, "rb");
-    
+
     if (!fd) return NULL;
 
     fseek(fd, 0, SEEK_END);
@@ -1026,7 +1027,7 @@ static char *resolvePath(ZState *state, char *filename) {
     // Windows absolute path: "C:/..." or "C:\..."
     if (filename[0] && filename[1] == ':' && (filename[2] == '/' || filename[2] == '\\')) return filename;
 
-    
+
     usize len = strlen(state->filename);
     char *path = znalloc(char, len+1);
     strncpy(path, state->filename, len);
@@ -1103,12 +1104,12 @@ void undoVisit(ZState *state) {
 static void printLineHighlight(ZToken *tok, const char *color) {
     if (!tok || !tok->start || !tok->sourceLinePtr) return;
     char *lineStart = tok->sourceLinePtr;
-    
+
     char num[32];
 
     snprintf(num, sizeof(num), "%zu", tok->row);
     usize numlen = strlen(num);
-    
+
     u8 padding = 0;
     if (numlen < 6) {
         while(6 - numlen >= padding) {
@@ -1126,13 +1127,13 @@ static void printLineHighlight(ZToken *tok, const char *color) {
     lineStart = tok->sourceLinePtr;
     putchar('\n');
 
-    
+
     padding = numlen < 6 ? 8 : numlen + 1;
     while (padding-- > 0) putchar(' ');
     putchar('|');
     printf("%s", color);
     u32 i = 1;
-    
+
     while (lineStart++ != tok->start) {
         putchar(' ');
         i++;
@@ -1143,7 +1144,7 @@ static void printLineHighlight(ZToken *tok, const char *color) {
     for (; i <= tok->col; i++) {
         putchar('~');
     }
-    
+
     printf("\033[0m\n");
 }
 

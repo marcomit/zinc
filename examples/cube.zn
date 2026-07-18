@@ -21,7 +21,7 @@ Context :: struct {
 }
 
 Context :: impl {
-    new :: *Context(width: u64, height: u64)[Allocator] {
+    new :: fn (width: u64, height: u64) *Context [Allocator] {
         self: *Context = alloc(sizeof Context)
         self.verts     = alloc(sizeof Vec3 * VERTS as u64)
         self.proj      = alloc(sizeof Vec3 * VERTS as u64)
@@ -34,7 +34,7 @@ Context :: impl {
 }
 
 *Context self :: impl {
-    init :: u0 () {
+    init :: fn () u0 {
         self.verts[0].x = -100.0   self.verts[0].y = -100.0   self.verts[0].z = -100.0
         self.verts[1].x =  100.0   self.verts[1].y = -100.0   self.verts[1].z = -100.0
         self.verts[2].x =  100.0   self.verts[2].y =  100.0   self.verts[2].z = -100.0
@@ -45,7 +45,7 @@ Context :: impl {
         self.verts[7].x = -100.0   self.verts[7].y =  100.0   self.verts[7].z =  100.0
     }
 
-    edge :: u0 (i: i32, j: i32) {
+    edge :: fn (i: i32, j: i32) u0 {
         za: f32 = self.proj[i].z
         zb: f32 = self.proj[j].z
         norm: f32 = 1.0 - ((za + zb) / 2.0 + 175.0) / 350.0
@@ -58,7 +58,7 @@ Context :: impl {
         raylib::DrawLineV(a, b, 0xFFFFFFFF)
     }
 
-    draw :: u0 () {
+    draw :: fn () u0 {
         cx: f32    = self.w as f32 / 2.0
         cy: f32    = self.h as f32 / 2.0
         alpha: f32 = self.angle_a
@@ -92,7 +92,7 @@ Context :: impl {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
         ctx := Context::new(SCREEN_WIDTH, SCREEN_HEIGHT)

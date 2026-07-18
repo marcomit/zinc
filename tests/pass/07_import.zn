@@ -1,20 +1,20 @@
-use <std::libc>
-use <std::mem>
-use <std::mem::gpa>
-use <std::core::string>
+use <std.libc>
+use <std.mem>
+use <std.mem.gpa>
+use <std.core.string>
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator::init()
+    gpa := GeneralPurposeAllocator.init()
     with _ := (&gpa).allocator() {
-        hello := string::new("Ciao")
-        cap := string::with_capacity(64)
+        hello := string.new("Ciao")
+        cap := string.with_capacity(64)
 
-        hello2 := string::new("Ciao")
-        
+        hello2 := string.new("Ciao")
+
         hello.println()
 
         if hello.equals(hello2) {
-            io::printf("ok\n")
+            io.printf("ok\n")
         }
     }
 

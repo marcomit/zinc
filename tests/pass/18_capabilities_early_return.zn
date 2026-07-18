@@ -9,13 +9,13 @@ allocate :: fn (size: u64) i32 with alloc: Allocator {
 }
 
 run :: fn () i32 {
-    gpa := GeneralPurposeAllocator::init()
+    gpa := GeneralPurposeAllocator.init()
     with _ := (&gpa).allocator() {
         return allocate(32)
     }
 }
 
 main :: fn () i32 {
-    io::printf("%d\n", run())
+    io.printf("%d\n", run())
     return 0
 }

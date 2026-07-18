@@ -12,40 +12,40 @@ main :: fn () i32 {
     // Read through a pointer
     x := 42
     ptr := &x
-    c::printf("%d\n", *ptr)
+    c.printf("%d\n", *ptr)
 
     // Pointer to struct: field read
     n := Node { val: 10, extra: 20 }
     np := &n
-    c::printf("%d\n", np.val)
-    c::printf("%d\n", np.extra)
+    c.printf("%d\n", np.val)
+    c.printf("%d\n", np.extra)
 
     // Modify struct field through pointer
     np.val = 77
-    c::printf("%d\n", n.val)
+    c.printf("%d\n", n.val)
 
     // Heap-allocated struct with pointer receiver
-    hp: *Node = c::malloc(sizeof Node)
+    hp: *Node = c.malloc(sizeof Node)
     hp.val = 5
     hp.extra = 6
-    c::printf("%d %d\n", hp.val, hp.extra)
+    c.printf("%d %d\n", hp.val, hp.extra)
 
     // none comparison
     nptr: *i32 = none
-    if nptr == none { c::printf("is_null\n") }
-    if nptr != none { c::printf("FAIL\n") }
+    if nptr == none { c.printf("is_null\n") }
+    if nptr != none { c.printf("FAIL\n") }
 
     // Assign valid pointer and re-check
     nptr = &x
-    if nptr != none { c::printf("not_null\n") }
-    if nptr == none { c::printf("FAIL\n") }
+    if nptr != none { c.printf("not_null\n") }
+    if nptr == none { c.printf("FAIL\n") }
 
     // Pointer to pointer: read outer value
     a: *i32 = &x
     pp: **i32 = &a
     // Load the inner pointer value
     inner: *i32 = *pp
-    c::printf("%d\n", *inner)
+    c.printf("%d\n", *inner)
 
     // Pointer as function argument
     return 0

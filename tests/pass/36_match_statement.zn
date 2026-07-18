@@ -8,49 +8,49 @@ Option :: enum {
 }
 
 fromFunc :: fn () Option {
-    return Option::Some("hello")
+    return Option.Some("hello")
 }
 
 nestedCond :: fn () (i32, Option) {
-    return (1, Option::Some("hi"))
+    return (1, Option.Some("hi"))
 }
 
 doubleCond :: fn () (Option, Option) {
-    return (Option::Some("message 1"), Option::None())
+    return (Option.Some("message 1"), Option.None())
 }
 
 printDoubleCond :: fn (cond: (Option, Option)) u0 {
     match cond {
-        (Option::Some(msg1), Option::Some(msg2))    -> c::printf("%s, %s\n", msg1, msg2),
-        (Option::Some(msg), Option::None())         -> c::printf("1:%s\n", msg),
-        (Option::None(), Option::Some(msg))         -> c::printf("2:%s\n", msg)
+        (Option.Some(msg1), Option.Some(msg2))    -> c.printf("%s, %s\n", msg1, msg2),
+        (Option.Some(msg), Option.None())         -> c.printf("1:%s\n", msg),
+        (Option.None(), Option.Some(msg))         -> c.printf("2:%s\n", msg)
     }
 }
 
 main :: fn () i32 {
     match fromFunc() {
-        Option::Some(msg)   -> c::printf("%s\n", msg),
-        Option::None()      -> c::printf("none\n")
+        Option.Some(msg)   -> c.printf("%s\n", msg),
+        Option.None()      -> c.printf("none\n")
     }
 
     match nestedCond() {
-        (_, Option::Some(msg))  -> c::printf("%s\n", msg),
-        (val, Option::None())     -> c::printf("%d none\n", val)
+        (_, Option.Some(msg))  -> c.printf("%s\n", msg),
+        (val, Option.None())     -> c.printf("%d none\n", val)
     }
 
-    case1 := (Option::Some("msg1"), Option::Some("msg2"))
-    case2 := (Option::Some("msg"), Option::None())
-    case3 := (Option::None(), Option::Some("msg"))
+    case1 := (Option.Some("msg1"), Option.Some("msg2"))
+    case2 := (Option.Some("msg"), Option.None())
+    case3 := (Option.None(), Option.Some("msg"))
 
     printDoubleCond(case1)
     printDoubleCond(case2)
     printDoubleCond(case3)
 
     match nestedCond() {
-        (1, Option::None()) -> c::printf("1 with none\n"),
-        (0, Option::Some(msg)) -> c::printf("0 with %s\n", msg),
-        (1, Option::Some("val")) -> c::printf("1 with val\n"),
-        (1, Option::Some(val)) -> c::printf("1 with %s\n", val)
+        (1, Option.None()) -> c.printf("1 with none\n"),
+        (0, Option.Some(msg)) -> c.printf("0 with %s\n", msg),
+        (1, Option.Some("val")) -> c.printf("1 with val\n"),
+        (1, Option.Some(val)) -> c.printf("1 with %s\n", val)
     }
 
     return 0

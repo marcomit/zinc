@@ -52,16 +52,18 @@ typedef struct ZToken {
     bool newlineBefore;
 } ZToken;
 
-typedef struct ZNode ZNode;
-typedef struct ZType ZType;
-typedef struct ZScope ZScope;
-typedef struct ZAnnotation ZAnnotation;
-typedef struct ZThreadSem ZThreadSem;
+typedef struct ZNode        ZNode;
+typedef struct ZType        ZType;
+typedef struct ZScope       ZScope;
+typedef struct ZSymbol      ZSymbol;
+typedef struct ZThreadSem   ZThreadSem;
+typedef struct ZAnnotation  ZAnnotation;
 
 static ZType *none      = NULL;
 static ZType *u0Type    = NULL;
 static ZType *u1Type    = NULL;
 static ZType *u64Type   = NULL;
+static ZType *modType   = NULL;
 
 typedef enum {
     Z_ERROR,
@@ -124,20 +126,20 @@ typedef struct {
     char            *currentPath;
     char            *filename;
     char            *homePath;
-                    
+
     char            **pathFiles;
     char            **visitedFiles;
     bool            canAdvance;
-                    
+
     bool            debug;
-                    
+
     bool            unusedVar;
     bool            unusedFunc;
     bool            unusedStruct;
-                    
+
     bool            skipLLVMValidation;
     bool            verbose;
-                    
+
     char            optimizationLevel;
     ZLTOMode        ltoMode;
     ZEmitMode       emit;
@@ -209,7 +211,6 @@ typedef enum {
     NODE_ENUM_FIELD,
     NODE_CAST,
     NODE_SIZEOF,
-    NODE_STATIC_ACCESS,
     NODE_NAMESPACE,
     NODE_SLICE,
     NODE_CAPABILITY,
@@ -219,7 +220,6 @@ typedef enum {
     NODE_FACET,
     NODE_IMPL,
     NODE_FORIN,
-    NODE_MEMBER_INFERRED
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -242,6 +242,11 @@ struct ZType {
     ZToken      *tok;
 
     union {
+        struct {
+            ZType   *base;
+            ZToken  *prop;
+        } space;
+
         // For PRIMITIVE (e.g. void or int)
         struct {
             ZToken  *token;
@@ -301,7 +306,7 @@ struct ZType {
             ZToken  *name;
 
             /* A generic can extend a facets:
-             * T: Display + Drop 
+             * T: Display + Drop
              * */
             ZType   **extensions;
 
@@ -428,9 +433,9 @@ struct ZNode {
             ZNode   *cond;
             ZNode   *body;
             ZNode   *elseBranch;
-        } ifStmt;   
-                    
-        struct {    
+        } ifStmt;
+
+        struct {
             ZNode   *cond;
             ZNode   *branch;
         } whileStmt;
@@ -498,34 +503,36 @@ struct ZNode {
             ZToken  *identifier;
         } field;
 
-        struct {
-            ZType   *ret;
-            ZToken  *name;
-            char    *mangled;
+        union {
+            struct {
+                ZType   *ret;
+                ZToken  *name;
+                char    *mangled;
 
-            /* Always parsed as Z_TYPE_PRIMITIVE. */
-            ZType   *base;
+                /* Always parsed as Z_TYPE_PRIMITIVE. */
+                ZType   *base;
 
-            ZNode   **args;
+                ZNode   **args;
 
-            ZNode   *body;
+                ZNode   *body;
 
-            /* NODE_FIELD */
-            ZNode   *receiver;
+                /* NODE_FIELD */
+                ZNode   *receiver;
 
-            ZType   **generics;
+                ZType   **generics;
 
-            ZAnnotation **annotations;
-            ZNode   **capabilities;
+                ZAnnotation **annotations;
+                ZNode   **capabilities;
 
-            bool    pub;
-        } funcDef;
+                bool    pub;
+            } funcDef;
 
-        struct {
-            ZToken      *name;
-            bool        pub;
-            ZAnnotation **annotations;
-        } foreignDecl;
+            struct {
+                ZToken      *name;
+                bool        pub;
+                ZAnnotation **annotations;
+            } foreignDecl;
+        };
 
         struct {
             ZNode   *callee;
@@ -571,7 +578,6 @@ struct ZNode {
          * */
          struct {
              ZToken *name;
-             ZType  **captured;
          } enumField;
 
         struct {
@@ -579,14 +585,9 @@ struct ZNode {
             ZToken      *field;
             char        *mangled;
             u32         *path;
-        } memberAccess;
-
-        struct {
-            ZToken      *base;
-            ZToken      *prop;
             ZNode       *func;
-            char        *mangled;
-        } staticAccess;
+            ZSymbol     *sym;
+        } memberAccess;
 
         struct {
             ZNode       *expr; // Can be NULL for void returns
@@ -614,7 +615,7 @@ struct ZNode {
         ZType           *arrayinit;
 
         struct {
-            ZToken      *ident;
+            ZToken      **chain;
             ZNode       **fields;
             ZType       **generics;
         } structlit;
@@ -627,7 +628,11 @@ struct ZNode {
         } typeDef;
 
         struct {
-            char        *name;
+            /* Named imports. */
+            ZToken *name;
+
+            /* Full path. */
+            char        *filename;
 
             /* List of file-level declarations.
              * It is NULL if the module is already parsed
@@ -661,6 +666,7 @@ struct ZNode {
         struct {
             ZToken          *tok;
             char            *mangled;
+            ZSymbol         *sym;
         } identNode;
 
         struct {
@@ -756,7 +762,6 @@ typedef struct ZParser {
 } ZParser;
 
 /* ================== Semantic analysis    ================== */
-typedef struct ZScope ZScope;
 
 typedef enum {
     Z_SYM_VAR       = 1 << 0,
@@ -765,15 +770,17 @@ typedef enum {
     Z_SYM_STRUCT    = 1 << 3,
     Z_SYM_TYPEDEF   = 1 << 4,
     Z_SYM_GENERIC   = 1 << 5,
-    Z_SYM_NAMESPACE = 1 << 6,
-    Z_SYM_FACET     = 1 << 7
+    Z_SYM_FOREIGN   = 1 << 6,
+    Z_SYM_FACET     = 1 << 7,
+    Z_SYM_IMPORT    = 1 << 8,
 } ZSymType;
 
-typedef struct ZSymbol {
+struct ZSymbol {
     ZSymType        kind;
     ZToken          *name;
     ZType           *type;
     ZNode           *node;
+    ZScope          *scope;
 
     /* All types that resovled a generic.
      * Example:
@@ -781,13 +788,13 @@ typedef struct ZSymbol {
      * Every time in the code appear a Hashmap called with two generics
      * it saves these two type in the array.
      * So it is the list of all types that must be generated
-     * */ 
+     * */
     ZType           ***generics;
 
     usize           useCount;
     bool            isPublic;
     bool            reachable;
-} ZSymbol;
+};
 
 typedef struct ZCapability {
     ZType *type;
@@ -909,6 +916,7 @@ bool macropatterneq(ZMacroPattern *, ZMacroPattern *);
 
 ZNode *makenode(ZNodeType);
 ZType *maketype(ZTypeKind);
+ZType *makePrimitiveType(ZTokenType);
 
 /* Semantic  -  public entry points. The per-traversal helpers (resolveType,
  * resolve, typesCompatible) now take the internal ZThreadSem and stay private

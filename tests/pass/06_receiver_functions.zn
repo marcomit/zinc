@@ -13,7 +13,7 @@ Rect :: struct {
 }
 
 Counter self :: impl {
-    print :: fn () u0 -> c::printf("%d\n", self.count)
+    print :: fn () u0 -> c.printf("%d\n", self.count)
     get :: fn () i32 -> self.count
     add :: fn (n: i32) i32 -> self.count + n
     between :: fn (lo: i32, hi: i32) i32 {
@@ -26,13 +26,13 @@ Counter self :: impl {
 
 Rect self :: impl {
     area :: fn () i32 -> self.w * self.h
-    describe :: fn () u0 -> c::printf("%d %d\n", self.w, self.h)
+    describe :: fn () u0 -> c.printf("%d %d\n", self.w, self.h)
     scaledArea :: fn (factor: i32) i32 -> self.w * self.h * factor
 }
 
 i32 self :: impl {
     sum :: fn (other: i32) i32 -> other + self
-    print :: fn () u0 -> c::printf("%d\n", self)
+    print :: fn () u0 -> c.printf("%d\n", self)
 }
 
 main :: fn () i32 {

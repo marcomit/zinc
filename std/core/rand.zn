@@ -1,4 +1,4 @@
-use <std::mem>
+use <std.mem>
 
 pub Random :: struct {
     state:  u64

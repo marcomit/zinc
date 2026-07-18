@@ -1,0 +1,13 @@
+use <std.libc>
+
+pub Display :: facet {
+    print : fn () u0
+}
+
+pub print :: fn (object: Display) u0 {
+}
+pub println :: fn (object: Display) u0 {
+    object.print()
+    io::printf("\n")
+}
+

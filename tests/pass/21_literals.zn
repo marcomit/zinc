@@ -7,57 +7,57 @@ main :: fn () i32 {
     zero := 0
     pos := 42
     large := 1000000
-    c::printf("%d\n", zero)
-    c::printf("%d\n", pos)
-    c::printf("%d\n", large)
+    c.printf("%d\n", zero)
+    c.printf("%d\n", pos)
+    c.printf("%d\n", large)
 
     // Negative (unary minus on literal)
     neg := -1
     neg2 := -100
-    c::printf("%d\n", neg)
-    c::printf("%d\n", neg2)
+    c.printf("%d\n", neg)
+    c.printf("%d\n", neg2)
 
     // Float literals
     f1: f64 = 3.14
     f2: f64 = 0.0
     f3: f64 = 1.0
     f4: f64 = 100.5
-    c::printf("%.2f\n", f1)
-    c::printf("%.1f\n", f2)
-    c::printf("%.1f\n", f3)
-    c::printf("%.1f\n", f4)
+    c.printf("%.2f\n", f1)
+    c.printf("%.1f\n", f2)
+    c.printf("%.1f\n", f3)
+    c.printf("%.1f\n", f4)
 
     // f32 assignment (implicit narrowing)
     g1: f32 = 2.5
     g2: f32 = 0.0
-    c::printf("%.1f\n", g1)
-    c::printf("%.1f\n", g2)
+    c.printf("%.1f\n", g1)
+    c.printf("%.1f\n", g2)
 
     // Float arithmetic
     pi: f64 = 3.14
     two: f64 = 2.0
-    c::printf("%.2f\n", pi * two)
+    c.printf("%.2f\n", pi * two)
 
     // Boolean literals
     tval: u1 = true
     fval: u1 = false
-    if tval { c::printf("true\n") }
-    if not fval { c::printf("false_inverted\n") }
-    c::printf("%d\n", tval)
-    c::printf("%d\n", fval)
+    if tval { c.printf("true\n") }
+    if not fval { c.printf("false_inverted\n") }
+    c.printf("%d\n", tval)
+    c.printf("%d\n", fval)
 
     // String escape sequences
-    c::printf("tab:\there\n")
-    c::printf("backslash:\\\n")
-    c::printf("quote:\"\n")
+    c.printf("tab:\there\n")
+    c.printf("backslash:\\\n")
+    c.printf("quote:\"\n")
 
     // none as null
     p: *i32 = none
-    if p == none { c::printf("null_ok\n") }
+    if p == none { c.printf("null_ok\n") }
 
     // Large integer values
     maxval: i32 = 2147483647
-    c::printf("%d\n", maxval)
+    c.printf("%d\n", maxval)
 
     // Various integer types
     u8val:  u8  = 255
@@ -65,11 +65,11 @@ main :: fn () i32 {
     u32val: u32 = 4294967295
     i8val:  i8  = 127
     i16val: i16 = 32767
-    c::printf("%u\n", u8val)
-    c::printf("%u\n", u16val)
-    c::printf("%u\n", u32val)
-    c::printf("%d\n", i8val)
-    c::printf("%d\n", i16val)
+    c.printf("%u\n", u8val)
+    c.printf("%u\n", u16val)
+    c.printf("%u\n", u32val)
+    c.printf("%d\n", i8val)
+    c.printf("%d\n", i16val)
 
     return 0
 }

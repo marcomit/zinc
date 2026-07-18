@@ -23,7 +23,7 @@ Vec2 self :: impl {
     len2 :: fn () i32  -> self.x * self.x + self.y * self.y
     scale :: fn (s: i32) Vec2 -> Vec2 { x: self.x * s, y: self.y * s }
     add :: fn (other: Vec2) Vec2 -> Vec2 { x: self.x + other.x, y: self.y + other.y }
-    print :: fn () u0 -> c::printf("(%d,%d)\n", self.x, self.y)
+    print :: fn () u0 -> c.printf("(%d,%d)\n", self.x, self.y)
     sum :: fn () i32   -> self.x + self.y
 }
 
@@ -38,7 +38,7 @@ Rect self :: impl {
         return px >= self.x and px < self.x + self.w and
                py >= self.y and py < self.y + self.h
     }
-    print :: fn () u0 -> c::printf("Rect(%d,%d,%d,%d)\n", self.x, self.y, self.w, self.h)
+    print :: fn () u0 -> c.printf("Rect(%d,%d,%d,%d)\n", self.x, self.y, self.w, self.h)
 }
 
 i32 self :: impl {
@@ -51,15 +51,15 @@ i32 self :: impl {
         if self > hi { return hi }
         return self
     }
-    print :: fn () u0 -> c::printf("%d\n", self)
+    print :: fn () u0 -> c.printf("%d\n", self)
 }
 
 main :: fn () i32 {
     // Static method calls
-    origin: Vec2 = Vec2::zero()
+    origin: Vec2 = Vec2.zero()
     origin.print()
 
-    pt: Vec2 = Vec2::from(3, 4)
+    pt: Vec2 = Vec2.from(3, 4)
     pt.print()
 
     // Receiver method chaining (each method returns value)
@@ -67,47 +67,47 @@ main :: fn () i32 {
     scaled.print()
 
     // Using return value directly
-    Vec2::from(1, 2).print()
-    Vec2::from(5, 5).scale(3).print()
+    Vec2.from(1, 2).print()
+    Vec2.from(5, 5).scale(3).print()
 
     // Chained arithmetic on receiver results
-    c::printf("%d\n", pt.len2())
-    c::printf("%d\n", pt.sum())
-    c::printf("%d\n", pt.scale(3).sum())
+    c.printf("%d\n", pt.len2())
+    c.printf("%d\n", pt.sum())
+    c.printf("%d\n", pt.scale(3).sum())
 
     // Receiver on struct result from static
-    c::printf("%d\n", Vec2::from(2, 3).len2())
+    c.printf("%d\n", Vec2.from(2, 3).len2())
 
     // Receiver methods on i32
     neg: i32 = -5
-    c::printf("%d\n", neg.abs())
+    c.printf("%d\n", neg.abs())
 
     val: i32 = 15
-    c::printf("%d\n", val.clamp(0, 10))
-    c::printf("%d\n", val.clamp(20, 30))
+    c.printf("%d\n", val.clamp(0, 10))
+    c.printf("%d\n", val.clamp(20, 30))
 
     // Method chaining: abs().clamp()
-    c::printf("%d\n", neg.abs().clamp(0, 3))
+    c.printf("%d\n", neg.abs().clamp(0, 3))
 
     // Rect static and receiver
-    r := Rect::make(0, 0, 10, 5)
+    r := Rect.make(0, 0, 10, 5)
     r.print()
-    c::printf("%d\n", r.area())
-    c::printf("%d\n", r.perimeter())
+    c.printf("%d\n", r.area())
+    c.printf("%d\n", r.perimeter())
 
-    if r.contains(5, 3)  { c::printf("inside\n") }
-    if not r.contains(11, 3) { c::printf("outside\n") }
+    if r.contains(5, 3)  { c.printf("inside\n") }
+    if not r.contains(11, 3) { c.printf("outside\n") }
 
     // Vec2 add two vectors
-    v1 := Vec2::from(1, 2)
-    v2 := Vec2::from(3, 4)
+    v1 := Vec2.from(1, 2)
+    v2 := Vec2.from(3, 4)
     v1.add(v2).print()
 
     // Multiple instances, independent state
-    a := Vec2::from(10, 20)
-    b := Vec2::from(30, 40)
-    c::printf("%d\n", a.sum())
-    c::printf("%d\n", b.sum())
+    a := Vec2.from(10, 20)
+    b := Vec2.from(30, 40)
+    c.printf("%d\n", a.sum())
+    c.printf("%d\n", b.sum())
 
     return 0
 }

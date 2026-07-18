@@ -2,15 +2,15 @@ c :: foreign {
     printf : fn (*char, ...) u0
 }
 
-tuple :: fn () (*char, i32) -> ("john", 40)
+tuple :: fn () *char, i32 -> ("john", 40)
 
 main :: fn () i32 {
 
     val := tuple()
 
-    (name, age) := tuple()
-    
-    c::printf("%s: %d\n", name, age)
+    name, age := tuple()
+
+    c.printf("%s: %d\n", name, age)
 
     return 0
 }

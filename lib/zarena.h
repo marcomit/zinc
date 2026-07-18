@@ -30,5 +30,6 @@ void    arenaFree(arena_t *);
 void    arenaScope(arena_t *);
 void    arenaEndScope(arena_t *);
 usize   arenaSize(arena_t *);
+usize   arenaLength(arena_t *);
 
 #endif //Z_ARENA_H

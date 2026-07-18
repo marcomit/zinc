@@ -3,23 +3,23 @@ c :: foreign {
 }
 
 main :: fn () i32 {
-    defer c::printf("1\n")
+    defer c.printf("1\n")
 
     if true {
-        defer c::printf("2\n")
+        defer c.printf("2\n")
     }
 
     i := 0
     defer for i < 5 {
-        c::printf("loop\n")
+        c.printf("loop\n")
         i = i + 1
     }
 
-    defer c::printf("3\n")
+    defer c.printf("3\n")
 
     val := 10
 
-    defer if val == 10 { c::printf("0\n") }
+    defer if val == 10 { c.printf("0\n") }
 
     return 0
 }

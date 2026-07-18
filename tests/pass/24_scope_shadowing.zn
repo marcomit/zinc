@@ -9,12 +9,12 @@ inner_fn :: fn (x: i32) i32 -> x * 2
 main :: fn () i32 {
     // Variable shadowing in nested scopes via for loops
     x := 1
-    c::printf("%d\n", x)
+    c.printf("%d\n", x)
 
     i := 0
     for i < 3 {
         // 'x' in this scope refers to outer x (zinc doesn't shadow, just reads it)
-        c::printf("%d\n", x)
+        c.printf("%d\n", x)
         i = i + 1
     }
 
@@ -25,22 +25,22 @@ main :: fn () i32 {
         sum = sum + j
         j = j + 1
     }
-    c::printf("%d\n", sum)
+    c.printf("%d\n", sum)
 
     // Variable used in if body
     flag := 1
     if flag == 1 {
         local := 99
-        c::printf("%d\n", local)
+        c.printf("%d\n", local)
     }
 
     // Multiple function scopes
-    c::printf("%d\n", outer_fn())
-    c::printf("%d\n", inner_fn(5))
-    c::printf("%d\n", inner_fn(inner_fn(3)))
+    c.printf("%d\n", outer_fn())
+    c.printf("%d\n", inner_fn(5))
+    c.printf("%d\n", inner_fn(inner_fn(3)))
 
     // Nested function calls
-    c::printf("%d\n", inner_fn(outer_fn()))
+    c.printf("%d\n", inner_fn(outer_fn()))
 
     // Variable used across different branches
     result := 0
@@ -50,7 +50,7 @@ main :: fn () i32 {
     } else {
         result = condition + 1
     }
-    c::printf("%d\n", result)
+    c.printf("%d\n", result)
 
     // Counter updated across loop iterations
     total := 0
@@ -59,7 +59,7 @@ main :: fn () i32 {
         total = total + k
         k = k + 1
     }
-    c::printf("%d\n", total)
+    c.printf("%d\n", total)
 
     // Nested loop with accumulator
     grid := 0
@@ -72,19 +72,19 @@ main :: fn () i32 {
         }
         r = r + 1
     }
-    c::printf("%d\n", grid)
+    c.printf("%d\n", grid)
 
     // Complex expression result stored and reused
     a := 3
     b := 4
     hyp2 := a * a + b * b
-    c::printf("%d\n", hyp2)
+    c.printf("%d\n", hyp2)
 
     // Function results in expressions
     base := outer_fn()
     doubled := inner_fn(base)
     halved := doubled / 2
-    c::printf("%d %d %d\n", base, doubled, halved)
+    c.printf("%d %d %d\n", base, doubled, halved)
 
     return 0
 }

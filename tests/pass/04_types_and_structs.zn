@@ -21,7 +21,7 @@ Point :: struct {
 
 Linked :: struct {
     val: i32
-    next: *Linked 
+    next: *Linked
 }
 
 sum :: fn (x: f64, y: f64) f32 {
@@ -31,15 +31,15 @@ sum :: fn (x: f64, y: f64) f32 {
 main :: fn () i32 {
     p: Point = Point { x: 10, y: 20 }
     val: i32 = p.x
-    c::printf("member ok\n")
+    c.printf("member ok\n")
 
     ival: i32 = 10
     v := Vec2 { x: ival, y: 10 }
 
     res: i32 = sum(v.x, v.y)
-    c::printf("%d\n", res)
+    c.printf("%d\n", res)
 
-    ptr: *Point = c::malloc(sizeof Point)
+    ptr: *Point = c.malloc(sizeof Point)
 
     return res - res
 }

@@ -29,12 +29,12 @@ main :: fn () i32 {
     r: i32 = add(3, 4)
     printf("add\n")
 
-    Vec::create()
-    Counter::say("hello\n")
-    Counter::say("world\n")
+    Vec.create()
+    Counter.say("hello\n")
+    Counter.say("world\n")
 
-    v   := Counter::value()
-    val: i32 = Counter::value()
+    v   := Counter.value()
+    val: i32 = Counter.value()
 
     return 0
 }

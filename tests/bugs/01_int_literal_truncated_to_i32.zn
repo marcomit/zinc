@@ -1,0 +1,26 @@
+c :: foreign { printf : fn (*char, ...) u0 }
+
+// BUG: integer literals are always emitted as 32-bit constants.
+// Any literal whose value does not fit in a signed 32-bit int is silently
+// truncated, then sign-/zero-extended to the declared type.
+//
+// Expected output:
+//   9223372036854775807
+//   1000000000000
+//   2147483648
+// Actual output:
+//   -1
+//   -727379968
+//   -2147483648
+//
+// The value 9223372036854775807 (= 0x7FFFFFFFFFFFFFFF) is truncated to its low
+// 32 bits 0xFFFFFFFF (= -1), then sign-extended back to i64 giving -1.
+main :: fn () i32 {
+    a: i64 = 9223372036854775807
+    b: i64 = 1000000000000
+    d: i64 = 2147483648
+    c::printf("%lld\n", a)
+    c::printf("%lld\n", b)
+    c::printf("%lld\n", d)
+    return 0
+}

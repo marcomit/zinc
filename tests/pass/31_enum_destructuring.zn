@@ -13,64 +13,64 @@ Option :: enum {
 }
 
 some :: fn () Option {
-    return Option::Some(10)
+    return Option.Some(10)
 }
 
 main :: fn () i32 {
-    r1 := Result::Ok(0)
-    if Result::Ok(code) := r1 {
-        c::printf("ok:%d\n", code)
+    r1 := Result.Ok(0)
+    if Result.Ok(code) := r1 {
+        c.printf("ok:%d\n", code)
     }
 
-    r2 := Result::Err(404)
-    if Result::Err(ecode) := r2 {
-        c::printf("err:%d\n", ecode)
+    r2 := Result.Err(404)
+    if Result.Err(ecode) := r2 {
+        c.printf("err:%d\n", ecode)
     }
 
-    if Result::Err(e) := r1 { c::printf("WRONG\n") }
+    if Result.Err(e) := r1 { c.printf("WRONG\n") }
 
-    if Result::Ok(v) := r2 { c::printf("WRONG\n") }
+    if Result.Ok(v) := r2 { c.printf("WRONG\n") }
 
     sum := 0
     i := 0
     for i < 5 {
-        ri := Result::Ok(i)
-        if Result::Ok(vi) := ri { sum = sum + vi }
+        ri := Result.Ok(i)
+        if Result.Ok(vi) := ri { sum = sum + vi }
         i :+ 1
     }
-    c::printf("sum:%d\n", sum)
+    c.printf("sum:%d\n", sum)
 
     evens := 0
     n := 0
     for n < 6 {
-        rn := Result::Ok(n)
-        if Result::Ok(vn) := rn {
+        rn := Result.Ok(n)
+        if Result.Ok(vn) := rn {
             if vn % 2 == 0 {
                 evens = evens + vn
             }
         }
         n = n + 1
     }
-    c::printf("evens:%d\n", evens)
+    c.printf("evens:%d\n", evens)
 
-    outer := Option::Some(10)
-    if Option::Some(x) := outer {
-        inner := Result::Ok(x + 5)
-        if Result::Ok(y) := inner {
-            c::printf("nested:%d\n", y)
+    outer := Option.Some(10)
+    if Option.Some(x) := outer {
+        inner := Result.Ok(x + 5)
+        if Result.Ok(y) := inner {
+            c.printf("nested:%d\n", y)
         }
     }
 
-    outer2 := Option::None()
-    if Option::Some(x2) := outer2 {
-        inner2 := Result::Ok(x2)
-        if Result::Ok(y2) := inner2 {
-            c::printf("WRONG\n")
+    outer2 := Option.None()
+    if Option.Some(x2) := outer2 {
+        inner2 := Result.Ok(x2)
+        if Result.Ok(y2) := inner2 {
+            c.printf("WRONG\n")
         }
     }
 
-    if Option::Some(num) := some() {
-        c::printf("expr:%d\n", num)
+    if Option.Some(num) := some() {
+        c.printf("expr:%d\n", num)
     }
 
     return 0

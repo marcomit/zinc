@@ -12,7 +12,7 @@ MatrixHeader :: struct {
 }
 
 matrix :: impl {
-    new :: matrix (rows: u64, cols: u64) [Allocator] {
+    new :: fn (rows: u64, cols: u64) matrix [Allocator] {
         self: *MatrixHeader = alloc(sizeof MatrixHeader + rows * cols)
         self.rows = rows
         self.cols = cols
@@ -22,20 +22,20 @@ matrix :: impl {
 
 matrix self :: impl {
     #[inline(always)]
-    header :: *MatrixHeader () {
+    header :: fn () *MatrixHeader {
         h := self as *MatrixHeader
         h = &(h[-1])
         return h
     }
 
     #[inline(always)]
-    rows :: u64 () -> self.header().rows
+    rows :: fn () u64 -> self.header().rows
 
     #[inline(always)]
-    cols :: u64 () ->self.header().cols
+    cols :: fn () u64 ->self.header().cols
 }
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     
     with _ := (&gpa).allocator() {

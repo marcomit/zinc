@@ -22,7 +22,7 @@ Particle :: struct {
 }
 
 Particle :: impl {
-    new :: *Particle (rand: *Random)[Allocator] {
+    new :: fn (rand: *Random) *Particle [Allocator] {
         self: *Particle     = alloc(sizeof Particle)
         self.position       = Vec2{ x: WIDTH as f32 / 2.0, y: HEIGHT as f32 / 4.0 }
         self.radius         = rand.range(6, 14) as f32
@@ -34,11 +34,11 @@ Particle :: impl {
 }
 
 *Particle self :: impl {
-    draw :: u0 () {
+    draw :: fn () u0 {
         raylib::DrawCircleV(self.position, self.radius, WHITE)
     }
 
-    collide :: u1 (other: *Particle) {
+    collide :: fn (other: *Particle) u1 {
         dx := self.position.x - other.position.x
         dy := self.position.y - other.position.y
 
@@ -47,7 +47,7 @@ Particle :: impl {
         return distance < (self.radius + other.radius)
     }
 
-    update :: u0 () {
+    update :: fn () u0 {
         self.direction.y :+ GRAVITY
 
         self.position.x :+ self.direction.x
@@ -71,7 +71,7 @@ Particle :: impl {
     }
 }
 
-handleCollisions :: u0 (length: i32, particles: **Particle) {
+handleCollisions :: fn (length: i32, particles: **Particle) u0 {
     i := 0
     for i < length {
         j := i + 1
@@ -113,7 +113,7 @@ handleCollisions :: u0 (length: i32, particles: **Particle) {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     raylib::InitWindow(WIDTH, HEIGHT, "Particles")
     raylib::SetTargetFPS(60)
 

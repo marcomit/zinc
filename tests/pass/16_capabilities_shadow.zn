@@ -14,13 +14,13 @@ getVal :: fn () i32 with t: Tag -> t.val
 
 main :: fn () i32 {
     with ta := Tag { val: 10 } {
-        c::printf("%d\n", getVal())    // 10  -  outer active
+        c.printf("%d\n", getVal())    // 10  -  outer active
 
         with tb := Tag { val: 20 } {
-            c::printf("%d\n", getVal())  // 20  -  inner shadows outer
+            c.printf("%d\n", getVal())  // 20  -  inner shadows outer
         }
 
-        c::printf("%d\n", getVal())    // 10  -  outer restored
+        c.printf("%d\n", getVal())    // 10  -  outer restored
     }
     return 0
 }

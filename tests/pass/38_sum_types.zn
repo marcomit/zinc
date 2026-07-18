@@ -29,6 +29,6 @@ main :: fn () i32 {
     pick_int()
     describe(5)
     describe(0)
-    c::printf("sum types ok\n")
+    c.printf("sum types ok\n")
     return 0
 }

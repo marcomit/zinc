@@ -48,32 +48,32 @@ origin :: fn () Vec2 {
 }
 
 main :: fn () i32 {
-    c::printf("%d\n", tag(.Circle(3)))
-    c::printf("%d\n", tag(.Rect(2, 3)))
-    c::printf("%d\n", tag(.Point()))
+    c.printf("%d\n", tag(.Circle(3)))
+    c.printf("%d\n", tag(.Rect(2, 3)))
+    c.printf("%d\n", tag(.Point()))
 
     s: Shape = .Circle(4)
     if .Circle(r) := s {
-        c::printf("%d\n", r)
+        c.printf("%d\n", r)
     }
 
-    c::printf("%d\n", tag(pick(7)))
-    c::printf("%d\n", tag(pick(-2)))
-    c::printf("%d\n", tag(pick(0)))
+    c.printf("%d\n", tag(pick(7)))
+    c.printf("%d\n", tag(pick(-2)))
+    c.printf("%d\n", tag(pick(0)))
 
     v: Vec2 = .{ x: 1, y: 2 }
-    c::printf("%d\n", mag(v))
-    c::printf("%d\n", mag(.{ x: 3, y: 4 }))
-    c::printf("%d\n", mag(origin()))
+    c.printf("%d\n", mag(v))
+    c.printf("%d\n", mag(.{ x: 3, y: 4 }))
+    c.printf("%d\n", mag(origin()))
 
     seg: Segment = .{ a: .{ x: 1, y: 1 }, b: .{ x: 2, y: 2 } }
-    c::printf("%d\n", mag(seg.a) + mag(seg.b))
+    c.printf("%d\n", mag(seg.a) + mag(seg.b))
 
     e: Entity = .{ pos: .{ x: 9, y: 9 }, shape: .Circle(8) }
-    c::printf("%d\n", tag(e.shape))
+    c.printf("%d\n", tag(e.shape))
 
     shapes: [2]Shape = [.Circle(1), .Rect(2, 2)]
-    c::printf("%d %d\n", tag(shapes[0]), tag(shapes[1]))
+    c.printf("%d %d\n", tag(shapes[0]), tag(shapes[1]))
 
     return 0
 }

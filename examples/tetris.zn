@@ -3,28 +3,28 @@ use <std::core::rand>
 use <std::mem::gpa>
 
 raylib :: foreign {
-    InitWindow :: u0 (i32, i32, *char)
-    CloseWindow :: u0 ()
-    SetTargetFPS :: u0 (i32)
-    WindowShouldClose :: u1 ()
-    BeginDrawing :: u0 ()
-    EndDrawing :: u0 ()
-    GetFrameTime :: f32 ()
-    IsKeyDown :: u1 (i32)
-    IsKeyPressed :: u1 (i32)
-    CheckCollisionCircleRec :: u1 (Vector2, f32, Rectangle)
-    ClearBackground :: u0 (Color)
-    DrawCircleV :: u0 (Vector2, f32, Color)
-    DrawRectangleRec :: u0 (Rectangle, Color)
-    DrawFPS :: u0 (i32, i32)
-    DrawText :: u0 (*char, i32, i32, i32, Color)
-    TextFormat :: *char (*char, ...)
+    InitWindow : fn (i32, i32, *char) u0
+    CloseWindow : fn () u0
+    SetTargetFPS : fn (i32) u0
+    WindowShouldClose : fn () u1
+    BeginDrawing : fn () u0
+    EndDrawing : fn () u0
+    GetFrameTime : fn () f32
+    IsKeyDown : fn (i32) u1
+    IsKeyPressed : fn (i32) u1
+    CheckCollisionCircleRec : fn (Vector2, f32, Rectangle) u1
+    ClearBackground : fn (Color) u0
+    DrawCircleV : fn (Vector2, f32, Color) u0
+    DrawRectangleRec : fn (Rectangle, Color) u0
+    DrawFPS : fn (i32, i32) u0
+    DrawText : fn (*char, i32, i32, i32, Color) u0
+    TextFormat : fn (*char, ...) *char
 }
 
 c :: foreign {
-    printf :: u0 (*char, ...)
-    exit :: i32 (i32)
-    memset :: *u8(*u8, i32, u64)
+    printf : fn (*char, ...) u0
+    exit : fn (i32) i32
+    memset : fn (*u8, i32, u64) *u8
 }
 
 Vector2 :: struct {
@@ -46,21 +46,21 @@ Color :: struct {
 }
 
 Color :: impl {
-    new :: Color (r: u8, g: u8, b: u8, a: u8) -> Color{ r: r, g: g, b: b, a: a }
+    new :: fn (r: u8, g: u8, b: u8, a: u8) Color -> Color{ r: r, g: g, b: b, a: a }
 }
 
 Tile :: type u32
 
 Tile :: impl {
-    o :: Tile () -> (1 << 24) | (2 << 16) | 0b1111
-    l :: Tile () -> (2 << 24) | (3 << 16) | 0b100100110
-    j :: Tile () -> (3 << 24) | (3 << 16) | 0b001001011
-    t :: Tile () -> (4 << 24) | (3 << 16) | 0b010111000
-    s :: Tile () -> (5 << 24) | (3 << 16) | 0b000011110
-    z :: Tile () -> (6 << 24) | (3 << 16) | 0b000110011
-    i :: Tile () -> (7 << 24) | (4 << 16) | 0b0001000100010001
+    o :: fn () Tile -> (1 << 24) | (2 << 16) | 0b1111
+    l :: fn () Tile -> (2 << 24) | (3 << 16) | 0b100100110
+    j :: fn () Tile -> (3 << 24) | (3 << 16) | 0b001001011
+    t :: fn () Tile -> (4 << 24) | (3 << 16) | 0b010111000
+    s :: fn () Tile -> (5 << 24) | (3 << 16) | 0b000011110
+    z :: fn () Tile -> (6 << 24) | (3 << 16) | 0b000110011
+    i :: fn () Tile -> (7 << 24) | (4 << 16) | 0b0001000100010001
 
-    random :: Tile (rand: *Random) {
+    random :: fn (rand: *Random) Tile {
         tiles := [
             Tile::o,
             Tile::l,
@@ -74,7 +74,7 @@ Tile :: impl {
     }
 }
 
-get_color :: Color (t: u8) {
+get_color :: fn (t: u8) Color {
     colors := [
         Color::new(255, 255, 0, 255), // o
         Color::new(255, 165, 0, 255), // l
@@ -88,15 +88,15 @@ get_color :: Color (t: u8) {
 }
 
 Tile self :: impl {
-    width   :: u8 () -> (self >> 16) & 0xFF
-    kind    :: u8 () -> self >> 24
+    width   :: fn () u8 -> (self >> 16) & 0xFF
+    kind    :: fn () u8 -> self >> 24
 
     #[inline(always)]
-    at :: u1 (x: u8, y: u8) {
+    at :: fn (x: u8, y: u8) u1 {
         return (self >> (y * self.width() + x)) & 1
     }
 
-    draw :: u0 (gx: i32, gy: i32) {
+    draw :: fn (gx: i32, gy: i32) u0 {
         kind    := self.kind()
         width   := self.width() as i32
 
@@ -119,7 +119,7 @@ Tile self :: impl {
         }
     }
 
-    rotate :: Tile () {
+    rotate :: fn () Tile {
         width   := self.width() as i32
         content := 0 as u32
         y := 0
@@ -143,7 +143,7 @@ Counter :: struct {
 }
 
 Counter :: impl {
-    new :: *Counter(target: u64)[Allocator] {
+    new :: fn (target: u64) *Counter [Allocator] {
         self := alloc(sizeof Counter) as *Counter
         self.count = 0
         self.target = target
@@ -152,7 +152,7 @@ Counter :: impl {
 }
 
 *Counter self :: impl {
-    tick :: u1 () {
+    tick :: fn () u1 {
         if self.count >= self.target {
             self.count = 0
             return true
@@ -174,7 +174,7 @@ GameState :: struct {
 }
 
 GameState :: impl {
-    new :: *GameState()[Allocator] {
+    new :: fn () *GameState [Allocator] {
         self: *GameState = alloc(sizeof GameState)
         boardSize: u64 = sizeof u8 * 10 as u64 * 20 as u64
         self.board = alloc(boardSize)
@@ -193,9 +193,9 @@ GameState :: impl {
 
 *GameState self :: impl {
     #[inline(always)]
-    at :: u8 (x: u8, y: u8) -> self.board[y * 10 + x]
+    at :: fn (x: u8, y: u8) u8 -> self.board[y * 10 + x]
 
-    collides :: u1 (tile: Tile, px: i32, py: i32) {
+    collides :: fn (tile: Tile, px: i32, py: i32) u1 {
         width := tile.width() as i32
         y := 0
         for y < width {
@@ -218,7 +218,7 @@ GameState :: impl {
         return false
     }
 
-    landing :: i32 () {
+    landing :: fn () i32 {
         px := self.offset.x as i32
         py := self.offset.y as i32
         for not self.collides(self.current, px, py + 1) {
@@ -227,7 +227,7 @@ GameState :: impl {
         return py
     }
 
-    drawGhost :: u0 () {
+    drawGhost :: fn () u0 {
         width := self.current.width() as i32
         px := self.offset.x as i32
         py := self.landing()
@@ -254,7 +254,7 @@ GameState :: impl {
         }
     }
 
-    draw :: u0 () {
+    draw :: fn () u0 {
         y := 0
         for y < 20 {
             x := 0
@@ -279,7 +279,7 @@ GameState :: impl {
         self.current.draw(self.offset.x as i32, self.offset.y as i32)
     }
 
-    lock :: u0 () {
+    lock :: fn () u0 {
         width := self.current.width() as i32
         kind  := self.current.kind()
         px := self.offset.x as i32
@@ -301,7 +301,7 @@ GameState :: impl {
         }
     }
 
-    clearLines :: u0 () {
+    clearLines :: fn () u0 {
         y := 19
         for y >= 0 {
             full := true
@@ -334,7 +334,7 @@ GameState :: impl {
         }
     }
 
-    spawn :: u0 () {
+    spawn :: fn () u0 {
         self.current = self.next
         self.next = Tile::random(self.rand)
         self.offset = Vector2{ x: 3.0, y: 0.0 }
@@ -343,7 +343,7 @@ GameState :: impl {
         }
     }
 
-    step :: u0 () {
+    step :: fn () u0 {
         px := self.offset.x as i32
         py := self.offset.y as i32
         if self.collides(self.current, px, py + 1) {
@@ -355,7 +355,7 @@ GameState :: impl {
         }
     }
 
-    moveLeft :: u0 () {
+    moveLeft :: fn () u0 {
         px := self.offset.x as i32
         py := self.offset.y as i32
         if not self.collides(self.current, px - 1, py) {
@@ -363,7 +363,7 @@ GameState :: impl {
         }
     }
 
-    moveRight :: u0 () {
+    moveRight :: fn () u0 {
         px := self.offset.x as i32
         py := self.offset.y as i32
         if not self.collides(self.current, px + 1, py) {
@@ -371,7 +371,7 @@ GameState :: impl {
         }
     }
 
-    softDrop :: u0 () {
+    softDrop :: fn () u0 {
         px := self.offset.x as i32
         py := self.offset.y as i32
         if not self.collides(self.current, px, py + 1) {
@@ -379,7 +379,7 @@ GameState :: impl {
         }
     }
 
-    rotate :: u0 () {
+    rotate :: fn () u0 {
         rotated := self.current.rotate()
         px := self.offset.x as i32
         py := self.offset.y as i32
@@ -388,7 +388,7 @@ GameState :: impl {
         }
     }
 
-    hardDrop :: u0 () {
+    hardDrop :: fn () u0 {
         self.offset.y = self.landing() as f32
         self.lock()
         self.clearLines()
@@ -396,7 +396,7 @@ GameState :: impl {
     }
 }
 
-main :: i32 () {
+main :: fn () i32 {
     block           := 20
     screenWidth     := block * 20
     screenHeight    := block * 20

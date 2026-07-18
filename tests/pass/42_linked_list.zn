@@ -12,7 +12,7 @@ main :: fn () i32 {
     head: *Node = none
     i := 5
     for i > 0 {
-        n := c::malloc(sizeof Node) as *Node
+        n := c.malloc(sizeof Node) as *Node
         n.val = i
         n.next = head
         head = n
@@ -22,9 +22,9 @@ main :: fn () i32 {
     cur := head
     for cur != none {
         sum = sum + cur.val
-        c::printf("%d ", cur.val)
+        c.printf("%d ", cur.val)
         cur = cur.next
     }
-    c::printf("\nsum=%d\n", sum)
+    c.printf("\nsum=%d\n", sum)
     return 0
 }

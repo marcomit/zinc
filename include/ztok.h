@@ -23,9 +23,9 @@
 #define TOK_EXPANDABLE                  (1 << (TOK_BASE_MASK + 0x0A))
 #define TOK_BITOPERATOR_MASK            (1 << (TOK_BASE_MASK + 0x0B))
 #define TOK_OVERLOADABLE                (1 << (TOK_BASE_MASK + 0x0C))
-#endif                                  
-                                        
-#ifdef TOK_FLOWS                        
+#endif
+
+#ifdef TOK_FLOWS
 DEF(TOK_IF,         "if",               TOK_FLOWS_MASK | TOK_EXPANDABLE | 0x00)
 DEF(TOK_ELSE,       "else",             TOK_FLOWS_MASK | TOK_EXPANDABLE | 0x01)
 DEF(TOK_FOR,        "for",              TOK_FLOWS_MASK | TOK_EXPANDABLE | 0x02)
@@ -101,6 +101,15 @@ DEF(TOK_RBRACKET,       "}",            TOK_SYMBOLS_MASK | 0x59)
 DEF(TOK_LSBRACKET,      "[",            TOK_SYMBOLS_MASK | 0x5A)
 DEF(TOK_RSBRACKET,      "]",            TOK_SYMBOLS_MASK | 0x5B)
 DEF(TOK_REF,            "&",            TOK_SYMBOLS_MASK | 0x5C)
+DEF(TOK_SELF_PLUS,      "+=",           TOK_SYMBOLS_MASK | 0x7B)
+DEF(TOK_SELF_MINUS,     "-=",           TOK_SYMBOLS_MASK | 0x7C)
+DEF(TOK_SELF_MUL,       "*=",           TOK_SYMBOLS_MASK | 0x7D)
+DEF(TOK_SELF_DIV,       "/=",           TOK_SYMBOLS_MASK | 0x7E)
+DEF(TOK_SELF_BITOR,     "|=",           TOK_SYMBOLS_MASK | 0x7F)
+DEF(TOK_SELF_BITAND,    "&=",           TOK_SYMBOLS_MASK | 0x80)
+DEF(TOK_SELF_BITXOR,    "^=",           TOK_SYMBOLS_MASK | 0x81)
+DEF(TOK_SELF_BITL,      "<<=",          TOK_SYMBOLS_MASK | 0x82)
+DEF(TOK_SELF_BITR,      ">>=",          TOK_SYMBOLS_MASK | 0x83)
 DEF(TOK_STAR,           "*",            TOK_OPERATOR | TOK_OVERLOADABLE     | TOK_SYMBOLS_MASK | 0x5D)
 DEF(TOK_PLUS,           "+",            TOK_OPERATOR | TOK_OVERLOADABLE     | TOK_SYMBOLS_MASK | 0x60)
 DEF(TOK_MINUS,          "-",            TOK_OPERATOR | TOK_OVERLOADABLE     | TOK_SYMBOLS_MASK | 0x61)

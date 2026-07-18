@@ -4,9 +4,9 @@ use <std::io::mutex>
 use <std::io::net>
 
 libc :: foreign {
-    printf   :: u0  (*char, ...)
-    snprintf :: i32 (*char, u64, *char, ...)
-    fflush   :: i32 (*u8)
+    printf   : fn (*char, ...) u0
+    snprintf : fn (*char, u64, *char, ...) i32
+    fflush   : fn (*u8) i32
 }
 
 Client :: struct {
@@ -22,7 +22,7 @@ Context :: struct {
 }
 
 Context :: impl {
-    new :: *Context (mutex: Mutex)[Allocator] {
+    new :: fn (mutex: Mutex) *Context [Allocator] {
         self := alloc(sizeof Context) as *Context
         self.mutex = mutex
         self.len = 0
@@ -32,7 +32,7 @@ Context :: impl {
 }
 
 *Context self :: impl {
-    add :: u64 (stream: TcpStream) {
+    add :: fn (stream: TcpStream) u64 {
         self.mutex.lock()
         id := self.len
         self.clients[id].stream = stream
@@ -43,7 +43,7 @@ Context :: impl {
         return id
     }
 
-    broadcast :: u0 (from: u64, buf: *u8, sz: u64) {
+    broadcast :: fn (from: u64, buf: *u8, sz: u64) u0 {
         self.mutex.lock()
         i := 0 as u64
         for i < self.len {
@@ -64,7 +64,7 @@ WorkerArg :: struct {
     id: u64
 }
 
-worker :: *u8 (arg: *u8) {
+worker :: fn (arg: *u8) *u8 {
     w   := arg as *WorkerArg
     ctx := w.ctx
     id  := w.id
@@ -95,7 +95,7 @@ worker :: *u8 (arg: *u8) {
     return none
 }
 
-main :: i32 () {
+main :: fn () i32 {
     gpa := GeneralPurposeAllocator::init()
     with _ := (&gpa).allocator() {
         listener := TcpListener::bind(8080)
