@@ -169,5 +169,3 @@ string self :: impl {
         destroy(self.header())
     }
 }
-
-main :: fn () i32 -> 0
