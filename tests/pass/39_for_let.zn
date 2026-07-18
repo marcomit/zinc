@@ -22,7 +22,7 @@ range :: fn (start: i32, end: i32) Range {
         }
 
         res := self.current
-        self.current :+ 1
+        self.current += 1
         return Option.Some(res)
     }
 }
@@ -38,7 +38,7 @@ ArrIter :: struct {
             return Option.None()
         }
         res := self.data[self.current]
-        self.current :+ 1
+        self.current += 1
         return Option.Some(res)
     }
 }
