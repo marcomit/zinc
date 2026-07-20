@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2025, Marco Menegazzi
 
+#include "base.h"
 #include "zinc.h"
 #include "zmem.h"
 #include "zvec.h"
@@ -300,6 +301,16 @@ void printType(ZType *type) {
     case Z_TYPE_FACET:
         printf("facet %s\n", type->facet.name->str);
         break;
+    case Z_TYPE_OPTIONAL:
+        printf("?%s\n", stype(type->optional));
+        break;
+    case Z_TYPE_RESULT:
+        printf(
+            "%s ?? %s\n",
+            stype(type->result.success),
+            stype(type->result.error)
+        );
+        break;
     default:
         printf("(details not implemented for type %d)", type->kind);
         break;
@@ -319,6 +330,8 @@ static const u64 KIND_PRIME[] = {
     0xE92AC1391F4A8CA1ULL,  // Z_TYPE_NONE
     0xA7AA7CBC23377BBDULL,  // Z_TYPE_NAMESPACE
     0xAD78DC4BFB9E8DDBULL,  // Z_TYPE_SUM
+    0x9E3779B185EBCA87ULL,  // Z_TYPE_OPTIONAL
+    0xC2B2AE3D27D4EB4FULL,  // Z_TYPE_RESULT
 };
 
 inline u32 hashtoken(ZToken *tok) {
@@ -330,6 +343,7 @@ u32 hashNode(ZNode *node) {
     return node->type;
 }
 
+NOSANITIZE("unsigned-integer-overflow")
 static inline u32 hashMix(u32 h, u32 x) {
     return h ^ (x + 0x9e3779b9u + (h << 6) + (h >> 2));
 }
@@ -342,6 +356,7 @@ static inline u32 hashTypeList(u32 h, ZType **types) {
     return h;
 }
 
+NOSANITIZE("unsigned-integer-overflow")
 u32 hashType(ZType *type) {
     if (!type) return 0;
 
@@ -391,6 +406,13 @@ u32 hashType(ZType *type) {
         h ^= acc;
         break;
     }
+    case Z_TYPE_OPTIONAL:
+        h = hashMix(h, hashType(type->optional));
+        break;
+    case Z_TYPE_RESULT:
+        h = hashMix(h, hashType(type->result.success));
+        h = hashMix(h, hashType(type->result.error));
+        break;
     case Z_TYPE_NAMESPACE:
     case Z_TYPE_NONE:
         // No structural payload compared by typesEqual; the kind seed suffices.
@@ -942,6 +964,7 @@ ZState *makestate() {
     self->emit                  = Z_EMIT_EXE;
     self->optimizationLevel     = '2';
     self->ltoMode               = Z_LTO_OFF;
+    self->mode                  = Z_MODE_RELEASE;
 
     return self;
 }

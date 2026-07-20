@@ -119,6 +119,11 @@ typedef struct {
     arena_t *allocator;
 } ZModuleAllocator;
 
+typedef enum {
+    Z_MODE_RELEASE,
+    Z_MODE_DEBUG
+} ZMode;
+
 typedef struct {
     char            *output;
     ZLog            **logs;
@@ -143,6 +148,7 @@ typedef struct {
     char            optimizationLevel;
     ZLTOMode        ltoMode;
     ZEmitMode       emit;
+    ZMode           mode;
     ZNode           *root;
 
     /* Extra arguments should be passed in the linker. */
@@ -220,6 +226,7 @@ typedef enum {
     NODE_FACET,
     NODE_IMPL,
     NODE_FORIN,
+    NODE_UNWRAP_OR
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -235,6 +242,8 @@ typedef enum ZTypeKind {
     Z_TYPE_NONE,
     Z_TYPE_NAMESPACE,
     Z_TYPE_SUM,
+    Z_TYPE_OPTIONAL,
+    Z_TYPE_RESULT
 } ZTypeKind;
 
 struct ZType {
@@ -314,6 +323,13 @@ struct ZType {
         } generic;
 
         ZType   **sumType;
+
+        ZType   *optional;
+
+        struct {
+            ZType *success;
+            ZType *error;
+        } result;
     };
 
     /* Future implementation:
@@ -706,6 +722,11 @@ struct ZNode {
         struct {
             ZNode *expr;
         } breakStmt;
+
+        struct {
+            ZNode *base;
+            ZNode *orExpr;
+        } unwrap;
     };
 };
 

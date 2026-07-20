@@ -135,4 +135,6 @@ DEF(TOK_MACRO_IDENT,    "@",            TOK_SYMBOLS_MASK | 0x6E)
 DEF(TOK_HASHTAG,        "#",            TOK_SYMBOLS_MASK | 0x6F)
 DEF(TOK_QUOTE,          "'",            TOK_SYMBOLS_MASK | 0x70)
 DEF(TOK_MOD,            "%",            TOK_SYMBOLS_MASK | 0x7A)
+DEF(TOK_OPT,            "?",            TOK_SYMBOLS_MASK | 0x85)
+DEF(TOK_ESCL,           "!",            TOK_SYMBOLS_MASK | 0x86)
 #endif
