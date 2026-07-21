@@ -189,16 +189,6 @@ ZCodegen *makecodegen(ZState *state, ZModuleAllocator *module) {
     return self;
 }
 
-#define LABEL_RESET(c) do {                                                     \
-    memset(ctx->str, 0, veclen(ctx->str));                                      \
-    vecsetlen(ctx->str, 0);                                                     \
-} while (0)
-
-#define label(ctx, X) _Generic((X), \
-    ZToken*: labelTok,              \
-    char*:   labelStr               \
-)(ctx, X)
-
 void labelCnt(ZCodegen *ctx) {
     LABEL_RESET(ctx);
     snprintf(ctx->str, 6, "zn%.3zx", ctx->count);
@@ -223,7 +213,6 @@ char *labelTok(ZCodegen *ctx, ZToken *tok) {
     }
     return ctx->str;
 }
-
 
 char *labelStr(ZCodegen *ctx, char *msg) {
     LABEL_RESET(ctx);
@@ -1275,35 +1264,6 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
     return chain;
 }
 
-static void emitBoundCheck(ZCodegen *ctx, LLVMValueRef index,
-        LLVMTypeRef arrType,
-        LLVMValueRef ptr) {
-    if (ctx->state->mode != Z_MODE_DEBUG) return;
-
-    LLVMBasicBlockRef fail = makeblock(ctx, "bound.fail");
-    LLVMBasicBlockRef cont = makeblock(ctx, "bound.cont");
-
-    LLVMValueRef lenPtr = LLVMBuildStructGEP2(
-        ctx->builder, arrType, ptr,
-        0, label(ctx, "len.ptr")
-    );
-    LLVMValueRef len = LLVMBuildLoad2(
-        ctx->builder, i64Type, lenPtr, label(ctx, "bound.check")
-    );
-
-    LLVMValueRef cond = LLVMBuildICmp(
-        ctx->builder, LLVMIntULT, len, index, label(ctx, "bound.cond")
-    );
-
-    makecondbr(ctx->builder, cond, cont, fail);
-
-    LLVMPositionBuilderAtEnd(ctx->builder, fail);
-
-    LLVMBuildUnreachable(ctx->builder);
-
-    LLVMPositionBuilderAtEnd(ctx->builder, cont);
-}
-
 static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef ptr        = genLvalue(ctx, node->subscript.arr);
     LLVMValueRef i          = genExpr(ctx, node->subscript.index);
@@ -1332,6 +1292,7 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
         LLVMValueRef basePtr = LLVMBuildLoad2(
             ctx->builder, ptrType, fieldPtr, name
         );
+        emitBoundCheck(ctx, i, type, ptr);
         return LLVMBuildGEP2(
             ctx->builder,   elemType,
             basePtr,        &i,

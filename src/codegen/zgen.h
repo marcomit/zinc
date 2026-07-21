@@ -24,6 +24,17 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#define LABEL_RESET(c) do {                                                     \
+    memset(ctx->str, 0, veclen(ctx->str));                                      \
+    vecsetlen(ctx->str, 0);                                                     \
+} while (0)
+
+#define label(ctx, X) _Generic((X), \
+    ZToken*: labelTok,              \
+    char*:   labelStr               \
+)(ctx, X)
+
+
 
 typedef struct ZLLVMSymbol {
     ZToken *token;
@@ -124,5 +135,11 @@ void LLVMAddFuncAttribute(ZCodegen *ctx, LLVMValueRef func, const char *llvmAttr
 LLVMBasicBlockRef makeblock(ZCodegen *, char *);
 void makebr(LLVMBuilderRef, LLVMBasicBlockRef);
 void makecondbr(LLVMBuilderRef, LLVMValueRef, LLVMBasicBlockRef, LLVMBasicBlockRef);
+
+void labelCnt   (ZCodegen *);
+char *labelTok  (ZCodegen *, ZToken *);
+char *labelStr  (ZCodegen *, char *);
+
+void emitBoundCheck(ZCodegen *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
 
 #endif //!Z_GEN
