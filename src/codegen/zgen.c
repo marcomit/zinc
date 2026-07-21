@@ -13,17 +13,17 @@
 #include "zgen.h"
 
 static void         genStmt         (ZCodegen *, ZNode *);
+static void         genBlock        (ZCodegen *, ZNode *);
+static void         storeArray      (ZCodegen *, ZLLVMStack *, LLVMValueRef);
+static void         genFuncVars     (ZCodegen *, ZNode *);
+static void         addFuncArgs     (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
+static void         genNamespace    (ZCodegen *, ZNode *);
 static LLVMTypeRef  genType         (ZCodegen *, ZType *);
 static LLVMValueRef genExpr         (ZCodegen *, ZNode *);
-static void         genNamespace    (ZCodegen *, ZNode *);
+static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
 static LLVMValueRef genForeign      (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto(ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genFacetConstruct(ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
-static void         genBlock        (ZCodegen *, ZNode *);
-static void         genFuncVars     (ZCodegen *, ZNode *);
-static void         addFuncArgs     (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
-static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
-static void         storeArray      (ZCodegen *, ZLLVMStack *, LLVMValueRef);
 
 /* ========== Native types ==========*/
 

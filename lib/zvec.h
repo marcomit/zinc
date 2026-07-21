@@ -4,17 +4,17 @@
 /**
  * @file zvec.h
  * @brief A lightweight, header-only dynamic array (vector) library for C
- * 
+ *
  * This library provides a type-safe, generic vector implementation using C macros.
  * Vectors automatically grow as elements are added and store metadata inline with
  * the data for efficient access.
- * 
+ *
  * @section design Design Overview
- * 
+ *
  * Vectors use a hidden header approach: metadata (capacity and length) is stored
  * immediately before the data pointer returned to the user. This allows clean
  * syntax like `vec[i]` while maintaining O(1) access to metadata.
- * 
+ *
  * Memory layout:
  * @code
  *   [vec_metadata | element0 | element1 | ... | elementN]
@@ -22,35 +22,35 @@
  *                  |
  *              User pointer points here
  * @endcode
- * 
+ *
  * @section usage Usage Example
- * 
+ *
  * @code
  * #include "zvec.h"
- * 
+ *
  * int *numbers = NULL;  // Always initialize to NULL
- * 
+ *
  * // Push elements - vector grows automatically
  * vecpush(numbers, 10);
  * vecpush(numbers, 20);
  * vecpush(numbers, 30);
- * 
+ *
  * // Access elements
  * printf("Length: %zu\n", veclen(numbers));     // 3
  * printf("Capacity: %zu\n", veccap(numbers));   // 16
  * printf("First: %d\n", numbers[0]);            // 10
- * 
+ *
  * // Iterate
  * for (size_t i = 0; i < veclen(numbers); i++) {
  *     printf("%d ", numbers[i]);
  * }
- * 
+ *
  * // Clean up
  * vecfree(numbers);  // Sets numbers to NULL
  * @endcode
- * 
+ *
  * @section notes Important Notes
- * 
+ *
  * - Always initialize vectors to NULL
  * - vecpush may reallocate, so always use: vec = vecpush(vec, item)
  *   or use the result in the same expression
@@ -58,15 +58,15 @@
  * - Capacity is measured in number of elements, not bytes
  * - Default initial capacity is 16 elements
  * - Capacity doubles when exceeded
- * 
+ *
  * @section limitations Limitations
- * 
+ *
  * - Not thread-safe
  * - No bounds checking in release builds
  * - Reallocation may invalidate existing pointers to elements
  * - vecpop returns void; check vecempty before accessing last element
- * 
- * @author Your Name
+ *
+ * @author Marco Menegazzi
  * @date 2026
  * @version 1.0
  */
@@ -122,13 +122,13 @@
  * @param new_capacity_bytes New total capacity in bytes
  * @return New vector pointer or NULL on failure
  */
-#define VEC_REALLOC_IMPL(v, new_capacity_bytes) ({                             \
-    vec_metadata *old_meta = VEC_METADATA(v);                                  \
-    vec_metadata *new_meta = (vec_metadata *)VEC_REALLOC(                      \
-        old_meta,                                                              \
-        sizeof(vec_metadata) + (new_capacity_bytes)                            \
-    );                                                                         \
-    (new_meta ? (void *)(new_meta + 1) : NULL);                                \
+#define VEC_REALLOC_IMPL(v, new_capacity_bytes) ({                              \
+    vec_metadata *old_meta = VEC_METADATA(v);                                   \
+    vec_metadata *new_meta = (vec_metadata *)VEC_REALLOC(                       \
+        old_meta,                                                               \
+        sizeof(vec_metadata) + (new_capacity_bytes)                             \
+    );                                                                          \
+    (new_meta ? (void *)(new_meta + 1) : NULL);                                 \
 })
 
 /* ============================================================================
@@ -170,11 +170,11 @@
  * @brief Push an element to the end of a vector
  * @param v Vector pointer (may be NULL for first push)
  * @param i Element to push
- * 
+ *
  * @note If the vector is NULL, it will be created automatically.
  * @note If capacity is exceeded, the vector will be reallocated (capacity doubles).
  * @note On reallocation failure, the operation fails silently and the vector remains unchanged.
- * 
+ *
  * @code
  * int *vec = NULL;
  * vecpush(vec, 42);
@@ -208,7 +208,7 @@ do {                                                                            
 /**
  * @brief Free a vector and set pointer to NULL
  * @param v Vector pointer
- * 
+ *
  * @code
  * int *vec = NULL;
  * vecpush(vec, 1);
@@ -228,7 +228,7 @@ do {                                                                            
  * @param v Vector pointer
  * @note Does not return the element; access it before calling vecpop if needed
  * @note Does nothing if vector is empty
- * 
+ *
  * @code
  * int last = vec[veclen(vec) - 1];  // Get last element
  * vecpop(vec);                       // Remove it
@@ -239,7 +239,7 @@ do {                                                                            
             vecsetlen((v), veclen(v) - 1);                                      \
     }                                                                           \
     (v)[veclen(v)];                                                                                                                            \
-}) 
+})
 
 /**
  * @brief Check if a vector is empty
@@ -269,7 +269,7 @@ do {                                                                            
  * @param v Vector pointer
  * @param n Minimum capacity needed
  * @note If current capacity is sufficient, does nothing
- * 
+ *
  * @code
  * int *vec = NULL;
  * vecreserve(vec, 1000);  // Pre-allocate space for 1000 integers
@@ -302,7 +302,7 @@ do {                                                                            
 
 /**
  * @brief Metadata stored before the vector data
- * 
+ *
  * This structure is hidden from the user and accessed via macros.
  * It stores the vector's capacity and current length.
  */
@@ -319,10 +319,10 @@ typedef struct vec_metadata {
  * @brief Create a new vector with default capacity
  * @param element_size Size of each element in bytes (use sizeof(type))
  * @return Pointer to the vector data, or NULL on allocation failure
- * 
+ *
  * @note Users typically don't call this directly; vecpush handles creation
  * @note Initial capacity is VEC_DEFAULT_SIZE elements
- * 
+ *
  * @code
  * int *vec = veccreate(sizeof(int));
  * @endcode
@@ -330,14 +330,14 @@ typedef struct vec_metadata {
 static inline void *veccreate(usize element_size) {
     usize total_bytes = sizeof(vec_metadata) + (VEC_DEFAULT_SIZE * element_size);
     vec_metadata *metadata = (vec_metadata *)VEC_ALLOC(total_bytes);
-    
+
     if (!metadata) {
             return NULL;
     }
-    
+
     metadata->capacity = VEC_DEFAULT_SIZE;
     metadata->length = 0;
-    
+
     return (void *)(metadata + 1);
 }
 
