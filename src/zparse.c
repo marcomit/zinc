@@ -661,11 +661,16 @@ static ZNode *parseLogicalOr(ZParser *parser) {
 
     while (true) {
         ZToken *or = peek(parser);
-        if (!check(parser, TOK_OR)) return node;
+        if (!match(parser, TOK_OR)) return node;
         else if (match(parser, TOK_BREAK)) break;
         else if (match(parser, TOK_CONTINUE)) break;
         else if (match(parser, TOK_RETURN)) break;
-        else if (match(parser, TOK_ELSE)) break;
+        else if (match(parser, TOK_ELSE)) {
+            ZNode *expr = parseExpr(parser);
+            ZNode *orelse = makenode(NODE_UNWRAP_OR);
+            orelse->unwrap.base     = node;
+            orelse->unwrap.orExpr   = expr;
+        }
         else {
             ZNode *right = tryParse(parser, parseLogicalAnd(parser));
             if (!right) return node;
@@ -2210,16 +2215,26 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
     guard(type);
 
     ZNode *expr = NULL;
+    bool uninit = false;
 
-    expect(parser, TOK_EQ);
-
-    expr = tryParse(parser, parseExpr(parser));
-    if (!expr) {
-        error(parser->state, peek(parser), "Expected expression after '='");
-        return NULL;
+    /* No '=' at all: zero-initialized by default.
+     * '= ?'         : explicitly left uninitialized.
+     * '= <expr>'    : normal initializer. */
+    if (match(parser, TOK_EQ)) {
+        if (match(parser, TOK_OPT)) {
+            uninit = true;
+        } else {
+            expr = tryParse(parser, parseExpr(parser));
+            if (!expr) {
+                error(parser->state, peek(parser), "Expected expression after '='");
+                return NULL;
+            }
+        }
     }
 
-    return makenodevar(var, type, expr);
+    ZNode *node = makenodevar(var, type, expr);
+    if (node) node->varDecl.uninit = uninit;
+    return node;
 }
 
 static ZNode *parseVarDef(ZParser *parser) {

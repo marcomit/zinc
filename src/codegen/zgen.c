@@ -23,6 +23,7 @@ static void         genBlock        (ZCodegen *, ZNode *);
 static void         genFuncVars     (ZCodegen *, ZNode *);
 static void         addFuncArgs     (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
 static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
+static void         storeArray      (ZCodegen *, ZLLVMStack *, LLVMValueRef);
 
 /* ========== Native types ==========*/
 
@@ -628,18 +629,18 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     }
 }
 
-static LLVMBasicBlockRef makeblock(ZCodegen *ctx, char *name) {
+LLVMBasicBlockRef makeblock(ZCodegen *ctx, char *name) {
     return LLVMAppendBasicBlockInContext(
         ctx->ctx, ctx->currentFunc, label(ctx, name)
     );
 }
 
-static inline void makebr(LLVMBuilderRef builder, LLVMBasicBlockRef block) {
+inline void makebr(LLVMBuilderRef builder, LLVMBasicBlockRef block) {
     if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder))) return;
     LLVMBuildBr(builder, block);
 }
 
-static inline void makecondbr(
+inline void makecondbr(
     LLVMBuilderRef builder,
     LLVMValueRef cond,
     LLVMBasicBlockRef thenBranch,
@@ -931,9 +932,41 @@ static void genGlobalVar(ZCodegen *ctx, ZNode *node) {
     LLVMSetInitializer(global, init);
 }
 
+/**
+ * @brief Zero-initializes a variable's stack allocation.
+ *
+ * Fixed-size arrays keep their data in a separate 'elem' buffer from the
+ * {len, ptr} descriptor in 'stack' - both need to be filled in, mirroring
+ * what genArrayLitPtr does for a partially-specified array literal.
+ */
+static void genZeroInit(ZCodegen *ctx, ZType *type, ZLLVMStack *stack) {
+    if (type->kind == Z_TYPE_ARRAY && type->array.size > 0 && stack->elem) {
+        LLVMBuildStore(ctx->builder, LLVMConstNull(stack->elemType), stack->elem);
+        storeArray(
+            ctx, stack, LLVMConstInt(i64Type, type->array.size, false)
+        );
+        return;
+    }
+    LLVMBuildStore(ctx->builder, LLVMConstNull(stack->stackType), stack->stack);
+}
+
 static void genVarDecl(ZCodegen *ctx, ZNode *node) {
-    if (!node->varDecl.rvalue || !node->resolved) {
+    if (!node->resolved) {
         error(ctx->state, node->tok, "Invalid 'genVarDecl' call");
+        return;
+    }
+
+    if (!node->varDecl.rvalue) {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (!stack) {
+            error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
+            return;
+        }
+
+        putDestructuredPatternInStack(
+            ctx, node->resolved, node->varDecl.pattern, stack->stack);
+
+        if (!node->varDecl.uninit) genZeroInit(ctx, node->resolved, stack);
         return;
     }
 
@@ -3430,7 +3463,8 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->unary.operand);
         break;
     case NODE_VAR_DECL: {
-        LLVMValueRef ptr = buildFuncVar(ctx, node->varDecl.rvalue, node->resolved, true);
+        ZNode *allocKey = node->varDecl.rvalue ? node->varDecl.rvalue : node;
+        LLVMValueRef ptr = buildFuncVar(ctx, allocKey, node->resolved, true);
         putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
         genFuncVars(ctx, node->varDecl.rvalue);
         break;

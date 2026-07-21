@@ -121,4 +121,8 @@ typedef struct {
 
 void LLVMAddFuncAttribute(ZCodegen *ctx, LLVMValueRef func, const char *llvmAttr);
 
+LLVMBasicBlockRef makeblock(ZCodegen *, char *);
+void makebr(LLVMBuilderRef, LLVMBasicBlockRef);
+void makecondbr(LLVMBuilderRef, LLVMValueRef, LLVMBasicBlockRef, LLVMBasicBlockRef);
+
 #endif //!Z_GEN

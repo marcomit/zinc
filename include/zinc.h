@@ -498,7 +498,8 @@ struct ZNode {
         struct {
             ZVarDestructPattern *pattern;
             // ZNode   *ident; // It is a NODE_IDENTIFIER
-            ZNode   *rvalue; // Null if not initialized
+            ZNode   *rvalue; // Null if not initialized (zero-initialized unless 'uninit')
+            bool    uninit;  // 'x: T = ?' - explicitly left uninitialized, no zero-init
         } varDecl;
 
         struct {
