@@ -19,11 +19,10 @@ extern _Thread_local LLVMTypeRef i64Type;
 extern _Thread_local LLVMTypeRef f32Type;
 extern _Thread_local LLVMTypeRef f64Type;
 
-#define LLVM_UBSAN_TRAP "llvm.ubsantrap"
+#define LLVM_UBSAN_TRAP     "llvm.ubsantrap"
+#define LLVM_DEBUG_TRACE    "zn.debug.trace"
 
-static void emitBoundsFailBlock(ZCodegen *ctx, LLVMBasicBlockRef failBlock) {
-    LLVMPositionBuilderAtEnd(ctx->builder, failBlock);
-
+static void LLVMBuildTrap(ZCodegen *ctx) {
     u32 ubsanId                 = LLVMLookupIntrinsicID(
         LLVM_UBSAN_TRAP, strlen(LLVM_UBSAN_TRAP));
 
@@ -38,11 +37,29 @@ static void emitBoundsFailBlock(ZCodegen *ctx, LLVMBasicBlockRef failBlock) {
             LLVMConstInt(i8Type, 0, 0),
         }, 1, ""
     );
-
     LLVMBuildUnreachable(ctx->builder);
 }
 
-void emitBoundCheck(ZCodegen *ctx, LLVMValueRef index,
+void emitRuntimeDebugPrint(ZCodegen *ctx, ZToken *tok, const char *message) {
+    LLVMTypeRef ptrType         = LLVMPointerTypeInContext(ctx->ctx, 0);
+    LLVMTypeRef funcType        = LLVMFunctionType(i32Type, &ptrType, 1, true);
+
+    LLVMValueRef func           = LLVMGetNamedFunction(ctx->mod, "printf");
+    if (!func) func             = LLVMAddFunction(ctx->mod, "printf", funcType);
+
+    const char *fmt = "%s(%llu:%llu): %s\n";
+    LLVMBuildCall2(
+        ctx->builder, funcType, func, (LLVMValueRef[]){
+            LLVMBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
+            LLVMBuildGlobalString(ctx->builder, tok->filename, label(ctx, "file")),
+            LLVMConstInt(i64Type, tok->row, 0),
+            LLVMConstInt(i64Type, tok->col, 0),
+            LLVMBuildGlobalString(ctx->builder, message, label(ctx, "msg")),
+        }, 5, ""
+    );
+}
+
+void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
         LLVMTypeRef arrType,
         LLVMValueRef ptr) {
     if (ctx->state->mode != Z_MODE_DEBUG) return;
@@ -68,8 +85,8 @@ void emitBoundCheck(ZCodegen *ctx, LLVMValueRef index,
     );
 
     makecondbr(ctx->builder, cond, cont, fail);
-
-    emitBoundsFailBlock(ctx, fail);
-
+    LLVMPositionBuilderAtEnd(ctx->builder, fail);
+    emitRuntimeDebugPrint(ctx, tok, "Index out of range");
+    LLVMBuildTrap(ctx);
     LLVMPositionBuilderAtEnd(ctx->builder, cont);
 }

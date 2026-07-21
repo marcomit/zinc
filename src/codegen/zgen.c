@@ -143,6 +143,16 @@ static void initNativeTypes(ZCodegen *ctx) {
 
     f32Type = LLVMFloatTypeInContext(ctx->ctx);
     f64Type = LLVMDoubleTypeInContext(ctx->ctx);
+
+    // LLVMSourceLocation = LLVMStructCreateNamed(
+    //         ctx->ctx, "builtin.SourceLocation"
+    // );
+    //
+    // LLVMStructSetBody(LLVMSourceLocation,
+    //     (LLVMTypeRef[]){
+    //         LLVMPointerTypeInContext(ctx->ctx, 0),
+    //         i64Type, i64Type
+    //     }, 3, false);
 }
 
 static void beginModule(ZCodegen *ctx, ZNode *node) {
@@ -1292,7 +1302,7 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
         LLVMValueRef basePtr = LLVMBuildLoad2(
             ctx->builder, ptrType, fieldPtr, name
         );
-        emitBoundCheck(ctx, i, type, ptr);
+        emitBoundCheck(ctx, node->tok, i, type, ptr);
         return LLVMBuildGEP2(
             ctx->builder,   elemType,
             basePtr,        &i,
