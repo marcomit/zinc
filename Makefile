@@ -60,10 +60,15 @@ LDFLAGS  = $(SANITIZE) $(LLD_LIBS) $(_LLVM_LDFLAGS)
 TARGET    = zinc
 BUILD_DIR ?= build
 
-C_SRC   = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(LIB_DIR)/*.c)
-CXX_SRC = $(wildcard $(SRC_DIR)/*.cpp)
-C_OBJ   = $(patsubst $(SRC_DIR)/%.c,  $(BUILD_DIR)/%.o, $(wildcard $(SRC_DIR)/*.c)) \
-          $(patsubst $(LIB_DIR)/%.c,  $(BUILD_DIR)/%.o, $(wildcard $(LIB_DIR)/*.c))
+# $(call rwildcard,dir,*.c) - like $(wildcard), but walks subdirectories too,
+# so src/codegen/*.c and anything added later is picked up without listing it.
+rwildcard = $(foreach d,$(wildcard $(1)/*),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
+
+# Object files mirror the source tree: src/codegen/zgen.c -> build/codegen/zgen.o
+C_SRC   = $(call rwildcard,$(SRC_DIR),*.c) $(call rwildcard,$(LIB_DIR),*.c)
+CXX_SRC = $(call rwildcard,$(SRC_DIR),*.cpp)
+C_OBJ   = $(patsubst $(SRC_DIR)/%.c,  $(BUILD_DIR)/%.o, $(call rwildcard,$(SRC_DIR),*.c)) \
+          $(patsubst $(LIB_DIR)/%.c,  $(BUILD_DIR)/%.o, $(call rwildcard,$(LIB_DIR),*.c))
 CXX_OBJ = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o, $(CXX_SRC))
 OBJ     = $(C_OBJ) $(CXX_OBJ)
 
@@ -109,17 +114,19 @@ endif
 $(TARGET): $(OBJ)
 	$(CXX) -o $(TARGET) $(OBJ) $(LDFLAGS)
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+# The % stem spans slashes, so these also match src/codegen/zgen.c. Each recipe
+# creates its own output dir because the nested ones don't exist up front.
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/%.o: $(LIB_DIR)/%.c | $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(LIB_DIR)/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
 
 test: $(TARGET)
 	make

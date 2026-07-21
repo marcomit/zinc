@@ -72,7 +72,7 @@ enum {
     OPT_LTO,
     OPT_RELEASE,
     OPT_RELEASE_FAST,
-    OPT_RELEASE_SMALL
+    OPT_RELEASE_SMALL,
 };
 
 static struct option long_options[] = {
@@ -122,6 +122,7 @@ ZState *loadState(int argc, char **argv) {
         case 'd':
             SET_FLAG(state->debug, "Debug mode");
             state->optimizationLevel = '0';
+            state->mode = Z_MODE_DEBUG;
             break;
         case 'O': {
             char lvl = optarg[0];
@@ -144,9 +145,9 @@ ZState *loadState(int argc, char **argv) {
         case OPT_UNUSED_VAR:            SET_FLAG(state->unusedVar,          "Unused variable flag");    break;
         case OPT_UNUSED_STRUCT:         SET_FLAG(state->unusedStruct,       "Unused struct flag");      break;
         case OPT_SKIP_LLVM_VALIDATION:  SET_FLAG(state->skipLLVMValidation, "Skip llvm validation");    break;
-        case OPT_RELEASE:       state->optimizationLevel = '2'; break;
-        case OPT_RELEASE_FAST:  state->optimizationLevel = '3'; break;
-        case OPT_RELEASE_SMALL: state->optimizationLevel = 's'; break;
+        case OPT_RELEASE:               state->optimizationLevel = '2';                                 break;
+        case OPT_RELEASE_FAST:          state->optimizationLevel = '3';                                 break;
+        case OPT_RELEASE_SMALL:         state->optimizationLevel = 's';                                 break;
         case OPT_LTO:
             if      (strcmp(optarg, "off")  == 0) state->ltoMode = Z_LTO_OFF;
             else if (strcmp(optarg, "thin") == 0) state->ltoMode = Z_LTO_THIN;

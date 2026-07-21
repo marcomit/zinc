@@ -519,18 +519,15 @@ static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
     return res;
 }
 
-// static ZNode *parsePropagation(ZParser *parser, ZNode *previous) {
-//     if (!match(parser, TOK_OR)) return previous;
-//
-//     if (check(parser, TOK_BREAK)) {
-//
-//     } else if (check(parser, TOK_CONTINUE)) {
-//
-//     } else if (check(parser, TOK_RETURN)) {
-//
-//     }
-//     return previous;
-// }
+static ZNode *parseExtractValue(ZParser *parser, ZNode *previous) {
+    if (!check(parser, TOK_ESCL)) return NULL;
+    ZToken *start       = consume(parser);
+    ZNode *node         = makenode(NODE_UNARY);
+    node->unary.operand = previous;
+    node->unary.operat  = start;
+    node->tok           = start;
+    return node;
+}
 
 static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     ZParserSnapshot *snap = store(parser);
@@ -546,7 +543,7 @@ static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
     case TOK_CAST:      res = parseCast         (parser, previous); break;
     case TOK_LPAREN:    res = parseFuncCall     (parser, previous); break;
     case TOK_LSBRACKET: res = parseSquareBracket(parser, previous); break;
-    // case TOK_OR:        res = parsePropagation  (parser, previous); break;
+    case TOK_ESCL:      res = parseExtractValue (parser, previous); break;
     default:            return NULL;
     }
 
@@ -660,19 +657,34 @@ static ZNode *parseLogicalAnd(ZParser *parser) {
 }
 
 static ZNode *parseLogicalOr(ZParser *parser) {
-    ZTokenType valids[] = {TOK_OR};
-    return parseGenericBinary(
-        parser, parseLogicalAnd, parseLogicalAnd,
-        valids, arrlen(valids)
-    );
-}
+    ZNode *node = parseLogicalAnd(parser);
 
-static ZNode *parseNullCoalescing(ZParser *parser) {
-    ZTokenType valid = TOK_COALESCING;
-    return parseGenericBinary(
-        parser, parseLogicalOr, parseLogicalOr,
-        &valid, 1
-    );
+    while (true) {
+        ZToken *or = peek(parser);
+        if (!match(parser, TOK_OR)) return node;
+        else if (match(parser, TOK_BREAK)) break;
+        else if (match(parser, TOK_CONTINUE)) break;
+        else if (match(parser, TOK_RETURN)) break;
+        else if (match(parser, TOK_ELSE)) {
+            ZNode *expr = parseExpr(parser);
+            ZNode *orelse = makenode(NODE_UNWRAP_OR);
+            orelse->unwrap.base     = node;
+            orelse->unwrap.orExpr   = expr;
+        }
+        else {
+            ZNode *right = tryParse(parser, parseLogicalAnd(parser));
+            if (!right) return node;
+
+            ZNode *root         = makenode(NODE_BINARY);
+            root->tok           = or;
+            root->binary.left   = node;
+            root->binary.right  = right;
+            root->binary.op     = or;
+            node                = root;
+        }
+    }
+
+    return node;
 }
 
 static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
@@ -683,7 +695,7 @@ static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
     ZTokenType binOps[] = {
         TOK_PLUS, TOK_MINUS,  TOK_STAR, TOK_DIV, TOK_MOD,
         TOK_BITL, TOK_BITR,   TOK_REF,  TOK_BITOR, TOK_BITXOR,
-        TOK_AND,  TOK_OR,     TOK_COALESCING
+        TOK_AND,  TOK_OR
     };
     if (isValidToken(parser, binOps, arrlen(binOps))) {
         ZToken *op  = consume(parser);
@@ -743,7 +755,7 @@ static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
 }
 
 static ZNode *parseUpdate(ZParser *parser) {
-    ZNode *lhs = parseNullCoalescing(parser);
+    ZNode *lhs = parseLogicalOr(parser);
     guard(lhs);
 
     ZToken *colon = peek(parser);
@@ -764,7 +776,7 @@ static ZNode *parseUpdate(ZParser *parser) {
 static ZNode *parseBinary(ZParser *parser) {
     ZTokenType valids[] = {TOK_EQ};
     return parseGenericBinary(
-        parser, parseNullCoalescing, parseBinary,
+        parser, parseLogicalOr, parseBinary,
         valids, arrlen(valids)
     );
 }
@@ -881,6 +893,14 @@ static ZType *parseAtom(ZParser *parser) {
         return parseTypeArray(parser);
     } else if (check(parser, TOK_LPAREN)) {
         return parseTypeTuple(parser);
+    } else if (check(parser, TOK_OPT)) {
+        ZToken *tok     = consume(parser);
+        ZType *base     = parseType(parser);
+        if (!base) return NULL;
+        ZType *opt      = maketype(Z_TYPE_OPTIONAL);
+        opt->optional   = base;
+        opt->tok        = tok;
+        return opt;
     }
 
     if (checkMask(parser, TOK_TYPES_MASK) || check(parser, TOK_IDENT)) {
@@ -910,6 +930,16 @@ static ZType *parseBaseType(ZParser *parser) {
         // Generic type instantiation like List[int] or Map[str, int]
         ZType **generics = tryParse(parser, parseTypeList(parser, TOK_LSBRACKET, TOK_RSBRACKET));
         base->primitive.generics = generics;
+    } else if (check(parser, TOK_COALESCING)) {
+        ZToken *tok = consume(parser);
+        ZType *error = parseBaseType(parser);
+        if (!error) return NULL;
+
+        ZType *result           = maketype(Z_TYPE_RESULT);
+        result->result.success  = base;
+        result->result.error    = error;
+        result->tok             = tok;
+        base = result;
     }
 
     if (base) base->tok = start;
@@ -2185,16 +2215,26 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
     guard(type);
 
     ZNode *expr = NULL;
+    bool uninit = false;
 
-    expect(parser, TOK_EQ);
-
-    expr = tryParse(parser, parseExpr(parser));
-    if (!expr) {
-        error(parser->state, peek(parser), "Expected expression after '='");
-        return NULL;
+    /* No '=' at all: zero-initialized by default.
+     * '= ?'         : explicitly left uninitialized.
+     * '= <expr>'    : normal initializer. */
+    if (match(parser, TOK_EQ)) {
+        if (match(parser, TOK_OPT)) {
+            uninit = true;
+        } else {
+            expr = tryParse(parser, parseExpr(parser));
+            if (!expr) {
+                error(parser->state, peek(parser), "Expected expression after '='");
+                return NULL;
+            }
+        }
     }
 
-    return makenodevar(var, type, expr);
+    ZNode *node = makenodevar(var, type, expr);
+    if (node) node->varDecl.uninit = uninit;
+    return node;
 }
 
 static ZNode *parseVarDef(ZParser *parser) {

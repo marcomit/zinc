@@ -10,119 +10,7 @@
  *            SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include "base.h"
-#include "zcolors.h"
-#include "zinc.h"
-#include "zlink.h"
-#include "zvec.h"
-
-#include <llvm-c/Core.h>
-#include <llvm-c/Target.h>
-#include <llvm-c/TargetMachine.h>
-#include <llvm-c/Analysis.h>
-#include <llvm-c/BitWriter.h>
-#include <llvm-c/Error.h>
-#include <llvm-c/Linker.h>
-#include <llvm-c/IRReader.h>
-#include <llvm-c/BitReader.h>
-#include <llvm-c/Transforms/PassBuilder.h>
-#include <stdio.h>
-#include <unistd.h>
-
-
-typedef struct ZLLVMSymbol {
-    ZToken *token;
-    char *name;
-    ZNode *node;
-    LLVMValueRef value;
-    LLVMTypeRef type;
-} ZLLVMSymbol;
-
-typedef struct {
-    /* The variable stored in the stack. */
-    LLVMValueRef    stack;
-
-    /* the data stored in the stack.
-     * It differs from the stack field only for prefixed types like arrays.
-     * */
-    LLVMValueRef    elem;
-    LLVMTypeRef     stackType;
-    LLVMTypeRef     elemType;
-    ZNode           *node;
-} ZLLVMStack;
-
-enum {
-    Z_SCOPE_BLOCK,
-    Z_SCOPE_LOOP,
-    Z_SCOPE_FUNC,
-    Z_SCOPE_FILE,
-    Z_SCOPE_GLOB
-};
-
-typedef struct ZLLVMCapability {
-    ZType           *capability;
-    LLVMValueRef    ref;
-} ZLLVMCapability;
-
-typedef struct ZLLVMScope {
-    struct ZLLVMScope   *parent;
-
-    ZLLVMCapability     **capabilities;
-
-    ZLLVMSymbol         **symbols;
-
-    /* Capture the start label of the loop (used by the continue statement). */
-    LLVMBasicBlockRef   startLoop;
-
-    /* Capture the end label of the loop (used by the break statement). */
-    LLVMBasicBlockRef   endLoop;
-
-    /* Capture the block's label. */
-    LLVMBasicBlockRef   breakBlock;
-
-    /* Capture all stack allocated variables (it is allocated only at function-level). */
-    ZLLVMStack          **stackAlloca;
-
-    /* Captures all defer statements of the current block. */
-    ZNode               **defers;
-
-    int                 type;
-} ZLLVMScope;
-
-typedef struct {
-    ZState              *state;
-    ZModuleAllocator    *module;
-    LLVMContextRef      ctx;
-
-    LLVMModuleRef       *modules;
-    LLVMModuleRef       mod;
-
-    LLVMBuilderRef      builder;
-
-    ZLLVMScope          *scope;
-
-    /* Struct type cache - parallel arrays keyed by name */
-    const char          **structNames;
-    LLVMTypeRef         *structTypes;
-
-    LLVMValueRef        currentFunc;
-    ZNode               *currentFuncNode;
-
-    /* all operations are named with an incremental number
-     * and converted to hex format. */
-    usize               count;
-
-    /* buffer for operation names for storing the hex number. */
-    char                *str;
-
-    /* Modules already forward-declared / defined into ctx->mod, keyed by
-     * module name. A module can be reached through several import paths (and
-     * re-imports carry an empty module.root), so these guard against emitting
-     * a body twice - which would append a second definition to the same
-     * function - and terminate on cyclic imports. */
-    hashset_t           seenModuleDecls;
-    hashset_t           seenModuleDefs;
-} ZCodegen;
+#include "zgen.h"
 
 static void         genStmt         (ZCodegen *, ZNode *);
 static LLVMTypeRef  genType         (ZCodegen *, ZType *);
@@ -135,18 +23,19 @@ static void         genBlock        (ZCodegen *, ZNode *);
 static void         genFuncVars     (ZCodegen *, ZNode *);
 static void         addFuncArgs     (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
 static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
+static void         storeArray      (ZCodegen *, ZLLVMStack *, LLVMValueRef);
 
 /* ========== Native types ==========*/
 
-static _Thread_local LLVMTypeRef i0Type   = NULL;
-static _Thread_local LLVMTypeRef i1Type   = NULL;
-static _Thread_local LLVMTypeRef i8Type   = NULL;
-static _Thread_local LLVMTypeRef i16Type  = NULL;
-static _Thread_local LLVMTypeRef i32Type  = NULL;
-static _Thread_local LLVMTypeRef i64Type  = NULL;
+_Thread_local LLVMTypeRef i0Type   = NULL;
+_Thread_local LLVMTypeRef i1Type   = NULL;
+_Thread_local LLVMTypeRef i8Type   = NULL;
+_Thread_local LLVMTypeRef i16Type  = NULL;
+_Thread_local LLVMTypeRef i32Type  = NULL;
+_Thread_local LLVMTypeRef i64Type  = NULL;
 
-static _Thread_local LLVMTypeRef f32Type  = NULL;
-static _Thread_local LLVMTypeRef f64Type  = NULL;
+_Thread_local LLVMTypeRef f32Type  = NULL;
+_Thread_local LLVMTypeRef f64Type  = NULL;
 
 static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {
     ZLLVMSymbol *self = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMSymbol));
@@ -254,6 +143,16 @@ static void initNativeTypes(ZCodegen *ctx) {
 
     f32Type = LLVMFloatTypeInContext(ctx->ctx);
     f64Type = LLVMDoubleTypeInContext(ctx->ctx);
+
+    // LLVMSourceLocation = LLVMStructCreateNamed(
+    //         ctx->ctx, "builtin.SourceLocation"
+    // );
+    //
+    // LLVMStructSetBody(LLVMSourceLocation,
+    //     (LLVMTypeRef[]){
+    //         LLVMPointerTypeInContext(ctx->ctx, 0),
+    //         i64Type, i64Type
+    //     }, 3, false);
 }
 
 static void beginModule(ZCodegen *ctx, ZNode *node) {
@@ -300,16 +199,6 @@ ZCodegen *makecodegen(ZState *state, ZModuleAllocator *module) {
     return self;
 }
 
-#define LABEL_RESET(c) do {                                                     \
-    memset(ctx->str, 0, veclen(ctx->str));                                      \
-    vecsetlen(ctx->str, 0);                                                     \
-} while (0)
-
-#define label(ctx, X) _Generic((X), \
-    ZToken*: labelTok,              \
-    char*:   labelStr               \
-)(ctx, X)
-
 void labelCnt(ZCodegen *ctx) {
     LABEL_RESET(ctx);
     snprintf(ctx->str, 6, "zn%.3zx", ctx->count);
@@ -334,7 +223,6 @@ char *labelTok(ZCodegen *ctx, ZToken *tok) {
     }
     return ctx->str;
 }
-
 
 char *labelStr(ZCodegen *ctx, char *msg) {
     LABEL_RESET(ctx);
@@ -740,18 +628,18 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     }
 }
 
-static LLVMBasicBlockRef makeblock(ZCodegen *ctx, char *name) {
+LLVMBasicBlockRef makeblock(ZCodegen *ctx, char *name) {
     return LLVMAppendBasicBlockInContext(
         ctx->ctx, ctx->currentFunc, label(ctx, name)
     );
 }
 
-static inline void makebr(LLVMBuilderRef builder, LLVMBasicBlockRef block) {
+inline void makebr(LLVMBuilderRef builder, LLVMBasicBlockRef block) {
     if (LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder))) return;
     LLVMBuildBr(builder, block);
 }
 
-static inline void makecondbr(
+inline void makecondbr(
     LLVMBuilderRef builder,
     LLVMValueRef cond,
     LLVMBasicBlockRef thenBranch,
@@ -1043,9 +931,41 @@ static void genGlobalVar(ZCodegen *ctx, ZNode *node) {
     LLVMSetInitializer(global, init);
 }
 
+/**
+ * @brief Zero-initializes a variable's stack allocation.
+ *
+ * Fixed-size arrays keep their data in a separate 'elem' buffer from the
+ * {len, ptr} descriptor in 'stack' - both need to be filled in, mirroring
+ * what genArrayLitPtr does for a partially-specified array literal.
+ */
+static void genZeroInit(ZCodegen *ctx, ZType *type, ZLLVMStack *stack) {
+    if (type->kind == Z_TYPE_ARRAY && type->array.size > 0 && stack->elem) {
+        LLVMBuildStore(ctx->builder, LLVMConstNull(stack->elemType), stack->elem);
+        storeArray(
+            ctx, stack, LLVMConstInt(i64Type, type->array.size, false)
+        );
+        return;
+    }
+    LLVMBuildStore(ctx->builder, LLVMConstNull(stack->stackType), stack->stack);
+}
+
 static void genVarDecl(ZCodegen *ctx, ZNode *node) {
-    if (!node->varDecl.rvalue || !node->resolved) {
+    if (!node->resolved) {
         error(ctx->state, node->tok, "Invalid 'genVarDecl' call");
+        return;
+    }
+
+    if (!node->varDecl.rvalue) {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (!stack) {
+            error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
+            return;
+        }
+
+        putDestructuredPatternInStack(
+            ctx, node->resolved, node->varDecl.pattern, stack->stack);
+
+        if (!node->varDecl.uninit) genZeroInit(ctx, node->resolved, stack);
         return;
     }
 
@@ -1382,6 +1302,7 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
         LLVMValueRef basePtr = LLVMBuildLoad2(
             ctx->builder, ptrType, fieldPtr, name
         );
+        emitBoundCheck(ctx, node->tok, i, type, ptr);
         return LLVMBuildGEP2(
             ctx->builder,   elemType,
             basePtr,        &i,
@@ -3513,7 +3434,8 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->unary.operand);
         break;
     case NODE_VAR_DECL: {
-        LLVMValueRef ptr = buildFuncVar(ctx, node->varDecl.rvalue, node->resolved, true);
+        ZNode *allocKey = node->varDecl.rvalue ? node->varDecl.rvalue : node;
+        LLVMValueRef ptr = buildFuncVar(ctx, allocKey, node->resolved, true);
         putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
         genFuncVars(ctx, node->varDecl.rvalue);
         break;
@@ -3594,7 +3516,7 @@ static void addFuncArgs(ZCodegen *ctx,
     }
 }
 
-static void LLVMAddFuncAttribute(ZCodegen *ctx,
+void LLVMAddFuncAttribute(ZCodegen *ctx,
     LLVMValueRef func, const char *llvmAttr) {
     LLVMAttributeRef attr = LLVMCreateEnumAttribute(
         ctx->ctx,
