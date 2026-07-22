@@ -13,18 +13,19 @@
 #include "zgen.h"
 #include "zinc.h"
 
-static void         genStmt         (ZCodegen *, ZNode *);
-static void         genBlock        (ZCodegen *, ZNode *);
-static void         storeArray      (ZCodegen *, ZLLVMStack *, LLVMValueRef);
-static void         genFuncVars     (ZCodegen *, ZNode *);
-static void         addFuncArgs     (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
-static void         genNamespace    (ZCodegen *, ZNode *);
-static LLVMTypeRef  genType         (ZCodegen *, ZType *);
-static LLVMValueRef genExpr         (ZCodegen *, ZNode *);
-static LLVMValueRef genLvalue       (ZCodegen *ctx, ZNode *node);
-static LLVMValueRef genForeign      (ZCodegen *, ZNode *);
-static LLVMValueRef genStructLitInto(ZCodegen *, ZNode *, LLVMValueRef);
-static LLVMValueRef genFacetConstruct(ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
+static void         genStmt             (ZCodegen *, ZNode *);
+static void         genBlock            (ZCodegen *, ZNode *);
+static void         storeArray          (ZCodegen *, ZLLVMStack *, LLVMValueRef);
+static void         genFuncVars         (ZCodegen *, ZNode *);
+static void         addFuncArgs         (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
+static void         genNamespace        (ZCodegen *, ZNode *);
+static LLVMTypeRef  genType             (ZCodegen *, ZType *);
+static LLVMValueRef genExpr             (ZCodegen *, ZNode *);
+static LLVMValueRef genLvalue           (ZCodegen *ctx, ZNode *node);
+static LLVMValueRef genForeign          (ZCodegen *, ZNode *);
+static LLVMValueRef genStructLitInto    (ZCodegen *, ZNode *, LLVMValueRef);
+static LLVMValueRef genFacetConstruct   (ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
+static void         buildNestedFuncVar  (ZCodegen *, ZNode *, LLVMValueRef);
 
 /* ========== Native types ==========*/
 
@@ -621,7 +622,7 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 
     case Z_TYPE_NONE:
         /* none literal - represent as i8* null */
-        return LLVMPointerType(i8Type, 0);
+        return LLVMPointerTypeInContext(ctx->ctx, 0);
 
     default:
         error(ctx->state, NULL, "genType: unhandled type kind %d", type->kind);
@@ -1317,25 +1318,21 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
-static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
+static LLVMValueRef _genEnumLitPtr(ZCodegen *ctx,
+        ZNode *node, ZToken *variant, ZNode **args) {
     ZLLVMStack *stack   = getStackValue(ctx, node);
-    ZToken *variant     = node->call.callee->memberAccess.field;
     if (!stack) {
         error(ctx->state, node->tok, "Missing stack value");
         return NULL;
     }
 
-    i32 index = enumIndexField(
-        node->resolved,
-        variant
-    );
-
+    i32 index = enumIndexField(node->resolved, variant);
     if (index == -1) {
         error(ctx->state, variant, "Field not found");
         return NULL;
     }
 
-    LLVMTypeRef fieldType   = genType(ctx, node->resolved->enm.fields[index]);
+    LLVMTypeRef fieldType = genType(ctx, node->resolved->enm.fields[index]);
 
     LLVMBuildStore(
         ctx->builder,
@@ -1343,7 +1340,6 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
         stack->stack
     );
 
-    ZNode **args = node->call.args;
     for (usize i = 0; i < veclen(args); i++) {
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
             ctx->builder, fieldType, stack->stack, i + 1, label(ctx, args[i]->tok));
@@ -1357,6 +1353,16 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
     }
 
     return stack->stack;
+}
+
+
+static LLVMValueRef genEnumNoPayloadPtr(ZCodegen *ctx, ZNode *node) {
+    return _genEnumLitPtr(ctx, node, node->memberAccess.field, NULL);
+}
+
+static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
+    ZToken *variant     = node->call.callee->memberAccess.field;
+    return _genEnumLitPtr(ctx, node, variant, node->call.args);
 }
 
 /* Build the actual LLVMFunctionType from a ZType. Used for indirect calls where
@@ -1645,6 +1651,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     case NODE_ARRAY_LIT:        return genArrayLitPtr       (ctx, node);
     case NODE_SLICE:            return genSlicePtr          (ctx, node);
     case NODE_ENUM_LIT:         return genEnumLitPtr        (ctx, node);
+    case NODE_ENUM_LIT_NO_PAYLOAD: return genEnumNoPayloadPtr(ctx, node);
     case NODE_STRUCT_LIT:       return genStructLitPtr      (ctx, node);
     case NODE_TUPLE_LIT:        return genTupleLitPtr       (ctx, node);
     case NODE_MEMBER:           return genMemberAccessPtr   (ctx, node);
@@ -2689,6 +2696,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
         case NODE_STRUCT_LIT:
         case NODE_ARRAY_LIT:
         case NODE_ENUM_LIT:
+        case NODE_ENUM_LIT_NO_PAYLOAD:
         case NODE_SLICE: {
             LLVMValueRef ptr = genLvalue(ctx, node);
             /* Function fields are stored as ptr in structs (unsized types can't
@@ -3198,6 +3206,31 @@ static void addFuncVar(ZCodegen *ctx,
     vecpush(ctx->scope->stackAlloca, item);
 }
 
+static void _buildNestedEnumStackRef(ZCodegen *ctx,
+        ZNode *node, LLVMValueRef parent, ZToken *variant, ZNode **args) {
+    i32 variantIndex = enumIndexField(node->resolved, variant);
+
+    if (variantIndex == -1) {
+        error(ctx->state, variant, "Field not found");
+        return;
+    }
+
+    ZType *variantType          = node->resolved->enm.fields[variantIndex];
+    LLVMTypeRef variantTypeRef  = genType(ctx, variantType);
+
+    for (usize i = 0; i < veclen(args); i++) {
+        ZNode *val = args[i];
+
+        LLVMValueRef ptr = LLVMBuildStructGEP2(
+            ctx->builder, variantTypeRef, parent, i + 1, label(ctx, variant)
+        );
+
+        LLVMTypeRef fieldType = genType(ctx, variantType->strct.fields[i]->resolved);
+        addFuncVar(ctx, ptr, NULL, fieldType, NULL, val);
+        buildNestedFuncVar(ctx, val, ptr);
+    }
+}
+
 /**
  * @brief Stores nested pointer for a given stack allocation.
  *
@@ -3294,24 +3327,18 @@ static void buildNestedFuncVar(
         }
         break;
     }
-    case NODE_ENUM_LIT: {
-        ZToken *variant = node->call.callee->memberAccess.field;
-        i32 variantIndex = enumIndexField(
-            node->resolved, variant
+    case NODE_ENUM_LIT:
+        _buildNestedEnumStackRef(
+            ctx, node, parent,
+            node->call.callee->memberAccess.field,
+            node->call.args
         );
-        ZType *variantType = node->resolved->enm.fields[variantIndex];
-        LLVMTypeRef variantTypeRef = genType(ctx, variantType);
-        for (usize i = 0; i < veclen(node->call.args); i++) {
-            ZNode *val = node->call.args[i];
-            LLVMValueRef ptr = LLVMBuildStructGEP2(ctx->builder,
-                variantTypeRef, parent, i + 1, label(ctx, variant)
-            );
-            LLVMTypeRef fieldType = genType(ctx, variantType->strct.fields[i]->resolved);
-            addFuncVar(ctx, ptr, NULL, fieldType, NULL, val);
-            buildNestedFuncVar(ctx, val, ptr);
-        }
         break;
-    }
+    case NODE_ENUM_LIT_NO_PAYLOAD:
+        _buildNestedEnumStackRef(
+            ctx, node, parent, node->memberAccess.field, NULL
+        );
+        break;
     default: break;
     }
 }
@@ -3394,10 +3421,10 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         }
         break;
     case NODE_STRUCT_LIT:
+    case NODE_ENUM_LIT:
+    case NODE_ENUM_LIT_NO_PAYLOAD:
         buildFuncVar(ctx, node, node->resolved, false);
         break;
-    case NODE_ENUM_LIT:
-        buildFuncVar(ctx, node, node->resolved, false);
     case NODE_CAST:
         if (node->resolved &&
                 (node->resolved->kind == Z_TYPE_SUM ||

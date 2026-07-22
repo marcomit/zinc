@@ -1152,9 +1152,8 @@ ZNode *parseStmt(ZParser *parser) {
 }
 
 static ZNode *parseBlockOrInline(ZParser *parser) {
-    ZToken *start = peek(parser);
     if (match(parser, TOK_DO)) {
-        ZNode *expr = parseStmt(parser);
+        ZNode *expr = parseExpr(parser);
         if (!expr) {
             error(parser->state, peek(parser), "Invalid expression");
             return NULL;
@@ -1535,6 +1534,35 @@ static ZNode *parseCondDestructVar(ZParser *parser) {
     return makenodevar(pattern, NULL, expr);
 }
 
+static ZNode *parseIfBlock(ZParser *parser) {
+    if (check(parser, TOK_DO) || check(parser, TOK_LBRACKET)) {
+        return parseBlockOrInline(parser);
+    }
+
+    ZNode *node = NULL;
+    if (check(parser, TOK_BREAK)) {
+        node = parseBreak(parser);
+    } else if (check(parser, TOK_CONTINUE)) {
+        node = parseContinue(parser);
+    } else if (check(parser, TOK_RETURN)) {
+        node = parseReturn(parser);
+    } else {
+        error(parser->state, peek(parser),
+            "Expected do/break/continue/return, got '%s'",
+            stoken(peek(parser))
+        );
+    }
+
+    if (!node) return NULL;
+
+    ZNode *block = makenode(NODE_BLOCK);
+    block->block = NULL;
+
+    vecpush(block->block, node);
+
+    return block;
+}
+
 static ZNode *parseIfLet(ZParser *parser) {
     expect(parser, TOK_IF);
     ZVarDestructPattern *pattern = parseDestructVar(parser, true);
@@ -1545,14 +1573,14 @@ static ZNode *parseIfLet(ZParser *parser) {
     ZNode *expr = parseExpr(parser);
     parser->noStructLit = savedNoStructLit;
     guard(expr);
-    ZNode *body = parseBlockOrInline(parser);
+    ZNode *body = parseIfBlock(parser);
 
     ZNode *var = makenodevar(pattern, NULL, expr);
 
     ZNode *elseBranch = NULL;
     if (match(parser, TOK_ELSE)) {
         elseBranch = parseOrGrammar(
-            parser, (ZParseFunc[]){ parseIf, parseBlockOrInline }, 2
+            parser, (ZParseFunc[]){ parseIf, parseIfBlock }, 2
         );
     }
 
@@ -1572,14 +1600,14 @@ static ZNode *parseIfStmt(ZParser *parser) {
     parser->noStructLit = false;
     guard(cond);
 
-    ZNode *body = parseBlockOrInline(parser);
+    ZNode *body = parseIfBlock(parser);
     guard(body);
 
     ZNode *node = makenode(NODE_IF);
 
     if (canPeek(parser) && match(parser, TOK_ELSE)) {
         ZNode *elseBody = parseOrGrammar(parser, (ZParseFunc[]){
-            parseIf, parseBlockOrInline
+            parseIf, parseIfBlock
         }, 2);
         if (!elseBody) return NULL;
         node->ifStmt.elseBranch = elseBody;
