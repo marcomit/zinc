@@ -286,6 +286,7 @@ struct ZType {
         struct {
             ZType   *base;
             usize   size;
+            bool    dynamic;
         } array;
 
         struct {
@@ -986,7 +987,6 @@ char *tokname(ZTokenType);
 void printToken(ZToken *);
 void printTokens(ZToken **);
 
-void printType(ZType *);
 void printNode(ZNode *, u8);
 void printDestructedVar(ZVarDestructPattern *, u8);
 void printSymbol(ZSymbol *);

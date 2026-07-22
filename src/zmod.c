@@ -174,11 +174,14 @@ static void _stype(ZType *type, char **buff) {
     case Z_TYPE_ARRAY: {
         vecpush(*buff, '[');
 
-        usize len = type->array.size;
-
-        while (len > 0) {
-            vecpush(*buff, 48 + len % 10);
-            len /= 10;
+        if (type->array.dynamic) {
+            vecunion(*buff, "dyn", 3);
+        } else {
+            usize len = type->array.size;
+            while (len > 0) {
+                vecpush(*buff, 48 + len % 10);
+                len /= 10;
+            }
         }
 
         vecpush(*buff, ']');
@@ -233,88 +236,6 @@ char *stype(ZType *type) {
     _stype(type, &buff);
     vecpush(buff, '\0');
     return buff;
-}
-
-void printType(ZType *type) {
-    if (!type) {
-        printf("unknown");
-        return;
-    }
-
-    if (type->constant) printf("const ");
-
-    switch(type->kind) {
-    case Z_TYPE_POINTER:
-        printf("*");
-        printType(type->base);
-        break;
-    case Z_TYPE_PRIMITIVE:
-        printToken(type->primitive.token);
-        break;
-    case Z_TYPE_FUNCTION:
-        printType(type->func.ret);
-        printf("(");
-        for (usize i = 0; i < veclen(type->func.args); i++) {
-            printType(type->func.args[i]);
-            if (i < veclen(type->func.args) - 1) printf(", ");
-        }
-        printf(")");
-        break;
-    case Z_TYPE_STRUCT:
-        printf("struct %s", type->strct.name->str);
-        break;
-    case Z_TYPE_ARRAY:
-        printf("[%zu]", type->array.size);
-        printType(type->array.base);
-        break;
-    case Z_TYPE_TUPLE:
-        printf("(");
-        for (usize i = 0; i < veclen(type->tuple); i++) {
-            printType(type->tuple[i]);
-            if (i < veclen(type->tuple) - 1) printf(", ");
-        }
-        printf(")");
-        break;
-    case Z_TYPE_GENERIC:
-        printf("%s", type->generic.name->str);
-        if (veclen(type->generic.extensions) > 0) {
-            printf(": ");
-        }
-        for (usize i = 0; i < veclen(type->generic.extensions); i++) {
-            printType(type->generic.extensions[i]);
-            printf(" ");
-        }
-        break;
-    case Z_TYPE_ENUM:
-        printf("enum %s\n", type->enm.name->str);
-        break;
-    case Z_TYPE_SUM:
-        printf("(");
-        for (usize i = 0; i < veclen(type->sumType); i++) {
-            printType(type->sumType[i]);
-            if (i != veclen(type->sumType) - 1) {
-                printf(" | ");
-            }
-        }
-        printf(")");
-        break;
-    case Z_TYPE_FACET:
-        printf("facet %s\n", type->facet.name->str);
-        break;
-    case Z_TYPE_OPTIONAL:
-        printf("?%s\n", stype(type->optional));
-        break;
-    case Z_TYPE_RESULT:
-        printf(
-            "%s ?? %s\n",
-            stype(type->result.success),
-            stype(type->result.error)
-        );
-        break;
-    default:
-        printf("(details not implemented for type %d)", type->kind);
-        break;
-    }
 }
 
 static const u64 KIND_PRIME[] = {
@@ -580,20 +501,18 @@ void printNode(ZNode *node, u8 depth) {
     case NODE_FUNC:
         if (node->funcDef.pub) printf("pub ");
         if (node->funcDef.receiver) {
-            printf("Receiver: ");
-            printType(node->funcDef.receiver->field.type);
+            printf("Receiver: %s", stype(node->funcDef.receiver->field.type));
             printf(" ");
             printToken(node->funcDef.receiver->field.identifier);
             printf(" ");
         } else if (node->funcDef.base) {
             printf("%s::", node->funcDef.base->primitive.token->str);
         }
-        printf("%s, Type: ", stoken(node->funcDef.name));
-        printType(node->funcDef.ret);
+        printf("%s, Type: %s", stoken(node->funcDef.name), stype(node->funcDef.ret));
         printf("\n");
         for (usize i = 0; i < veclen(node->funcDef.generics); i++) {
             indent(depth);
-            printType(node->funcDef.generics[i]);
+            printf("%s", stype(node->funcDef.generics[i]));
             printf("\n");
         }
         indent(depth);
@@ -644,7 +563,7 @@ void printNode(ZNode *node, u8 depth) {
         if (node->structDef.pub) printf("pub ");
         printf("%s[", node->structDef.ident->str);
         for (usize i = 0; i < veclen(node->structDef.generics); i++) {
-                printType(node->structDef.generics[i]);
+            printf("%s", stype(node->structDef.generics[i]));
         }
         printf("]\n");
         for (usize i = 0; i < veclen(node->structDef.fields); i++) {
@@ -673,8 +592,9 @@ void printNode(ZNode *node, u8 depth) {
         break;
     }
     case NODE_TYPEDEF:
-        printf(" %s alias for ", node->typeDef.alias->str);
-        printType(node->typeDef.type);
+        printf(" %s alias for %s",
+            node->typeDef.alias->str,
+            stype(node->typeDef.type));
         break;
     case NODE_FOREIGN:
         printf("%s\n", stoken(node->foreignDecl.name));
@@ -720,11 +640,10 @@ void printNode(ZNode *node, u8 depth) {
         printf("\n");
         printNode(node->castExpr.expr, depth);
         indent(depth + 1);
-        printf("as ");
-        printType(node->castExpr.toType);
+        printf("as %s", stype(node->castExpr.toType));
         break;
     case NODE_SIZEOF:
-        printType(node->sizeofExpr.type);
+        printf("%s", stype(node->sizeofExpr.type));
         break;
 
     case NODE_ENUM:
@@ -793,7 +712,7 @@ void printNode(ZNode *node, u8 depth) {
         }
         break;
     case NODE_IMPL:
-        printType(node->impl.base);
+        printf("%s", stype(node->impl.base));
         printf("\n");
 
         for (usize i = 0; i < veclen(node->impl.funcs); i++) {
@@ -926,15 +845,15 @@ void printSymbol(ZSymbol *symbol) {
     switch (symbol->kind) {
     case Z_SYM_VAR:
         printf("Var(%s) ", symbol->name->str);
-        printType(symbol->type);
+        printf("%s", stype(symbol->type));
         break;
     case Z_SYM_FUNC:
         printf("Func(%s)", symbol->name->str);
-        printType(symbol->type);
+        printf("%s", stype(symbol->type));
         break;
     case Z_SYM_STRUCT:
         printf("Struct(%s)", symbol->name->str);
-        printType(symbol->type);
+        printf("%s", stype(symbol->type));
         break;
     default: return;
     }

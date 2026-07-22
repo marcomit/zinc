@@ -141,5 +141,6 @@ char *labelTok  (ZCodegen *, ZToken *);
 char *labelStr  (ZCodegen *, char *);
 
 void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
+void initializeMemoryToZero(ZCodegen *, LLVMValueRef, ZType *);
 
 #endif //!Z_GEN
