@@ -1096,11 +1096,7 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
     case Z_TYPE_PRIMITIVE: {
         if (type->primitive.token->type != TOK_IDENT) return type;
         ZSymbol *sym = resolve(ctx, type->primitive.token);
-        if (!sym) {
-            error(ctx->state, type->primitive.token,
-                  "Unknown type '%s'", type->primitive.token->str);
-            return NULL;
-        }
+        if (!sym) return NULL;
         if (sym->kind == Z_SYM_STRUCT) {
             // for (usize i = 0; i < veclen(sym->type->strct.fields); i++) {
             //     ZNode *field = sym->type->strct.fields[i];
@@ -2736,6 +2732,9 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
             ctx, retType, ctx->currentFuncRet
         );
 
+        if (ctx->currentFuncRet->kind == Z_TYPE_OPTIONAL) {
+
+        }
         if (!promoted) {
             error(ctx->state, curr->tok,
                 "Expected type %s, got %s",

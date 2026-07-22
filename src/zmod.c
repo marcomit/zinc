@@ -216,6 +216,17 @@ static void _stype(ZType *type, char **buff) {
         vecunion(*buff, "facet ", 6);
         vecunion(*buff, type->facet.name->str, strlen(type->facet.name->str));
         break;
+    case Z_TYPE_OPTIONAL:
+        vecpush(*buff, '?');
+        _stype(type->optional, buff);
+        break;
+
+    case Z_TYPE_RESULT:
+        _stype(type->result.success, buff);
+        vecpush(*buff, '?');
+        vecpush(*buff, '?');
+        _stype(type->result.error, buff);
+        break;
     // case Z_TYPE_GENERIC:
     //     vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
     //     vecpush(*buff, '[');
@@ -226,7 +237,9 @@ static void _stype(ZType *type, char **buff) {
     //     }
     //     vecpush(*buff, ']');
     //     break;
+
     default:
+        printf("Type %d not handled\n", type->kind);
         break;
     }
 }
