@@ -40,20 +40,20 @@ main :: fn () int {
 
     s: scalar = 2.0
     i: index = 0
-    
+
     pa: V2ptr = &a
-    
+
     print_point(pa)
-    
+
     l: float = b.len()
     printf("len sq: %.0f\n", l)
-    
+
     scaled: Point = a.scale(s)
     printf("scaled: %.0f %.0f\n", scaled.x, scaled.y)
-    
+
     pos: bool = is_positive(-5)
-    if pos -> printf("positive\n")
-    else   -> printf("not positive\n")
+    if pos do printf("positive\n")
+    else   do printf("not positive\n")
 
 
     return 0

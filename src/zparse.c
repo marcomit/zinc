@@ -1152,9 +1152,9 @@ ZNode *parseStmt(ZParser *parser) {
 }
 
 static ZNode *parseBlockOrInline(ZParser *parser) {
-    // ZToken *start = peek(parser);
-    if (match(parser, TOK_ARROW)) {
-        ZNode *expr = parseExpr(parser);
+    ZToken *start = peek(parser);
+    if (match(parser, TOK_DO)) {
+        ZNode *expr = parseStmt(parser);
         if (!expr) {
             error(parser->state, peek(parser), "Invalid expression");
             return NULL;
