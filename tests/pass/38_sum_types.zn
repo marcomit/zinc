@@ -4,7 +4,8 @@ c :: foreign {
 
 // Inline-if producing a sum type: branches have different types
 classify :: fn (flag: i32) (*char | i32) {
-    return if flag != 0 -> "str" else -> 42
+    return if flag != 0 do "str"
+            else        do 42
 }
 
 // Direct return of a concrete variant

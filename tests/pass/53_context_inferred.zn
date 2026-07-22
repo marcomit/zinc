@@ -40,7 +40,7 @@ pick :: fn (n: i32) Shape {
     if n == 0 {
         return .Point()
     }
-    return if n > 0 -> .Circle(n) else -> .Rect(n, n)
+    return if n > 0 do .Circle(n) else do .Rect(n, n)
 }
 
 origin :: fn () Vec2 {

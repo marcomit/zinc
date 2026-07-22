@@ -6,12 +6,12 @@ main :: fn () i32 {
 
 
     nested: i32 =
-            if x > z ->
-                if x > y    -> x
-                else        -> y
+            if x > z do
+                if x > y    do x
+                else        do y
             else
-                if z > y    -> z
-                else        -> y
+                if z > y    do z
+                else        do y
 
     printf("%d\n", nested)
 

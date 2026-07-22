@@ -19,6 +19,6 @@ main :: fn () i32 {
         io.printf("%d %d\n", a, b)
     }
 
-    with _ := allocator -> allocInner(1024)
+    with _ := allocator do allocInner(1024)
     return 0
 }

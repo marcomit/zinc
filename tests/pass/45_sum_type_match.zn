@@ -3,10 +3,10 @@ c :: foreign {
 }
 
 pick :: fn (n: i32) i32 | *char | f32 {
-    return  if n == 0 -> "zero"
-            else      ->
-                if n == 1 -> 3.5 as f32
-                else      -> n
+    return  if n == 0 do "zero"
+            else      do
+                if n == 1 do 3.5 as f32
+                else      do n
 }
 
 show :: fn (val: i32 | *char | f32) u0 {
