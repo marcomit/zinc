@@ -11,6 +11,7 @@
  */
 
 #include "zgen.h"
+#include "zinc.h"
 
 static void         genStmt         (ZCodegen *, ZNode *);
 static void         genBlock        (ZCodegen *, ZNode *);
@@ -3346,16 +3347,23 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, b
     LLVMTypeRef elemType = NULL;
 
     if (node->resolved->kind == Z_TYPE_ARRAY && node->resolved->array.size > 0) {
+        LLVMTypeRef baseType = genType(ctx, node->resolved->array.base);
         elemType = LLVMArrayType2(
-            genType(ctx, node->resolved->array.base),
+            baseType,
             node->resolved->array.size
         );
         elem = LLVMBuildAlloca(ctx->builder, elemType, label(ctx, node->tok));
+
+        initializeMemoryToZero(ctx, elem, node->resolved);
+
         stackPointer = elem;
     }
 
     LLVMTypeRef type = genType(ctx, overrided);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
+
+    initializeMemoryToZero(ctx, val, overrided);
+
     addFuncVar(ctx, val, elem, type, elemType, node);
 
     if (!stackPointer) stackPointer = val;

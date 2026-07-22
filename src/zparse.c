@@ -849,9 +849,12 @@ static ZType *applyStarsToType(ZType *base, u8 stars) {
 static ZType *parseTypeArray(ZParser *parser) {
     expect(parser, TOK_LSBRACKET);
 
-    usize size = 0;
+    usize size      = 0;
+    bool dynamic    = false;
     if (check(parser, TOK_INT_LIT)) {
-        size = consume(parser)->integer;
+        size    = consume(parser)->integer;
+    } else if (match(parser, TOK_DYNAMIC)) {
+        dynamic = true;
     }
 
     expect(parser, TOK_RSBRACKET);
@@ -860,8 +863,9 @@ static ZType *parseTypeArray(ZParser *parser) {
     ensure(type, "Expected a type after [] brackets");
 
     ZType *arr = maketype(Z_TYPE_ARRAY);
-    arr->array.base = type;
-    arr->array.size = size;
+    arr->array.base     = type;
+    arr->array.size     = size;
+    arr->array.dynamic  = dynamic;
     return arr;
 }
 
@@ -1747,13 +1751,8 @@ static ZType *parseGenericDecl(ZParser *parser) {
  *  [K: Display + Drop]
  * */
 static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
-    ZType **generics = NULL;
-
-    if (brackets) {
-        expect(parser, TOK_LSBRACKET);
-    }
-
-    ZType *generic = NULL;
+    ZType **generics    = NULL;
+    ZType *generic      = NULL;
     do {
         if (!check(parser, TOK_IDENT)) break;
 
@@ -1784,11 +1783,6 @@ static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
 
         vecpush(generics, generic);
     } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
-
-
-    if (brackets) {
-        expect(parser, TOK_RSBRACKET);
-    }
 
     return generics;
 }
@@ -1927,15 +1921,6 @@ static ZNode *parseFuncDecl(ZParser *parser,
     expect(parser, TOK_DOUBLE_COLON);
     expect(parser, TOK_FN);
 
-    ZType **generics = NULL;
-    if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser, true);
-        if (!generics) {
-            error(parser->state, peek(parser),
-                    "Expected generic type parameters after function name");
-        }
-    }
-
     ZNode **args = parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
         parseFuncArgument,  true
@@ -1961,6 +1946,15 @@ static ZNode *parseFuncDecl(ZParser *parser,
                 !check(parser, TOK_ARROW)       &&
                 !check(parser, TOK_LBRACKET)    &&
                 match(parser, TOK_COMMA)        );
+    }
+
+    ZType **generics = NULL;
+    if (match(parser, TOK_WHERE)) {
+        generics = parseGenericsDecl(parser, false);
+        if (!generics) {
+            error(parser->state, peek(parser),
+                    "Expected generic type parameters after function name");
+        }
     }
 
     ZNode *body = NULL;

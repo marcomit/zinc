@@ -90,3 +90,21 @@ void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
     LLVMBuildTrap(ctx);
     LLVMPositionBuilderAtEnd(ctx->builder, cont);
 }
+
+/*
+ * @brief Initialize the stack allocation memory to zero
+ * using the intrinsic memset function.
+ *
+ * The memory will be zeroed only in debug mode.
+ * */
+void initializeMemoryToZero(ZCodegen *ctx, LLVMValueRef value, ZType *type) {
+    if (ctx->state->mode != Z_MODE_DEBUG) return;
+    LLVMBuildMemSet(
+        ctx->builder, value,
+        LLVMConstInt(i8Type, 0, 0),
+        LLVMConstInt(i64Type, typeSize(type), 0),
+        8
+    );
+}
+
+
