@@ -1445,6 +1445,7 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         }
     } else if (callee->type == NODE_MEMBER) {
         ZType *resolved = resolveType(ctx, callee, inferred);
+        if (callee->type == NODE_ENUM_LIT_NO_PAYLOAD) callee->type = NODE_MEMBER;
         if (resolveEnumLit(ctx, callee, inferred)) {
             curr->type = NODE_ENUM_LIT;
             callee->type = NODE_MEMBER;
@@ -2226,7 +2227,10 @@ static ZType *resolveTypeStatic(
     if (type->kind == Z_TYPE_ENUM) {
         ZType **variants = type->enm.fields;
         for (usize i = 0; i < veclen(variants); i++) {
-            if (tokeneq(variants[i]->strct.name, field)) return type;
+            if (tokeneq(variants[i]->strct.name, field)) {
+                curr->type = NODE_ENUM_LIT_NO_PAYLOAD;
+                return type;
+            }
         }
         error(ctx->state, field,
             "Variant '%s' not found for enum '%s'",

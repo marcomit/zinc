@@ -223,6 +223,7 @@ typedef enum {
     NODE_MATCH,
     NODE_MATCH_ARM,
     NODE_ENUM_LIT,
+    NODE_ENUM_LIT_NO_PAYLOAD,
     NODE_FACET,
     NODE_IMPL,
     NODE_FORIN,
