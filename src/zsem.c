@@ -923,6 +923,13 @@ bool typesEqual(ZType *a, ZType *b) {
         }
         return true;
     }
+    case Z_TYPE_OPTIONAL:
+        return typesEqual(a->optional, b->optional);
+    case Z_TYPE_RESULT:
+        return
+            typesEqual(a->result.success,   b->result.success) &&
+            typesEqual(a->result.error,     b->result.error);
+
     default:
         return false;
     }
