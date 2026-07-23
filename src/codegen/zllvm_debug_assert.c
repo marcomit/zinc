@@ -8,6 +8,7 @@
  *            SPDX-License-Identifier: BSD-3-Clause
  */
 #include "zgen.h"
+#include "zinc.h"
 #include <string.h>
 
 extern _Thread_local LLVMTypeRef i0Type;
@@ -59,6 +60,14 @@ void emitRuntimeDebugPrint(ZCodegen *ctx, ZToken *tok, const char *message) {
     );
 }
 
+void emitRuntimeError(ZCodegen *ctx, ZToken *tok, const char *message) {
+    LLVMBasicBlockRef fail = makeblock(ctx, "fail");
+
+    LLVMPositionBuilderAtEnd(ctx->builder, fail);
+    emitRuntimeDebugPrint(ctx, tok, message);
+    LLVMBuildTrap(ctx);
+}
+
 void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
         LLVMTypeRef arrType,
         LLVMValueRef ptr) {
@@ -88,6 +97,8 @@ void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
     LLVMPositionBuilderAtEnd(ctx->builder, fail);
     emitRuntimeDebugPrint(ctx, tok, "Index out of range");
     LLVMBuildTrap(ctx);
+
+    emitRuntimeError(ctx, tok, "Index out of range");
     LLVMPositionBuilderAtEnd(ctx->builder, cont);
 }
 
@@ -107,4 +118,60 @@ void initializeMemoryToZero(ZCodegen *ctx, LLVMValueRef value, ZType *type) {
     );
 }
 
+/*
+ * @brief Check if the unwrap is unsafe.
+ *
+ * For optional types checks the flag (the data if the base type is a pointer).
+ * For result types it checks also the flag.
+ *
+ * If the flag is zero then it emits an llvm.trap function.
+ *
+ * */
+void checkUnsafeUnwrap(ZCodegen *ctx,
+    LLVMValueRef value, ZType *type, ZToken *loc) {
+    if (ctx->state->mode != Z_MODE_DEBUG) return;
+    if (!type) return;
+    LLVMValueRef cond = NULL;
+    const char *l = label(ctx, "unwrap.cond");
+    if (type->kind == Z_TYPE_OPTIONAL) {
+        if (type->optional->kind == Z_TYPE_POINTER) {
+            LLVMValueRef zeroValue = LLVMConstNull(
+                LLVMPointerTypeInContext(ctx->ctx, 0)
+            );
+            cond = LLVMBuildICmp(
+                ctx->builder, LLVMIntEQ,
+                value, zeroValue,
+                l
+            );
+        } else {
+            LLVMValueRef flagPtr = LLVMBuildStructGEP2(
+                ctx->builder, genType(ctx, type),
+                value, 1, label(ctx, "unsafe.unwrap.flag.ptr")
+            );
 
+            LLVMValueRef flagData = LLVMBuildLoad2(
+                ctx->builder,
+                i1Type,
+                flagPtr, label(ctx, "unsage.unwrap.flag.data")
+            );
+
+            cond = LLVMBuildICmp(
+                ctx->builder, LLVMIntEQ,
+                flagData, LLVMConstNull(i1Type),
+                l
+            );
+        }
+    }
+
+    if (!cond) return;
+
+    LLVMBasicBlockRef fail = makeblock(ctx, "fail");
+    LLVMBasicBlockRef cont = makeblock(ctx, "continue");
+
+    makecondbr(ctx->builder, cond, fail, cont);
+    LLVMPositionBuilderAtEnd(ctx->builder, fail);
+    emitRuntimeDebugPrint(ctx, loc, "Unwrap a none value");
+    LLVMBuildTrap(ctx);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, cont);
+}

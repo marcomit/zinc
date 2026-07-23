@@ -132,6 +132,7 @@ typedef struct {
 
 void LLVMAddFuncAttribute(ZCodegen *ctx, LLVMValueRef func, const char *llvmAttr);
 
+LLVMTypeRef genType(ZCodegen *, ZType *);
 LLVMBasicBlockRef makeblock(ZCodegen *, char *);
 void makebr(LLVMBuilderRef, LLVMBasicBlockRef);
 void makecondbr(LLVMBuilderRef, LLVMValueRef, LLVMBasicBlockRef, LLVMBasicBlockRef);
@@ -142,5 +143,5 @@ char *labelStr  (ZCodegen *, char *);
 
 void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
 void initializeMemoryToZero(ZCodegen *, LLVMValueRef, ZType *);
-
+void checkUnsafeUnwrap(ZCodegen *, LLVMValueRef, ZType *, ZToken *);
 #endif //!Z_GEN

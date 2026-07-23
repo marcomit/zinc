@@ -221,6 +221,10 @@ static void _stype(ZType *type, char **buff) {
         _stype(type->optional, buff);
         break;
 
+    case Z_TYPE_NONE:
+        vecunion(*buff, "none", 4);
+        break;
+
     case Z_TYPE_RESULT:
         _stype(type->result.success, buff);
         vecpush(*buff, '?');

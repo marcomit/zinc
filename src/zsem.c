@@ -1895,6 +1895,20 @@ static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case TOK_NOT:
         curr->unary.operand = implicitCast(ctx, curr->unary.operand, u1Type);
         return u1Type;
+
+    case TOK_ESCL:
+        if (operand->kind != Z_TYPE_OPTIONAL &&
+            operand->kind != Z_TYPE_RESULT) {
+            error(ctx->state, curr->unary.operat,
+                "'!' can be used only with optional and result types, got '%s'",
+                stype(operand)
+            );
+            return NULL;
+        }
+        if (operand->kind == Z_TYPE_OPTIONAL) return operand->optional;
+        if (operand->kind == Z_TYPE_RESULT) return operand->result.success;
+
+        return NULL;
     default: return operand;
     }
 }
@@ -2733,7 +2747,14 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
         );
 
         if (ctx->currentFuncRet->kind == Z_TYPE_OPTIONAL) {
-
+            curr->returnStmt.expr = implicitCast(ctx,
+                curr->returnStmt.expr,
+                ctx->currentFuncRet
+            );
+            curr->resolved = ctx->currentFuncRet;
+            if (retType->kind == Z_TYPE_NONE ||
+                typesCompatible(ctx, retType, ctx->currentFuncRet->optional))
+                return;
         }
         if (!promoted) {
             error(ctx->state, curr->tok,

@@ -19,7 +19,7 @@ static void         storeArray          (ZCodegen *, ZLLVMStack *, LLVMValueRef)
 static void         genFuncVars         (ZCodegen *, ZNode *);
 static void         addFuncArgs         (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
 static void         genNamespace        (ZCodegen *, ZNode *);
-static LLVMTypeRef  genType             (ZCodegen *, ZType *);
+LLVMTypeRef         genType             (ZCodegen *, ZType *);
 static LLVMValueRef genExpr             (ZCodegen *, ZNode *);
 static LLVMValueRef genLvalue           (ZCodegen *ctx, ZNode *node);
 static LLVMValueRef genForeign          (ZCodegen *, ZNode *);
@@ -530,7 +530,7 @@ static LLVMTypeRef genFacetType(ZCodegen *ctx) {
  * - u8 is the tag that represent the active variant
  * - *u8 is the buffer where the variant is stored (with the size of the largest field).
  */
-static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
+LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     if (!type) {
         error(ctx->state, NULL, "Invalid 'genType' call");
         return LLVMVoidTypeInContext(ctx->ctx);
@@ -624,6 +624,15 @@ static LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         /* none literal - represent as i8* null */
         return LLVMPointerTypeInContext(ctx->ctx, 0);
 
+    case Z_TYPE_OPTIONAL: {
+        if (type->optional->kind == Z_TYPE_POINTER) {
+            return LLVMPointerTypeInContext(ctx->ctx, 0);
+        }
+        return LLVMStructTypeInContext(ctx->ctx, (LLVMTypeRef []){
+            genType(ctx, type->optional),
+            i1Type
+        }, 2, false);
+    }
     default:
         error(ctx->state, NULL, "genType: unhandled type kind %d", type->kind);
         return NULL;
@@ -2128,8 +2137,49 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
         LLVMTypeRef ref         = LLVMTypeOf(arg);
         LLVMValueRef allOnes    = LLVMConstAllOnes(ref);
         return LLVMBuildXor(ctx->builder, arg, allOnes, l);
-     }
+    }
 
+    case TOK_ESCL: {
+        ZType *resolved = node->unary.operand->resolved;
+
+        if (resolved->kind != Z_TYPE_OPTIONAL   &&
+            resolved->kind != Z_TYPE_RESULT     ) {
+            error(ctx->state, node->tok,
+                "'!' can be used only with optional and result types, got '%s'",
+                stype(resolved)
+            );
+            return NULL;
+        }
+
+        if (resolved->kind == Z_TYPE_OPTIONAL) {
+            if (resolved->optional->kind == Z_TYPE_POINTER) return arg;
+
+            ZLLVMStack *stack = getStackValue(ctx, node);
+
+            if (!stack) {
+                error(ctx->state, node->tok, "Missing stack value");
+                return NULL;
+            }
+
+            checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
+
+            LLVMValueRef dataPtr = LLVMBuildStructGEP2(
+                    ctx->builder, genType(ctx, resolved), stack->stack,
+                    0, label(ctx, "unwrap.ptr")
+            );
+
+            return LLVMBuildLoad2(
+                ctx->builder,
+                genType(ctx, resolved->optional),
+                dataPtr,
+                label(ctx, "unwrap.data")
+            );
+        } else if (resolved->kind == Z_TYPE_RESULT) {
+            warning(ctx->state, node->tok, "Error branch not implemented");
+            return NULL;
+        }
+        break;
+    }
     default:
         error(ctx->state, node->unary.operat, "Unknown unary operator");
         return NULL;
@@ -2142,6 +2192,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
  * @brief Generates the explicit cast
  * Emit the appropriate LLVM cast to convert val (of Zinc type `from`) to
  * Zinc type `to`. Returns val unchanged when the types are already equal.
+ * It is used only to convert numieric types.
  */
 static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZType *to) {
     if (!val || !from || !to) return val;
@@ -2262,6 +2313,39 @@ static LLVMValueRef genFacetConstruct(ZCodegen *ctx,
     return LLVMBuildLoad2(ctx->builder, facetType, stack->stack, label(ctx, obj->tok));
 }
 
+static LLVMValueRef castToOptional(ZCodegen *ctx, ZNode *node) {
+    ZType *from         = node->castExpr.expr->resolved;
+    ZType *to           = node->castExpr.toType;
+    LLVMTypeRef toRef   = genType(ctx, to);
+
+    if (from->kind == Z_TYPE_NONE) return LLVMConstNull(toRef);
+
+    LLVMValueRef value = genExpr(ctx, node->castExpr.expr);
+
+    if (from->kind == Z_TYPE_POINTER ||
+        typesEqual(from, to)) return value;
+
+    LLVMValueRef stack      = LLVMBuildAlloca(
+        ctx->builder, genType(ctx, to), label(ctx, "optional"));
+    LLVMValueRef dataPtr    = LLVMBuildStructGEP2(
+        ctx->builder, toRef,
+        stack, 0, label(ctx, "optional.data"));
+    LLVMValueRef isNonePtr  = LLVMBuildStructGEP2(
+        ctx->builder, toRef,
+        stack, 1, label(ctx, "optional.flag"));
+
+    LLVMBuildStore(ctx->builder, value, dataPtr);
+    LLVMBuildStore(
+        ctx->builder,
+        LLVMConstInt(i1Type, 1, false),
+        isNonePtr
+    );
+
+    return LLVMBuildLoad2(
+        ctx->builder, toRef, stack, label(ctx, "optional.load")
+    );
+}
+
 static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
     ZType *from = node->castExpr.expr->resolved;
     ZType *to   = node->castExpr.toType;
@@ -2282,6 +2366,8 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
         storeSumVariant(ctx, stack->stack, sumLLVMType, tag, val, from);
         return LLVMBuildLoad2(ctx->builder, sumLLVMType, stack->stack, label(ctx, node->tok));
     }
+
+    if (to->kind == Z_TYPE_OPTIONAL) return castToOptional(ctx, node);
 
     if (to->kind == Z_TYPE_FACET && from->kind != Z_TYPE_FACET) {
         ZLLVMStack *stack = getStackValue(ctx, node);
@@ -2818,7 +2904,9 @@ static void genRet(ZCodegen *ctx, ZNode *ret) {
     }
 
 
-    LLVMValueRef val = ret->returnStmt.expr ? genExpr(ctx, ret->returnStmt.expr) : NULL;
+    LLVMValueRef val = ret->returnStmt.expr ?
+        genExpr(ctx, ret->returnStmt.expr) :
+        NULL;
 
     if (expectedRetType->kind == Z_TYPE_SUM) {
         ZType *exprType     = ret->resolved;
