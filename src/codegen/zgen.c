@@ -3118,22 +3118,24 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
  * Capabilities are compiled like normal variables.
  */
 static void genCapability(ZCodegen *ctx, ZNode *node) {
-    ZNode *decl = node->capability.capability;
 
     beginScope(Z_SCOPE_BLOCK, ctx);
 
-    genStmt(ctx, decl);
+    for (usize i = 0; i < veclen(node->capability.capabilities); i++) {
+        ZNode *decl = node->capability.capabilities[i];
+        genStmt(ctx, decl);
 
-    if (decl->type == NODE_VAR_DECL &&
-        decl->varDecl.pattern->type == Z_VAR_IDENT) {
-        ZLLVMCapability *capability = arenaAlloc(
-            ctx->module->allocator, sizeof(ZLLVMCapability)
-        );
-        capability->capability  = decl->resolved;
-        capability->ref         = getLLVMValueRef(
-            ctx, decl->varDecl.pattern->ident->str
-        );
-        vecpush(ctx->scope->capabilities, capability);
+        if (decl->type == NODE_VAR_DECL &&
+            decl->varDecl.pattern->type == Z_VAR_IDENT) {
+            ZLLVMCapability *capability = arenaAlloc(
+                ctx->module->allocator, sizeof(ZLLVMCapability)
+            );
+            capability->capability  = decl->resolved;
+            capability->ref         = getLLVMValueRef(
+                ctx, decl->varDecl.pattern->ident->str
+            );
+            vecpush(ctx->scope->capabilities, capability);
+        }
     }
 
     genStmt(ctx, node->capability.block);
@@ -3462,7 +3464,9 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         genFuncVars(ctx, node->ifStmt.elseBranch);
         break;
     case NODE_CAPABILITY:
-        genFuncVars(ctx, node->capability.capability);
+        for (usize i = 0; i < veclen(node->capability.capabilities); i++) {
+            genFuncVars(ctx, node->capability.capabilities[i]);
+        }
         genFuncVars(ctx, node->capability.block);
         break;
     case NODE_UNARY:

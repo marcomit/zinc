@@ -2764,8 +2764,11 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
 
 static void analyzeCapability(ZThreadSem *ctx, ZNode *curr) {
     beginScope(ctx, curr);
-    analyzeVar(ctx, curr->capability.capability, false);
-    putCapability(ctx, curr->capability.capability);
+    ZNode **capabilities = curr->capability.capabilities;
+    for (usize i = 0; i < veclen(capabilities); i++) {
+        analyzeVar(ctx, capabilities[i], false);
+        putCapability(ctx, capabilities[i]);
+    }
     analyzeStmt(ctx, curr->capability.block);
     endScope(ctx);
 }

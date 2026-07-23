@@ -698,7 +698,7 @@ struct ZNode {
         } sizeofExpr;
 
         struct {
-            ZNode *capability;
+            ZNode **capabilities;
             ZNode *block;
         } capability;
 

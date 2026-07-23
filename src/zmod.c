@@ -696,7 +696,9 @@ void printNode(ZNode *node, u8 depth) {
         break;
     case NODE_CAPABILITY:
         printf("\n");
-        printNode(node->capability.capability, depth);
+        for (usize i = 0; i < veclen(node->capability.capabilities); i++) {
+            printNode(node->capability.capabilities[i], depth);
+        }
         printNode(node->capability.block, depth);
         break;
     case NODE_MATCH:

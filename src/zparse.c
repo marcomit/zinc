@@ -1071,16 +1071,23 @@ ZNode *expandListMacro(ZParser *parser) {
 static ZNode *parseCapabilityBlock(ZParser *parser) {
     expect(parser, TOK_WITH);
 
-    ZNode *capability   = parseVarDef(parser);
-    if (!capability) {
-        error(parser->state, peek(parser), "Invalid expression");
-        return NULL;
-    }
+    ZNode **capabilities    = NULL;
+    ZNode *capability       = NULL;
+    do {
+        capability = parseVarDef(parser);
+        if (!capability) {
+            error(parser->state, peek(parser), "Invalid expression");
+            return NULL;
+        }
+        vecpush(capabilities, capability);
+    } while (!check(parser, TOK_LBRACKET)   &&
+             !check(parser, TOK_DO)         &&
+              match(parser, TOK_SEMICOLON)  );
 
-    ZNode *block                            = parseBlockOrInline(parser);
-    ZNode *capabilityBlock                  = makenode(NODE_CAPABILITY);
-    capabilityBlock->capability.capability  = capability;
-    capabilityBlock->capability.block       = block;
+    ZNode *block                                = parseBlockOrInline(parser);
+    ZNode *capabilityBlock                      = makenode(NODE_CAPABILITY);
+    capabilityBlock->capability.capabilities    = capabilities;
+    capabilityBlock->capability.block           = block;
     return capabilityBlock;
 }
 
