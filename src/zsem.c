@@ -2123,6 +2123,69 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     return curr->resolved;
 }
 
+static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
+    ZType *base = resolveType(ctx, curr->unwrap.base, inferred);
+    if (!base) return NULL;
+
+    bool isOptional = base->kind == Z_TYPE_OPTIONAL;
+    bool isResult   = base->kind == Z_TYPE_RESULT;
+
+    if (base->kind != Z_TYPE_OPTIONAL   &&
+        base->kind != Z_TYPE_RESULT     &&
+        base->kind != Z_TYPE_NONE       ) {
+        error(ctx->state, curr->tok,
+            "Invalid unwrap expression, "
+            "expected an optional or result type, got '%s'",
+            stype(base)
+        );
+        return NULL;
+    }
+
+    ZType *success = isOptional ?
+        base->optional :
+        base->result.success;
+
+    switch (curr->unwrap.kind) {
+    case UNWRAP_ELSE: {
+        ZType *orelse = resolveType(ctx, curr->unwrap.orExpr, inferred);
+        ZType *promoted = typesCompatible(ctx, orelse, success);
+        if (!promoted) {
+            error(ctx->state, curr->unwrap.orExpr->tok,
+                "Expected '%s', got '%s'", stype(success), stype(orelse));
+            return NULL;
+        }
+        curr->unwrap.orExpr = implicitCast(ctx, curr->unwrap.orExpr, success);
+        return success;
+        break;
+    }
+
+    case UNWRAP_RETURN:
+        if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isOptional) {
+            error(ctx->state, curr->tok, "Cannot convert an optional type to a result");
+            return success;
+        } else if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isResult) {
+            if (typesCompatible(ctx,
+                    base->result.error,
+                    ctx->currentFuncRet->result.error)) {
+                error(ctx->state, curr->tok,
+                    "Expected an error type '%s', got '%s'",
+                    stype(ctx->currentFuncRet->result.error),
+                    stype(base->result.error)
+                );
+            }
+        }
+        return success;
+
+    case UNWRAP_BREAK:
+    case UNWRAP_CONTINUE:
+        if (ctx->loopDepth == 0) {
+            error(ctx->state, curr->tok, "Must be inside a loop");
+        }
+        return success;
+    default:            return success;
+    }
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -2152,6 +2215,7 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr, inferred);      break;
     case NODE_SLICE:        result = resolveSlice       (ctx, curr, inferred);      break;
     case NODE_IF:           result = resolveIf          (ctx, curr, inferred);      break;
+    case NODE_UNWRAP:       result = resolveUnwrap      (ctx, curr, inferred);      break;
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
         if (curr->resolved) {

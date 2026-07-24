@@ -227,7 +227,7 @@ typedef enum {
     NODE_FACET,
     NODE_IMPL,
     NODE_FORIN,
-    NODE_UNWRAP_OR
+    NODE_UNWRAP
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -727,6 +727,12 @@ struct ZNode {
         } breakStmt;
 
         struct {
+            enum {
+                UNWRAP_ELSE,
+                UNWRAP_RETURN,
+                UNWRAP_BREAK,
+                UNWRAP_CONTINUE
+            } kind;
             ZNode *base;
             ZNode *orExpr;
         } unwrap;

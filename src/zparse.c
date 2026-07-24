@@ -662,14 +662,32 @@ static ZNode *parseLogicalOr(ZParser *parser) {
     while (true) {
         ZToken *or = peek(parser);
         if (!match(parser, TOK_OR)) return node;
-        else if (match(parser, TOK_BREAK)) break;
-        else if (match(parser, TOK_CONTINUE)) break;
-        else if (match(parser, TOK_RETURN)) break;
-        else if (match(parser, TOK_ELSE)) {
-            ZNode *expr = parseExpr(parser);
-            ZNode *orelse = makenode(NODE_UNWRAP_OR);
+        else if (check(parser, TOK_BREAK)) {
+            ZNode *expr             = parseBreak(parser);
+            ZNode *orelse           = makenode(NODE_UNWRAP);
             orelse->unwrap.base     = node;
             orelse->unwrap.orExpr   = expr;
+            orelse->unwrap.kind     = UNWRAP_BREAK;
+        } else if (match(parser, TOK_CONTINUE)) {
+            ZNode *expr             = parseBreak(parser);
+            ZNode *orelse           = makenode(NODE_UNWRAP);
+            orelse->unwrap.base     = node;
+            orelse->unwrap.orExpr   = expr;
+            orelse->unwrap.kind     = UNWRAP_CONTINUE;
+        } else if (match(parser, TOK_RETURN)) {
+            ZNode *expr             = parseBreak(parser);
+            ZNode *orelse           = makenode(NODE_UNWRAP);
+            orelse->unwrap.base     = node;
+            orelse->unwrap.orExpr   = expr;
+            orelse->unwrap.kind     = UNWRAP_RETURN;
+        } else if (match(parser, TOK_ELSE)) {
+            ZNode *expr = parseExpr(parser);
+            ZNode *orelse = makenode(NODE_UNWRAP);
+            orelse->unwrap.base     = node;
+            orelse->unwrap.orExpr   = expr;
+            orelse->unwrap.kind     = UNWRAP_ELSE;
+
+            node = orelse;
         }
         else {
             ZNode *right = tryParse(parser, parseLogicalAnd(parser));

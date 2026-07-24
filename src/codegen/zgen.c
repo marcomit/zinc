@@ -2754,64 +2754,72 @@ static LLVMValueRef genBlockExpr(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef base = genExpr(ctx, node->unwrap.base);
+    if (node->unwrap.kind == UNWRAP_ELSE) {
+
+    }
+    return NULL;
+}
+
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef res = NULL;
     switch (node->type) {
-        case NODE_IF:               res = genInlineIf       (ctx, node); break;
-        case NODE_CALL:             res = genCall           (ctx, node); break;
-        case NODE_CAST:             res = genCast           (ctx, node); break;
-        case NODE_UNARY:            res = genUnary          (ctx, node); break;
-        case NODE_BINARY:           res = genBinary         (ctx, node); break;
-        case NODE_LITERAL:          res = genLit            (ctx, node); break;
-        case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
-        case NODE_IDENTIFIER:       res = genIdent          (ctx, node); break;
-        // case NODE_STATIC_ACCESS:    res = genStaticAccess   (ctx, node); break;
-        case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
-        case NODE_FUNC:             res = genAnonFunc       (ctx, node); break;
-        case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
+    case NODE_IF:               res = genInlineIf       (ctx, node); break;
+    case NODE_CALL:             res = genCall           (ctx, node); break;
+    case NODE_CAST:             res = genCast           (ctx, node); break;
+    case NODE_UNARY:            res = genUnary          (ctx, node); break;
+    case NODE_BINARY:           res = genBinary         (ctx, node); break;
+    case NODE_LITERAL:          res = genLit            (ctx, node); break;
+    case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
+    case NODE_IDENTIFIER:       res = genIdent          (ctx, node); break;
+    case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
+    case NODE_FUNC:             res = genAnonFunc       (ctx, node); break;
+    case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
+    case NODE_UNWRAP:           res = genUnwrap         (ctx, node); break;
 
-        case NODE_MEMBER:
-            if (node->memberAccess.object &&
-                node->memberAccess.object->resolved &&
-                node->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
-                res = genFacetMember(ctx, node);
-                break;
-            }
-        case NODE_SUBSCRIPT:
-        case NODE_TUPLE_LIT:
-        case NODE_STRUCT_LIT:
-        case NODE_ARRAY_LIT:
-        case NODE_ENUM_LIT:
-        case NODE_ENUM_LIT_NO_PAYLOAD:
-        case NODE_SLICE: {
-            LLVMValueRef ptr = genLvalue(ctx, node);
-            /* Function fields are stored as ptr in structs (unsized types can't
-             * be embedded directly), so load as ptr rather than the bare
-             * function type. */
-            LLVMTypeRef loadType = genType(ctx, node->resolved);
-            if (node->resolved->kind == Z_TYPE_FUNCTION) {
-                loadType = LLVMPointerType(loadType, 0);
-            }
-            res = LLVMBuildLoad2(
-                ctx->builder,   loadType,
-                ptr,            label(ctx, node->tok)
-            );
+    case NODE_MEMBER:
+        if (node->memberAccess.object &&
+            node->memberAccess.object->resolved &&
+            node->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
+            res = genFacetMember(ctx, node);
             break;
         }
-
-        case NODE_SIZEOF: {
-            usize size = typeSize(node->sizeofExpr.type);
-            res = LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
-            break;
+    case NODE_SUBSCRIPT:
+    case NODE_TUPLE_LIT:
+    case NODE_STRUCT_LIT:
+    case NODE_ARRAY_LIT:
+    case NODE_ENUM_LIT:
+    case NODE_ENUM_LIT_NO_PAYLOAD:
+    case NODE_SLICE: {
+        LLVMValueRef ptr = genLvalue(ctx, node);
+        /* Function fields are stored as ptr in structs (unsized types can't
+         * be embedded directly), so load as ptr rather than the bare
+         * function type. */
+        LLVMTypeRef loadType = genType(ctx, node->resolved);
+        if (node->resolved->kind == Z_TYPE_FUNCTION) {
+            loadType = LLVMPointerType(loadType, 0);
         }
+        res = LLVMBuildLoad2(
+            ctx->builder,   loadType,
+            ptr,            label(ctx, node->tok)
+        );
+        break;
+    }
 
-        default:
-            printf("Node '%d' not handled\n", node->type);
-            error(ctx->state,
-                    node->tok,
-                    "Node '%d' not yet implemented in the code generator",
-                    node->type);
-            break;
+    case NODE_SIZEOF: {
+        usize size = typeSize(node->sizeofExpr.type);
+        res = LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
+        break;
+    }
+
+    default:
+        printf("Node '%d' not handled\n", node->type);
+        error(ctx->state,
+                node->tok,
+                "Node '%d' not yet implemented in the code generator",
+                node->type);
+        break;
     }
 
     return res;

@@ -26,8 +26,8 @@ static char *nodeLabels[] = {
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
     "ENUM_FIELD",   "CAST",         "SIZEOF",       "NAMESPACE",    "SLICE",
-    "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",     "FACET",
-    "IMPL",         "FOR_IN"
+    "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",     "ENUM_LIT_NO_PAYLOAD",
+    "FACET",        "IMPL",         "FOR_IN",       "UNWRAP"
 };
 
 static char *levels[] = {
@@ -468,6 +468,9 @@ void printNode(ZNode *node, u8 depth) {
 
     indent(depth);
 
+    if (node->type >= sizeof(nodeLabels) / sizeof(nodeLabels[0])) {
+        printf("Node type '%d' doesn't have a label\n", node->type);
+    }
     printf("[%s %s] ", nodeLabels[node->type], stype(node->resolved));
 
     depth++;
@@ -743,6 +746,12 @@ void printNode(ZNode *node, u8 depth) {
         printDestructedVar(node->forin.binding, depth);
         printNode(node->forin.iter, depth);
         printNode(node->forin.body, depth);
+        break;
+
+    case NODE_UNWRAP:
+        printf("\n");
+        printNode(node->unwrap.base, depth);
+        printNode(node->unwrap.orExpr, depth);
         break;
 
     default:
