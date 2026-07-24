@@ -134,33 +134,7 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
     LLVMValueRef cond = NULL;
     const char *l = label(ctx, "unwrap.cond");
     if (type->kind == Z_TYPE_OPTIONAL) {
-        if (type->optional->kind == Z_TYPE_POINTER) {
-            LLVMValueRef zeroValue = LLVMConstNull(
-                LLVMPointerTypeInContext(ctx->ctx, 0)
-            );
-            cond = LLVMBuildICmp(
-                ctx->builder, LLVMIntEQ,
-                value, zeroValue,
-                l
-            );
-        } else {
-            LLVMValueRef flagPtr = LLVMBuildStructGEP2(
-                ctx->builder, genType(ctx, type),
-                value, 1, label(ctx, "unsafe.unwrap.flag.ptr")
-            );
-
-            LLVMValueRef flagData = LLVMBuildLoad2(
-                ctx->builder,
-                i1Type,
-                flagPtr, label(ctx, "unsage.unwrap.flag.data")
-            );
-
-            cond = LLVMBuildICmp(
-                ctx->builder, LLVMIntEQ,
-                flagData, LLVMConstNull(i1Type),
-                l
-            );
-        }
+        cond = getFlagOptional(ctx, type, value);
     }
 
     if (!cond) return;

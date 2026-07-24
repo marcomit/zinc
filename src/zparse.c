@@ -82,7 +82,7 @@ static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignBlock             (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignInlineDecl        (ZParser *, ZAnnotation **, bool);
 
-static ZType **parseGenericsDecl            (ZParser *, bool);
+static ZType **parseGenericsDecl            (ZParser *);
 static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
 static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
 
@@ -1351,7 +1351,7 @@ static ZNode *parseEnumDecl(ZParser *parser,
 
     ZType **generics = NULL;
     if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser, true);
+        generics = parseGenericsDecl(parser);
     }
 
     ZNode **fields = parseGenericList(parser,
@@ -1395,7 +1395,7 @@ static ZNode *parseStructDecl(ZParser *parser,
     ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser, true);
+        generics = parseGenericsDecl(parser);
         if (!generics) {
             error(parser->state, peek(parser),
                     "Expected generic parameters after struct name");
@@ -1803,7 +1803,7 @@ static ZType *parseGenericDecl(ZParser *parser) {
  *  [K, V]
  *  [K: Display + Drop]
  * */
-static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
+static ZType **parseGenericsDecl(ZParser *parser) {
     ZType **generics    = NULL;
     ZType *generic      = NULL;
     do {
@@ -2003,7 +2003,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
 
     ZType **generics = NULL;
     if (match(parser, TOK_WHERE)) {
-        generics = parseGenericsDecl(parser, false);
+        generics = parseGenericsDecl(parser);
         if (!generics) {
             error(parser->state, peek(parser),
                     "Expected generic type parameters after function name");
@@ -2558,7 +2558,7 @@ static ZType *parseFuncType(ZParser *parser) {
 
     ZType **generics = NULL;
     if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser, true);
+        generics = parseGenericsDecl(parser);
     }
 
     expect(parser, TOK_LPAREN);
@@ -2919,7 +2919,7 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     /* Declare generics that every function in this block inherit. */
     ZType **generics = NULL;
     if (match(parser, TOK_WHERE)) {
-        generics = parseGenericsDecl(parser, false);
+        generics = parseGenericsDecl(parser);
 
         if (!generics) {
             error(parser->state, peek(parser), "Generics failed to parse");

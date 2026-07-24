@@ -144,4 +144,6 @@ char *labelStr  (ZCodegen *, char *);
 void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
 void initializeMemoryToZero(ZCodegen *, LLVMValueRef, ZType *);
 void checkUnsafeUnwrap(ZCodegen *, LLVMValueRef, ZType *, ZToken *);
+LLVMValueRef getFlagOptional(ZCodegen *, ZType *, LLVMValueRef);
+
 #endif //!Z_GEN

@@ -2754,6 +2754,34 @@ static LLVMValueRef genBlockExpr(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+LLVMValueRef getFlagOptional(ZCodegen *ctx,
+        ZType *type, LLVMValueRef value) {
+    ZType *base = type->optional;
+    if (base->kind == Z_TYPE_POINTER) {
+        return LLVMBuildICmp(
+            ctx->builder, LLVMIntEQ,
+            value, LLVMConstPointerNull(genType(ctx, base)),
+            label(ctx, "optional.flag")
+        );
+    }
+
+    LLVMValueRef flagPtr = LLVMBuildStructGEP2(
+        ctx->builder, genType(ctx, type),
+        value, 1, label(ctx, "optional.flag.ptr")
+    );
+
+    LLVMValueRef flag = LLVMBuildLoad2(
+        ctx->builder,
+        i1Type, flagPtr, label(ctx, "optional.flag")
+    );
+
+    return LLVMBuildICmp(
+        ctx->builder, LLVMIntEQ,
+        flag, LLVMConstNull(genType(ctx, base)),
+        label(ctx, "optional.flag")
+    );
+}
+
 static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef base = genExpr(ctx, node->unwrap.base);
     if (node->unwrap.kind == UNWRAP_ELSE) {
