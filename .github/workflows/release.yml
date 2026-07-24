@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: zinc-linux-x86_64
+            bin: zinc
+          - os: macos-latest
+            asset: zinc-macos-arm64
+            bin: zinc
+          - os: windows-latest
+            asset: zinc-windows-x86_64.exe
+            bin: zinc.exe
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install LLVM and Clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev clang liblld-dev
+          if ! command -v llvm-config &>/dev/null; then
+            VERSIONED=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -1)
+            if [ -n "$VERSIONED" ]; then
+              sudo ln -sf "$VERSIONED" /usr/local/bin/llvm-config
+            else
+              echo "::error::llvm-config not found after installing llvm-dev"
+              exit 1
+            fi
+          fi
+          echo "llvm-config: $(llvm-config --version)"
+          echo "clang:       $(clang --version | head -1)"
+
+      - name: Install LLVM and Clang (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm lld
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+
+      # The choco LLVM package ships the compiler only - no headers, no llvm-config.
+      # MSYS2's mingw-w64-x86_64-llvm is a full dev distribution that includes all of
+      # those, and is the standard approach for LLVM development on Windows CI.
+      - name: Install LLVM via MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-llvm
+            mingw-w64-x86_64-lld
+            mingw-w64-x86_64-clang
+            make
+
+      - name: Export LLVM flags (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          echo "LLVM_CFLAGS=$(llvm-config --cflags | tr '\n' ' ')"          >> "$GITHUB_ENV"
+          echo "LLVM_LDFLAGS=$(llvm-config --ldflags --libs all --system-libs | tr '\n' ' ')" >> "$GITHUB_ENV"
+
+      - name: Build zinc (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: make clean && make
+
+      - name: Build zinc (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: make clean && make
+
+      - name: Run tests (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash run_tests.sh
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: bash run_tests.sh
+
+      # Rename the built binary to its per-OS asset name before handing it to
+      # the release job. Done after the tests so ./zinc still has its default
+      # name while run_tests.sh runs.
+      - name: Package binary (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: cp "${{ matrix.bin }}" "${{ matrix.asset }}"
+
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        # MinGW's linker appends .exe to an extensionless -o name, so the
+        # Makefile's `-o zinc` yields zinc.exe; fall back to zinc just in case.
+        run: |
+          if [ -f "${{ matrix.bin }}" ]; then
+            cp "${{ matrix.bin }}" "${{ matrix.asset }}"
+          else
+            cp zinc "${{ matrix.asset }}"
+          fi
+
+      # Hand the binary to the release job via an artifact. This is an
+      # intra-workflow handoff only - the durable copy is the release asset.
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List collected binaries
+        run: ls -lR dist
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
