@@ -3670,7 +3670,9 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
     (void)ctx; (void)f; (void)func;
     ZAnnotation **annotations = f->funcDef.annotations;
 
-    if (strcmp(f->funcDef.mangled, "main") == 0) {
+    i32 export = hasAnnotation(annotations, "export");
+
+    if (strcmp(f->funcDef.mangled, "main") == 0 || export != -1) {
         LLVMSetLinkage(func, LLVMExternalLinkage);
     } else if (f->funcDef.pub) {
         LLVMSetLinkage(func, LLVMWeakODRLinkage);
@@ -3719,6 +3721,14 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
     LLVMTypeRef *args = NULL;
 
+    i32 export = hasAnnotation(f->funcDef.annotations, "export");
+    if (export != -1) {
+        ZAnnotation *annotation = f->funcDef.annotations[export];
+        if (annotation->kind == Z_ANN_ASSIGN) {
+            f->funcDef.mangled = annotation->assign.value->tok->str;
+        }
+
+    }
     if (!f->funcDef.mangled) {
         f->funcDef.mangled = mangler((char *[]) {
             f->funcDef.name->filename,
@@ -4193,7 +4203,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
         return;
     }
 
-    if (!LLVMGetNamedFunction(ctx->mod, "main")) {
+    if (state->emit == Z_EMIT_EXE && !LLVMGetNamedFunction(ctx->mod, "main")) {
         error(state, NULL, "[LLVM: function main not registered]");
     }
 

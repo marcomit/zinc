@@ -59,11 +59,11 @@ typedef struct ZSymbol      ZSymbol;
 typedef struct ZThreadSem   ZThreadSem;
 typedef struct ZAnnotation  ZAnnotation;
 
-static ZType *none      = NULL;
-static ZType *u0Type    = NULL;
-static ZType *u1Type    = NULL;
-static ZType *u64Type   = NULL;
-static ZType *modType   = NULL;
+extern ZType *none;
+extern ZType *u0Type;
+extern ZType *u1Type;
+extern ZType *u64Type;
+extern ZType *modType;
 
 typedef enum {
     Z_ERROR,

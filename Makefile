@@ -114,6 +114,17 @@ endif
 $(TARGET): $(OBJ)
 	$(CXX) -o $(TARGET) $(OBJ) $(LDFLAGS)
 
+# Like the $(TARGET) rule, but links *every* object under $(BUILD_DIR) instead of
+# just $(OBJ) - so extra objects you drop in that aren't built from src/ (e.g. a
+# Zinc-compiled build/compiler.o) get linked too. $(OBJ) as a prerequisite builds
+# the compiler's own sources first; find then sweeps them up with the extras. The
+# sanitizer subdirs are pruned - instrumented objects must never mix with plain ones.
+link: $(OBJ)
+	$(CXX) -o $(TARGET) \
+	  $$(find $(BUILD_DIR) -type d \( -name asan -o -name ubsan -o -name ubsan-int \) -prune \
+	     -o -type f -name '*.o' -print) \
+	  $(LDFLAGS)
+
 # The % stem spans slashes, so these also match src/codegen/zgen.c. Each recipe
 # creates its own output dir because the nested ones don't exist up front.
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
@@ -148,4 +159,4 @@ clean:
 	rm -f $(TARGET) $(TARGET)-asan $(TARGET)-ubsan $(TARGET)-ubsan-int
 	rm -rf build
 
-.PHONY: all debug asan ubsan ubsan-int clean install test
+.PHONY: all link debug asan ubsan ubsan-int clean install test

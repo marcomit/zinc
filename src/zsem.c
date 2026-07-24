@@ -3473,9 +3473,9 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
         if (i != 0) checkUnusedSymbols(scopes[i]->ctx);
     }
 
-    if (!ctx->main) {
-        error(ctx->state, root->tok, "Missing 'main' declaration");
-    }
+    // if (!ctx->main) {
+    //     error(ctx->state, root->tok, "Missing 'main' declaration");
+    // }
 
     return ctx;
 }
