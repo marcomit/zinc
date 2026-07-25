@@ -1146,3 +1146,11 @@ void printLogs(ZState *state) {
         printLog(state, state->logs[i]);
     }
 }
+
+void initPrimitiveTypes() {
+    if (!none)      none    = maketype          (Z_TYPE_NONE);
+    if (!u0Type)    u0Type  = makePrimitiveType (TOK_VOID);
+    if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
+    if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
+    if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
+}

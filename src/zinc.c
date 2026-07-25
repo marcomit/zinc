@@ -231,6 +231,8 @@ int pipeline(ZState *state) {
     ZToken **tokens = ztokenize(state);
     if (!tokens) return 1;
 
+    initPrimitiveTypes();
+
     if (!canAdvance(state)) return 2;
 
     ZNode *root = zparse(state, tokens);

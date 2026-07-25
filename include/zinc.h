@@ -983,6 +983,7 @@ void _debug  (ZState *, ZToken *, const char *, int, const char *, ...);
 #define debug(state, tok, ...)   _debug  (state, tok, __FILE__, __LINE__, __VA_ARGS__)
 
 void printLogs(ZState *);
+void initPrimitiveTypes();
 bool canAdvance(ZState *);
 
 bool visit(ZState *, char **, bool);

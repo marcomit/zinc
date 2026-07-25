@@ -634,7 +634,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         }, 2, false);
     }
     default:
-        error(ctx->state, NULL, "genType: unhandled type kind %d", type->kind);
+        error(ctx->state, NULL, "genType: unhandled type '%s'", stype(type));
         return NULL;
     }
 }
@@ -2754,12 +2754,12 @@ static LLVMValueRef genBlockExpr(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
-LLVMValueRef getFlagOptional(ZCodegen *ctx,
-        ZType *type, LLVMValueRef value) {
+LLVMValueRef _getFlagOptional(ZCodegen *ctx,
+        ZType *type, LLVMValueRef value, LLVMIntPredicate predicate) {
     ZType *base = type->optional;
     if (base->kind == Z_TYPE_POINTER) {
         return LLVMBuildICmp(
-            ctx->builder, LLVMIntEQ,
+            ctx->builder, predicate,
             value, LLVMConstPointerNull(genType(ctx, base)),
             label(ctx, "optional.flag")
         );
@@ -2776,17 +2776,23 @@ LLVMValueRef getFlagOptional(ZCodegen *ctx,
     );
 
     return LLVMBuildICmp(
-        ctx->builder, LLVMIntEQ,
-        flag, LLVMConstNull(genType(ctx, base)),
+        ctx->builder, predicate,
+        flag, LLVMConstNull(i1Type),
         label(ctx, "optional.flag")
     );
 }
 
-static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef base = genExpr(ctx, node->unwrap.base);
-    if (node->unwrap.kind == UNWRAP_ELSE) {
+LLVMValueRef getFlagOptional(ZCodegen *ctx,
+        ZType *type, LLVMValueRef value) {
+    return _getFlagOptional(ctx, type, value, LLVMIntEQ);
+}
 
-    }
+static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
+    // LLVMValueRef base = genExpr(ctx, node->unwrap.base);
+    // if (node->unwrap.kind == UNWRAP_ELSE) {
+    //     LLVMValueRef cond = getFlagOptional(ctx, node->unwrap.base->resolved, base);
+    //
+    // }
     return NULL;
 }
 
@@ -3086,6 +3092,11 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
 
     ZLLVMStack *stack       = getStackValue(ctx, callNode);
 
+    if (!stack) {
+        error(ctx->state, node->tok, "Missing stack value");
+        return;
+    }
+
     LLVMBuildBr(ctx->builder, entry);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
     LLVMValueRef call = LLVMBuildCall2(
@@ -3094,14 +3105,13 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
         func,
         &self, 1, label(ctx, "iter.next"));
 
-    if (!fitsInRegister(call) && stack)
+    if (!fitsInRegister(call) && stack) {
+        printf("store\n");
         LLVMBuildStore(ctx->builder, call, stack->stack);
+    }
 
-    LLVMValueRef cond = genMatchCond(ctx,
-        node->forin.iterNextRef->resolved,
-        node->forin.binding,
-        stack->stack
-    );
+    printf("callNode: %s\n", stype(callNode->resolved));
+    LLVMValueRef cond = _getFlagOptional(ctx, callNode->resolved, stack->stack, LLVMIntNE);
 
     makecondbr(ctx->builder, cond, body, end);
 

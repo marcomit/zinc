@@ -3004,10 +3004,16 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         );
     }
     ZType *itemType = funcRef->resolved->func.ret;
-    ZToken *tok     = curr->forin.iter->tok;
 
+    if (itemType->kind != Z_TYPE_OPTIONAL) {
+        error(ctx->state, funcRef->tok,
+            "'next' function must return an optional type, got '%s'",
+            stype(itemType)
+        );
+        return;
+    }
+    ZToken *tok             = curr->forin.iter->tok;
     ZNode *call             = makeNodeThread(ctx, NODE_CALL);
-
     ZNode *iterAddr         = makeNodeThread(ctx, NODE_UNARY);
     iterAddr->unary.operand = curr->forin.iter;
     iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, tok->start);
@@ -3029,7 +3035,8 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     beginScope(ctx, curr->forin.body);
 
     ctx->loopDepth++;
-    putVarPattern(ctx, curr, itemType, curr->forin.binding, true);
+
+    putVarPattern(ctx, curr, itemType->optional, curr->forin.binding, true);
     analyzeBlock(ctx, curr->forin.body, false);
     ctx->loopDepth--;
 
@@ -3445,12 +3452,6 @@ static inline void *worker(void *arg) {
 ZSemantic *zanalyze(ZState *state, ZNode *root) {
     state->currentPhase = Z_PHASE_SEMANTIC;
     ZSemantic *ctx = makesemantic(state, root);
-
-    if (!none)      none    = maketype          (Z_TYPE_NONE);
-    if (!u0Type)    u0Type  = makePrimitiveType (TOK_VOID);
-    if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
-    if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
-    if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
 
     ZScope *globalScope     = makescope(allocator.ctx, NULL, root);
     ZThreadSem *first       = makethreadsem(

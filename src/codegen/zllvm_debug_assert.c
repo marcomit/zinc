@@ -132,7 +132,6 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
     if (ctx->state->mode != Z_MODE_DEBUG) return;
     if (!type) return;
     LLVMValueRef cond = NULL;
-    const char *l = label(ctx, "unwrap.cond");
     if (type->kind == Z_TYPE_OPTIONAL) {
         cond = getFlagOptional(ctx, type, value);
     }

@@ -82,9 +82,10 @@ static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignBlock             (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignInlineDecl        (ZParser *, ZAnnotation **, bool);
 
-static ZType **parseGenericsDecl            (ZParser *);
-static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
-static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
+static ZType                **parseGenericsDecl     (ZParser *);
+static ZMacroPattern        *parseMacroPattern      (ZParser *, ZNode *);
+static ZVarDestructPattern  *parseMultiDestructVar  (ZParser *parser);
+static ZVarDestructPattern  *parseDestructVar       (ZParser *, bool);
 
 static ZParseFunc exprFunc[] = {
     parseBinary,
@@ -1671,7 +1672,7 @@ static ZNode *parseForIn(ZParser *parser) {
     ZToken *start = peek(parser);
     expect(parser, TOK_FOR);
 
-    ZVarDestructPattern *binding = parseDestructVar(parser, true);
+    ZVarDestructPattern *binding = parseMultiDestructVar(parser);
     expect(parser, TOK_IN);
     ZNode *iter = tryParse(parser, parseExpr(parser));
     ZNode *block = tryParse(parser, parseBlockOrInline(parser));
@@ -1946,6 +1947,7 @@ static ZType *parseFuncMultiReturn(ZParser *parser) {
 
     do {
         ret = tryParse(parser, parseType(parser));
+        if (!ret) break;
         vecpush(list, ret);
     } while (   !check(parser, TOK_WITH)        &&
                 !check(parser, TOK_LBRACKET)    &&
@@ -1956,6 +1958,8 @@ static ZType *parseFuncMultiReturn(ZParser *parser) {
         ret->tuple  = list;
         ret->tok    = start;
     }
+
+    if (!ret) return u0Type;
     return ret;
 }
 
@@ -2216,7 +2220,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
     return cur;
 }
 
-static ZNode *parseVarInferred(ZParser *parser) {
+static ZVarDestructPattern *parseMultiDestructVar(ZParser *parser) {
     ZToken *start = peek(parser);
     ZVarDestructPattern *pattern = parseDestructVar(parser, false);
     if (match(parser, TOK_COMMA)) {
@@ -2231,6 +2235,11 @@ static ZNode *parseVarInferred(ZParser *parser) {
         pattern->tuple  = list;
         pattern->tok    = start;
     }
+    return pattern;
+}
+
+static ZNode *parseVarInferred(ZParser *parser) {
+    ZVarDestructPattern *pattern = parseMultiDestructVar(parser);
 
     expect(parser, TOK_ASSIGN);
     ZNode *expr = tryParse(parser, parseExpr(parser));
