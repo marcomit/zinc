@@ -3106,19 +3106,24 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
         &self, 1, label(ctx, "iter.next"));
 
     if (!fitsInRegister(call) && stack) {
-        printf("store\n");
         LLVMBuildStore(ctx->builder, call, stack->stack);
     }
 
-    printf("callNode: %s\n", stype(callNode->resolved));
     LLVMValueRef cond = _getFlagOptional(ctx, callNode->resolved, stack->stack, LLVMIntNE);
 
     makecondbr(ctx->builder, cond, body, end);
 
     LLVMPositionBuilderAtEnd(ctx->builder, body);
+
+    LLVMValueRef dataPtr = LLVMBuildStructGEP2(
+        ctx->builder,
+        genType(ctx, callNode->resolved),
+        stack->stack, 0, label(ctx, "optional.data.ptr")
+    );
+
     putDestructuredPatternInStack(
-        ctx, callNode->resolved,
-        node->forin.binding, stack->stack
+        ctx, callNode->resolved->optional,
+        node->forin.binding, dataPtr
     );
     genStmt(ctx, node->forin.body);
     LLVMBuildBr(ctx->builder, entry);
