@@ -1,10 +1,5 @@
 use <std.libc>
 
-Option :: enum {
-    Some(i32)
-    None
-}
-
 Range :: struct {
     start: i32
     end: i32
@@ -12,17 +7,14 @@ Range :: struct {
 }
 
 *Range self :: impl {
-    next :: fn () Option {
-        if self.current >= self.end {
-            return Option.None()
-        }
-        res := Option.Some(self.current)
-        self.current += 1
-        return res
+    next :: fn () ?i32 {
+        if self.current >= self.end return none
+        defer self.current += 1
+        return self.current
     }
 }
 
-range :: fn (start: i32, end: i32) Range -> Range {
+range :: fn (start: i32, end: i32) Range -> .{
     start: start, end: end, current: start
 }
 
@@ -32,32 +24,28 @@ ArrIter :: struct {
 }
 
 []i32 self :: impl {
-    iter :: fn () ArrIter -> ArrIter {
+    iter :: fn () ArrIter -> .{
         data: self, current: 0
     }
 }
 
 *ArrIter self :: impl {
-    next :: fn () Option {
-        if self.current >= self.data.len {
-            return Option.None()
-        }
-
-        res := Option.Some(self.data[self.current])
-        self.current += 1
-        return res
+    next :: fn () ?i32 {
+        if self.current >= self.data.len return none
+        defer self.current += 1
+        return self.data[self.current]
     }
 }
 
 main :: fn () i32 {
     io.printf("nums\n")
-    for Option.Some(i) in range(0, 10) {
+    for i in range(0, 10) {
         io.printf("%d\n", i)
     }
 
     io.printf("values\n")
     values := [5, 4, 3, 2, 1]
-    for Option.Some(item) in values.iter() {
+    for item in values.iter() {
         io.printf("%d\n", item)
     }
     return 0

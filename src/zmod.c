@@ -26,8 +26,8 @@ static char *nodeLabels[] = {
     "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
     "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
     "ENUM_FIELD",   "CAST",         "SIZEOF",       "NAMESPACE",    "SLICE",
-    "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",     "FACET",
-    "IMPL",         "FOR_IN"
+    "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",     "ENUM_LIT_NO_PAYLOAD",
+    "FACET",        "IMPL",         "FOR_IN",       "UNWRAP"
 };
 
 static char *levels[] = {
@@ -216,6 +216,21 @@ static void _stype(ZType *type, char **buff) {
         vecunion(*buff, "facet ", 6);
         vecunion(*buff, type->facet.name->str, strlen(type->facet.name->str));
         break;
+    case Z_TYPE_OPTIONAL:
+        vecpush(*buff, '?');
+        _stype(type->optional, buff);
+        break;
+
+    case Z_TYPE_NONE:
+        vecunion(*buff, "none", 4);
+        break;
+
+    case Z_TYPE_RESULT:
+        _stype(type->result.success, buff);
+        vecpush(*buff, '?');
+        vecpush(*buff, '?');
+        _stype(type->result.error, buff);
+        break;
     // case Z_TYPE_GENERIC:
     //     vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
     //     vecpush(*buff, '[');
@@ -226,7 +241,9 @@ static void _stype(ZType *type, char **buff) {
     //     }
     //     vecpush(*buff, ']');
     //     break;
+
     default:
+        printf("Type %d not handled\n", type->kind);
         break;
     }
 }
@@ -451,6 +468,9 @@ void printNode(ZNode *node, u8 depth) {
 
     indent(depth);
 
+    if (node->type >= sizeof(nodeLabels) / sizeof(nodeLabels[0])) {
+        printf("Node type '%d' doesn't have a label\n", node->type);
+    }
     printf("[%s %s] ", nodeLabels[node->type], stype(node->resolved));
 
     depth++;
@@ -683,7 +703,9 @@ void printNode(ZNode *node, u8 depth) {
         break;
     case NODE_CAPABILITY:
         printf("\n");
-        printNode(node->capability.capability, depth);
+        for (usize i = 0; i < veclen(node->capability.capabilities); i++) {
+            printNode(node->capability.capabilities[i], depth);
+        }
         printNode(node->capability.block, depth);
         break;
     case NODE_MATCH:
@@ -724,6 +746,12 @@ void printNode(ZNode *node, u8 depth) {
         printDestructedVar(node->forin.binding, depth);
         printNode(node->forin.iter, depth);
         printNode(node->forin.body, depth);
+        break;
+
+    case NODE_UNWRAP:
+        printf("\n");
+        printNode(node->unwrap.base, depth);
+        printNode(node->unwrap.orExpr, depth);
         break;
 
     default:
@@ -1117,4 +1145,12 @@ void printLogs(ZState *state) {
     for (usize i = 0; i < veclen(state->logs); i++) {
         printLog(state, state->logs[i]);
     }
+}
+
+void initPrimitiveTypes() {
+    if (!none)      none    = maketype          (Z_TYPE_NONE);
+    if (!u0Type)    u0Type  = makePrimitiveType (TOK_VOID);
+    if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
+    if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
+    if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
 }

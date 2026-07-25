@@ -82,9 +82,10 @@ static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignBlock             (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignInlineDecl        (ZParser *, ZAnnotation **, bool);
 
-static ZType **parseGenericsDecl            (ZParser *, bool);
-static ZMacroPattern *parseMacroPattern     (ZParser *, ZNode *);
-static ZVarDestructPattern *parseDestructVar(ZParser *, bool);
+static ZType                **parseGenericsDecl     (ZParser *);
+static ZMacroPattern        *parseMacroPattern      (ZParser *, ZNode *);
+static ZVarDestructPattern  *parseMultiDestructVar  (ZParser *parser);
+static ZVarDestructPattern  *parseDestructVar       (ZParser *, bool);
 
 static ZParseFunc exprFunc[] = {
     parseBinary,
@@ -662,14 +663,32 @@ static ZNode *parseLogicalOr(ZParser *parser) {
     while (true) {
         ZToken *or = peek(parser);
         if (!match(parser, TOK_OR)) return node;
-        else if (match(parser, TOK_BREAK)) break;
-        else if (match(parser, TOK_CONTINUE)) break;
-        else if (match(parser, TOK_RETURN)) break;
-        else if (match(parser, TOK_ELSE)) {
-            ZNode *expr = parseExpr(parser);
-            ZNode *orelse = makenode(NODE_UNWRAP_OR);
+        else if (check(parser, TOK_BREAK)) {
+            ZNode *expr             = parseBreak(parser);
+            ZNode *orelse           = makenode(NODE_UNWRAP);
             orelse->unwrap.base     = node;
             orelse->unwrap.orExpr   = expr;
+            orelse->unwrap.kind     = UNWRAP_BREAK;
+        } else if (match(parser, TOK_CONTINUE)) {
+            ZNode *expr             = parseBreak(parser);
+            ZNode *orelse           = makenode(NODE_UNWRAP);
+            orelse->unwrap.base     = node;
+            orelse->unwrap.orExpr   = expr;
+            orelse->unwrap.kind     = UNWRAP_CONTINUE;
+        } else if (match(parser, TOK_RETURN)) {
+            ZNode *expr             = parseBreak(parser);
+            ZNode *orelse           = makenode(NODE_UNWRAP);
+            orelse->unwrap.base     = node;
+            orelse->unwrap.orExpr   = expr;
+            orelse->unwrap.kind     = UNWRAP_RETURN;
+        } else if (match(parser, TOK_ELSE)) {
+            ZNode *expr = parseExpr(parser);
+            ZNode *orelse = makenode(NODE_UNWRAP);
+            orelse->unwrap.base     = node;
+            orelse->unwrap.orExpr   = expr;
+            orelse->unwrap.kind     = UNWRAP_ELSE;
+
+            node = orelse;
         }
         else {
             ZNode *right = tryParse(parser, parseLogicalAnd(parser));
@@ -1071,16 +1090,23 @@ ZNode *expandListMacro(ZParser *parser) {
 static ZNode *parseCapabilityBlock(ZParser *parser) {
     expect(parser, TOK_WITH);
 
-    ZNode *capability   = parseVarDef(parser);
-    if (!capability) {
-        error(parser->state, peek(parser), "Invalid expression");
-        return NULL;
-    }
+    ZNode **capabilities    = NULL;
+    ZNode *capability       = NULL;
+    do {
+        capability = parseVarDef(parser);
+        if (!capability) {
+            error(parser->state, peek(parser), "Invalid expression");
+            return NULL;
+        }
+        vecpush(capabilities, capability);
+    } while (!check(parser, TOK_LBRACKET)   &&
+             !check(parser, TOK_DO)         &&
+              match(parser, TOK_SEMICOLON)  );
 
-    ZNode *block                            = parseBlockOrInline(parser);
-    ZNode *capabilityBlock                  = makenode(NODE_CAPABILITY);
-    capabilityBlock->capability.capability  = capability;
-    capabilityBlock->capability.block       = block;
+    ZNode *block                                = parseBlockOrInline(parser);
+    ZNode *capabilityBlock                      = makenode(NODE_CAPABILITY);
+    capabilityBlock->capability.capabilities    = capabilities;
+    capabilityBlock->capability.block           = block;
     return capabilityBlock;
 }
 
@@ -1326,7 +1352,7 @@ static ZNode *parseEnumDecl(ZParser *parser,
 
     ZType **generics = NULL;
     if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser, true);
+        generics = parseGenericsDecl(parser);
     }
 
     ZNode **fields = parseGenericList(parser,
@@ -1370,7 +1396,7 @@ static ZNode *parseStructDecl(ZParser *parser,
     ZType **generics = NULL;
 
     if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser, true);
+        generics = parseGenericsDecl(parser);
         if (!generics) {
             error(parser->state, peek(parser),
                     "Expected generic parameters after struct name");
@@ -1646,7 +1672,7 @@ static ZNode *parseForIn(ZParser *parser) {
     ZToken *start = peek(parser);
     expect(parser, TOK_FOR);
 
-    ZVarDestructPattern *binding = parseDestructVar(parser, true);
+    ZVarDestructPattern *binding = parseMultiDestructVar(parser);
     expect(parser, TOK_IN);
     ZNode *iter = tryParse(parser, parseExpr(parser));
     ZNode *block = tryParse(parser, parseBlockOrInline(parser));
@@ -1778,7 +1804,7 @@ static ZType *parseGenericDecl(ZParser *parser) {
  *  [K, V]
  *  [K: Display + Drop]
  * */
-static ZType **parseGenericsDecl(ZParser *parser, bool brackets) {
+static ZType **parseGenericsDecl(ZParser *parser) {
     ZType **generics    = NULL;
     ZType *generic      = NULL;
     do {
@@ -1921,6 +1947,7 @@ static ZType *parseFuncMultiReturn(ZParser *parser) {
 
     do {
         ret = tryParse(parser, parseType(parser));
+        if (!ret) break;
         vecpush(list, ret);
     } while (   !check(parser, TOK_WITH)        &&
                 !check(parser, TOK_LBRACKET)    &&
@@ -1931,6 +1958,8 @@ static ZType *parseFuncMultiReturn(ZParser *parser) {
         ret->tuple  = list;
         ret->tok    = start;
     }
+
+    if (!ret) return u0Type;
     return ret;
 }
 
@@ -1978,7 +2007,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
 
     ZType **generics = NULL;
     if (match(parser, TOK_WHERE)) {
-        generics = parseGenericsDecl(parser, false);
+        generics = parseGenericsDecl(parser);
         if (!generics) {
             error(parser->state, peek(parser),
                     "Expected generic type parameters after function name");
@@ -2191,7 +2220,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
     return cur;
 }
 
-static ZNode *parseVarInferred(ZParser *parser) {
+static ZVarDestructPattern *parseMultiDestructVar(ZParser *parser) {
     ZToken *start = peek(parser);
     ZVarDestructPattern *pattern = parseDestructVar(parser, false);
     if (match(parser, TOK_COMMA)) {
@@ -2206,6 +2235,11 @@ static ZNode *parseVarInferred(ZParser *parser) {
         pattern->tuple  = list;
         pattern->tok    = start;
     }
+    return pattern;
+}
+
+static ZNode *parseVarInferred(ZParser *parser) {
+    ZVarDestructPattern *pattern = parseMultiDestructVar(parser);
 
     expect(parser, TOK_ASSIGN);
     ZNode *expr = tryParse(parser, parseExpr(parser));
@@ -2533,7 +2567,7 @@ static ZType *parseFuncType(ZParser *parser) {
 
     ZType **generics = NULL;
     if (check(parser, TOK_LSBRACKET)) {
-        generics = parseGenericsDecl(parser, true);
+        generics = parseGenericsDecl(parser);
     }
 
     expect(parser, TOK_LPAREN);
@@ -2894,7 +2928,7 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     /* Declare generics that every function in this block inherit. */
     ZType **generics = NULL;
     if (match(parser, TOK_WHERE)) {
-        generics = parseGenericsDecl(parser, false);
+        generics = parseGenericsDecl(parser);
 
         if (!generics) {
             error(parser->state, peek(parser), "Generics failed to parse");

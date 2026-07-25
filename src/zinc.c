@@ -26,7 +26,13 @@
 // #define VEC_FREE allocator.free
 // #endif
 
-static ZState *state = NULL;
+static ZState *state    = NULL;
+
+ZType *none      = NULL;
+ZType *u0Type    = NULL;
+ZType *u1Type    = NULL;
+ZType *u64Type   = NULL;
+ZType *modType   = NULL;
 
 static void usage(char *program) {
     printf("Usage: %s <filename> [options]\n", program);
@@ -224,6 +230,8 @@ int pipeline(ZState *state) {
 
     ZToken **tokens = ztokenize(state);
     if (!tokens) return 1;
+
+    initPrimitiveTypes();
 
     if (!canAdvance(state)) return 2;
 

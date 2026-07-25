@@ -36,9 +36,10 @@
 //     { "zero",   0, 0, NULL,             Z_LANG_NONE },
 //     { "inline", 0, 1, inlineModes,      Z_LANG_NONE },
 //     { "lang",   1, 1, langItemsSpec,    Z_LANG_NONE },
+//     { "export", 1, 1, NULL,             Z_LANG_NONE },
 //     { NULL,     0, 0, NULL,             Z_LANG_NONE },
 // };
-//
+
 // static ZAnnotationSpec *_queryAnnotation(ZAnnotationSpec *spec, ZAnnotation *annotation) {
 //     if (strcmp(spec->name, stoken(annotation->name)) != 0) {
 //         return NULL;

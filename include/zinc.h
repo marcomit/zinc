@@ -59,11 +59,11 @@ typedef struct ZSymbol      ZSymbol;
 typedef struct ZThreadSem   ZThreadSem;
 typedef struct ZAnnotation  ZAnnotation;
 
-static ZType *none      = NULL;
-static ZType *u0Type    = NULL;
-static ZType *u1Type    = NULL;
-static ZType *u64Type   = NULL;
-static ZType *modType   = NULL;
+extern ZType *none;
+extern ZType *u0Type;
+extern ZType *u1Type;
+extern ZType *u64Type;
+extern ZType *modType;
 
 typedef enum {
     Z_ERROR,
@@ -227,7 +227,7 @@ typedef enum {
     NODE_FACET,
     NODE_IMPL,
     NODE_FORIN,
-    NODE_UNWRAP_OR
+    NODE_UNWRAP
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -698,7 +698,7 @@ struct ZNode {
         } sizeofExpr;
 
         struct {
-            ZNode *capability;
+            ZNode **capabilities;
             ZNode *block;
         } capability;
 
@@ -727,6 +727,12 @@ struct ZNode {
         } breakStmt;
 
         struct {
+            enum {
+                UNWRAP_ELSE,
+                UNWRAP_RETURN,
+                UNWRAP_BREAK,
+                UNWRAP_CONTINUE
+            } kind;
             ZNode *base;
             ZNode *orExpr;
         } unwrap;
@@ -977,6 +983,7 @@ void _debug  (ZState *, ZToken *, const char *, int, const char *, ...);
 #define debug(state, tok, ...)   _debug  (state, tok, __FILE__, __LINE__, __VA_ARGS__)
 
 void printLogs(ZState *);
+void initPrimitiveTypes();
 bool canAdvance(ZState *);
 
 bool visit(ZState *, char **, bool);

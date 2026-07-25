@@ -923,6 +923,13 @@ bool typesEqual(ZType *a, ZType *b) {
         }
         return true;
     }
+    case Z_TYPE_OPTIONAL:
+        return typesEqual(a->optional, b->optional);
+    case Z_TYPE_RESULT:
+        return
+            typesEqual(a->result.success,   b->result.success) &&
+            typesEqual(a->result.error,     b->result.error);
+
     default:
         return false;
     }
@@ -1096,11 +1103,7 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
     case Z_TYPE_PRIMITIVE: {
         if (type->primitive.token->type != TOK_IDENT) return type;
         ZSymbol *sym = resolve(ctx, type->primitive.token);
-        if (!sym) {
-            error(ctx->state, type->primitive.token,
-                  "Unknown type '%s'", type->primitive.token->str);
-            return NULL;
-        }
+        if (!sym) return NULL;
         if (sym->kind == Z_SYM_STRUCT) {
             // for (usize i = 0; i < veclen(sym->type->strct.fields); i++) {
             //     ZNode *field = sym->type->strct.fields[i];
@@ -1899,6 +1902,20 @@ static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case TOK_NOT:
         curr->unary.operand = implicitCast(ctx, curr->unary.operand, u1Type);
         return u1Type;
+
+    case TOK_ESCL:
+        if (operand->kind != Z_TYPE_OPTIONAL &&
+            operand->kind != Z_TYPE_RESULT) {
+            error(ctx->state, curr->unary.operat,
+                "'!' can be used only with optional and result types, got '%s'",
+                stype(operand)
+            );
+            return NULL;
+        }
+        if (operand->kind == Z_TYPE_OPTIONAL) return operand->optional;
+        if (operand->kind == Z_TYPE_RESULT) return operand->result.success;
+
+        return NULL;
     default: return operand;
     }
 }
@@ -2106,6 +2123,69 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     return curr->resolved;
 }
 
+static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
+    ZType *base = resolveType(ctx, curr->unwrap.base, inferred);
+    if (!base) return NULL;
+
+    bool isOptional = base->kind == Z_TYPE_OPTIONAL;
+    bool isResult   = base->kind == Z_TYPE_RESULT;
+
+    if (base->kind != Z_TYPE_OPTIONAL   &&
+        base->kind != Z_TYPE_RESULT     &&
+        base->kind != Z_TYPE_NONE       ) {
+        error(ctx->state, curr->tok,
+            "Invalid unwrap expression, "
+            "expected an optional or result type, got '%s'",
+            stype(base)
+        );
+        return NULL;
+    }
+
+    ZType *success = isOptional ?
+        base->optional :
+        base->result.success;
+
+    switch (curr->unwrap.kind) {
+    case UNWRAP_ELSE: {
+        ZType *orelse = resolveType(ctx, curr->unwrap.orExpr, inferred);
+        ZType *promoted = typesCompatible(ctx, orelse, success);
+        if (!promoted) {
+            error(ctx->state, curr->unwrap.orExpr->tok,
+                "Expected '%s', got '%s'", stype(success), stype(orelse));
+            return NULL;
+        }
+        curr->unwrap.orExpr = implicitCast(ctx, curr->unwrap.orExpr, success);
+        return success;
+        break;
+    }
+
+    case UNWRAP_RETURN:
+        if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isOptional) {
+            error(ctx->state, curr->tok, "Cannot convert an optional type to a result");
+            return success;
+        } else if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isResult) {
+            if (typesCompatible(ctx,
+                    base->result.error,
+                    ctx->currentFuncRet->result.error)) {
+                error(ctx->state, curr->tok,
+                    "Expected an error type '%s', got '%s'",
+                    stype(ctx->currentFuncRet->result.error),
+                    stype(base->result.error)
+                );
+            }
+        }
+        return success;
+
+    case UNWRAP_BREAK:
+    case UNWRAP_CONTINUE:
+        if (ctx->loopDepth == 0) {
+            error(ctx->state, curr->tok, "Must be inside a loop");
+        }
+        return success;
+    default:            return success;
+    }
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -2135,6 +2215,7 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr, inferred);      break;
     case NODE_SLICE:        result = resolveSlice       (ctx, curr, inferred);      break;
     case NODE_IF:           result = resolveIf          (ctx, curr, inferred);      break;
+    case NODE_UNWRAP:       result = resolveUnwrap      (ctx, curr, inferred);      break;
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
         if (curr->resolved) {
@@ -2736,6 +2817,16 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
             ctx, retType, ctx->currentFuncRet
         );
 
+        if (ctx->currentFuncRet->kind == Z_TYPE_OPTIONAL) {
+            curr->returnStmt.expr = implicitCast(ctx,
+                curr->returnStmt.expr,
+                ctx->currentFuncRet
+            );
+            curr->resolved = ctx->currentFuncRet;
+            if (retType->kind == Z_TYPE_NONE ||
+                typesCompatible(ctx, retType, ctx->currentFuncRet->optional))
+                return;
+        }
         if (!promoted) {
             error(ctx->state, curr->tok,
                 "Expected type %s, got %s",
@@ -2765,8 +2856,11 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
 
 static void analyzeCapability(ZThreadSem *ctx, ZNode *curr) {
     beginScope(ctx, curr);
-    analyzeVar(ctx, curr->capability.capability, false);
-    putCapability(ctx, curr->capability.capability);
+    ZNode **capabilities = curr->capability.capabilities;
+    for (usize i = 0; i < veclen(capabilities); i++) {
+        analyzeVar(ctx, capabilities[i], false);
+        putCapability(ctx, capabilities[i]);
+    }
     analyzeStmt(ctx, curr->capability.block);
     endScope(ctx);
 }
@@ -2910,10 +3004,16 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         );
     }
     ZType *itemType = funcRef->resolved->func.ret;
-    ZToken *tok     = curr->forin.iter->tok;
 
+    if (itemType->kind != Z_TYPE_OPTIONAL) {
+        error(ctx->state, funcRef->tok,
+            "'next' function must return an optional type, got '%s'",
+            stype(itemType)
+        );
+        return;
+    }
+    ZToken *tok             = curr->forin.iter->tok;
     ZNode *call             = makeNodeThread(ctx, NODE_CALL);
-
     ZNode *iterAddr         = makeNodeThread(ctx, NODE_UNARY);
     iterAddr->unary.operand = curr->forin.iter;
     iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, tok->start);
@@ -2935,7 +3035,8 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     beginScope(ctx, curr->forin.body);
 
     ctx->loopDepth++;
-    putVarPattern(ctx, curr, itemType, curr->forin.binding, true);
+
+    putVarPattern(ctx, curr, itemType->optional, curr->forin.binding, true);
     analyzeBlock(ctx, curr->forin.body, false);
     ctx->loopDepth--;
 
@@ -3352,12 +3453,6 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     state->currentPhase = Z_PHASE_SEMANTIC;
     ZSemantic *ctx = makesemantic(state, root);
 
-    if (!none)      none    = maketype          (Z_TYPE_NONE);
-    if (!u0Type)    u0Type  = makePrimitiveType (TOK_VOID);
-    if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
-    if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
-    if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
-
     ZScope *globalScope     = makescope(allocator.ctx, NULL, root);
     ZThreadSem *first       = makethreadsem(
         ctx, globalScope, root, allocator.ctx
@@ -3379,9 +3474,9 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
         if (i != 0) checkUnusedSymbols(scopes[i]->ctx);
     }
 
-    if (!ctx->main) {
-        error(ctx->state, root->tok, "Missing 'main' declaration");
-    }
+    // if (!ctx->main) {
+    //     error(ctx->state, root->tok, "Missing 'main' declaration");
+    // }
 
     return ctx;
 }
