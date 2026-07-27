@@ -515,6 +515,7 @@ struct ZNode {
                 bool        pub;
                 ZNode       **block;
                 ZAnnotation **annotations;
+                ZType       **capabilities;
             };
         };
         struct {

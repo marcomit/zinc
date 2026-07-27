@@ -1557,31 +1557,35 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     }
 
     for (usize i = 0; i < veclen(node->call.capabilities); i++) {
-        if (!node->call.capabilities[i]) {
+        ZNode *cap = node->call.capabilities[i];
+        if (!cap) {
             warning(ctx->state, node->tok, "Empty capability");
             continue;
-        } else if (!node->call.capabilities[i]->tok) {
+        } else if (!cap->tok) {
             warning(ctx->state, node->tok, "Empty tok field");
             continue;
-        } else if (!node->call.capabilities[i]->resolved) {
+        } else if (!cap->resolved) {
             warning(ctx->state, node->tok, "Capability not resolved");
             continue;
         }
+        if (typeSize(cap->resolved) == 0) {
+            continue;
+        }
         LLVMValueRef capability = getCapabilityRef(
-            ctx, node->call.capabilities[i]->resolved
+            ctx, cap->resolved
         );
         if (!capability) {
             error(
                 ctx->state,
-                node->call.capabilities[i]->tok,
+                cap->tok,
                 "Capability '%s' not found",
-                stoken(node->call.capabilities[i]->tok)
+                stoken(cap->tok)
             );
         } else {
             capability = LLVMBuildLoad2(
                 ctx->builder,
-                genType(ctx, node->call.capabilities[i]->resolved),
-                capability, label(ctx, node->call.capabilities[i]->tok)
+                genType(ctx, cap->resolved),
+                capability, label(ctx, cap->tok)
             );
         }
         vecpush(args, capability);
@@ -2891,6 +2895,9 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
     LLVMTypeRef *paramTypes = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc ? argc : 1));
     for (usize i = 0; i < argc; i++) {
         ZType *at = node->resolved->func.args[i];
+        if (typeSize(at) == 0) {
+            argc--; continue;
+        }
         paramTypes[i] = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION) {
             paramTypes[i] = LLVMPointerType(paramTypes[i], 0);
@@ -3786,11 +3793,14 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     }
 
     for (usize i = 0; i < veclen(f->funcDef.capabilities); i++) {
-        LLVMTypeRef refType = genType(ctx, f->funcDef.capabilities[i]->field.type);
+        ZType *capType = f->funcDef.capabilities[i]->field.type;
+        if (typeSize(capType) == 0) continue;
+        LLVMTypeRef refType = genType(ctx, capType);
         vecpush(args, refType);
     }
 
     for (usize i = 0; i < veclen(f->funcDef.args); i++) {
+        if (typeSize(f->resolved->func.args[i]) == 0) continue;
         ZType *at = f->funcDef.args[i]->field.type;
         LLVMTypeRef arg = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION)
