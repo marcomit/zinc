@@ -681,7 +681,7 @@ static ZNode *parseLogicalOr(ZParser *parser) {
             orelse->unwrap.base     = node;
             orelse->unwrap.orExpr   = expr;
             orelse->unwrap.kind     = UNWRAP_RETURN;
-        } else if (match(parser, TOK_ELSE)) {
+        } else if (match(parser, TOK_DO)) {
             ZNode *expr = parseExpr(parser);
             ZNode *orelse = makenode(NODE_UNWRAP);
             orelse->unwrap.base     = node;
@@ -2607,6 +2607,16 @@ static ZNode *parseForeignBlock(ZParser *parser, ZAnnotation **annotations, bool
     expect(parser, TOK_IDENT);
     expect(parser, TOK_DOUBLE_COLON);
     expect(parser, TOK_FOREIGN);
+
+    ZType **capabilities = NULL;
+    if (match(parser, TOK_WITH)) {
+        do {
+            ZType *capability = parseType(parser);
+            if (!capability) break;
+            vecpush(capabilities, capability);
+        } while (!check(parser, TOK_LSBRACKET) && match(parser, TOK_COMMA));
+    }
+
     expect(parser, TOK_LBRACKET);
 
     ZType *type             = NULL;
@@ -2615,6 +2625,7 @@ static ZNode *parseForeignBlock(ZParser *parser, ZAnnotation **annotations, bool
     namespace->block        = NULL;
     namespace->pub          = public;
     namespace->annotations  = annotations;
+    namespace->capabilities = capabilities;
     ZNode *node             = NULL;
 
 
@@ -2631,6 +2642,11 @@ static ZNode *parseForeignBlock(ZParser *parser, ZAnnotation **annotations, bool
             error(parser->state, peek(parser), "Error parsing function");
             return NULL;
         }
+
+        if (type->kind == Z_TYPE_FUNCTION)
+            for (usize i = 0; i < veclen(capabilities); i++)
+                vecpush(type->func.capabilities, capabilities[i]);
+
         node                    = makenode(NODE_FOREIGN);
         node->foreignDecl.name  = name;
         node->foreignDecl.pub   = public;

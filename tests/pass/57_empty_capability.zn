@@ -1,0 +1,14 @@
+Io :: struct { }
+
+sys :: foreign with Io {
+    printf: fn (*char, ...) u0
+}
+
+main :: fn () i32 {
+
+    with io := Io{} {
+        sys.printf("hellope\n")
+    }
+
+    return 0
+}
