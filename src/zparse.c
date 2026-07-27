@@ -82,9 +82,10 @@ static ZNode *parseStructDecl               (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignBlock             (ZParser *, ZAnnotation **, bool);
 static ZNode *parseForeignInlineDecl        (ZParser *, ZAnnotation **, bool);
 
+static ZNode                **parseCapabilityList   (ZParser *);
 static ZType                **parseGenericsDecl     (ZParser *);
 static ZMacroPattern        *parseMacroPattern      (ZParser *, ZNode *);
-static ZVarDestructPattern  *parseMultiDestructVar  (ZParser *parser);
+static ZVarDestructPattern  *parseMultiDestructVar  (ZParser *);
 static ZVarDestructPattern  *parseDestructVar       (ZParser *, bool);
 
 static ZParseFunc exprFunc[] = {
@@ -1889,11 +1890,14 @@ static ZNode *parseAnonFunc(ZParser *parser) {
         parseAnonFuncArgument,  true
     ));
 
-
-    if (!check(parser, TOK_ARROW) && !check(parser, TOK_LBRACKET)) {
+    if (!check(parser, TOK_WITH)    &&
+        !check(parser, TOK_ARROW)   &&
+        !check(parser, TOK_LBRACKET)) {
         type = tryParse(parser, parseType(parser));
         if (!type) return NULL;
     }
+
+    ZNode **capabilities = parseCapabilityList(parser);
 
     ZNode *body = NULL;
 
@@ -1915,7 +1919,7 @@ static ZNode *parseAnonFunc(ZParser *parser) {
     ZNode *func = NULL;
     func                        = makenode(NODE_FUNC);
     func->funcDef.args          = args;
-    func->funcDef.capabilities  = NULL;
+    func->funcDef.capabilities  = capabilities;
     func->funcDef.pub           = false;
     func->funcDef.annotations   = NULL;
     func->funcDef.receiver      = NULL;
@@ -1933,10 +1937,15 @@ static ZNode *parseAnonFunc(ZParser *parser) {
     funcType->func.variadic     = false;
     funcType->func.args         = NULL;
     funcType->tok               = start;
+    func->resolved              = funcType;
+
+    for (usize i = 0; i < veclen(capabilities); i++) {
+        vecpush(funcType->func.capabilities, capabilities[i]->resolved);
+    }
+
     for (usize i = 0; i < veclen(args); i++) {
         vecpush(funcType->func.args, args[i]->resolved);
     }
-    func->resolved              = funcType;
     return func;
 }
 
@@ -1961,6 +1970,21 @@ static ZType *parseFuncMultiReturn(ZParser *parser) {
 
     if (!ret) return u0Type;
     return ret;
+}
+
+static ZNode **parseCapabilityList(ZParser *parser) {
+    ZNode **capabilities = NULL;
+    if (match(parser, TOK_WITH)) {
+        do {
+            ZNode *capability = parseFieldOptName(parser);
+            if (!capability) break;
+            vecpush(capabilities, capability);
+        } while (
+                !check(parser, TOK_ARROW)       &&
+                !check(parser, TOK_LBRACKET)    &&
+                match(parser, TOK_COMMA)        );
+    }
+    return capabilities;
 }
 
 /* The caller must handle:
@@ -1990,20 +2014,9 @@ static ZNode *parseFuncDecl(ZParser *parser,
         return NULL;
     }
 
-    // TODO: Allow empty return for void functions
     if (!ret) return NULL;
 
-    ZNode **capabilities = NULL;
-    if (match(parser, TOK_WITH)) {
-        do {
-            ZNode *capability = parseFieldOptName(parser);
-            if (!capability) break;
-            vecpush(capabilities, capability);
-        } while (
-                !check(parser, TOK_ARROW)       &&
-                !check(parser, TOK_LBRACKET)    &&
-                match(parser, TOK_COMMA)        );
-    }
+    ZNode **capabilities = parseCapabilityList(parser);
 
     ZType **generics = NULL;
     if (match(parser, TOK_WHERE)) {
