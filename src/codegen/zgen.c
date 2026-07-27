@@ -323,6 +323,9 @@ usize typeSize(ZType *type) {
 
     case Z_TYPE_ENUM:   return typeLargestType(type->enm.fields) + 1;
     case Z_TYPE_SUM:    return typeLargestType(type->sumType) + 1;
+    case Z_TYPE_OPTIONAL:
+        if (type->optional->kind == Z_TYPE_POINTER) return 8;
+        return 1 + typeSize(type->optional);
 
     default: return 0;
     }
@@ -1377,12 +1380,15 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
 /* Build the actual LLVMFunctionType from a ZType. Used for indirect calls where
  * genType returns an opaque ptr suitable for storage, not for LLVMBuildCall2. */
 static LLVMTypeRef buildFuncType(ZCodegen *ctx, ZType *type) {
-    usize argc = veclen(type->func.args);
-    LLVMTypeRef *params = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc ? argc : 1));
+    usize args = veclen(type->func.args);
+    usize argc = veclen(type->func.capabilities);
+    LLVMTypeRef *params = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc + args));
     for (usize i = 0; i < argc; i++)
-        params[i] = genType(ctx, type->func.args[i]);
+        params[i] = genType(ctx, type->func.capabilities[i]);
+    for (usize i = 0; i < args; i++)
+        params[argc + i] = genType(ctx, type->func.args[i]);
     LLVMTypeRef ret = genType(ctx, type->func.ret);
-    return LLVMFunctionType(ret, params, (unsigned)argc, type->func.variadic);
+    return LLVMFunctionType(ret, params, (unsigned)(argc + args), type->func.variadic);
 }
 
 /* Facet methods are dispatched through a type-erased vtable. The concrete
@@ -2699,16 +2705,24 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
 
 static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
     LLVMTypeRef returnTypeRef   = genType(ctx, node->resolved->func.ret);
-    usize argLen                = veclen(node->resolved->func.args);
+    usize argLen = veclen(node->resolved->func.args);
+    usize capLen = veclen(node->resolved->func.capabilities);
+
     LLVMTypeRef *arguments      = arenaAlloc(
-        ctx->module->allocator, sizeof(LLVMTypeRef) * argLen
+        ctx->module->allocator, sizeof(LLVMTypeRef) * (argLen + capLen)
     );
 
+    printf("arguments = %zu\n", argLen + capLen);
+
+    for (usize i = 0; i < capLen; i++) {
+        arguments[i] = genType(ctx, node->resolved->func.capabilities[i]);
+    }
+
     for (usize i = 0; i < argLen; i++) {
-        arguments[i] = genType(ctx, node->resolved->func.args[i]);
+        arguments[i + capLen] = genType(ctx, node->resolved->func.args[i]);
     }
     LLVMTypeRef funcTypeRef = LLVMFunctionType(
-        returnTypeRef, arguments, argLen, false);
+        returnTypeRef, arguments, argLen + capLen, false);
 
     LLVMValueRef func = LLVMAddFunction(ctx->mod, node->funcDef.mangled, funcTypeRef);
     LLVMSetLinkage(func, LLVMInternalLinkage);

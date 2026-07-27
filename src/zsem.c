@@ -1308,9 +1308,16 @@ static ZNode *lookupScopedCapability(ZThreadSem *ctx, ZType *required) {
 static ZNode **analyzeCapabilities(ZThreadSem *ctx, ZToken *start, ZType **capabilities) {
     ZNode **capabilityRefs = NULL;
     for (usize i = 0; i < veclen(capabilities); i++) {
-        capabilities[i] = resolveTypeRef(ctx,
-                capabilities[i]
-        );
+        ZType *old = capabilities[i];
+        capabilities[i] = resolveTypeRef(ctx, old);
+
+        if (!capabilities[i]) {
+            printf("error");
+            error(ctx->state, start,
+                "Capability '%s' not found", stype(old)
+            );
+            continue;
+        }
         ZNode *reference = lookupScopedCapability(
             ctx, capabilities[i]
         );
@@ -1552,7 +1559,7 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZToken **chain      = curr->structlit.chain;
     ZToken *ident       = veclast(curr->structlit.chain);
     if (veclen(chain) == 1 && ident->type == TOK_DOT) {
-        symType     = resolveTypeRef(ctx, inferred);
+        symType         = resolveTypeRef(ctx, inferred);
         if (!symType) {
             error(ctx->state, ident,
                 "struct type can't be inferred here"
@@ -1565,7 +1572,7 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     } else {
         usize i;
-        structSym = resolveModuleChain(ctx, curr->structlit.chain, &i);
+        structSym   = resolveModuleChain(ctx, curr->structlit.chain, &i);
 
         if (!structSym) {
             error(ctx->state, curr->tok,
@@ -1580,7 +1587,7 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return NULL;
     }
 
-    if (veclen(curr->structlit.fields) == 0) {
+    if (veclen(curr->structlit.fields) != veclen(structSym->type->strct.fields)) {
         warning(ctx->state, curr->tok, "Some fields not initialized");
     }
 
@@ -1588,8 +1595,8 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         ZNode *field        = curr->structlit.fields[i];
         ZNode *structField  = getStructField(ctx, structSym->type, field->tok);
         ZType *expectedType = resolveTypeRef(ctx, structField->field.type);
-        ZType *promoted;
-        ZType *type = resolveType(ctx, field->varDecl.rvalue, expectedType);
+        ZType *type         = resolveType(ctx, field->varDecl.rvalue, expectedType);
+        ZType *promoted     = NULL;
 
         if (!type) {
             error(ctx->state, field->varDecl.rvalue->tok,
