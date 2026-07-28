@@ -2601,15 +2601,20 @@ static ZType *parseFuncType(ZParser *parser) {
 
     expect(parser, TOK_RPAREN);
 
-    ZType *ret      = tryParse(parser, parseType(parser));
+    ZNode **capabilities    = parseCapabilityList(parser);
+    ZType *ret              = tryParse(parser, parseType(parser));
     guard(ret);
+    ZType *func             = maketype(Z_TYPE_FUNCTION);
+    func->func.ret          = ret;
+    func->func.args         = args;
+    func->func.generics     = generics;
+    func->func.variadic     = variadic;
+    func->func.capabilities = NULL;
+    func->tok               = start;
 
-    ZType *func         = maketype(Z_TYPE_FUNCTION);
-    func->func.ret      = ret;
-    func->func.args     = args;
-    func->func.generics = generics;
-    func->func.variadic = variadic;
-    func->tok           = start;
+    for (usize i = 0; i < veclen(capabilities); i++) {
+        vecpush(func->func.capabilities, capabilities[i]->resolved);
+    }
     return func;
 }
 

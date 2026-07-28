@@ -2714,15 +2714,21 @@ static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
 
     printf("arguments = %zu\n", argLen + capLen);
 
+    usize len = capLen;
+
     for (usize i = 0; i < capLen; i++) {
         arguments[i] = genType(ctx, node->resolved->func.capabilities[i]);
+        if (typeSize(node->resolved->func.capabilities[i]) == 0) {
+            len--;
+            continue;
+        }
     }
 
     for (usize i = 0; i < argLen; i++) {
         arguments[i + capLen] = genType(ctx, node->resolved->func.args[i]);
     }
     LLVMTypeRef funcTypeRef = LLVMFunctionType(
-        returnTypeRef, arguments, argLen + capLen, false);
+        returnTypeRef, arguments, argLen + len, false);
 
     LLVMValueRef func = LLVMAddFunction(ctx->mod, node->funcDef.mangled, funcTypeRef);
     LLVMSetLinkage(func, LLVMInternalLinkage);
@@ -2738,7 +2744,8 @@ static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
     LLVMBasicBlockRef entry = makeblock(ctx, "entry");
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
-    addFuncArgs(ctx, func, node->funcDef.args, 0, false);
+    addFuncArgs(ctx, func, node->funcDef.capabilities, 0, true);
+    addFuncArgs(ctx, func, node->funcDef.args, len, false);
 
     genFuncVars(ctx, node->funcDef.body);
     genBlock(ctx, node->funcDef.body);
