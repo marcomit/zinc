@@ -17,7 +17,7 @@ static void         genStmt             (ZCodegen *, ZNode *);
 static void         genBlock            (ZCodegen *, ZNode *);
 static void         storeArray          (ZCodegen *, ZLLVMStack *, LLVMValueRef);
 static void         genFuncVars         (ZCodegen *, ZNode *);
-static void         addFuncArgs         (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
+static usize        addFuncArgs         (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
 static void         genNamespace        (ZCodegen *, ZNode *);
 LLVMTypeRef         genType             (ZCodegen *, ZType *);
 static LLVMValueRef genExpr             (ZCodegen *, ZNode *);
@@ -329,6 +329,19 @@ usize typeSize(ZType *type) {
 
     default: return 0;
     }
+}
+
+/**
+ * @brief Tells whether a type is materialized as an LLVM parameter.
+ *
+ * Zero sized types (empty structs used as capability tags) carry no runtime
+ * value, so they are dropped from the LLVM signature instead of being passed
+ * as an empty aggregate. Every path that builds a parameter list, binds the
+ * parameters of a body or pushes call arguments must agree on this, otherwise
+ * the argument count of a call does not match its callee.
+ */
+static bool isRuntimeParam(ZType *type) {
+    return type && typeSize(type) > 0;
 }
 
 static bool _getStructIndex(ZType *strct, char *fieldName, u32 **path) {
@@ -1382,13 +1395,18 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
 static LLVMTypeRef buildFuncType(ZCodegen *ctx, ZType *type) {
     usize args = veclen(type->func.args);
     usize argc = veclen(type->func.capabilities);
-    LLVMTypeRef *params = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc + args));
-    for (usize i = 0; i < argc; i++)
-        params[i] = genType(ctx, type->func.capabilities[i]);
-    for (usize i = 0; i < args; i++)
-        params[argc + i] = genType(ctx, type->func.args[i]);
+    LLVMTypeRef *params = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * ((argc + args) ? (argc + args) : 1));
+    usize len = 0;
+    for (usize i = 0; i < argc; i++) {
+        if (!isRuntimeParam(type->func.capabilities[i])) continue;
+        params[len++] = genType(ctx, type->func.capabilities[i]);
+    }
+    for (usize i = 0; i < args; i++) {
+        if (!isRuntimeParam(type->func.args[i])) continue;
+        params[len++] = genType(ctx, type->func.args[i]);
+    }
     LLVMTypeRef ret = genType(ctx, type->func.ret);
-    return LLVMFunctionType(ret, params, (unsigned)(argc + args), type->func.variadic);
+    return LLVMFunctionType(ret, params, (unsigned)len, type->func.variadic);
 }
 
 /* Facet methods are dispatched through a type-erased vtable. The concrete
@@ -1400,12 +1418,15 @@ static LLVMTypeRef buildFacetFuncType(ZCodegen *ctx, ZType *type) {
 
     params[0] = LLVMPointerType(i8Type, 0);
 
-    for (usize i = 0; i < argc; i++)
-        params[i + 1] = genType(ctx, type->func.args[i]);
+    usize len = 1;
+    for (usize i = 0; i < argc; i++) {
+        if (!isRuntimeParam(type->func.args[i])) continue;
+        params[len++] = genType(ctx, type->func.args[i]);
+    }
 
     LLVMTypeRef ret = genType(ctx, type->func.ret);
     return LLVMFunctionType(
-        ret, params, (unsigned)(argc + 1), type->func.variadic
+        ret, params, (unsigned)len, type->func.variadic
     );
 }
 
@@ -1574,9 +1595,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
             warning(ctx->state, node->tok, "Capability not resolved");
             continue;
         }
-        if (typeSize(cap->resolved) == 0) {
-            continue;
-        }
+        if (!isRuntimeParam(cap->resolved)) continue;
         LLVMValueRef capability = getCapabilityRef(
             ctx, cap->resolved
         );
@@ -1600,7 +1619,13 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < veclen(node->call.args); i++) {
         LLVMValueRef arg = genExpr(ctx, node->call.args[i]);
 
-        usize totalArgIndex = veclen(node->call.capabilities) + i;
+        /* The argument is still evaluated for its side effects, but a zero
+         * sized one is not part of the callee signature, see isRuntimeParam. */
+        if (!isRuntimeParam(node->call.args[i]->resolved)) continue;
+
+        /* Args already holds the receiver and the capabilities that survived
+         * the filtering, so its length is the LLVM parameter index. */
+        usize totalArgIndex = veclen(args);
 
         /* ABI adaptation: foreign functions declare small struct params as
          * i32/i64 (packed integer).  If the Zinc-side arg is a struct,
@@ -2709,20 +2734,29 @@ static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
     usize capLen = veclen(node->resolved->func.capabilities);
 
     LLVMTypeRef *arguments      = arenaAlloc(
-        ctx->module->allocator, sizeof(LLVMTypeRef) * (argLen + capLen)
+        ctx->module->allocator, sizeof(LLVMTypeRef) * ((argLen + capLen) ? (argLen + capLen) : 1)
     );
 
-    printf("arguments = %zu\n", argLen + capLen);
+    usize len = 0;
 
     for (usize i = 0; i < capLen; i++) {
-        arguments[i] = genType(ctx, node->resolved->func.capabilities[i]);
+        ZType *capType = node->resolved->func.capabilities[i];
+        if (!isRuntimeParam(capType)) continue;
+        arguments[len++] = genType(ctx, capType);
     }
 
+    usize capParams = len;
+
     for (usize i = 0; i < argLen; i++) {
-        arguments[i + capLen] = genType(ctx, node->resolved->func.args[i]);
+        ZType *at = node->resolved->func.args[i];
+        if (!isRuntimeParam(at)) continue;
+        arguments[len] = genType(ctx, at);
+        if (at->kind == Z_TYPE_FUNCTION)
+            arguments[len] = LLVMPointerType(arguments[len], 0);
+        len++;
     }
     LLVMTypeRef funcTypeRef = LLVMFunctionType(
-        returnTypeRef, arguments, argLen + capLen, false);
+        returnTypeRef, arguments, len, false);
 
     LLVMValueRef func = LLVMAddFunction(ctx->mod, node->funcDef.mangled, funcTypeRef);
     LLVMSetLinkage(func, LLVMInternalLinkage);
@@ -2738,7 +2772,8 @@ static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
     LLVMBasicBlockRef entry = makeblock(ctx, "entry");
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
-    addFuncArgs(ctx, func, node->funcDef.args, 0, false);
+    addFuncArgs(ctx, func, node->funcDef.capabilities, 0, true);
+    addFuncArgs(ctx, func, node->funcDef.args, capParams, false);
 
     genFuncVars(ctx, node->funcDef.body);
     genBlock(ctx, node->funcDef.body);
@@ -2907,27 +2942,27 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
     usize argc = veclen(node->resolved->func.args);
 
     LLVMTypeRef *paramTypes = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc ? argc : 1));
+    usize len = 0;
     for (usize i = 0; i < argc; i++) {
         ZType *at = node->resolved->func.args[i];
-        if (typeSize(at) == 0) {
-            argc--; continue;
-        }
-        paramTypes[i] = genType(ctx, at);
+        if (!isRuntimeParam(at)) continue;
+        paramTypes[len] = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION) {
-            paramTypes[i] = LLVMPointerType(paramTypes[i], 0);
+            paramTypes[len] = LLVMPointerType(paramTypes[len], 0);
         } else if (at->kind == Z_TYPE_STRUCT && !isHFA(at)) {
             /* C ABI on all supported targets (x86-64, AArch64) passes small
              * non-HFA structs as a packed integer of the same size.  HFAs use
              * SIMD/FP registers and LLVM handles them correctly as-is. */
             usize sz = typeSize(at);
-            if      (sz <= 4) paramTypes[i] = i32Type;
-            else if (sz <= 8) paramTypes[i] = i64Type;
+            if      (sz <= 4) paramTypes[len] = i32Type;
+            else if (sz <= 8) paramTypes[len] = i64Type;
         }
+        len++;
     }
     LLVMTypeRef funcType = LLVMFunctionType(
         ret,
         paramTypes,
-        (unsigned)argc,
+        (unsigned)len,
         node->resolved->func.variadic
     );
 
@@ -3683,23 +3718,32 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     }
 }
 
-static void addFuncArgs(ZCodegen *ctx,
+/* Binds the parameters of the body being generated, starting at paramOffset,
+ * and returns how many LLVM parameters were consumed. The count is not
+ * veclen(funcArgs) because zero sized ones have no parameter to bind, see
+ * isRuntimeParam, so the caller needs it to place the next group. */
+static usize addFuncArgs(ZCodegen *ctx,
         LLVMValueRef func,
         ZNode **funcArgs, usize paramOffset, bool capabilityParams) {
+    usize param = paramOffset;
     for (usize i = 0; i < veclen(funcArgs); i++) {
         char *name = funcArgs[i]->field.identifier->str;
         ZType *argType = funcArgs[i]->field.type;
         LLVMTypeRef paramType = NULL;
         LLVMValueRef slot = NULL;
         paramType = genType(ctx, argType);
-        if (argType->kind == Z_TYPE_FUNCTION) {
+        if (!isRuntimeParam(argType)) {
+            /* Nothing was passed, but the name still has to resolve in the
+             * body: give it a slot of its own (zero sized) instead. */
+            slot = LLVMBuildAlloca(ctx->builder, paramType, name);
+        } else if (argType->kind == Z_TYPE_FUNCTION) {
             paramType = LLVMPointerType(
                 i8Type, 0
             );
-            slot = LLVMGetParam(func, i + paramOffset);
+            slot = LLVMGetParam(func, param++);
         } else {
             slot = LLVMBuildAlloca(ctx->builder, paramType, name);
-            LLVMBuildStore(ctx->builder, LLVMGetParam(func, i + paramOffset), slot);
+            LLVMBuildStore(ctx->builder, LLVMGetParam(func, param++), slot);
         }
 
         putLLVMValueRef(ctx, name, slot);
@@ -3713,6 +3757,7 @@ static void addFuncArgs(ZCodegen *ctx,
             vecpush(ctx->scope->capabilities, capability);
         }
     }
+    return param - paramOffset;
 }
 
 void LLVMAddFuncAttribute(ZCodegen *ctx,
@@ -3808,14 +3853,14 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     for (usize i = 0; i < veclen(f->funcDef.capabilities); i++) {
         ZType *capType = f->funcDef.capabilities[i]->field.type;
-        if (typeSize(capType) == 0) continue;
+        if (!isRuntimeParam(capType)) continue;
         LLVMTypeRef refType = genType(ctx, capType);
         vecpush(args, refType);
     }
 
     for (usize i = 0; i < veclen(f->funcDef.args); i++) {
-        if (typeSize(f->resolved->func.args[i]) == 0) continue;
         ZType *at = f->funcDef.args[i]->field.type;
+        if (!isRuntimeParam(at)) continue;
         LLVMTypeRef arg = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION)
             arg = LLVMPointerType(arg, 0);
@@ -3850,11 +3895,13 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
         paramOffset++;
     }
 
-    addFuncArgs(ctx, func, f->funcDef.capabilities, paramOffset, true);
+    usize capParams = addFuncArgs(
+        ctx, func, f->funcDef.capabilities, paramOffset, true
+    );
     addFuncArgs(
         ctx, func,
         f->funcDef.args,
-        paramOffset + veclen(f->funcDef.capabilities),
+        paramOffset + capParams,
         false
     );
 
@@ -4067,11 +4114,17 @@ static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
         if (node->funcDef.receiver) {
             vecpush(args, genType(ctx, node->funcDef.receiver->resolved));
         }
+        /* Must drop the same parameters as genFunc, otherwise the declaration
+         * and the definition of the same function disagree on the signature
+         * and every call built from this type has the wrong argument count. */
         for (usize i = 0; i < veclen(node->funcDef.capabilities); i++) {
-            vecpush(args, genType(ctx, node->funcDef.capabilities[i]->field.type));
+            ZType *capType = node->funcDef.capabilities[i]->field.type;
+            if (!isRuntimeParam(capType)) continue;
+            vecpush(args, genType(ctx, capType));
         }
         for (usize i = 0; i < veclen(node->funcDef.args); i++) {
             ZType *at = node->funcDef.args[i]->field.type;
+            if (!isRuntimeParam(at)) continue;
             LLVMTypeRef arg = genType(ctx, at);
             if (at->kind == Z_TYPE_FUNCTION)
                 arg = LLVMPointerType(arg, 0);

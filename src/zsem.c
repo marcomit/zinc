@@ -1132,6 +1132,11 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
                 type->func.args[i],
                 seen);
         }
+        for (usize i = 0; i < veclen(type->func.capabilities); i++) {
+            type->func.capabilities[i] = _resolveTypeRef(ctx,
+                type->func.capabilities[i],
+                seen);
+        }
         return type;
     case Z_TYPE_TUPLE:
         for (usize i = 0; i < veclen(type->tuple); i++)
@@ -2114,6 +2119,15 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     ctx->currentFunc = curr;
     ctx->currentFuncRet = curr->resolved->func.ret;
+
+    analyzeFuncArgs(ctx,
+        curr->resolved->func.capabilities,
+        curr->funcDef.capabilities,
+        inferred ? inferred->func.capabilities : NULL
+    );
+
+    for (usize i = 0; i < veclen(curr->funcDef.capabilities); i++)
+        putCapability(ctx, curr->funcDef.capabilities[i]);
 
     analyzeFuncArgs(ctx,
         curr->resolved->func.args,
