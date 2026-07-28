@@ -1,0 +1,21 @@
+use <std.mem>
+use <std.mem.gpa>
+
+Vec :: struct {
+    x: i32
+    y: i32
+}
+
+Vec :: impl with Allocator {
+    new :: fn () *Vec {
+        return alloc(sizeof Vec)
+    }
+}
+
+main :: fn () i32 {
+    gpa := &GeneralPurposeAllocator.init()
+    with _ := gpa.allocator() {
+        v := Vec.new()
+    }
+    return 0
+}

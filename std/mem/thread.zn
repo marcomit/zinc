@@ -14,7 +14,7 @@ ThreadAllocator :: impl {
         }
     }
 
-    pub from_ctx :: fn () ThreadAllocator [allocator: Allocator] {
+    pub from_ctx :: fn () ThreadAllocator with allocator: Allocator {
         self := ThreadAllocator{
             inner: allocator,
             mutex: Mutex::new()
@@ -26,7 +26,7 @@ ThreadAllocator :: impl {
     allocator :: fn () Allocator -> self as Allocator
 }
 
-*ThreadAllocator self :: impl Allocator {
+*ThreadAllocator self :: impl(Allocator) {
     pub init :: fn () u0 {}
     pub deinit :: fn () u0 -> self.mutex.destroy()
 

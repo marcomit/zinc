@@ -2949,14 +2949,15 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
 
     /* Declare facets this block must implement. */
     ZType **facets = NULL;
-    if (check(parser, TOK_IDENT)) {
+    if (match(parser, TOK_LPAREN)) {
         do {
-
-        ZType *facet            = maketype(Z_TYPE_PRIMITIVE);
-        facet->primitive.token  = consume(parser);
-        facet->tok              = facet->primitive.token;
-        vecpush(facets, facet);
-        } while (!check(parser, TOK_LBRACKET) && match(parser, TOK_PLUS));
+            ZType *facet            = maketype(Z_TYPE_PRIMITIVE);
+            facet->primitive.token  = consume(parser);
+            facet->tok              = facet->primitive.token;
+            vecpush(facets, facet);
+        } while (   !check(parser, TOK_RPAREN)      &&
+                     match(parser, TOK_PLUS)        );
+        expect(parser, TOK_RPAREN);
     }
 
     /* Declare generics that every function in this block inherit. */
@@ -2969,6 +2970,8 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
         }
     }
 
+    ZNode **capabilities = parseCapabilityList(parser);
+
     expect(parser, TOK_LBRACKET);
 
     ZNode *func                 = NULL;
@@ -2979,6 +2982,7 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     block->impl.funcs           = NULL;
     block->impl.facets          = facets;
     block->impl.generics        = generics;
+    block->impl.capabilities    = capabilities;
     block->impl.annotations     = implAnnotations;
     block->impl.pub             = public;
 
@@ -2997,6 +3001,14 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
                 return NULL;
             }
             break;
+        }
+
+        for (usize i = 0; i < veclen(func->funcDef.capabilities); i++) {
+            vecunion(
+                func->funcDef.capabilities,
+                capabilities,
+                veclen(capabilities)
+            );
         }
         vecpush(block->impl.funcs, func);
 

@@ -25,7 +25,7 @@ ArenaAllocator :: impl {
     }
 }
 
-*ArenaAllocator self :: impl Allocator {
+*ArenaAllocator self :: impl(Allocator) {
     init :: fn () u0 { }
     alloc :: fn (size: u64) *u8 {
         need := sizeof u64 + size
