@@ -1885,10 +1885,10 @@ static ZNode *parseAnonFunc(ZParser *parser) {
 
     if (!check(parser, TOK_LPAREN)) return NULL;
 
-    ZNode **args = tryParse(parser, parseGenericList(parser,
+    ZNode **args = parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
         parseAnonFuncArgument,  true
-    ));
+    );
 
     if (!check(parser, TOK_WITH)    &&
         !check(parser, TOK_ARROW)   &&
