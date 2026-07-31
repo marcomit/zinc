@@ -448,7 +448,18 @@ static ZNode **parseArgs(ZParser *parser) {
 }
 
 static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_DOT);
+
+    if (check(parser, TOK_REF) ||
+        check(parser, TOK_STAR)) {
+        ZNode *unary            = makenode(NODE_UNARY);
+        unary->tok              = start;
+        unary->unary.operand    = previous;
+        unary->unary.operat     = consume(parser);
+        return unary;
+    }
+
 
     if (!check(parser, TOK_IDENT) &&
         !check(parser, TOK_INT_LIT)) {
