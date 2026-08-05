@@ -129,7 +129,7 @@ void initializeMemoryToZero(ZCodegen *ctx, LLVMValueRef value, ZType *type) {
  * */
 void checkUnsafeUnwrap(ZCodegen *ctx,
     LLVMValueRef value, ZType *type, ZToken *loc) {
-    if (ctx->state->mode != Z_MODE_DEBUG) return;
+    // if (ctx->state->mode != Z_MODE_DEBUG) return;
     if (!type) return;
     LLVMValueRef cond = NULL;
     if (type->kind == Z_TYPE_OPTIONAL) {

@@ -721,6 +721,7 @@ struct ZNode {
             ZToken      *self;
             ZNode       **funcs;
             ZAnnotation **annotations;
+            ZNode       **capabilities;
         } impl;
 
         struct {

@@ -448,7 +448,18 @@ static ZNode **parseArgs(ZParser *parser) {
 }
 
 static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_DOT);
+
+    if (check(parser, TOK_REF) ||
+        check(parser, TOK_STAR)) {
+        ZNode *unary            = makenode(NODE_UNARY);
+        unary->tok              = start;
+        unary->unary.operand    = previous;
+        unary->unary.operat     = consume(parser);
+        return unary;
+    }
+
 
     if (!check(parser, TOK_IDENT) &&
         !check(parser, TOK_INT_LIT)) {
@@ -1973,17 +1984,17 @@ static ZType *parseFuncMultiReturn(ZParser *parser) {
 }
 
 static ZNode **parseCapabilityList(ZParser *parser) {
+    if (!match(parser, TOK_WITH)) return NULL;
+
     ZNode **capabilities = NULL;
-    if (match(parser, TOK_WITH)) {
-        do {
-            ZNode *capability = parseFieldOptName(parser);
-            if (!capability) break;
-            vecpush(capabilities, capability);
-        } while (
-                !check(parser, TOK_ARROW)       &&
-                !check(parser, TOK_LBRACKET)    &&
-                match(parser, TOK_COMMA)        );
-    }
+    do {
+        ZNode *capability = parseFieldOptName(parser);
+        if (!capability) break;
+        vecpush(capabilities, capability);
+    } while (
+            !check(parser, TOK_ARROW)       &&
+            !check(parser, TOK_LBRACKET)    &&
+             match(parser, TOK_COMMA)       );
     return capabilities;
 }
 
@@ -2949,14 +2960,15 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
 
     /* Declare facets this block must implement. */
     ZType **facets = NULL;
-    if (check(parser, TOK_IDENT)) {
+    if (match(parser, TOK_LPAREN)) {
         do {
-
-        ZType *facet            = maketype(Z_TYPE_PRIMITIVE);
-        facet->primitive.token  = consume(parser);
-        facet->tok              = facet->primitive.token;
-        vecpush(facets, facet);
-        } while (!check(parser, TOK_LBRACKET) && match(parser, TOK_PLUS));
+            ZType *facet            = maketype(Z_TYPE_PRIMITIVE);
+            facet->primitive.token  = consume(parser);
+            facet->tok              = facet->primitive.token;
+            vecpush(facets, facet);
+        } while (   !check(parser, TOK_RPAREN)      &&
+                     match(parser, TOK_PLUS)        );
+        expect(parser, TOK_RPAREN);
     }
 
     /* Declare generics that every function in this block inherit. */
@@ -2969,6 +2981,8 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
         }
     }
 
+    ZNode **capabilities = parseCapabilityList(parser);
+
     expect(parser, TOK_LBRACKET);
 
     ZNode *func                 = NULL;
@@ -2979,11 +2993,12 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     block->impl.funcs           = NULL;
     block->impl.facets          = facets;
     block->impl.generics        = generics;
+    block->impl.capabilities    = capabilities;
     block->impl.annotations     = implAnnotations;
     block->impl.pub             = public;
 
     ZAnnotation **annotations   = NULL;
-    while (true) {
+    do {
         annotations = NULL;
         if (check(parser, TOK_HASHTAG) && checkAhead(parser, TOK_LSBRACKET, 1)) {
             annotations = parseAnnotations(parser);
@@ -2998,10 +3013,13 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
             }
             break;
         }
-        vecpush(block->impl.funcs, func);
 
-        if (check(parser, TOK_RBRACKET)) break;
-    }
+        for (usize i = 0; i < veclen(capabilities); i++) {
+            vecpush(func->funcDef.capabilities, capabilities[i]);
+            vecpush(func->resolved->func.capabilities, capabilities[i]->field.type);
+        }
+        vecpush(block->impl.funcs, func);
+    } while (!check(parser, TOK_RBRACKET));
 
     expect(parser, TOK_RBRACKET);
 

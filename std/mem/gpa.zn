@@ -17,7 +17,7 @@ GeneralPurposeAllocator :: impl {
     }
 }
 
-*GeneralPurposeAllocator self :: impl Allocator {
+*GeneralPurposeAllocator self :: impl(Allocator) {
     alloc :: fn (size: u64) *u8 {
         p := c.malloc(size)
         if not p { return none }

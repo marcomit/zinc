@@ -17,7 +17,7 @@ DebugAllocator :: impl {
     }
 }
 
-*DebugAllocator self :: impl Allocator {
+*DebugAllocator self :: impl(Allocator) {
     alloc :: fn (size: u64) *u8 {
         p := self.inner.alloc(size)
         c::printf("[debug] alloc(%lu) -> %p\n", size, p)

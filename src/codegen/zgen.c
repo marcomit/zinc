@@ -2127,6 +2127,47 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     );
 }
 
+static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg) {
+    ZType *resolved = node->unary.operand->resolved;
+
+    if (resolved->kind != Z_TYPE_OPTIONAL   &&
+        resolved->kind != Z_TYPE_RESULT     ) {
+        error(ctx->state, node->tok,
+            "'!' can be used only with optional and result types, got '%s'",
+            stype(resolved)
+        );
+        return NULL;
+    }
+
+    if (resolved->kind == Z_TYPE_OPTIONAL) {
+        if (resolved->optional->kind == Z_TYPE_POINTER) return arg;
+
+        ZLLVMStack *stack = getStackValue(ctx, node);
+
+        if (!stack) {
+            error(ctx->state, node->tok, "Missing stack value");
+            return NULL;
+        }
+
+        checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
+
+        LLVMValueRef dataPtr = LLVMBuildStructGEP2(
+                ctx->builder, genType(ctx, resolved), stack->stack,
+                0, label(ctx, "unwrap.ptr")
+        );
+
+        return LLVMBuildLoad2(
+            ctx->builder,
+            genType(ctx, resolved->optional),
+            dataPtr,
+            label(ctx, "unwrap.data")
+        );
+    } else if (resolved->kind == Z_TYPE_RESULT) {
+        warning(ctx->state, node->tok, "Error branch not implemented");
+        return NULL;
+    }
+}
+
 static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     if (node->unary.operat->type == TOK_REF)
         return genLvalue(ctx, node->unary.operand);
@@ -2174,47 +2215,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
         return LLVMBuildXor(ctx->builder, arg, allOnes, l);
     }
 
-    case TOK_ESCL: {
-        ZType *resolved = node->unary.operand->resolved;
-
-        if (resolved->kind != Z_TYPE_OPTIONAL   &&
-            resolved->kind != Z_TYPE_RESULT     ) {
-            error(ctx->state, node->tok,
-                "'!' can be used only with optional and result types, got '%s'",
-                stype(resolved)
-            );
-            return NULL;
-        }
-
-        if (resolved->kind == Z_TYPE_OPTIONAL) {
-            if (resolved->optional->kind == Z_TYPE_POINTER) return arg;
-
-            ZLLVMStack *stack = getStackValue(ctx, node);
-
-            if (!stack) {
-                error(ctx->state, node->tok, "Missing stack value");
-                return NULL;
-            }
-
-            checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
-
-            LLVMValueRef dataPtr = LLVMBuildStructGEP2(
-                    ctx->builder, genType(ctx, resolved), stack->stack,
-                    0, label(ctx, "unwrap.ptr")
-            );
-
-            return LLVMBuildLoad2(
-                ctx->builder,
-                genType(ctx, resolved->optional),
-                dataPtr,
-                label(ctx, "unwrap.data")
-            );
-        } else if (resolved->kind == Z_TYPE_RESULT) {
-            warning(ctx->state, node->tok, "Error branch not implemented");
-            return NULL;
-        }
-        break;
-    }
+    case TOK_ESCL:  return genUnsafeUnwrap(ctx, node, arg);
     default:
         error(ctx->state, node->unary.operat, "Unknown unary operator");
         return NULL;

@@ -14,7 +14,7 @@ Rect :: struct {
     height: i32
 }
 
-*Circle self :: impl Entity {
+*Circle self :: impl(Entity) {
     draw :: fn () u0 {
         printf("Circle{radius: %d}\n", self.radius)
     }
@@ -24,7 +24,7 @@ Rect :: struct {
     }
 }
 
-*Rect self :: impl Entity {
+*Rect self :: impl(Entity) {
     draw :: fn () u0 {
         printf("Rect{w:%d, h:%d}\n", self.width, self.height)
     }
