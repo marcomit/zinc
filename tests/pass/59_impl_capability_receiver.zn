@@ -1,0 +1,57 @@
+c :: foreign {
+    printf: fn (*char, ...) u0
+}
+
+Scale :: struct {
+    factor: i32
+}
+
+Offset :: struct {
+    amount: i32
+}
+
+Counter :: struct {
+    value: i32
+}
+
+Counter :: impl with s: Scale {
+    make :: fn (start: i32) Counter -> Counter { value: start * s.factor }
+}
+
+*Counter self :: impl with s: Scale {
+    bump :: fn () u0 {
+        self.value += s.factor
+    }
+
+    shift :: fn () u0 with o: Offset {
+        self.value += o.amount * s.factor
+    }
+
+    twice :: fn () u0 {
+        self.bump()
+        self.bump()
+    }
+}
+
+Counter self :: impl {
+    print :: fn () u0 -> c.printf("%d\n", self.value)
+}
+
+main :: fn () i32 {
+    with sc := Scale { factor: 3 } {
+        counter := Counter.make(2)
+        counter.print()
+
+        counter.&.bump()
+        counter.print()
+
+        counter.&.twice()
+        counter.print()
+
+        with off := Offset { amount: 4 } {
+            counter.&.shift()
+        }
+        counter.print()
+    }
+    return 0
+}

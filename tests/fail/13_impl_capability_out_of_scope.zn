@@ -1,0 +1,16 @@
+Scale :: struct {
+    factor: i32
+}
+
+Counter :: struct {
+    value: i32
+}
+
+Counter :: impl with s: Scale {
+    make :: fn (start: i32) Counter -> Counter { value: start * s.factor }
+}
+
+main :: fn () i32 {
+    counter := Counter.make(2)
+    return counter.value
+}

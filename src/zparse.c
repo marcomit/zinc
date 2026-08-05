@@ -1984,17 +1984,17 @@ static ZType *parseFuncMultiReturn(ZParser *parser) {
 }
 
 static ZNode **parseCapabilityList(ZParser *parser) {
+    if (!match(parser, TOK_WITH)) return NULL;
+
     ZNode **capabilities = NULL;
-    if (match(parser, TOK_WITH)) {
-        do {
-            ZNode *capability = parseFieldOptName(parser);
-            if (!capability) break;
-            vecpush(capabilities, capability);
-        } while (
-                !check(parser, TOK_ARROW)       &&
-                !check(parser, TOK_LBRACKET)    &&
-                match(parser, TOK_COMMA)        );
-    }
+    do {
+        ZNode *capability = parseFieldOptName(parser);
+        if (!capability) break;
+        vecpush(capabilities, capability);
+    } while (
+            !check(parser, TOK_ARROW)       &&
+            !check(parser, TOK_LBRACKET)    &&
+             match(parser, TOK_COMMA)       );
     return capabilities;
 }
 
@@ -2998,7 +2998,7 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     block->impl.pub             = public;
 
     ZAnnotation **annotations   = NULL;
-    while (true) {
+    do {
         annotations = NULL;
         if (check(parser, TOK_HASHTAG) && checkAhead(parser, TOK_LSBRACKET, 1)) {
             annotations = parseAnnotations(parser);
@@ -3014,17 +3014,12 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
             break;
         }
 
-        for (usize i = 0; i < veclen(func->funcDef.capabilities); i++) {
-            vecunion(
-                func->funcDef.capabilities,
-                capabilities,
-                veclen(capabilities)
-            );
+        for (usize i = 0; i < veclen(capabilities); i++) {
+            vecpush(func->funcDef.capabilities, capabilities[i]);
+            vecpush(func->resolved->func.capabilities, capabilities[i]->field.type);
         }
         vecpush(block->impl.funcs, func);
-
-        if (check(parser, TOK_RBRACKET)) break;
-    }
+    } while (!check(parser, TOK_RBRACKET));
 
     expect(parser, TOK_RBRACKET);
 
