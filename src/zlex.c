@@ -40,7 +40,7 @@ typedef struct {
 
 /* hashmap with fixed size.
  * The fixed size is not a problem because the entries are limited
- * to the number of symbols (defined in ztok.h). */
+ * to the number of symbols (defined in ztok.def). */
 static KeywordEntry keywordEntries[HASHMAP_TOK_LEN];
 
 ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
@@ -70,7 +70,7 @@ static KeywordEntry keywords[] = {
     #define TOK_FLOWS
     #define TOK_TYPES
 
-    #include "ztok.h"
+    #include "ztok.def"
 
     #undef TOK_TYPES
     #undef TOK_FLOWS
@@ -144,7 +144,7 @@ static ZToken *makestring(char *str, char *start, char *end) {
 bool tokeneq(ZToken *a, ZToken *b) {
     if (!a || !b) return false;
     if (a->type != b->type) return false;
-    
+
     if (a->type == TOK_IDENT || a->type & TOK_FLOWS_MASK) {
         return strcmp(a->str, b->str) == 0;
     }
@@ -350,13 +350,13 @@ static ZToken *parseSymbol(ZLexer *l) {
     #define TOK_FLOWS
     #define TOK_TYPES
 
-    #include "ztok.h"
+    #include "ztok.def"
 
     #undef TOK_TYPES
     #undef TOK_FLOWS
     #undef TOK_SYMBOLS
     #undef DEF
-    
+
     error(l->state, veclast(l->tokens), "Unexpected symbol");
 
 
@@ -520,7 +520,7 @@ ZToken **ztokenize(ZState *state) {
 
     while (*l->current) {
         curr = NULL;
-        
+
         while (true) {
             char *start = l->current;
             skipSpaces(l);

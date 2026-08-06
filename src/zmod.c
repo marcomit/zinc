@@ -34,7 +34,7 @@ u16 ZNodeMasks[NODE_TYPE_COUNT] = {
 #define X(name, masks) [name] = masks,
 #define NODE_BASE
 
-#include "znode.h"
+#include "znode.def"
 
 #undef NODE_BASE
 #undef X
@@ -102,7 +102,7 @@ char *stoken(ZToken *token) {
     #define TOK_TYPES
     #define TOK_SYMBOLS
 
-    #include "ztok.h"
+    #include "ztok.def"
 
     #undef TOK_SYMBOLS
     #undef TOK_TYPES
@@ -125,7 +125,7 @@ char *tokname(ZTokenType type) {
     #define TOK_TYPES
     #define TOK_SYMBOLS
 
-    #include "ztok.h"
+    #include "ztok.def"
 
     #undef TOK_SYMBOLS
     #undef TOK_TYPES

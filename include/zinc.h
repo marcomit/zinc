@@ -23,7 +23,7 @@ typedef enum {
 #define TOK_DYN
 #define TOK_SYMBOLS
 
-#include "ztok.h"
+#include "ztok.def"
 
 #undef TOK_FLOWS
 #undef TOK_TYPES
@@ -187,7 +187,7 @@ typedef enum {
 #define X(name, masks) name,
 #define NODE_BASE
 
-#include "znode.h"
+#include "znode.def"
 
 #undef NODE_BASE
 #undef X
