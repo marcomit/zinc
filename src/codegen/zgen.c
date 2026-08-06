@@ -109,22 +109,12 @@ static LLVMValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
 
 static i32 hasAnnotation(ZAnnotation **annotations, const char *name) {
     for (usize i = 0; i < veclen(annotations); i++) {
-        if (strcmp(annotations[i]->tok->str, name) == 0) {
+        if (strcmp(stoken(annotations[i]->tok), name) == 0) {
             annotations[i]->used = true;
             return i;
         }
     }
     return -1;
-}
-
-static void checkUnusedAnnotations(ZCodegen *ctx, ZAnnotation **annotations) {
-    for (usize i = 0; i < veclen(annotations); i++) {
-        if (!annotations[i]->used) {
-            // error(ctx->state, annotations[i]->name,
-            //     "Unsupported annotation"
-            // );
-        }
-    }
 }
 
 /**
@@ -456,8 +446,6 @@ static LLVMTypeRef genStructType(ZCodegen *ctx, ZType *type) {
 
     i32 packed = hasAnnotation(type->strct.annotations, "packed");
     LLVMStructSetBody(structType, ftypes, nfields, packed != -1);
-
-    checkUnusedAnnotations(ctx, type->strct.annotations);
 
     return structType;
 }
@@ -3823,8 +3811,6 @@ cold:
     if (hasAnnotation(annotations, "cold") != -1) {
         LLVMAddFuncAttribute(ctx, func, "cold");
     }
-
-    checkUnusedAnnotations(ctx, f->funcDef.annotations);
 }
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {

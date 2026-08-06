@@ -35,21 +35,21 @@ typedef enum {
 } ZTokenType;
 
 typedef struct ZToken {
-    ZTokenType type;
+    ZTokenType  type;
     union {
-        char *str;
-        i64 integer;
-        f64 floating;
-        bool boolean;
+        char    *str;
+        i64     integer;
+        f64     floating;
+        bool    boolean;
     };
-    char *filename;
-    char *sourcePtr;
-    char *sourceLinePtr;
-    char *start;
-    char *end;
-    usize row;
-    usize col;
-    bool newlineBefore;
+    char        *filename;
+    char        *sourcePtr;
+    char        *sourceLinePtr;
+    char        *start;
+    char        *end;
+    usize       row;
+    usize       col;
+    bool        newlineBefore;
 } ZToken;
 
 typedef struct ZNode        ZNode;
@@ -179,6 +179,7 @@ typedef struct {
     ZToken **sourceLocations;
 
     ZNode **langItems;
+    ZType **reflected;
 } ZState;
 
 
@@ -390,7 +391,6 @@ typedef enum ZAnnotationKind {
 } ZAnnotationKind;
 
 struct ZAnnotation {
-    ZToken              *name;
     ZAnnotationKind     kind;
     ZToken              *tok;
     union {
@@ -675,6 +675,7 @@ struct ZNode {
             ZNode       **funcs;
 
             ZAnnotation **annotations;
+            ZType       **generics;
         } facet;
 
         struct {

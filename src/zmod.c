@@ -88,13 +88,11 @@ static char *getHomePath() {
 
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
-    if (token->type == TOK_STR_LIT) {
-
-    }
     switch(token->type) {
     case TOK_STR_LIT:
     case TOK_IDENT:     return token->str;
-    case TOK_INT_LIT:   return strndup(token->start, token->end - token->start);
+    case TOK_INT_LIT:
+    case TOK_RUNE_LIT:
     case TOK_FLOAT_LIT: return strndup(token->start, token->end - token->start);
     #define DEF(id, str, _) case id: return str;
 

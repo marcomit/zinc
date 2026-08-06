@@ -484,6 +484,7 @@ static void putStruct(ZThreadSem *ctx, ZNode *node) {
     type->strct.name        = node->structDef.ident;
     type->strct.fields      = node->structDef.fields;
     type->strct.generics    = NULL;
+    type->strct.annotations = node->structDef.annotations;
     type->tok               = node->tok;
     node->resolved          = type;
 
@@ -1676,18 +1677,18 @@ static bool hasOverloadAnnotation(
     ZThreadSem *ctx, ZAnnotation **annotations, ZTokenType op) {
     for (usize i = 0; i < veclen(annotations); i++) {
         ZAnnotation *annotation = annotations[i];
-        if (strcmp(annotation->name->str, "overload") != 0) continue;
+        if (strcmp(stoken(annotation->tok), "overload") != 0) continue;
         if (annotation->kind != Z_ANN_NESTED) continue;
         if (veclen(annotation->nested) != 1) {
-            error(ctx->state, annotation->name,
+            error(ctx->state, annotation->tok,
                 "Annotation 'overload' must contain 1 argument"
             );
-        } else if (!(annotation->nested[0]->name->type & TOK_OVERLOADABLE)) {
-            error(ctx->state, annotation->name,
+        } else if (!(annotation->nested[0]->tok->type & TOK_OVERLOADABLE)) {
+            error(ctx->state, annotation->tok,
                 "'%s' is not an overridable operator",
-                stoken(annotation->nested[0]->name)
+                stoken(annotation->nested[0]->tok)
             );
-        } else if (annotation->nested[0]->name->type == op) {
+        } else if (annotation->nested[0]->tok->type == op) {
             annotation->used = true;
             return true;
         }

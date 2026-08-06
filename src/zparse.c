@@ -1507,12 +1507,6 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
 
     curr = consume(parser);
 
-    if (check(parser, TOK_COMMA) || check(parser, TOK_RPAREN)) {
-        arg->kind   = Z_ANN_IDENT;
-        arg->ident  = curr;
-        return arg;
-    }
-
     if (match(parser, TOK_EQ)) {
         ZAnnotation *value = parseAnnotation(parser);
         if (!value) return NULL;
@@ -1538,7 +1532,9 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
         return arg;
     }
 
-    return NULL;
+    arg->kind   = Z_ANN_IDENT;
+    arg->ident  = curr;
+    return arg;
 }
 
 static ZAnnotation **parseAnnotations(ZParser *parser) {
@@ -1550,7 +1546,10 @@ static ZAnnotation **parseAnnotations(ZParser *parser) {
 
     do {
         annotation = parseAnnotation(parser);
-        if (!annotation) break;
+        if (!annotation) {
+            error(parser->state, peek(parser), "Expected an annotation");
+            break;
+        }
         vecpush(annotations, annotation);
     } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
 
@@ -3073,13 +3072,23 @@ static ZNode *parseFacet(ZParser *parser, ZAnnotation **annotations, bool public
     expect(parser, TOK_IDENT);
     expect(parser, TOK_DOUBLE_COLON);
     expect(parser, TOK_FACET);
+
+
+    ZType **generics = NULL;
+
+    if (match(parser, TOK_LSBRACKET)) {
+        generics = parseGenericsDecl(parser);
+        expect(parser, TOK_RSBRACKET);
+    }
+
     expect(parser, TOK_LBRACKET);
 
-    ZNode *facet        = makenode(NODE_FACET);
-    facet->facet.name   = start;
-    facet->facet.pub    = public;
-    facet->facet.annotations = annotations;
-    facet->facet.funcs  = NULL;
+    ZNode *facet                = makenode(NODE_FACET);
+    facet->facet.pub            = public;
+    facet->facet.name           = start;
+    facet->facet.funcs          = NULL;
+    facet->facet.generics       = generics;
+    facet->facet.annotations    = annotations;
 
     do {
         if (!check(parser, TOK_IDENT)) break;
