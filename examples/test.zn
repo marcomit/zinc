@@ -1,16 +1,33 @@
-#[lang(source_location_type)]
-pub SourceLocation :: struct {
-    file: []char
-    curr: []char
-    row: u64
-    col: u64
+#[lang(type_info)]
+Type :: enum {
+    Void
+    Bool(u1)
+    Integer(u8, u1)
+    Float(u8)
+    Struct(*char, []StructField)
+    Enum(*char, []TypeInfoStruct)
+    Pointer(*Type)
+    Optional(*Type)
+    Error(*Type, *Type)
 }
 
-#[lang(source_location_func)]
-pub foreign here :: SourceLocation
+#[lang(type_info_struct)]
+TypeInfoStruct :: struct {
+    name: *char
+    fields: []StructField
+}
+
+#[lang(type_info_struct_field)]
+StructField :: struct {
+    name: *char
+    typeref: Type
+}
+
+#[lang(reflect)]
+foreign reflect :: fn (T) Type
 
 
 main :: fn () i32 {
-    loc: SourceLocation = here
+
     return 0
 }

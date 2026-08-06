@@ -3228,6 +3228,10 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
     for (usize i = 0; i < veclen(root->module.root); i++) {
         ZNode *node = root->module.root[i];
 
+        if (node->type) {
+            analyzeAnnotations(ctx->state, node);
+        }
+
         switch (node->type) {
         case NODE_FUNC:         putFunc     (ctx, node);       break;
         case NODE_STRUCT:       putStruct   (ctx, node);       break;

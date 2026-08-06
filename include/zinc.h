@@ -104,13 +104,17 @@ typedef enum {
 
 typedef enum {
     Z_LANG_NONE,
+
     Z_LANG_TYPE_INFO,
+    Z_LANG_TYPE_INFO_STRUCT,
+    Z_LANG_TYPE_INFO_STRUCT_FIELD,
+
     Z_LANG_REFLECT,
+
     Z_LANG_SOURCE_LOCATION_TYPE,
     Z_LANG_SOURCE_LOCATION_FUNC,
     Z_LANG_HERE,
-    Z_LANG_TYPE_INFO_ENUM_VARIANT,
-    Z_LANG_TYPE_INFO_STRUCT_MEMBER,
+
     Z_LANG_COUNT
 } ZLangItem;
 
@@ -177,57 +181,17 @@ typedef struct {
     ZNode **langItems;
 } ZState;
 
-// FIXME: use these masks in the enum
-#define NODE_STMT_MASK (1 << 0x08)
-#define NODE_EXPR_MASK (1 << 0x09)
-#define NODE_DATA_MASK (1 << 0x0A)
-#define NODE_DECL_MASK (1 << 0x0B)
 
 /* ================== Syntax analysis    ================== */
 typedef enum {
-    NODE_BLOCK,         // All inside a {} is a block. A list of statement
-    NODE_IF,
-    NODE_WHILE,
-    NODE_RETURN,
-    NODE_VAR_DECL,
-    NODE_BINARY,
-    NODE_UNARY,
-    NODE_CALL,         // Function call
-    NODE_FUNC,         // Function definition
-    NODE_LITERAL,      // Numbers, strings, etc.
-    NODE_IDENTIFIER,
-    NODE_STRUCT,
-    NODE_SUBSCRIPT,
-    NODE_MEMBER,
-    NODE_MODULE,
-    NODE_FIELD,
-    NODE_EMBED_FIELD,
-    NODE_TYPEDEF,
-    NODE_FOREIGN,
-    NODE_DEFER,
-    NODE_STRUCT_LIT,
-    NODE_TUPLE_LIT,
-    NODE_ARRAY_LIT,
-    NODE_ARRAY_INIT,
-    NODE_MACRO,
-    NODE_TYPE,
-    NODE_ENUM,
-    NODE_BREAK,
-    NODE_CONTINUE,
-    NODE_ENUM_FIELD,
-    NODE_CAST,
-    NODE_SIZEOF,
-    NODE_NAMESPACE,
-    NODE_SLICE,
-    NODE_CAPABILITY,
-    NODE_MATCH,
-    NODE_MATCH_ARM,
-    NODE_ENUM_LIT,
-    NODE_ENUM_LIT_NO_PAYLOAD,
-    NODE_FACET,
-    NODE_IMPL,
-    NODE_FORIN,
-    NODE_UNWRAP
+#define X(name, masks) name,
+#define NODE_BASE
+
+#include "znode.h"
+
+#undef NODE_BASE
+#undef X
+    NODE_TYPE_COUNT
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -419,10 +383,10 @@ struct ZVarDestructPattern {
 };
 
 typedef enum ZAnnotationKind {
-    Z_ANN_IDENT,
-    Z_ANN_LIT,
-    Z_ANN_NESTED,
-    Z_ANN_ASSIGN
+    Z_ANN_IDENT     = 1 << 0,
+    Z_ANN_LIT       = 1 << 1,
+    Z_ANN_NESTED    = 1 << 2,
+    Z_ANN_ASSIGN    = 1 << 3
 } ZAnnotationKind;
 
 struct ZAnnotation {
@@ -1004,5 +968,7 @@ void printSymbol(ZSymbol *);
 void printScope(ZScope *);
 
 i32 sumTypeIndexOf(ZType *sum, ZType *concrete);
+
+void analyzeAnnotations(ZState *state, ZNode *node);
 
 #endif

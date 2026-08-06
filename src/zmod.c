@@ -30,6 +30,16 @@ static char *nodeLabels[] = {
     "FACET",        "IMPL",         "FOR_IN",       "UNWRAP"
 };
 
+u16 ZNodeMasks[NODE_TYPE_COUNT] = {
+#define X(name, masks) [name] = masks,
+#define NODE_BASE
+
+#include "znode.h"
+
+#undef NODE_BASE
+#undef X
+};
+
 static char *levels[] = {
     "error",
     "warning",
