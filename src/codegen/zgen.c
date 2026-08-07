@@ -440,8 +440,8 @@ static LLVMTypeRef genStructType(ZCodegen *ctx, ZType *type) {
         ftypes[i] = field;
     }
 
-    i32 packed = hasAnnotation(type->strct.annotations, "packed");
-    LLVMStructSetBody(structType, ftypes, nfields, packed != -1);
+    bool packed = query(type->strct.annotations, "packed");
+    LLVMStructSetBody(structType, ftypes, nfields, packed);
 
     return structType;
 }
@@ -3769,9 +3769,9 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
     (void)ctx; (void)f; (void)func;
     ZAnnotation **annotations = f->funcDef.annotations;
 
-    i32 export = hasAnnotation(annotations, "export");
+    ZAnnotation *export = query(annotations, "export");
 
-    if (strcmp(f->funcDef.mangled, "main") == 0 || export != -1) {
+    if (strcmp(f->funcDef.mangled, "main") == 0 || export) {
         LLVMSetLinkage(func, LLVMExternalLinkage);
     } else if (f->funcDef.pub) {
         LLVMSetLinkage(func, LLVMWeakODRLinkage);
@@ -3779,37 +3779,19 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
         LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
     }
 
-    i32 inl = hasAnnotation(annotations, "inline");
+    ZAnnotation *inl = query(annotations, "inline");
 
-    if (inl == -1) goto cold;
+    if (!inl) goto cold;
+    if (queryArg(inl, "always")) {
+        LLVMAddFuncAttribute(ctx, func, "alwaysinline");
+    } else if (queryArg(inl, "never")) {
+        LLVMAddFuncAttribute(ctx, func, "noinline");
+    } else {
+        LLVMAddFuncAttribute(ctx, func, "inlinehint");
+    }
 
-//     ZAnnotation *annotation = annotations[inl];
-//
-//     usize argLen = veclen(annotation->args);
-//     if (argLen == 0) {
-//         LLVMAddFuncAttribute(ctx, func, "inlinehint");
-//     } else if (argLen == 1) {
-//         const char *arg = annotation->args[0]->name->str;
-//
-//         if (strcmp(arg, "always") == 0) {
-//             LLVMAddFuncAttribute(ctx, func, "alwaysinline");
-//         } else if (strcmp(arg, "never") == 0) {
-//             LLVMAddFuncAttribute(ctx, func, "noinline");
-//         } else {
-//             error(ctx->state,
-//                 annotation->name,
-//                 "inline supports only 'never', 'always' as arguments"
-//             );
-//         }
-//     } else {
-//         error(ctx->state,
-//             annotation->name,
-//             "inline annotation expects 0 or 1 arguments"
-//         );
-//     }
-//
 cold:
-    if (hasAnnotation(annotations, "cold") != -1) {
+    if (query(annotations, "cold")) {
         LLVMAddFuncAttribute(ctx, func, "cold");
     }
 }
@@ -3818,13 +3800,9 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
     LLVMTypeRef *args = NULL;
 
-    i32 export = hasAnnotation(f->funcDef.annotations, "export");
-    if (export != -1) {
-        ZAnnotation *annotation = f->funcDef.annotations[export];
-        if (annotation->kind == Z_ANN_ASSIGN) {
-            f->funcDef.mangled = annotation->assign.value->tok->str;
-        }
-
+    ZAnnotation *export = query(f->funcDef.annotations, "export");
+    if (export) {
+        f->funcDef.mangled = stoken(annArg(export, 0)->tok);
     }
     if (!f->funcDef.mangled) {
         f->funcDef.mangled = mangler((char *[]) {

@@ -1672,46 +1672,6 @@ static ZType* resolveIdent(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
     return resolveIdentByScope(ctx, ctx->current, node);
 }
 
-// TODO: Replace with the funciton that queries annotations.
-static bool hasOverloadAnnotation(
-    ZThreadSem *ctx, ZAnnotation **annotations, ZTokenType op) {
-    for (usize i = 0; i < veclen(annotations); i++) {
-        ZAnnotation *annotation = annotations[i];
-        if (strcmp(stoken(annotation->tok), "overload") != 0) continue;
-        if (annotation->kind != Z_ANN_NESTED) continue;
-        if (veclen(annotation->nested) != 1) {
-            error(ctx->state, annotation->tok,
-                "Annotation 'overload' must contain 1 argument"
-            );
-        } else if (!(annotation->nested[0]->tok->type & TOK_OVERLOADABLE)) {
-            error(ctx->state, annotation->tok,
-                "'%s' is not an overridable operator",
-                stoken(annotation->nested[0]->tok)
-            );
-        } else if (annotation->nested[0]->tok->type == op) {
-            annotation->used = true;
-            return true;
-        }
-    }
-    return false;
-}
-
-static ZNode *resolveOverloadOperator(ZThreadSem *ctx, ZType *type, ZTokenType op) {
-    if (!(op & TOK_OVERLOADABLE)) return NULL;
-    ZFuncTable *table = resolveFuncTable(ctx, type);
-
-    if (!table) return NULL;
-
-    for (usize i = 0; i < veclen(table->funcDef); i++) {
-        ZNode *func = table->funcDef[i];
-        if (hasOverloadAnnotation(ctx, func->funcDef.annotations, op)) {
-            return func;
-        }
-    }
-
-    return NULL;
-}
-
 static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZTokenType op       = curr->binary.op->type;
     ZType     *left     = resolveType(ctx, curr->binary.left, inferred);
@@ -1748,14 +1708,6 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
          * only the rhs is coerced, the lhs must stay a plain lvalue. */
         curr->binary.right = implicitCast(ctx, curr->binary.right, left);
         return left;
-    }
-
-    if (op & TOK_OVERLOADABLE) {
-        ZNode *overload = resolveOverloadOperator(ctx, left, op);
-        curr->binary.overload = overload;
-        if (overload) {
-            return overload->resolved->func.ret;
-        }
     }
 
     /* Auto promotion rules should be handled by typesCompatible. */
