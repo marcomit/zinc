@@ -1,55 +1,55 @@
-use <std::mem::gpa>
-use <std::io::net>
-use <std::io::thread>
+use <std.mem.gpa>
+use <std.mem>
+use <std.io.net>
+use <std.io.thread>
 
 libc :: foreign {
-    printf : fn (*char, ...) u0
-    strcmp : fn (*char, *char) i32
-    strlen : fn (*char) u64
+    printf: fn (*char, ...) u0
+    strcmp: fn (*char, *char) i32
+    strlen: fn (*char) u64
 }
 
-foreign readline :: fn (*char) *char
+readline :: foreign fn (*char) *char
 
 *char self :: impl {
-    #[overload(==)]
     eq :: fn (other: *char) u1 {
-        return libc::strcmp(self, other) == 0
+        return libc.strcmp(self, other) == 0
     }
 }
 
 reader :: fn (arg: *u8) *u8 {
-    stream := *(arg as *TcpStream)
-    gpa := GeneralPurposeAllocator::init()
-    with _ := (&gpa).allocator() {
+    stream := (arg as *TcpStream).*
+    gpa := &GeneralPurposeAllocator.init()
+    with _ := gpa.allocator() {
         buf := alloc(1024)
         for {
             n := stream.recv(buf, 1023)
             if n <= 0 { break }
             buf[n] = 0
-            libc::printf("\r%s\n>> ", buf as *char)
+            libc.printf("\r%s\n>> ", buf as *char)
         }
     }
     return none
 }
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator::init()
-    with _ := (&gpa).allocator() {
-        stream := TcpStream::connect("127.0.0.1", 8080)
+    gpa := &GeneralPurposeAllocator.init()
+    with _ := gpa.allocator() {
+        stream := TcpStream.connect("127.0.0.1", 8080)
         if not stream.valid() {
-            libc::printf("client: could not connect to 127.0.0.1:8080\n")
+            libc.printf("client: could not connect to 127.0.0.1:8080\n")
             return 1
         }
 
         sp := &stream
-        Thread::spawn(reader, sp as *u8)
+        Thread.spawn(reader, sp as *u8)
 
         for {
             input := readline(">> ")
             if not input { break }
-            if input == "exit" { break }
+            if input.eq("exit") { break }
 
-            length := libc::strlen(input)
+            length := libc.strlen(input)
             if length == 0 { continue }
 
             stream.send(input as *u8, length)

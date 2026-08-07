@@ -1,12 +1,13 @@
-use <std::mem::gpa>
-use <std::io::thread>
-use <std::io::mutex>
-use <std::io::net>
+use <std.mem.gpa>
+use <std.mem>
+use <std.io.thread>
+use <std.io.mutex>
+use <std.io.net>
 
 libc :: foreign {
-    printf   : fn (*char, ...) u0
-    snprintf : fn (*char, u64, *char, ...) i32
-    fflush   : fn (*u8) i32
+    printf:     fn (*char, ...) u0
+    snprintf:   fn (*char, u64, *char, ...) i32
+    fflush:     fn (*u8) i32
 }
 
 Client :: struct {
@@ -22,7 +23,7 @@ Context :: struct {
 }
 
 Context :: impl {
-    new :: fn (mutex: Mutex) *Context [Allocator] {
+    new :: fn (mutex: Mutex) *Context with Allocator {
         self := alloc(sizeof Context) as *Context
         self.mutex = mutex
         self.len = 0
@@ -53,7 +54,7 @@ Context :: impl {
                     if res < 0 { self.clients[i].alive = false }
                 }
             }
-            i :+ 1
+            i += 1
         }
         self.mutex.unlock()
     }
@@ -69,8 +70,8 @@ worker :: fn (arg: *u8) *u8 {
     ctx := w.ctx
     id  := w.id
 
-    gpa := GeneralPurposeAllocator::init()
-    with _ := (&gpa).allocator() {
+    gpa := &GeneralPurposeAllocator.init()
+    with _ := gpa.allocator() {
         buf := alloc(1024)
         out := alloc(1024)
 
@@ -80,47 +81,47 @@ worker :: fn (arg: *u8) *u8 {
             if n <= 0 { break }
             buf[n] = 0
 
-            m := libc::snprintf(out as *char, 1024, "[user %llu] %s", id, buf as *char)
-            libc::printf("%s\n", out as *char)
-            libc::fflush(none)
+            m := libc.snprintf(out as *char, 1024, "[user %llu] %s", id, buf as *char)
+            libc.printf("%s\n", out as *char)
+            libc.fflush(none)
 
             ctx.broadcast(id, out, m as u64)
         }
 
         ctx.clients[id].alive = false
         ctx.clients[id].stream.close()
-        libc::printf("server: client %llu disconnected\n", id)
-        libc::fflush(none)
+        libc.printf("server: client %llu disconnected\n", id)
+        libc.fflush(none)
     }
     return none
 }
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator::init()
-    with _ := (&gpa).allocator() {
-        listener := TcpListener::bind(8080)
+    gpa := &GeneralPurposeAllocator.init()
+    with _ := gpa.allocator() {
+        listener := TcpListener.bind(8080)
         if not listener.valid() {
-            libc::printf("server: failed to bind on :8080\n")
+            libc.printf("server: failed to bind on :8080\n")
             return 1
         }
-        libc::printf("server: listening on :8080\n")
-        libc::fflush(none)
+        libc.printf("server: listening on :8080\n")
+        libc.fflush(none)
 
-        ctx := Context::new(Mutex::new())
+        ctx := Context.new(Mutex.new())
 
         for {
             conn := listener.accept()
             if not conn.valid() { continue }
 
             id := ctx.add(conn)
-            libc::printf("server: client %llu connected\n", id)
-            libc::fflush(none)
+            libc.printf("server: client %llu connected\n", id)
+            libc.fflush(none)
 
             arg := alloc(sizeof WorkerArg) as *WorkerArg
             arg.ctx = ctx
             arg.id  = id
 
-            Thread::spawn(worker, arg as *u8)
+            Thread.spawn(worker, arg as *u8)
         }
     }
     return 0
