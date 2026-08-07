@@ -35,14 +35,14 @@ thread_trampoline :: fn (arg: *u8) *u8 {
 }
 
 Thread :: impl {
-    pub spawn :: fn (func: ThreadFunc, data: *u8) Thread [Allocator] {
+    pub spawn :: fn (func: ThreadFunc, data: *u8) Thread with Allocator {
         ctx: *ThreadContext = alloc(sizeof ThreadContext)
         ctx.func = func
         ctx.data = data
 
         t := Thread { handle: 0 }
 
-        c::pthread_create(&t.handle, none, thread_trampoline, ctx)
+        c.pthread_create(&t.handle, none, thread_trampoline, ctx)
         return t
     }
 
@@ -54,12 +54,12 @@ Thread :: impl {
 
         rem := timespec { tv_sec: 0, tv_nsec: 0 }
 
-        c::nanosleep(&req, &rem)
+        c.nanosleep(&req, &rem)
     }
 }
 
 Thread self :: impl {
     pub join :: fn () u0 {
-        c::pthread_join(self.handle, none)
+        c.pthread_join(self.handle, none)
     }
 }

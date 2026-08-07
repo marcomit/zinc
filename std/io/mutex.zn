@@ -12,15 +12,15 @@ pub Mutex :: struct {
 }
 
 Mutex :: impl {
-    pub new :: fn () Mutex [Allocator] {
+    pub new :: fn () Mutex with Allocator {
         handle := alloc(64)
-        c::pthread_mutex_init(handle, none)
+        c.pthread_mutex_init(handle, none)
         return Mutex { handle: handle }
     }
 }
 
 Mutex self :: impl {
-    pub lock    :: fn () u0 { c::pthread_mutex_lock(self.handle)   }
-    pub unlock  :: fn () u0 { c::pthread_mutex_unlock(self.handle) }
-    pub destroy :: fn () u0 { c::pthread_mutex_destroy(self.handle)}
+    pub lock    :: fn () u0 { c.pthread_mutex_lock(self.handle)   }
+    pub unlock  :: fn () u0 { c.pthread_mutex_unlock(self.handle) }
+    pub destroy :: fn () u0 { c.pthread_mutex_destroy(self.handle)}
 }
