@@ -1,4 +1,4 @@
-foreign putchar :: fn (i32) i32
+putchar :: foreign fn (i32) i32
 
 printSlice :: fn (s: []i32) u0 {
     i := 0

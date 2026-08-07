@@ -1,4 +1,4 @@
-foreign printf :: fn (*char, ...) u0
+printf :: foreign fn (*char, ...) u0
 
 caller :: fn () u0 -> helper()
 helper :: fn () u0 -> printf("helper\n")

@@ -1,6 +1,6 @@
 // break-as-expression: `break <value>` yields the value of the enclosing
 // `if` expression, letting an `if`/`else` be used as a value.
-foreign printf :: fn (*char, ...) u0
+printf :: foreign fn (*char, ...) u0
 
 // break yields the value returned from a function's if-expression.
 max :: fn (a: i32, b: i32) i32 {

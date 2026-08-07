@@ -1,5 +1,5 @@
-foreign printf :: fn (*char, ...) u0
-foreign exit :: fn (i32) u0
+printf :: foreign fn (*char, ...) u0
+exit :: foreign fn (i32) u0
 
 void  :: type u0
 bool  :: type u1
