@@ -3,18 +3,6 @@
 
 #include "zinc.h"
 
-typedef struct ZAnnotationSpec ZAnnotationSpec;
-
-typedef enum {
-    Z_TRG_ANY       = 1 << 0,
-    Z_TRG_FUNC      = 1 << 1,
-    Z_TRG_STRUCT    = 1 << 2,
-    Z_TRG_ENUM      = 1 << 3,
-    Z_TRG_VAR       = 1 << 4,
-    Z_TRG_FOREIGN   = 1 << 5,
-    Z_TRG_IMPL      = 1 << 6
-} ZAnnotationTarget;
-
 struct ZAnnotationSpec {
     const char *name;
     u32 spec;
@@ -23,6 +11,11 @@ struct ZAnnotationSpec {
     u8 minArg, maxArg;
     bool repeatable;
     ZAnnotationSpec *args;
+};
+
+struct ZAnnotationQuery {
+    const char *name;
+    ZAnnotationQuery *args;
 };
 
 ZNode *LangItems[Z_LANG_COUNT] = { NULL };
@@ -230,4 +223,59 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
     }
 
     hashset_free(&seen);
+}
+
+usize annLen(ZAnnotation *a) {
+    if (!a)             return 0;
+    switch (a->kind) {
+    case Z_ANN_ASSIGN:  return 1;
+    case Z_ANN_NESTED:  return veclen(a->nested);
+    default:            return 0;
+    }
+}
+
+ZAnnotation *annArg(ZAnnotation *a, usize i) {
+    if (!a) return NULL;
+    switch (a->kind) {
+    case Z_ANN_ASSIGN:
+        if (i != 0) return NULL;
+        return a->assign.value;
+    case Z_ANN_NESTED:
+        if (i >= veclen(a->nested)) return NULL;
+        return a->nested[i];
+    default: return NULL;
+    }
+}
+
+ZAnnotation *queryArg(ZAnnotation *a, const char *name) {
+    if (!a) return NULL;
+    switch (a->kind) {
+    case Z_ANN_ASSIGN:
+        if (strcmp(stoken(a->assign.value->tok), name) != 0) return NULL;
+        return a->assign.value;
+    case Z_ANN_NESTED:
+        return query(a->nested, name);
+    default: return NULL;
+    }
+}
+
+ZAnnotation *queryFrom(ZAnnotation **anns, const char *name, usize *cursor) {
+    usize i = cursor ? *cursor : 0;
+    for (; i < veclen(anns); i++) {
+        if (strcmp(stoken(anns[i]->tok), name) == 0) {
+            if (cursor) *cursor = i + 1;
+            anns[i]->used = true;
+            return anns[i];
+        }
+    }
+    return NULL;
+}
+
+ZAnnotation *query(ZAnnotation **anns, const char *name) {
+    return queryFrom(anns, name, NULL);
+}
+
+void test(ZAnnotation **annotations) {
+    ZAnnotation *inl = query(annotations, "inline");
+    queryArg(inl, "always");
 }

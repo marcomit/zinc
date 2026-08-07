@@ -9,6 +9,7 @@
 #include "zvec.h"
 #include "zhset.h"
 #include "zmem.h"
+
 #include <stdatomic.h>
 #include <stdatomic.h>
 #include <pthread.h>
@@ -975,6 +976,27 @@ void printSymbol(ZSymbol *);
 void printScope(ZScope *);
 
 i32 sumTypeIndexOf(ZType *sum, ZType *concrete);
+
+/* ==================== ANNOTATIONS ====================== */
+
+typedef struct ZAnnotationSpec ZAnnotationSpec;
+typedef struct ZAnnotationQuery ZAnnotationQuery;
+
+typedef enum {
+    Z_TRG_ANY       = 1 << 0,
+    Z_TRG_FUNC      = 1 << 1,
+    Z_TRG_STRUCT    = 1 << 2,
+    Z_TRG_ENUM      = 1 << 3,
+    Z_TRG_VAR       = 1 << 4,
+    Z_TRG_FOREIGN   = 1 << 5,
+    Z_TRG_IMPL      = 1 << 6
+} ZAnnotationTarget;
+
+ZAnnotation *query(ZAnnotation **, const char *);
+ZAnnotation *queryFrom(ZAnnotation **, const char *, usize *);
+ZAnnotation *queryArg(ZAnnotation *, const char *);
+ZAnnotation *annArg(ZAnnotation *, usize);
+usize annLen(ZAnnotation *);
 
 void analyzeAnnotations(ZState *state, ZNode *node);
 

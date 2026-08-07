@@ -107,16 +107,6 @@ static LLVMValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
     return NULL;
 }
 
-static i32 hasAnnotation(ZAnnotation **annotations, const char *name) {
-    for (usize i = 0; i < veclen(annotations); i++) {
-        if (strcmp(stoken(annotations[i]->tok), name) == 0) {
-            annotations[i]->used = true;
-            return i;
-        }
-    }
-    return -1;
-}
-
 /**
  * @brief Initialize LLVM types
  *
