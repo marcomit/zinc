@@ -216,6 +216,7 @@ typedef enum ZTypeKind {
 struct ZType {
     ZTypeKind   kind;
     ZToken      *tok;
+    u32         hash;
 
     union {
         struct {

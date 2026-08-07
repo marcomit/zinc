@@ -304,7 +304,7 @@ static inline u32 hashTypeList(u32 h, ZType **types) {
 
 NOSANITIZE("unsigned-integer-overflow")
 u32 hashType(ZType *type) {
-    if (!type) return 0;
+    if (!type || type->hash) return 0;
 
     u32 h = (u32)KIND_PRIME[type->kind];
 

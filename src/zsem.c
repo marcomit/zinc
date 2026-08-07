@@ -2090,9 +2090,12 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     analyzeBlock(ctx, curr->funcDef.body, false);
     endScope(ctx);
 
-    ctx->current = saved;
-    ctx->currentFunc = oldFunc;
-    ctx->currentFuncRet = oldFuncRet;
+    ctx->current            = saved;
+    ctx->currentFunc        = oldFunc;
+    ctx->currentFuncRet     = oldFuncRet;
+
+    if (curr->resolved && !curr->resolved->hash)
+        curr->resolved->hash = hash(curr->resolved);
 
     return curr->resolved;
 }
@@ -2249,7 +2252,8 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         break;
     }
 
-    curr->resolved = result;
+    curr->resolved  = result;
+    if (result && !result->hash) result->hash    = hashType(result);
     return result;
 }
 
@@ -3449,7 +3453,7 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
 
     for (usize i = 0; i < len; i++) {
         pthread_join(threads[i], NULL);
-        if (i != 0) checkUnusedSymbols(scopes[i]->ctx);
+        // if (i != 0) checkUnusedSymbols(scopes[i]->ctx);
     }
 
     // if (!ctx->main) {
