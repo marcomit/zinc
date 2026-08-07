@@ -1250,10 +1250,6 @@ static ZNode *parseBlock(ZParser *parser) {
 
     expect(parser, TOK_RBRACKET);
 
-    if (veclen(block->block) == 0) {
-        warning(parser->state, start, "A block cannot be empty");
-    }
-
     return block;
 }
 
