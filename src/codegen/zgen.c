@@ -251,16 +251,21 @@ static inline ZType *alignStructFieldIter(void *item) {
 }
 static inline ZType *alignTupleFieldIter(void *item) { return (ZType *)item; }
 
+#define getType(t) _Generic((t),                                                \
+    ZNode *: ((ZNode *)(uintptr_t)(t))->resolved,                               \
+    ZType *: ((ZType *)(uintptr_t)(t))                                          \
+)
 
-static usize typeLargestType(ZType **types) {
-    usize largest = 0;
+#define typeLargestType(fields) ({                                              \
+    usize largest = 0;                                                          \
+    usize len_ = veclen(fields);                                                \
+    for (usize i = 0; i < len_; i++) {                                          \
+        usize cur = typeSize(getType((fields)[i]));                             \
+        if (cur > largest) largest = cur;                                       \
+    }                                                                           \
+    largest;                                                                    \
+})
 
-    for (usize i = 0; i < veclen(types); i++) {
-        usize cur = typeSize(types[i]);
-        if (cur > largest) largest = cur;
-    }
-    return largest;
-}
 /**
  * @brief Calculates the size of the type.
  *
@@ -296,6 +301,8 @@ usize typeSize(ZType *type) {
     case Z_TYPE_FUNCTION:   return 8; /* function pointer */
     case Z_TYPE_ARRAY:      return 16;/* {length: u64, ptr: *u8}*/
     case Z_TYPE_FACET:      return 16;/* {obj: *u8, vtable: *u8}, see genFacetType */
+    case Z_TYPE_ENUM:       return typeLargestType(type->enm.fields) + 1;
+    case Z_TYPE_SUM:        return typeLargestType(type->sumType) + 1;
 
     case Z_TYPE_STRUCT: {
         res = alignFields(
@@ -311,8 +318,6 @@ usize typeSize(ZType *type) {
             alignTupleFieldIter
         );
 
-    case Z_TYPE_ENUM:   return typeLargestType(type->enm.fields) + 1;
-    case Z_TYPE_SUM:    return typeLargestType(type->sumType) + 1;
     case Z_TYPE_OPTIONAL:
         if (type->optional->kind == Z_TYPE_POINTER) return 8;
         return 1 + typeSize(type->optional);
@@ -372,8 +377,9 @@ static u32 *getStructIndex(ZType *strct, char *fieldName) {
  * @return -1 if not found
  */
 static i32 enumIndexField(ZType *enumType, ZToken *field) {
-    for (usize i = 0; i < veclen(enumType->enm.fields); i++) {
-        if (tokeneq(enumType->enm.fields[i]->strct.name, field)) {
+    ZNode **fields = enumType->enm.fields;
+    for (usize i = 0; i < veclen(fields); i++) {
+        if (tokeneq(fields[i]->resolved->strct.name, field)) {
             return i;
         }
     }
@@ -470,8 +476,9 @@ static LLVMTypeRef genEnumType(ZCodegen *ctx, ZType *type) {
     LLVMTypeRef enumType = LLVMStructCreateNamed(ctx->ctx, name);
     putStructInCache(ctx, (char *)name, enumType);
 
-    for (usize i = 0; i < veclen(type->enm.fields); i++) {
-        genType(ctx, type->enm.fields[i]);
+    ZNode **fields = type->enm.fields;
+    for (usize i = 0; i < veclen(fields); i++) {
+        genType(ctx, fields[i]->resolved);
     }
 
     usize largest = typeSize(type);
@@ -876,7 +883,7 @@ static void putDestructuredPatternInStack(
             error(ctx->state, pattern->prop, "Variant not found");
             return;
         }
-        ZType *variantType          = type->enm.fields[variantIndex];
+        ZType *variantType          = type->enm.fields[variantIndex]->resolved;
         LLVMTypeRef variantTypeRef  = genType(ctx, variantType);
 
         for (usize i = 0; i < veclen(pattern->args); i++) {
@@ -1345,7 +1352,9 @@ static LLVMValueRef _genEnumLitPtr(ZCodegen *ctx,
         return NULL;
     }
 
-    LLVMTypeRef fieldType = genType(ctx, node->resolved->enm.fields[index]);
+    LLVMTypeRef fieldType = genType(
+        ctx, node->resolved->enm.fields[index]->resolved
+    );
 
     LLVMBuildStore(
         ctx->builder,
@@ -2153,6 +2162,8 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
     } else if (resolved->kind == Z_TYPE_RESULT) {
         warning(ctx->state, node->tok, "Error branch not implemented");
         return NULL;
+    } else {
+        return NULL;
     }
 }
 
@@ -2554,7 +2565,7 @@ static void matchEnumPattern(
         );
         return;
     }
-    ZType *variantType = type->enm.fields[variantIndex];
+    ZType *variantType = type->enm.fields[variantIndex]->resolved;
 
     LLVMValueRef tagPtr = LLVMBuildStructGEP2(
         ctx->builder, genType(ctx, type), ptr, 0, label(ctx, pattern->prop));
@@ -3401,7 +3412,7 @@ static void _buildNestedEnumStackRef(ZCodegen *ctx,
         return;
     }
 
-    ZType *variantType          = node->resolved->enm.fields[variantIndex];
+    ZType *variantType          = node->resolved->enm.fields[variantIndex]->resolved;
     LLVMTypeRef variantTypeRef  = genType(ctx, variantType);
 
     for (usize i = 0; i < veclen(args); i++) {

@@ -272,7 +272,7 @@ struct ZType {
             ZToken      *name;
 
             /* Array of Z_TYPE_STRUCT. */
-            ZType       **fields;
+            ZNode       **fields;
             ZType       **generics;
         } enm;
 
@@ -756,6 +756,12 @@ typedef struct ZParser {
      * Set by parseDefer so that `defer return ...` will be rejected by the parser.
      * */
     bool            noReturnStmt;
+
+
+    /* Inside a struct or enum declaration it's very useful creating
+     * anonymous structs. But anonymous structs can be parsed only inside a struct/enum
+     * declaration and not everywhere (e.g. inside a function or as a return type). */
+    bool            declAsType;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */

@@ -421,10 +421,10 @@ static void putVarPattern(
                     pattern->base->str);
         }
         ZType *variant = NULL;
-        for (usize i = 0; i < veclen(type->enm.fields) && !variant; i++) {
-            ZType *field = type->enm.fields[i];
-            if (tokeneq(field->strct.name, pattern->prop))
-                variant = type->enm.fields[i];
+        ZNode **fields = type->enm.fields;
+        for (usize i = 0; i < veclen(fields) && !variant; i++) {
+            if (tokeneq(fields[i]->resolved->strct.name, pattern->prop))
+                variant = fields[i]->resolved;
         }
 
         if (!variant) {
@@ -1070,9 +1070,9 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType ***seen) {
 
         vecpush(*seen, type);
 
-        ZType **fields = type->enm.fields;
+        ZNode **fields = type->enm.fields;
         for (usize i = 0; i < veclen(fields); i++) {
-            if (isInfiniteSize(fields[i], root, seen)) return true;
+            if (isInfiniteSize(fields[i]->resolved, root, seen)) return true;
         }
         return false;
     }
@@ -1480,12 +1480,12 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             callee->resolved    = resolved;
             curr->resolved      = resolved->func.ret;
         } else if (resolved->kind == Z_TYPE_ENUM) {
-            ZType **variants    = resolved->enm.fields;
+            ZNode **variants    = resolved->enm.fields;
             ZNode **fields      = NULL;
             ZToken *prop        = callee->memberAccess.field;
             for (usize i = 0; i < veclen(resolved->enm.fields) && !fields; i++) {
-                if (tokeneq(variants[i]->strct.name, prop)) {
-                    fields = variants[i]->strct.fields;
+                if (tokeneq(variants[i]->resolved->strct.name, prop)) {
+                    fields = variants[i]->resolved->strct.fields;
                 }
             }
             if (!fields) {
@@ -1962,7 +1962,7 @@ static ZSymbol *resolveModuleChain(ZThreadSem *ctx, ZToken **chain, usize *i) {
 static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     if (!curr || curr->type != NODE_MEMBER) return NULL;
 
-    ZType **fields  = NULL;
+    ZNode **fields  = NULL;
     ZType *base     = resolveType(ctx, curr->memberAccess.object, inferred);
     ZToken *prop    = curr->memberAccess.field;
 
@@ -1972,8 +1972,8 @@ static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     ZType *strct    = NULL;
     for (usize i = 0; i < veclen(fields) && !strct; i++) {
-        if (tokeneq(fields[i]->strct.name, prop)) {
-            strct = fields[i];
+        if (tokeneq(fields[i]->resolved->strct.name, prop)) {
+            strct = fields[i]->resolved;
         }
     }
 
@@ -2328,9 +2328,9 @@ static ZType *resolveTypeStatic(
     }
 
     if (type->kind == Z_TYPE_ENUM) {
-        ZType **variants = type->enm.fields;
+        ZNode **variants = type->enm.fields;
         for (usize i = 0; i < veclen(variants); i++) {
-            if (tokeneq(variants[i]->strct.name, field)) {
+            if (tokeneq(variants[i]->resolved->strct.name, field)) {
                 curr->type = NODE_ENUM_LIT_NO_PAYLOAD;
                 return type;
             }
@@ -3369,15 +3369,15 @@ static void analyzeEnum(ZThreadSem *ctx, ZNode *enumDef) {
     }
 
     ZType *enm = sym->type;
-    ZType **fields = enm->enm.fields;
+    ZNode **fields = enm->enm.fields;
     hashset_t seen = NULL;
 
     for (usize i = 0; i < veclen(fields); i++) {
-        if (!hashset_insert(&seen, fields[i]->strct.name->str)) {
-            error(ctx->state, fields[i]->strct.name,
+        if (!hashset_insert(&seen, fields[i]->resolved->strct.name->str)) {
+            error(ctx->state, fields[i]->resolved->strct.name,
                 "This field already declared in the same enum");
         }
-        ZNode **enumField = fields[i]->strct.fields;
+        ZNode **enumField = fields[i]->resolved->strct.fields;
 
         for (usize j = 0; j < veclen(enumField); j++) {
             if (!enumField[j] ||
