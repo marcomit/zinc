@@ -1,5 +1,6 @@
 use <std.libc>
 
+
 Range :: struct {
     start: i32
     end: i32

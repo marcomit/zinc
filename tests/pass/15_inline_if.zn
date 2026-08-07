@@ -1,4 +1,4 @@
-foreign printf :: fn (*char, ...) u0
+printf :: foreign fn (*char, ...) u0
 main :: fn () i32 {
     x := 5
     y := 4

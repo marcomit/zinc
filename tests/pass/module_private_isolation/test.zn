@@ -1,6 +1,6 @@
 use mod2
 
-foreign printf :: fn (*char, ...) u0
+printf :: foreign fn (*char, ...) u0
 
 // Private function with the SAME name as one in mod2. Each file's test
 // must stay independent after the per-module LLVM modules are merged.

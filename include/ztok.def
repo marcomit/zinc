@@ -8,7 +8,7 @@
 #ifndef TOK_MASKS
 #define TOK_MASKS
 
-#define TOK_BASE_MASK 16
+#define TOK_BASE_MASK 0x10
 
 #define TOK_FLOWS_MASK                  (1 << (TOK_BASE_MASK))
 #define TOK_TYPES_MASK                  (1 << (TOK_BASE_MASK + 0x01))

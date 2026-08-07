@@ -1,4 +1,4 @@
-foreign printf :: fn (*char, ...) u0
+printf :: foreign fn (*char, ...) u0
 
 map :: fn (nums: []i32, iter: fn(i32) i32) u0 {
     i := 0

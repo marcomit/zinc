@@ -4,7 +4,7 @@
 //
 // Correct form (see tests/pass/54_nested_break_if.zn):
 //   best := if a > b { break if a > c { break a } else { break c } } else { ... }
-foreign printf :: fn (*char, ...) u0
+printf :: foreign fn (*char, ...) u0
 
 main :: fn () i32 {
     a := 5

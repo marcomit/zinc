@@ -9,6 +9,7 @@
 #include "zvec.h"
 #include "zhset.h"
 #include "zmem.h"
+
 #include <stdatomic.h>
 #include <stdatomic.h>
 #include <pthread.h>
@@ -23,7 +24,7 @@ typedef enum {
 #define TOK_DYN
 #define TOK_SYMBOLS
 
-#include "ztok.h"
+#include "ztok.def"
 
 #undef TOK_FLOWS
 #undef TOK_TYPES
@@ -35,21 +36,21 @@ typedef enum {
 } ZTokenType;
 
 typedef struct ZToken {
-    ZTokenType type;
+    ZTokenType  type;
     union {
-        char *str;
-        i64 integer;
-        f64 floating;
-        bool boolean;
+        char    *str;
+        i64     integer;
+        f64     floating;
+        bool    boolean;
     };
-    char *filename;
-    char *sourcePtr;
-    char *sourceLinePtr;
-    char *start;
-    char *end;
-    usize row;
-    usize col;
-    bool newlineBefore;
+    char        *filename;
+    char        *sourcePtr;
+    char        *sourceLinePtr;
+    char        *start;
+    char        *end;
+    usize       row;
+    usize       col;
+    bool        newlineBefore;
 } ZToken;
 
 typedef struct ZNode        ZNode;
@@ -104,13 +105,17 @@ typedef enum {
 
 typedef enum {
     Z_LANG_NONE,
+
     Z_LANG_TYPE_INFO,
+    Z_LANG_TYPE_INFO_STRUCT,
+    Z_LANG_TYPE_INFO_STRUCT_FIELD,
+
     Z_LANG_REFLECT,
+
     Z_LANG_SOURCE_LOCATION_TYPE,
     Z_LANG_SOURCE_LOCATION_FUNC,
     Z_LANG_HERE,
-    Z_LANG_TYPE_INFO_ENUM_VARIANT,
-    Z_LANG_TYPE_INFO_STRUCT_MEMBER,
+
     Z_LANG_COUNT
 } ZLangItem;
 
@@ -175,59 +180,20 @@ typedef struct {
     ZToken **sourceLocations;
 
     ZNode **langItems;
+    ZType **reflected;
 } ZState;
 
-// FIXME: use these masks in the enum
-#define NODE_STMT_MASK (1 << 0x08)
-#define NODE_EXPR_MASK (1 << 0x09)
-#define NODE_DATA_MASK (1 << 0x0A)
-#define NODE_DECL_MASK (1 << 0x0B)
 
 /* ================== Syntax analysis    ================== */
 typedef enum {
-    NODE_BLOCK,         // All inside a {} is a block. A list of statement
-    NODE_IF,
-    NODE_WHILE,
-    NODE_RETURN,
-    NODE_VAR_DECL,
-    NODE_BINARY,
-    NODE_UNARY,
-    NODE_CALL,         // Function call
-    NODE_FUNC,         // Function definition
-    NODE_LITERAL,      // Numbers, strings, etc.
-    NODE_IDENTIFIER,
-    NODE_STRUCT,
-    NODE_SUBSCRIPT,
-    NODE_MEMBER,
-    NODE_MODULE,
-    NODE_FIELD,
-    NODE_EMBED_FIELD,
-    NODE_TYPEDEF,
-    NODE_FOREIGN,
-    NODE_DEFER,
-    NODE_STRUCT_LIT,
-    NODE_TUPLE_LIT,
-    NODE_ARRAY_LIT,
-    NODE_ARRAY_INIT,
-    NODE_MACRO,
-    NODE_TYPE,
-    NODE_ENUM,
-    NODE_BREAK,
-    NODE_CONTINUE,
-    NODE_ENUM_FIELD,
-    NODE_CAST,
-    NODE_SIZEOF,
-    NODE_NAMESPACE,
-    NODE_SLICE,
-    NODE_CAPABILITY,
-    NODE_MATCH,
-    NODE_MATCH_ARM,
-    NODE_ENUM_LIT,
-    NODE_ENUM_LIT_NO_PAYLOAD,
-    NODE_FACET,
-    NODE_IMPL,
-    NODE_FORIN,
-    NODE_UNWRAP
+#define X(name, masks) name,
+#define NODE_BASE
+
+#include "znode.def"
+
+#undef NODE_BASE
+#undef X
+    NODE_TYPE_COUNT
 } ZNodeType;
 
 typedef enum ZTypeKind {
@@ -307,7 +273,7 @@ struct ZType {
             ZToken      *name;
 
             /* Array of Z_TYPE_STRUCT. */
-            ZType       **fields;
+            ZNode       **fields;
             ZType       **generics;
         } enm;
 
@@ -419,14 +385,13 @@ struct ZVarDestructPattern {
 };
 
 typedef enum ZAnnotationKind {
-    Z_ANN_IDENT,
-    Z_ANN_LIT,
-    Z_ANN_NESTED,
-    Z_ANN_ASSIGN
+    Z_ANN_IDENT     = 1 << 0,
+    Z_ANN_LIT       = 1 << 1,
+    Z_ANN_NESTED    = 1 << 2,
+    Z_ANN_ASSIGN    = 1 << 3
 } ZAnnotationKind;
 
 struct ZAnnotation {
-    ZToken              *name;
     ZAnnotationKind     kind;
     ZToken              *tok;
     union {
@@ -711,6 +676,7 @@ struct ZNode {
             ZNode       **funcs;
 
             ZAnnotation **annotations;
+            ZType       **generics;
         } facet;
 
         struct {
@@ -791,6 +757,12 @@ typedef struct ZParser {
      * Set by parseDefer so that `defer return ...` will be rejected by the parser.
      * */
     bool            noReturnStmt;
+
+
+    /* Inside a struct or enum declaration it's very useful creating
+     * anonymous structs. But anonymous structs can be parsed only inside a struct/enum
+     * declaration and not everywhere (e.g. inside a function or as a return type). */
+    bool            declAsType;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */
@@ -1004,5 +976,28 @@ void printSymbol(ZSymbol *);
 void printScope(ZScope *);
 
 i32 sumTypeIndexOf(ZType *sum, ZType *concrete);
+
+/* ==================== ANNOTATIONS ====================== */
+
+typedef struct ZAnnotationSpec ZAnnotationSpec;
+typedef struct ZAnnotationQuery ZAnnotationQuery;
+
+typedef enum {
+    Z_TRG_ANY       = 1 << 0,
+    Z_TRG_FUNC      = 1 << 1,
+    Z_TRG_STRUCT    = 1 << 2,
+    Z_TRG_ENUM      = 1 << 3,
+    Z_TRG_VAR       = 1 << 4,
+    Z_TRG_FOREIGN   = 1 << 5,
+    Z_TRG_IMPL      = 1 << 6
+} ZAnnotationTarget;
+
+ZAnnotation *query(ZAnnotation **, const char *);
+ZAnnotation *queryFrom(ZAnnotation **, const char *, usize *);
+ZAnnotation *queryArg(ZAnnotation *, const char *);
+ZAnnotation *annArg(ZAnnotation *, usize);
+usize annLen(ZAnnotation *);
+
+void analyzeAnnotations(ZState *state, ZNode *node);
 
 #endif

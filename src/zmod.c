@@ -30,6 +30,16 @@ static char *nodeLabels[] = {
     "FACET",        "IMPL",         "FOR_IN",       "UNWRAP"
 };
 
+u16 ZNodeMasks[NODE_TYPE_COUNT] = {
+#define X(name, masks) [name] = masks,
+#define NODE_BASE
+
+#include "znode.def"
+
+#undef NODE_BASE
+#undef X
+};
+
 static char *levels[] = {
     "error",
     "warning",
@@ -78,13 +88,11 @@ static char *getHomePath() {
 
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
-    if (token->type == TOK_STR_LIT) {
-
-    }
     switch(token->type) {
     case TOK_STR_LIT:
     case TOK_IDENT:     return token->str;
-    case TOK_INT_LIT:   return strndup(token->start, token->end - token->start);
+    case TOK_INT_LIT:
+    case TOK_RUNE_LIT:
     case TOK_FLOAT_LIT: return strndup(token->start, token->end - token->start);
     #define DEF(id, str, _) case id: return str;
 
@@ -92,7 +100,7 @@ char *stoken(ZToken *token) {
     #define TOK_TYPES
     #define TOK_SYMBOLS
 
-    #include "ztok.h"
+    #include "ztok.def"
 
     #undef TOK_SYMBOLS
     #undef TOK_TYPES
@@ -115,7 +123,7 @@ char *tokname(ZTokenType type) {
     #define TOK_TYPES
     #define TOK_SYMBOLS
 
-    #include "ztok.h"
+    #include "ztok.def"
 
     #undef TOK_SYMBOLS
     #undef TOK_TYPES

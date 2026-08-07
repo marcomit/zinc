@@ -421,10 +421,10 @@ static void putVarPattern(
                     pattern->base->str);
         }
         ZType *variant = NULL;
-        for (usize i = 0; i < veclen(type->enm.fields) && !variant; i++) {
-            ZType *field = type->enm.fields[i];
-            if (tokeneq(field->strct.name, pattern->prop))
-                variant = type->enm.fields[i];
+        ZNode **fields = type->enm.fields;
+        for (usize i = 0; i < veclen(fields) && !variant; i++) {
+            if (tokeneq(fields[i]->resolved->strct.name, pattern->prop))
+                variant = fields[i]->resolved;
         }
 
         if (!variant) {
@@ -484,6 +484,7 @@ static void putStruct(ZThreadSem *ctx, ZNode *node) {
     type->strct.name        = node->structDef.ident;
     type->strct.fields      = node->structDef.fields;
     type->strct.generics    = NULL;
+    type->strct.annotations = node->structDef.annotations;
     type->tok               = node->tok;
     node->resolved          = type;
 
@@ -1069,9 +1070,9 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType ***seen) {
 
         vecpush(*seen, type);
 
-        ZType **fields = type->enm.fields;
+        ZNode **fields = type->enm.fields;
         for (usize i = 0; i < veclen(fields); i++) {
-            if (isInfiniteSize(fields[i], root, seen)) return true;
+            if (isInfiniteSize(fields[i]->resolved, root, seen)) return true;
         }
         return false;
     }
@@ -1479,12 +1480,12 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             callee->resolved    = resolved;
             curr->resolved      = resolved->func.ret;
         } else if (resolved->kind == Z_TYPE_ENUM) {
-            ZType **variants    = resolved->enm.fields;
+            ZNode **variants    = resolved->enm.fields;
             ZNode **fields      = NULL;
             ZToken *prop        = callee->memberAccess.field;
             for (usize i = 0; i < veclen(resolved->enm.fields) && !fields; i++) {
-                if (tokeneq(variants[i]->strct.name, prop)) {
-                    fields = variants[i]->strct.fields;
+                if (tokeneq(variants[i]->resolved->strct.name, prop)) {
+                    fields = variants[i]->resolved->strct.fields;
                 }
             }
             if (!fields) {
@@ -1671,46 +1672,6 @@ static ZType* resolveIdent(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
     return resolveIdentByScope(ctx, ctx->current, node);
 }
 
-// TODO: Replace with the funciton that queries annotations.
-static bool hasOverloadAnnotation(
-    ZThreadSem *ctx, ZAnnotation **annotations, ZTokenType op) {
-    for (usize i = 0; i < veclen(annotations); i++) {
-        ZAnnotation *annotation = annotations[i];
-        if (strcmp(annotation->name->str, "overload") != 0) continue;
-        if (annotation->kind != Z_ANN_NESTED) continue;
-        if (veclen(annotation->nested) != 1) {
-            error(ctx->state, annotation->name,
-                "Annotation 'overload' must contain 1 argument"
-            );
-        } else if (!(annotation->nested[0]->name->type & TOK_OVERLOADABLE)) {
-            error(ctx->state, annotation->name,
-                "'%s' is not an overridable operator",
-                stoken(annotation->nested[0]->name)
-            );
-        } else if (annotation->nested[0]->name->type == op) {
-            annotation->used = true;
-            return true;
-        }
-    }
-    return false;
-}
-
-static ZNode *resolveOverloadOperator(ZThreadSem *ctx, ZType *type, ZTokenType op) {
-    if (!(op & TOK_OVERLOADABLE)) return NULL;
-    ZFuncTable *table = resolveFuncTable(ctx, type);
-
-    if (!table) return NULL;
-
-    for (usize i = 0; i < veclen(table->funcDef); i++) {
-        ZNode *func = table->funcDef[i];
-        if (hasOverloadAnnotation(ctx, func->funcDef.annotations, op)) {
-            return func;
-        }
-    }
-
-    return NULL;
-}
-
 static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZTokenType op       = curr->binary.op->type;
     ZType     *left     = resolveType(ctx, curr->binary.left, inferred);
@@ -1747,14 +1708,6 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
          * only the rhs is coerced, the lhs must stay a plain lvalue. */
         curr->binary.right = implicitCast(ctx, curr->binary.right, left);
         return left;
-    }
-
-    if (op & TOK_OVERLOADABLE) {
-        ZNode *overload = resolveOverloadOperator(ctx, left, op);
-        curr->binary.overload = overload;
-        if (overload) {
-            return overload->resolved->func.ret;
-        }
     }
 
     /* Auto promotion rules should be handled by typesCompatible. */
@@ -1961,7 +1914,7 @@ static ZSymbol *resolveModuleChain(ZThreadSem *ctx, ZToken **chain, usize *i) {
 static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     if (!curr || curr->type != NODE_MEMBER) return NULL;
 
-    ZType **fields  = NULL;
+    ZNode **fields  = NULL;
     ZType *base     = resolveType(ctx, curr->memberAccess.object, inferred);
     ZToken *prop    = curr->memberAccess.field;
 
@@ -1971,8 +1924,8 @@ static ZType *resolveEnumLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     ZType *strct    = NULL;
     for (usize i = 0; i < veclen(fields) && !strct; i++) {
-        if (tokeneq(fields[i]->strct.name, prop)) {
-            strct = fields[i];
+        if (tokeneq(fields[i]->resolved->strct.name, prop)) {
+            strct = fields[i]->resolved;
         }
     }
 
@@ -2327,9 +2280,9 @@ static ZType *resolveTypeStatic(
     }
 
     if (type->kind == Z_TYPE_ENUM) {
-        ZType **variants = type->enm.fields;
+        ZNode **variants = type->enm.fields;
         for (usize i = 0; i < veclen(variants); i++) {
-            if (tokeneq(variants[i]->strct.name, field)) {
+            if (tokeneq(variants[i]->resolved->strct.name, field)) {
                 curr->type = NODE_ENUM_LIT_NO_PAYLOAD;
                 return type;
             }
@@ -3228,6 +3181,10 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
     for (usize i = 0; i < veclen(root->module.root); i++) {
         ZNode *node = root->module.root[i];
 
+        if (node->type) {
+            analyzeAnnotations(ctx->state, node);
+        }
+
         switch (node->type) {
         case NODE_FUNC:         putFunc     (ctx, node);       break;
         case NODE_STRUCT:       putStruct   (ctx, node);       break;
@@ -3364,15 +3321,15 @@ static void analyzeEnum(ZThreadSem *ctx, ZNode *enumDef) {
     }
 
     ZType *enm = sym->type;
-    ZType **fields = enm->enm.fields;
+    ZNode **fields = enm->enm.fields;
     hashset_t seen = NULL;
 
     for (usize i = 0; i < veclen(fields); i++) {
-        if (!hashset_insert(&seen, fields[i]->strct.name->str)) {
-            error(ctx->state, fields[i]->strct.name,
+        if (!hashset_insert(&seen, fields[i]->resolved->strct.name->str)) {
+            error(ctx->state, fields[i]->resolved->strct.name,
                 "This field already declared in the same enum");
         }
-        ZNode **enumField = fields[i]->strct.fields;
+        ZNode **enumField = fields[i]->resolved->strct.fields;
 
         for (usize j = 0; j < veclen(enumField); j++) {
             if (!enumField[j] ||

@@ -1,4 +1,4 @@
-foreign printf :: fn (*char, ...) u0
+printf :: foreign fn (*char, ...) u0
 
 Range :: struct {
     end:        i32

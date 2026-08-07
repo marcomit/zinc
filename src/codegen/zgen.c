@@ -107,26 +107,6 @@ static LLVMValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
     return NULL;
 }
 
-static i32 hasAnnotation(ZAnnotation **annotations, const char *name) {
-    for (usize i = 0; i < veclen(annotations); i++) {
-        if (strcmp(annotations[i]->tok->str, name) == 0) {
-            annotations[i]->used = true;
-            return i;
-        }
-    }
-    return -1;
-}
-
-static void checkUnusedAnnotations(ZCodegen *ctx, ZAnnotation **annotations) {
-    for (usize i = 0; i < veclen(annotations); i++) {
-        if (!annotations[i]->used) {
-            // error(ctx->state, annotations[i]->name,
-            //     "Unsupported annotation"
-            // );
-        }
-    }
-}
-
 /**
  * @brief Initialize LLVM types
  *
@@ -261,16 +241,21 @@ static inline ZType *alignStructFieldIter(void *item) {
 }
 static inline ZType *alignTupleFieldIter(void *item) { return (ZType *)item; }
 
+#define getType(t) _Generic((t),                                                \
+    ZNode *: ((ZNode *)(uintptr_t)(t))->resolved,                               \
+    ZType *: ((ZType *)(uintptr_t)(t))                                          \
+)
 
-static usize typeLargestType(ZType **types) {
-    usize largest = 0;
+#define typeLargestType(fields) ({                                              \
+    usize largest = 0;                                                          \
+    usize len_ = veclen(fields);                                                \
+    for (usize i = 0; i < len_; i++) {                                          \
+        usize cur = typeSize(getType((fields)[i]));                             \
+        if (cur > largest) largest = cur;                                       \
+    }                                                                           \
+    largest;                                                                    \
+})
 
-    for (usize i = 0; i < veclen(types); i++) {
-        usize cur = typeSize(types[i]);
-        if (cur > largest) largest = cur;
-    }
-    return largest;
-}
 /**
  * @brief Calculates the size of the type.
  *
@@ -306,6 +291,8 @@ usize typeSize(ZType *type) {
     case Z_TYPE_FUNCTION:   return 8; /* function pointer */
     case Z_TYPE_ARRAY:      return 16;/* {length: u64, ptr: *u8}*/
     case Z_TYPE_FACET:      return 16;/* {obj: *u8, vtable: *u8}, see genFacetType */
+    case Z_TYPE_ENUM:       return typeLargestType(type->enm.fields) + 1;
+    case Z_TYPE_SUM:        return typeLargestType(type->sumType) + 1;
 
     case Z_TYPE_STRUCT: {
         res = alignFields(
@@ -321,8 +308,6 @@ usize typeSize(ZType *type) {
             alignTupleFieldIter
         );
 
-    case Z_TYPE_ENUM:   return typeLargestType(type->enm.fields) + 1;
-    case Z_TYPE_SUM:    return typeLargestType(type->sumType) + 1;
     case Z_TYPE_OPTIONAL:
         if (type->optional->kind == Z_TYPE_POINTER) return 8;
         return 1 + typeSize(type->optional);
@@ -382,8 +367,9 @@ static u32 *getStructIndex(ZType *strct, char *fieldName) {
  * @return -1 if not found
  */
 static i32 enumIndexField(ZType *enumType, ZToken *field) {
-    for (usize i = 0; i < veclen(enumType->enm.fields); i++) {
-        if (tokeneq(enumType->enm.fields[i]->strct.name, field)) {
+    ZNode **fields = enumType->enm.fields;
+    for (usize i = 0; i < veclen(fields); i++) {
+        if (tokeneq(fields[i]->resolved->strct.name, field)) {
             return i;
         }
     }
@@ -454,10 +440,8 @@ static LLVMTypeRef genStructType(ZCodegen *ctx, ZType *type) {
         ftypes[i] = field;
     }
 
-    i32 packed = hasAnnotation(type->strct.annotations, "packed");
-    LLVMStructSetBody(structType, ftypes, nfields, packed != -1);
-
-    checkUnusedAnnotations(ctx, type->strct.annotations);
+    bool packed = query(type->strct.annotations, "packed");
+    LLVMStructSetBody(structType, ftypes, nfields, packed);
 
     return structType;
 }
@@ -482,8 +466,9 @@ static LLVMTypeRef genEnumType(ZCodegen *ctx, ZType *type) {
     LLVMTypeRef enumType = LLVMStructCreateNamed(ctx->ctx, name);
     putStructInCache(ctx, (char *)name, enumType);
 
-    for (usize i = 0; i < veclen(type->enm.fields); i++) {
-        genType(ctx, type->enm.fields[i]);
+    ZNode **fields = type->enm.fields;
+    for (usize i = 0; i < veclen(fields); i++) {
+        genType(ctx, fields[i]->resolved);
     }
 
     usize largest = typeSize(type);
@@ -888,7 +873,7 @@ static void putDestructuredPatternInStack(
             error(ctx->state, pattern->prop, "Variant not found");
             return;
         }
-        ZType *variantType          = type->enm.fields[variantIndex];
+        ZType *variantType          = type->enm.fields[variantIndex]->resolved;
         LLVMTypeRef variantTypeRef  = genType(ctx, variantType);
 
         for (usize i = 0; i < veclen(pattern->args); i++) {
@@ -1357,7 +1342,9 @@ static LLVMValueRef _genEnumLitPtr(ZCodegen *ctx,
         return NULL;
     }
 
-    LLVMTypeRef fieldType = genType(ctx, node->resolved->enm.fields[index]);
+    LLVMTypeRef fieldType = genType(
+        ctx, node->resolved->enm.fields[index]->resolved
+    );
 
     LLVMBuildStore(
         ctx->builder,
@@ -2165,6 +2152,8 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
     } else if (resolved->kind == Z_TYPE_RESULT) {
         warning(ctx->state, node->tok, "Error branch not implemented");
         return NULL;
+    } else {
+        return NULL;
     }
 }
 
@@ -2566,7 +2555,7 @@ static void matchEnumPattern(
         );
         return;
     }
-    ZType *variantType = type->enm.fields[variantIndex];
+    ZType *variantType = type->enm.fields[variantIndex]->resolved;
 
     LLVMValueRef tagPtr = LLVMBuildStructGEP2(
         ctx->builder, genType(ctx, type), ptr, 0, label(ctx, pattern->prop));
@@ -3413,7 +3402,7 @@ static void _buildNestedEnumStackRef(ZCodegen *ctx,
         return;
     }
 
-    ZType *variantType          = node->resolved->enm.fields[variantIndex];
+    ZType *variantType          = node->resolved->enm.fields[variantIndex]->resolved;
     LLVMTypeRef variantTypeRef  = genType(ctx, variantType);
 
     for (usize i = 0; i < veclen(args); i++) {
@@ -3780,9 +3769,9 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
     (void)ctx; (void)f; (void)func;
     ZAnnotation **annotations = f->funcDef.annotations;
 
-    i32 export = hasAnnotation(annotations, "export");
+    ZAnnotation *export = query(annotations, "export");
 
-    if (strcmp(f->funcDef.mangled, "main") == 0 || export != -1) {
+    if (strcmp(f->funcDef.mangled, "main") == 0 || export) {
         LLVMSetLinkage(func, LLVMExternalLinkage);
     } else if (f->funcDef.pub) {
         LLVMSetLinkage(func, LLVMWeakODRLinkage);
@@ -3790,54 +3779,30 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
         LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
     }
 
-    i32 inl = hasAnnotation(annotations, "inline");
+    ZAnnotation *inl = query(annotations, "inline");
 
-    if (inl == -1) goto cold;
-
-//     ZAnnotation *annotation = annotations[inl];
-//
-//     usize argLen = veclen(annotation->args);
-//     if (argLen == 0) {
-//         LLVMAddFuncAttribute(ctx, func, "inlinehint");
-//     } else if (argLen == 1) {
-//         const char *arg = annotation->args[0]->name->str;
-//
-//         if (strcmp(arg, "always") == 0) {
-//             LLVMAddFuncAttribute(ctx, func, "alwaysinline");
-//         } else if (strcmp(arg, "never") == 0) {
-//             LLVMAddFuncAttribute(ctx, func, "noinline");
-//         } else {
-//             error(ctx->state,
-//                 annotation->name,
-//                 "inline supports only 'never', 'always' as arguments"
-//             );
-//         }
-//     } else {
-//         error(ctx->state,
-//             annotation->name,
-//             "inline annotation expects 0 or 1 arguments"
-//         );
-//     }
-//
-cold:
-    if (hasAnnotation(annotations, "cold") != -1) {
-        LLVMAddFuncAttribute(ctx, func, "cold");
+    if (!inl) goto cold;
+    if (queryArg(inl, "always")) {
+        LLVMAddFuncAttribute(ctx, func, "alwaysinline");
+    } else if (queryArg(inl, "never")) {
+        LLVMAddFuncAttribute(ctx, func, "noinline");
+    } else {
+        LLVMAddFuncAttribute(ctx, func, "inlinehint");
     }
 
-    checkUnusedAnnotations(ctx, f->funcDef.annotations);
+cold:
+    if (query(annotations, "cold")) {
+        LLVMAddFuncAttribute(ctx, func, "cold");
+    }
 }
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
     LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
     LLVMTypeRef *args = NULL;
 
-    i32 export = hasAnnotation(f->funcDef.annotations, "export");
-    if (export != -1) {
-        ZAnnotation *annotation = f->funcDef.annotations[export];
-        if (annotation->kind == Z_ANN_ASSIGN) {
-            f->funcDef.mangled = annotation->assign.value->tok->str;
-        }
-
+    ZAnnotation *export = query(f->funcDef.annotations, "export");
+    if (export) {
+        f->funcDef.mangled = stoken(annArg(export, 0)->tok);
     }
     if (!f->funcDef.mangled) {
         f->funcDef.mangled = mangler((char *[]) {
