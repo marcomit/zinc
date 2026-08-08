@@ -80,6 +80,7 @@ static void putLLVMValueRef(ZCodegen *ctx, char *key, LLVMValueRef value) {
  * @see genIdent to see how it's used.
  */
 static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
+    if (!key) return NULL;
     ZLLVMScope *cur = ctx->scope;
     while (cur) {
         usize len = veclen(cur->symbols);
@@ -213,6 +214,21 @@ char *labelStr(ZCodegen *ctx, char *msg) {
     }
     labelCnt(ctx);
     return ctx->str;
+}
+
+char *manglingIdent(ZNode *ident) {
+    if (!ident                                  ||
+         ident->type != NODE_IDENTIFIER         ||
+        !ident->identNode.ref                   ) {
+        return NULL;
+    }
+
+    ZNode *ref = ident->identNode.ref;
+    switch (ref->type) {
+    case NODE_FUNC:     return ref->funcDef.mangled;
+    case NODE_FOREIGN:  return ref->foreignDecl.name->str;
+    default:            return ident->identNode.tok->str;
+    }
 }
 
 /**
@@ -732,7 +748,7 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
         return NULL;
     }
 
-    char *key = node->identNode.mangled ? node->identNode.mangled : node->tok->str;
+    char *key = manglingIdent(node);
     LLVMValueRef val = getLLVMValueRef(ctx, key);
     if (!val) {
         error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
@@ -1238,7 +1254,6 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
 
     u32 *path = NULL;
     if (baseType->kind == Z_TYPE_FACET) {
-        printf("facet member access %s\n", stoken(tok));
         return NULL;
     } else if (baseType->kind == Z_TYPE_STRUCT) {
         path = getStructIndex(baseType, tok->str);
@@ -1697,9 +1712,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
         return stack->stack;
     }
     case NODE_IDENTIFIER: {
-        char *key = node->identNode.mangled ?
-                    node->identNode.mangled :
-                    stoken(node->tok);
+        char *key = manglingIdent(node);
         LLVMValueRef val = getLLVMValueRef(ctx, key);
         if (!val) {
             error(ctx->state, node->tok,
@@ -2699,7 +2712,7 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef ptr = NULL;
 
     if (rvalue->type == NODE_IDENTIFIER) {
-        char *key = rvalue->identNode.mangled ? rvalue->identNode.mangled : rvalue->tok->str;
+        char *key = manglingIdent(rvalue);
         ptr = getLLVMValueRef(ctx, key);
         if (!ptr) {
             error(ctx->state, rvalue->tok, "'%s' not found", rvalue->tok->str);
@@ -4061,12 +4074,16 @@ static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
         return NULL;
     }
     case NODE_FUNC: {
-        if (!node->funcDef.mangled)
+        ZAnnotation *export = annArg(query(node->funcDef.annotations, "export"), 0);
+        if (export) {
+            node->funcDef.mangled = stoken(export->tok);
+        } else if (!node->funcDef.mangled) {
             node->funcDef.mangled = mangler((char *[]) {
                 node->funcDef.name->filename,
                 node->funcDef.name->str,
                 NULL
             });
+        }
 
         LLVMValueRef existing = LLVMGetNamedFunction(ctx->mod, node->funcDef.mangled);
         if (existing) {

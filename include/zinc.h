@@ -653,6 +653,7 @@ struct ZNode {
             ZToken          *tok;
             char            *mangled;
             ZSymbol         *sym;
+            ZNode           *ref;
         } identNode;
 
         struct {
