@@ -24,13 +24,13 @@ four    :: fn () i32 -> 4
 
 main :: fn () i32 {
     // Function stored in struct field, called directly
-    bAdd := BinOp { func: add, name: "add" }
+    bAdd := BinOp { func = add, name = "add" }
     c.printf("%d\n", bAdd.func(10, 3))
 
-    bSub := BinOp { func: sub, name: "sub" }
+    bSub := BinOp { func = sub, name = "sub" }
     c.printf("%d\n", bSub.func(10, 3))
 
-    bMul := BinOp { func: mul, name: "mul" }
+    bMul := BinOp { func = mul, name = "mul" }
     c.printf("%d\n", bMul.func(10, 3))
 
     // Call through receiver method
@@ -45,13 +45,13 @@ main :: fn () i32 {
     c.printf("%d\n", bAdd.func(4, 5))
 
     // Different functions via struct fields
-    sq := BinOp { func: square, name: "sq" }
+    sq := BinOp { func = square, name = "sq" }
     s := sq.func(7, 0)
     c.printf("%d\n", s)
 
     // Multiple structs independent of each other
-    a := BinOp { func: add, name: "a" }
-    b := BinOp { func: mul, name: "b" }
+    a := BinOp { func = add, name = "a" }
+    b := BinOp { func = mul, name = "b" }
     c.printf("%d %d\n", a.func(2, 3), b.func(2, 3))
 
     nums := [

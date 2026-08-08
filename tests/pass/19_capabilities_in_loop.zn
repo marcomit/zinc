@@ -9,7 +9,7 @@ allocate :: fn (size: u64) i32 with alloc: Allocator {
 
 main :: fn () i32 {
     gpa := GeneralPurposeAllocator.init()
-    with heap := (&gpa).allocator() {
+    with heap := gpa.&.allocator() {
         sum: i32 = 0
         i := 0
         for i < 3 {

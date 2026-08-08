@@ -13,7 +13,7 @@ Vec :: impl with Allocator {
 }
 
 main :: fn () i32 {
-    gpa := &GeneralPurposeAllocator.init()
+    gpa := GeneralPurposeAllocator.init().&
     with _ := gpa.allocator() {
         v := Vec.new()
     }

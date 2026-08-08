@@ -29,9 +29,9 @@ addInner :: fn (val: i32) i32 -> val
 
 main :: fn () i32 {
 
-    x: Inner = Inner { value: 3, add: addInner }
-    y: Inner = Inner { value: 4 }
-    o: Outer = Outer { a: x, b: y }
+    x: Inner = Inner { value= 3, add= addInner }
+    y: Inner = Inner { value= 4 }
+    o: Outer = Outer { a= x, b= y }
 
     x.get().print()
     o.a.get().print()

@@ -5,7 +5,7 @@ Range :: struct {
     current:    i32
 }
 
-range :: fn (start: i32, end: i32) Range -> .{end: end, current:start}
+range :: fn (start: i32, end: i32) Range -> .{end = end, current =start}
 
 *Range self :: impl {
     next :: fn () ?i32 {

@@ -12,13 +12,13 @@ pub string :: type *char
 string :: impl {
     make :: fn (init: *char, initlen: u32, cap: u32) string with Allocator {
         sh := alloc(sizeof SdsHdr + cap + 1) as *SdsHdr
-        if not sh { return none }
+        if not sh return none
 
         sh.len   = initlen
         sh.alloc = cap
 
         base := sh as *u8
-        s := (&(base[sizeof SdsHdr])) as string
+        s := base[sizeof SdsHdr].& as string
 
         if initlen > 0 and init != none {
             mem.memcpy(s as *u8, init as *u8, initlen as u64)
@@ -46,15 +46,15 @@ string self :: impl {
     #[inline]
     header :: fn () *SdsHdr {
         off: i64 = 0 - (sizeof SdsHdr) as i64
-        return (&(self[off])) as *SdsHdr
+        return self[off].& as *SdsHdr
     }
 
     make_room_for :: fn (addlen: u32) string with Allocator {
-        if not self { return none }
+        if not self return none
 
         hdr := self.header()
         available := hdr.alloc - hdr.len
-        if available >= addlen { return self }
+        if available >= addlen return self
 
         newlen := hdr.len + addlen
         newalloc := newlen
@@ -65,27 +65,27 @@ string self :: impl {
         }
 
         new_sh := resize(hdr, sizeof SdsHdr + newalloc + 1) as *SdsHdr
-        if not new_sh { return none }
+        if not new_sh return none
 
         new_sh.alloc = newalloc
         new_base := new_sh as *u8
-        return (&(new_base[sizeof SdsHdr])) as string
+        return new_base[sizeof SdsHdr].& as string
     }
 
     pub len :: fn () u32 {
-        if not self { return 0 }
+        if not self return 0
         hdr := self.header()
         return hdr.len
     }
 
     pub cap :: fn () u32 {
-        if not self { return 0 }
+        if not self return 0
         hdr := self.header()
         return hdr.alloc
     }
 
     pub avail :: fn () u32 {
-        if not self { return 0 }
+        if not self return 0
         hdr := self.header()
         return hdr.alloc - hdr.len
     }
@@ -103,7 +103,7 @@ string self :: impl {
 
         hdr := s.header()
         dst := s as *u8
-        mem.memcpy(&(dst[hdr.len]), t as *u8, tlen as u64)
+        mem.memcpy(dst[hdr.len].&, t as *u8, tlen as u64)
 
         hdr.len += tlen
         s[hdr.len] = 0 as char

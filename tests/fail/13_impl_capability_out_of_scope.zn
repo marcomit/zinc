@@ -7,7 +7,7 @@ Counter :: struct {
 }
 
 Counter :: impl with s: Scale {
-    make :: fn (start: i32) Counter -> Counter { value: start * s.factor }
+    make :: fn (start: i32) Counter -> Counter { value = start * s.factor }
 }
 
 main :: fn () i32 {

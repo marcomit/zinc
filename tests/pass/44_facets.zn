@@ -37,16 +37,16 @@ Rect :: struct {
 draw :: fn (entity: Entity) u0 -> entity.draw()
 
 main :: fn () i32 {
-    rect            := &Rect{width: 10, height: 12}
-    circle          := &Circle{radius: 10}
+    rect            := Rect{width = 10, height = 12}.&
+    circle          := Circle{radius = 10}.&
     entity: Entity  = rect
     draw(entity)
 
     entities := [
-        rect    as Entity,
-        circle  as Entity,
-        rect    as Entity,
-        circle  as Entity
+        Entity(rect),
+        Entity(circle),
+        Entity(rect),
+        Entity(circle)
     ]
 
     i := 0

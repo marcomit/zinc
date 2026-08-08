@@ -36,7 +36,7 @@ i32 self :: impl {
 }
 
 main :: fn () i32 {
-    c: Counter = Counter { count: 3 }
+    c: Counter = Counter { count= 3 }
 
     c.print()
 
@@ -52,7 +52,7 @@ main :: fn () i32 {
     outside: i32 = c.between(4, 9)
     outside.print()
 
-    r: Rect = Rect { w: 3, h: 4 }
+    r: Rect = Rect { w= 3, h= 4 }
     r.describe()
 
     area: i32 = r.area()
@@ -61,8 +61,8 @@ main :: fn () i32 {
     scaled: i32 = r.scaledArea(2)
     scaled.print()
 
-    a: Counter = Counter { count: 1 }
-    b: Counter = Counter { count: 2 }
+    a: Counter = Counter { count= 1 }
+    b: Counter = Counter { count= 2 }
     a.print()
     b.print()
 

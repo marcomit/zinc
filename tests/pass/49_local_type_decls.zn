@@ -19,7 +19,7 @@ main :: fn () i32 {
         puts : fn (*char) u0
     }
 
-    p := Point { x: 3, y: 4 }
+    p := Point { x = 3, y = 4 }
     c.printf("%d %d\n", p.x, p.y)
 
     n: myint = 7

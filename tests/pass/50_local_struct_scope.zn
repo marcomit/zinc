@@ -10,8 +10,8 @@ main :: fn () i32 {
         next: *Node
     }
 
-    a := Node { val: 1, next: 0 as *Node }
-    b := Node { val: 2, next: &a }
+    a := Node { val = 1, next = 0 as *Node }
+    b := Node { val = 2, next = a.& }
     c.printf("%d %d\n", b.val, b.next.val)
 
     T :: type u8
@@ -20,7 +20,7 @@ main :: fn () i32 {
 
     if b.val == 2 {
         Inner :: struct { flag: i32 }
-        i := Inner { flag: 9 }
+        i := Inner { flag = 9 }
         c.printf("%d\n", i.flag)
     }
 

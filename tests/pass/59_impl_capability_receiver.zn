@@ -15,7 +15,7 @@ Counter :: struct {
 }
 
 Counter :: impl with s: Scale {
-    make :: fn (start: i32) Counter -> Counter { value: start * s.factor }
+    make :: fn (start: i32) Counter -> Counter { value = start * s.factor }
 }
 
 *Counter self :: impl with s: Scale {
@@ -38,7 +38,7 @@ Counter self :: impl {
 }
 
 main :: fn () i32 {
-    with sc := Scale { factor: 3 } {
+    with sc := Scale { factor = 3 } {
         counter := Counter.make(2)
         counter.print()
 
@@ -48,7 +48,7 @@ main :: fn () i32 {
         counter.&.twice()
         counter.print()
 
-        with off := Offset { amount: 4 } {
+        with off := Offset { amount = 4 } {
             counter.&.shift()
         }
         counter.print()

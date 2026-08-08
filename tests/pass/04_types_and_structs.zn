@@ -29,12 +29,12 @@ sum :: fn (x: f64, y: f64) f32 {
 }
 
 main :: fn () i32 {
-    p: Point = Point { x: 10, y: 20 }
+    p: Point = Point { x= 10, y= 20 }
     val: i32 = p.x
     c.printf("member ok\n")
 
     ival: i32 = 10
-    v := Vec2 { x: ival, y: 10 }
+    v := Vec2 { x = ival, y = 10 }
 
     res: i32 = sum(v.x, v.y)
     c.printf("%d\n", res)

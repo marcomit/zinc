@@ -17,7 +17,7 @@ Bad :: struct {
 }
 
 main :: fn () i32 {
-    b := Bad{x: 1}
+    b := Bad{x = 1}
     s := Shape(&b)
     printf("%d\n", s.area())
     return 0

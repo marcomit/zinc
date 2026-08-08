@@ -24,7 +24,7 @@ LinkedList :: impl {
 
 main :: fn () i32 {
     gpa := GeneralPurposeAllocator.init()
-    with _ := (&gpa).allocator() {
+    with _ := gpa.&.allocator() {
         i := 0
         root := LinkedList.new(none, 0)
 

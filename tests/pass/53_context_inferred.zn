@@ -44,7 +44,7 @@ pick :: fn (n: i32) Shape {
 }
 
 origin :: fn () Vec2 {
-    return .{ x: 0, y: 0 }
+    return .{ x = 0, y = 0 }
 }
 
 main :: fn () i32 {
@@ -61,15 +61,15 @@ main :: fn () i32 {
     c.printf("%d\n", tag(pick(-2)))
     c.printf("%d\n", tag(pick(0)))
 
-    v: Vec2 = .{ x: 1, y: 2 }
+    v: Vec2 = .{ x = 1, y = 2 }
     c.printf("%d\n", mag(v))
-    c.printf("%d\n", mag(.{ x: 3, y: 4 }))
+    c.printf("%d\n", mag(.{ x = 3, y = 4 }))
     c.printf("%d\n", mag(origin()))
 
-    seg: Segment = .{ a: .{ x: 1, y: 1 }, b: .{ x: 2, y: 2 } }
+    seg: Segment = .{ a = .{ x = 1, y = 1 }, b = .{ x = 2, y = 2 } }
     c.printf("%d\n", mag(seg.a) + mag(seg.b))
 
-    e: Entity = .{ pos: .{ x: 9, y: 9 }, shape: .Circle(8) }
+    e: Entity = .{ pos = .{ x = 9, y = 9 }, shape = .Circle(8) }
     c.printf("%d\n", tag(e.shape))
 
     shapes: [2]Shape = [.Circle(1), .Rect(2, 2)]

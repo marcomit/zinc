@@ -14,8 +14,8 @@ test :: fn () u0 with Logger, Context {
 }
 
 main :: fn () i32 {
-    with _ := Logger { level : 10 } {
-        with _ := Context { val: 10 } {
+    with _ := Logger { level = 10 } {
+        with _ := Context { val = 10 } {
             test()
         }
     }

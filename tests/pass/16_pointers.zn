@@ -11,12 +11,12 @@ Node :: struct  {
 main :: fn () i32 {
     // Read through a pointer
     x := 42
-    ptr := &x
-    c.printf("%d\n", *ptr)
+    ptr := x.&
+    c.printf("%d\n", ptr.*)
 
     // Pointer to struct: field read
-    n := Node { val: 10, extra: 20 }
-    np := &n
+    n: Node = .{ val= 10, extra= 20 }
+    np := n.&
     c.printf("%d\n", np.val)
     c.printf("%d\n", np.extra)
 
@@ -36,16 +36,16 @@ main :: fn () i32 {
     if nptr != none { c.printf("FAIL\n") }
 
     // Assign valid pointer and re-check
-    nptr = &x
+    nptr = x.&
     if nptr != none { c.printf("not_null\n") }
     if nptr == none { c.printf("FAIL\n") }
 
     // Pointer to pointer: read outer value
-    a: *i32 = &x
-    pp: **i32 = &a
+    a: *i32 = x.&
+    pp: **i32 = a.&
     // Load the inner pointer value
-    inner: *i32 = *pp
-    c.printf("%d\n", *inner)
+    inner: *i32 = pp.*
+    c.printf("%d\n", inner.*)
 
     // Pointer as function argument
     return 0

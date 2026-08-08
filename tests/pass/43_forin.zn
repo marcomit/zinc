@@ -16,7 +16,7 @@ Range :: struct {
 }
 
 range :: fn (start: i32, end: i32) Range -> .{
-    start: start, end: end, current: start
+    start = start, end = end, current = start
 }
 
 ArrIter :: struct {
@@ -26,7 +26,7 @@ ArrIter :: struct {
 
 []i32 self :: impl {
     iter :: fn () ArrIter -> .{
-        data: self, current: 0
+        data = self, current = 0
     }
 }
 

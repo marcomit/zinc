@@ -12,9 +12,9 @@ allocAndLog :: fn (size: u64) i32 with alloc: Allocator, log: Logger {
 }
 
 main :: fn () i32 {
-    with log := Logger { level: 42 } {
+    with log := Logger { level = 42 } {
         gpa := GeneralPurposeAllocator.init()
-        with heap := (&gpa).allocator() {
+        with heap := gpa.&.allocator() {
             r := allocAndLog(16)
             io.printf("%d\n", r)
         }

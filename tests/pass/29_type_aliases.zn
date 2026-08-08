@@ -30,18 +30,18 @@ is_positive :: fn (n: int) bool -> n > 0
 
 V2 self :: impl {
     len :: fn () float -> self.x * self.x + self.y * self.y
-    scale :: fn (factor: scalar) V2 -> V2{x: self.x * factor, y: self.y * factor}
+    scale :: fn (factor: scalar) V2 -> V2{x = self.x * factor, y = self.y * factor}
 }
 
 main :: fn () int {
-    a: V2 = Point{x: 3.0, y: 4.0}
+    a: V2 = Point{x = 3.0, y = 4.0}
 
-    b: Point = V2{x: 1.0, y: 2.0}
+    b: Point = V2{x = 1.0, y = 2.0}
 
     s: scalar = 2.0
     i: index = 0
 
-    pa: V2ptr = &a
+    pa: V2ptr = a.&
 
     print_point(pa)
 
