@@ -1397,6 +1397,7 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
                   "Undefined function '%s'", callee->identNode.tok->str);
             return NULL;
         }
+        callee->identNode.ref = sym->node;
 
         if (sym->kind == Z_SYM_FACET) {
             if (veclen(args) != 1) {
@@ -1650,6 +1651,7 @@ static ZType *resolveIdentByScope(ZThreadSem *ctx, ZScope *scope, ZNode *node) {
               "Undefined identifier '%s'", tok->str);
         return NULL;
     }
+    node->identNode.ref = sym->node;
     node->identNode.sym = sym;
     if (sym->node->type == NODE_FUNC) {
         node->identNode.mangled = sym->node->funcDef.mangled;
