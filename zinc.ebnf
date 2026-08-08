@@ -53,7 +53,7 @@ foreign_block = identifier "::" "foreign" "{" { foreign_signature } "}" ;
 
 foreign_signature = identifier "::" type parameter_list ;
 
-foreign_func = "foreign" identifier "::" type parameter_list ;
+foreign_func = identifier "::" "foreign" type parameter_list ;
 
 facet_declaration =
     identifier [ comptime_params ] "::" "facet" "{" { func_decl } "}" ;

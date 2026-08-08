@@ -1880,50 +1880,6 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     }
 }
 
-/**
- * @brief Generates null coalescing.
- *
- * It uses the phi instruction to break the runtime and go directly to the merge.
- * Example: expr1 ?? expr2
- *
- * It generates expr1 and compare it to 0 (normal if condition).
- * If true it goes to the merge branch.
- * If false it takes the right value (also if expr2 is false)
- */
-static LLVMValueRef genNullCoalescing(ZCodegen *ctx, ZNode *root) {
-    LLVMTypeRef typeRef = genType(ctx, root->resolved);
-    LLVMValueRef left   = genExpr(ctx, root->binary.left);
-    LLVMValueRef cond   = LLVMBuildICmp(
-        ctx->builder, LLVMIntNE, left,
-        root->resolved->kind == Z_TYPE_POINTER ?
-            LLVMConstPointerNull(typeRef) :
-            LLVMConstInt(typeRef, 0, false), label(ctx, root->binary.left->tok)
-    );
-
-    LLVMBasicBlockRef entryBranch   = LLVMGetInsertBlock(ctx->builder);
-    LLVMBasicBlockRef rightBranch   = makeblock(ctx, "coalescing.right");
-    LLVMBasicBlockRef mergeBranch   = makeblock(ctx, "coalescing.merge");
-
-    makecondbr(ctx->builder, cond, mergeBranch, rightBranch);
-
-    LLVMPositionBuilderAtEnd(ctx->builder, rightBranch);
-    LLVMValueRef right  = genExpr(ctx, root->binary.right);
-    rightBranch         = LLVMGetInsertBlock(ctx->builder);
-    makebr(ctx->builder, mergeBranch);
-
-    LLVMPositionBuilderAtEnd(ctx->builder, mergeBranch);
-    LLVMValueRef phi                = LLVMBuildPhi(
-        ctx->builder, typeRef, label(ctx, root->tok)
-    );
-
-    LLVMAddIncoming(phi,
-        (LLVMValueRef[]){left, right},
-        (LLVMBasicBlockRef[]){entryBranch, rightBranch},
-        2
-    );
-    return phi;
-}
-
 static LLVMValueRef genNumericOperator(ZCodegen *ctx,
         LLVMValueRef left, LLVMValueRef right,
         ZType *leftType, ZType *rightType,
@@ -2071,11 +2027,6 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     }
 
     ZTokenType op = root->binary.op->type;
-
-    /* Null coalescing operator. */
-    if (op == TOK_COALESCING) {
-        return genNullCoalescing(ctx, root);
-    }
 
     if (op & TOK_SELF_OPERATOR) {
         return genCompoundOperator(ctx, root);

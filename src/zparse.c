@@ -808,7 +808,7 @@ static ZNode *parseUpdate(ZParser *parser) {
 }
 
 static ZNode *parseBinary(ZParser *parser) {
-    ZTokenType valids[] = {TOK_EQ};
+    ZTokenType valids[] = { TOK_EQ };
     return parseGenericBinary(
         parser, parseLogicalOr, parseBinary,
         valids, arrlen(valids)
@@ -2456,7 +2456,7 @@ static ZNode *_parseStructLit(ZParser *parser, ZToken **chain) {
         if (!check(parser, TOK_IDENT)) break;
         ZVarDestructPattern *node = makeDestructIdent(consume(parser));
 
-        if (!match(parser, TOK_COLON)) {
+        if (!match(parser, TOK_EQ)) {
             error(parser->state,
                         peek(parser),
                         "Expected a ':', got %s",
