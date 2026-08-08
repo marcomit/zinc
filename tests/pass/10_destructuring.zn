@@ -8,7 +8,7 @@ Vec :: struct {
 }
 
 Vec :: impl {
-    new :: fn () Vec -> .{ x: 10, y: 20 }
+    new :: fn () Vec -> .{ x= 10, y= 20 }
 }
 
 flatTuple       :: fn () (i32, i32) -> (1, 2)

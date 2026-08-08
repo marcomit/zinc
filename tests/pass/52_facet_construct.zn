@@ -30,21 +30,21 @@ report :: fn (s: Shape) u0 {
 }
 
 main :: fn () i32 {
-    c := Circle{radius: 5}
-    r := Rect{width: 3, height: 4}
+    c := Circle{radius = 5}
+    r := Rect{width = 3, height = 4}
 
-    sc := Shape(&c)
-    sr := Shape(&r)
+    sc := Shape(c.&)
+    sr := Shape(r.&)
 
     printf("%d\n", sc.area())
     printf("%d\n", sr.area())
 
-    printf("%d\n", Shape(&c).area())
+    printf("%d\n", Shape(c.&).area())
 
     report(sc)
     report(sr)
 
-    report(Shape(&r))
+    report(Shape(r.&))
 
     return 0
 }

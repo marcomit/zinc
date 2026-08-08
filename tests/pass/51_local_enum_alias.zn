@@ -26,7 +26,7 @@ main :: fn () i32 {
         Shape.Square(s) -> c.printf("square:%d\n", s)
     }
 
-    p: V2 = Vec { x: 6, y: 8 }
+    p: V2 = Vec { x = 6, y = 8 }
     c.printf("%d %d\n", p.x, p.y)
 
     return 0

@@ -7,11 +7,11 @@ c :: foreign {
 
 foo :: fn () u0 {
     Local :: struct { a: i32 }
-    l := Local { a: 1 }
+    l := Local { a = 1 }
     c::printf("%d\n", l.a)
 }
 
 main :: fn () i32 {
-    x := Local { a: 5 }
+    x := Local { a = 5 }
     return 0
 }

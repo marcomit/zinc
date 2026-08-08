@@ -5,7 +5,7 @@ use <std.core.string>
 
 main :: fn () i32 {
     gpa := GeneralPurposeAllocator.init()
-    with _ := (&gpa).allocator() {
+    with _ := gpa.&.allocator() {
         hello := string.new("Ciao")
         cap := string.with_capacity(64)
 

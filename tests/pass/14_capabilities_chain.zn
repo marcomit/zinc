@@ -12,7 +12,7 @@ allocOuter :: fn (size: u64) i32 with Allocator {
 
 main :: fn () i32 {
     gpa := GeneralPurposeAllocator.init()
-    allocator := (&gpa).allocator()
+    allocator := gpa.&.allocator()
     with _ := allocator {
         a: i32 = allocOuter(32)
         b: i32 = allocOuter(64)

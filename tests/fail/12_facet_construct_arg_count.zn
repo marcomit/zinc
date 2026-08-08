@@ -11,7 +11,7 @@ Circle :: struct {
 }
 
 main :: fn () i32 {
-    c := Circle{radius: 1}
+    c := Circle{radius = 1}
     s := Shape(&c, &c)
     return 0
 }

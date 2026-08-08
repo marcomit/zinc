@@ -12,7 +12,7 @@ Color :: struct {
 
 Color :: impl {
     new :: fn (r: u8, g: u8, b: u8, a: u8) Color {
-        return Color { r: r, g: g, b: b, a: a }
+        return Color { r = r, g = g, b = b, a = a }
     }
 }
 

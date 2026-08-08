@@ -1,6 +1,6 @@
-use <std::libc>
-use <std::mem>
-use <std::mem::gpa>
+use <std.libc>
+use <std.mem>
+use <std.mem.gpa>
 
 
 fill :: fn (size: u64) i32 with alloc: Allocator {
@@ -10,7 +10,7 @@ fill :: fn (size: u64) i32 with alloc: Allocator {
 
 main :: fn () i32 {
     gpa := GeneralPurposeAllocator.init()
-    with _ := (&gpa).allocator() {
+    with _ := gpa.&.allocator() {
         result: i32 = fill(64)
         io.printf("%d\n", result)
     }

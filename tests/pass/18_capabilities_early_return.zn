@@ -10,7 +10,7 @@ allocate :: fn (size: u64) i32 with alloc: Allocator {
 
 run :: fn () i32 {
     gpa := GeneralPurposeAllocator.init()
-    with _ := (&gpa).allocator() {
+    with _ := gpa.&.allocator() {
         return allocate(32)
     }
 }
