@@ -192,7 +192,7 @@ bool checkAhead(ZParser *parser, ZTokenType type, usize next) {
 }
 
 bool checkMask(ZParser *tokens, u32 mask) {
-    return canPeek(tokens) && peek(tokens)->type & mask;
+    return canPeek(tokens) && tokmask(peek(tokens), mask);
 }
 
 bool match(ZParser *parser, ZTokenType type) {
@@ -1543,7 +1543,7 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
     ZAnnotation *arg    = zalloc(ZAnnotation);
     arg->tok            = curr;
 
-    if (curr->type & TOK_LITERAL || curr->type & TOK_OVERLOADABLE) {
+    if (tokmask(curr, TOK_LITERAL | TOK_OVERLOADABLE)) {
         arg->kind       = Z_ANN_LIT;
         arg->literal    = consume(parser);
         return arg;
@@ -2196,17 +2196,17 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
             ZVarDestructPattern *child = parseDestructVar(parser, conditional);
             expect(parser, TOK_RPAREN);
 
-            cur         = makeVarDestructPattern(Z_VAR_SUM);
-            cur->tok    = start;
-            cur->sum.type  = sumType;
-            cur->sum.child = child;
+            cur             = makeVarDestructPattern(Z_VAR_SUM);
+            cur->tok        = start;
+            cur->sum.type   = sumType;
+            cur->sum.child  = child;
             return cur;
         }
     }
 
-    ZToken *tok                 = consume(parser);
+    ZToken *tok = consume(parser);
 
-    if (tok->type & TOK_LITERAL) {
+    if (tokmask(tok, TOK_LITERAL)) {
         cur = makeVarDestructPattern(Z_VAR_LIT);
         cur->ident = tok;
     } else if (tok->type == TOK_IDENT) {

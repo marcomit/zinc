@@ -679,14 +679,14 @@ static u8 typeRank(ZTokenType t) {
     }
 }
 
-static inline bool isUnsigned(ZTokenType t) { return (bool)(t & TOK_UNSIGNED);  }
-static inline bool isSigned  (ZTokenType t) { return (bool)(t & TOK_SIGNED);    }
-static inline bool isFloat   (ZTokenType t) { return (bool)(t & TOK_FLOAT);     }
-static inline bool isInteger (ZTokenType t) { return isSigned(t) || isUnsigned(t);  }
+static inline bool isUnsigned(ZToken *t) { return tokmask(t, TOK_UNSIGNED);  }
+static inline bool isSigned  (ZToken *t) { return tokmask(t, TOK_SIGNED);    }
+static inline bool isFloat   (ZToken *t) { return tokmask(t, TOK_FLOAT);     }
+static inline bool isInteger (ZToken *t) { return isSigned(t) || isUnsigned(t);  }
 static inline bool isPrimitive(ZType *t)    { return t->kind == Z_TYPE_PRIMITIVE;   }
 static inline bool isNumeric(ZType *t) {
     if (!t || !isPrimitive(t)) return false;
-    return t->primitive.token->type & (TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT);
+    return tokmask(t->primitive.token, (TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT));
 }
 
 static ZTokenType toSigned(u8 rank) {
@@ -757,26 +757,28 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
     if (a->kind != Z_TYPE_PRIMITIVE || b->kind != Z_TYPE_PRIMITIVE)
         return NULL;
 
-    ZTokenType ta = a->primitive.token->type;
-    ZTokenType tb = b->primitive.token->type;
+    ZToken *tokA    = a->primitive.token;
+    ZToken *tokB    = b->primitive.token;
+    ZTokenType ta   = tokA->type;
+    ZTokenType tb   = tokB->type;
 
     if (ta == TOK_VOID || tb == TOK_VOID) return NULL;
 
     u8 ra = typeRank(ta);
     u8 rb = typeRank(tb);
 
-    if (isFloat(ta) || isFloat(tb)) {
+    if (isFloat(tokA) || isFloat(tokB)) {
         return ra > rb ? a : b;
     }
 
-    if ((isSigned(ta) && isSigned(tb)) ||
-        (isUnsigned(ta) && isUnsigned(tb)))
+    if ((isSigned(tokA) && isSigned(tokB)) ||
+        (isUnsigned(tokA) && isUnsigned(tokB)))
         return ra > rb ? a : b;
 
     /* signed vs unsigned */
-    u8    signedRank   = isSigned(ta) ? ra : rb;
-    u8    unsignedRank = isSigned(ta) ? rb : ra;
-    ZType *signedType  = isSigned(ta) ? a  : b;
+    u8    signedRank   = isSigned(tokA) ? ra : rb;
+    u8    unsignedRank = isSigned(tokA) ? rb : ra;
+    ZType *signedType  = isSigned(tokA) ? a  : b;
 
     if (signedRank > unsignedRank) return signedType;
 
@@ -818,8 +820,6 @@ bool typesPrimitive(ZType *t) {
     case TOK_F64: return true;
     default: return false;
     }
-
-    return false;
 }
 
 int compareTypes(const void *a, const void *b) {
@@ -1675,13 +1675,14 @@ static ZType* resolveIdent(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
 }
 
 static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    ZTokenType op       = curr->binary.op->type;
+    ZToken *tok         = curr->binary.op;
+    ZTokenType op       = tok->type;
     ZType     *left     = resolveType(ctx, curr->binary.left, inferred);
 
-    if (op == TOK_EQ || op & TOK_SELF_OPERATOR) inferred = left;
+    if (op == TOK_EQ || tokmask(tok, TOK_SELF_OPERATOR)) inferred = left;
     ZType     *right    = resolveType(ctx, curr->binary.right, inferred);
 
-    if (op & TOK_BITOPERATOR_MASK &&
+    if (tokmask(tok, TOK_BITOPERATOR_MASK) &&
             (!isNumeric(left) ||
              !isNumeric(right))) {
         error(ctx->state, curr->binary.op,
@@ -1689,7 +1690,7 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return NULL;
     }
 
-    if (op & TOK_SELF_OPERATOR) {
+    if (tokmask(tok, TOK_SELF_OPERATOR)) {
         if (!isNumeric(left) || !isNumeric(right)) {
             error(ctx->state, curr->binary.op,
                 "Compound operator can be used only with numeric types");
@@ -1957,14 +1958,14 @@ static ZType *resolveSlice(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     if (curr->slice.start &&
             (!start                                 ||
             !isPrimitive(start)                     ||
-            !isInteger(start->primitive.token->type))
+            !isInteger(start->primitive.token))
         ) {
         error(ctx->state, curr->slice.start->tok, "Must be an integer");
     }
     if (curr->slice.end &&
             (!end                                   ||
             !isPrimitive(end)                       ||
-            !isInteger(end->primitive.token->type)  )
+            !isInteger(end->primitive.token))
         ) {
         error(ctx->state, curr->slice.end->tok, "Must be an integer");
     }
@@ -2467,7 +2468,7 @@ static ZType *resolveArrSubscript(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
     }
 
     if (!indexType || indexType->kind != Z_TYPE_PRIMITIVE ||
-        !isInteger(indexType->primitive.token->type)) {
+        !isInteger(indexType->primitive.token)) {
         error(ctx->state, curr->tok,
               "Array index must be an integer");
         return NULL;

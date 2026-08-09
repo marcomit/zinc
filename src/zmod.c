@@ -18,16 +18,14 @@
 #define MANGLER_TYPE_PREFIX     "_ZNM"
 #define MANGLER_ANON_PREFIX     "_ZNA"
 
-static char *nodeLabels[] = {
-    "BLOCK",        "IF",           "WHILE",        "RETURN",
-    "VAR_DECL",     "BINARY",       "UNARY",        "CALL",         "FUNC",
-    "LITERAL",      "IDENTIFIER",   "STRUCT",       "SUBSCRIPT",    "MEMBER",
-    "MODULE",       "FIELD",        "EMBED",        "TYPEDEF",      "FOREIGN",
-    "DEFER",        "STRUCT_LIT",   "TUPLE_LIT",    "ARRAY_LIT",    "ARRAY_INIT",
-    "MACRO",        "TYPE",         "ENUM",         "BREAK",        "CONTINUE",
-    "ENUM_FIELD",   "CAST",         "SIZEOF",       "NAMESPACE",    "SLICE",
-    "CAPABILITY",   "MATCH",        "MATCH_ARM",    "ENUM_LIT",     "ENUM_LIT_NO_PAYLOAD",
-    "FACET",        "IMPL",         "FOR_IN",       "UNWRAP"
+static char *NodeLabels[] = {
+#define X(name, masks) [name] = #name,
+#define NODE_BASE
+
+#include "znode.def"
+
+#undef NODE_BASE
+#undef X
 };
 
 u16 ZNodeMasks[NODE_TYPE_COUNT] = {
@@ -476,10 +474,10 @@ void printNode(ZNode *node, u8 depth) {
 
     indent(depth);
 
-    if (node->type >= sizeof(nodeLabels) / sizeof(nodeLabels[0])) {
+    if (node->type >= sizeof(NodeLabels) / sizeof(NodeLabels[0])) {
         printf("Node type '%d' doesn't have a label\n", node->type);
     }
-    printf("[%s %s] ", nodeLabels[node->type], stype(node->resolved));
+    printf("[%s %s] ", NodeLabels[node->type], stype(node->resolved));
 
     depth++;
     switch (node->type) {

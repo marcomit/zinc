@@ -43,6 +43,28 @@ typedef struct {
  * to the number of symbols (defined in ztok.def). */
 static KeywordEntry keywordEntries[HASHMAP_TOK_LEN];
 
+u16 ZTokenMask[] = {
+#define DEF(name, n, masks) [name] = (u16)masks,
+
+#define TOK_FLOWS
+#define TOK_TYPES
+#define TOK_DYN
+#define TOK_SYMBOLS
+
+#include "ztok.def"
+
+#undef TOK_FLOWS
+#undef TOK_TYPES
+#undef TOK_DYN
+#undef TOK_SYMBOLS
+
+#undef DEF
+};
+
+inline bool tokmask(ZToken *tok, u16 mask) {
+    return ZTokenMask[tok->type] & mask;
+}
+
 ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
     ZTokenStream *self = zalloc(ZTokenStream);
     self->list = tokens;
@@ -145,7 +167,7 @@ bool tokeneq(ZToken *a, ZToken *b) {
     if (!a || !b) return false;
     if (a->type != b->type) return false;
 
-    if (a->type == TOK_IDENT || a->type & TOK_FLOWS_MASK) {
+    if (a->type == TOK_IDENT || tokmask(a, TOK_FLOWS_MASK)) {
         return strcmp(a->str, b->str) == 0;
     }
 
