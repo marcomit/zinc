@@ -18,7 +18,7 @@ static char sep = '/';
 
 typedef enum {
 
-#define DEF(id, str, m) id = m,
+#define DEF(id, str, m) id,
 #define TOK_FLOWS
 #define TOK_TYPES
 #define TOK_DYN
@@ -893,6 +893,7 @@ ZToken *maketoken(ZTokenType, char *, char *);
 ZToken *makeident(char *, char *, char *);
 ZTokenStream *maketokstream(ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
+bool tokmask(ZToken *, u16);
 
 u32 hashStr(const char *, usize);
 u32 hashNode(ZNode *);

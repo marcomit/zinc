@@ -1744,7 +1744,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
 
 static bool typeIsUnsigned(ZType *type) {
     if (!type || type->kind != Z_TYPE_PRIMITIVE) return false;
-    return (bool)(type->primitive.token->type & TOK_UNSIGNED);
+    return tokmask(type->primitive.token, TOK_UNSIGNED);
 }
 
 i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
@@ -2028,7 +2028,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 
     ZTokenType op = root->binary.op->type;
 
-    if (op & TOK_SELF_OPERATOR) {
+    if (tokmask(root->binary.op, TOK_SELF_OPERATOR)) {
         return genCompoundOperator(ctx, root);
     }
 
@@ -2100,7 +2100,7 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
             return NULL;
         }
 
-        checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
+        // checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
 
         LLVMValueRef dataPtr = LLVMBuildStructGEP2(
                 ctx->builder, genType(ctx, resolved), stack->stack,
@@ -2200,9 +2200,9 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
     bool fromIsSigned = false;
 
     if (from->kind == Z_TYPE_PRIMITIVE) {
-        ZTokenType tt = from->primitive.token->type;
-        fromIsFloat   = (tt == TOK_F32 || tt == TOK_F64);
-        fromIsSigned  = (tt & TOK_SIGNED) != 0;
+        ZToken *tt = from->primitive.token;
+        fromIsFloat   = tokmask(tt, TOK_FLOAT);
+        fromIsSigned  = tokmask(tt, TOK_SIGNED);
     }
     if (to->kind == Z_TYPE_PRIMITIVE) {
         ZTokenType tt = to->primitive.token->type;
@@ -3537,6 +3537,7 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, b
         stackPointer = elem;
     }
 
+    info(ctx->state, node->tok, "alloca %s", stype(overrided));
     LLVMTypeRef type = genType(ctx, overrided);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
 
@@ -3635,8 +3636,9 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         }
         genFuncVars(ctx, node->call.callee);
         if (!typesPrimitive(node->resolved)) {
+            printf("%s is primitive\n", stype(node->resolved));
             buildFuncVar(ctx, node, node->resolved, false);
-        }
+        } else printf("%s is not primitive\n", stype(node->resolved));
         for (usize i = 0; i < veclen(node->call.args); i++) {
             ZNode *arg = node->call.args[i];
             genFuncVars(ctx, arg);
