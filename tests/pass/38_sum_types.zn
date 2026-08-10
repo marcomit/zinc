@@ -5,7 +5,7 @@ c :: foreign {
 // Inline-if producing a sum type: branches have different types
 classify :: fn (flag: i32) (*char | i32) {
     return if flag != 0 do "str"
-            else        do 42
+            else 42
 }
 
 // Direct return of a concrete variant
@@ -19,8 +19,7 @@ pick_int :: fn () (*char | i32) {
 
 // Sum type via conditional branches (statement if)
 describe :: fn (n: i32) (*char | i32) {
-    if n > 0 { return "positive" }
-    return 0
+    return if n > 0 do "positive" else 0
 }
 
 main :: fn () i32 {
