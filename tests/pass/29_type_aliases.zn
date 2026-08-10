@@ -53,7 +53,7 @@ main :: fn () int {
 
     pos: bool = is_positive(-5)
     if pos do printf("positive\n")
-    else   do printf("not positive\n")
+    else   printf("not positive\n")
 
 
     return 0

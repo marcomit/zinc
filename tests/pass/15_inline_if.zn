@@ -7,11 +7,9 @@ main :: fn () i32 {
 
     nested: i32 =
             if x > z do
-                if x > y    do x
-                else        do y
+                if x > y    do x else y
             else
-                if z > y    do z
-                else        do y
+                if z > y    do z else y
 
     printf("%d\n", nested)
 

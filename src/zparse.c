@@ -1690,7 +1690,7 @@ static ZNode *parseIfStmt(ZParser *parser) {
 
     if (canPeek(parser) && match(parser, TOK_ELSE)) {
         ZNode *elseBody = parseOrGrammar(parser, (ZParseFunc[]){
-            parseIf, parseIfBlock
+            parseIf, parseExpr
         }, 2);
         if (!elseBody) return NULL;
         node->ifStmt.elseBranch = elseBody;
