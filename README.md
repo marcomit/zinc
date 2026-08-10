@@ -43,10 +43,6 @@ zinc hello.zn -o hello
 ./run_tests.sh
 ```
 
-## Documentation
-
-See `docs/` for the language reference and compiler internals, and `examples/` for sample programs.
-
 ## License
 
 BSD 3-Clause License. See [LICENSE](LICENSE).
