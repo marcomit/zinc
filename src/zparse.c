@@ -1514,10 +1514,14 @@ ZNode *parseExpr(ZParser *parser) {
 static ZNode *parseReturn(ZParser *parser) {
     ZToken *start           = peek(parser);
     expect(parser, TOK_RETURN);
+
     ZNode *ret              = makenode(NODE_RETURN);
-    ret->returnStmt.expr    = NULL;
     ZNode *expr             = NULL;
     ZNode **list            = NULL;
+    ret->returnStmt.expr    = NULL;
+    ret->tok                = start;
+
+    if (!canPeek(parser) || peek(parser)->newlineBefore) return ret;
 
     do {
         expr = tryParse(parser, parseExpr(parser));
@@ -1534,7 +1538,6 @@ static ZNode *parseReturn(ZParser *parser) {
     } else {
         ret->returnStmt.expr    = expr;
     }
-    ret->tok = start;
     return ret;
 }
 
@@ -2370,6 +2373,9 @@ static ZNode *parseVarDef(ZParser *parser) {
 static ZNode *parseBreak(ZParser *parser) {
     ZNode *node = makenode(NODE_BREAK);
     node->tok = consume(parser);
+
+    if (!canPeek(parser) || peek(parser)->newlineBefore) return node;
+
     node->breakStmt.expr = tryParse(parser, parseExpr(parser));
 
     return node;

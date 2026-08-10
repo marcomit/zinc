@@ -388,7 +388,7 @@ static usize typeAlign(ZType *type) {
     case Z_TYPE_ARRAY:
     case Z_TYPE_FACET:      return 8;
 
-    /* TODO: put the buffer before the flag. *./
+    /* TODO: put the buffer before the flag. */
     /* {flag: i8, buf: [n x i8]} */
     case Z_TYPE_ENUM:
     case Z_TYPE_SUM:        return 1;
