@@ -231,25 +231,42 @@ char *manglingIdent(ZNode *ident) {
     }
 }
 
+static usize typeAlign(ZType *type);
+
+static inline usize alignUp(usize size, usize align) {
+    if (!align) return size;
+    return (size + align - 1) / align * align;
+}
+
 /**
  * @brief Calculates padding of types.
  *
  * This function is used to calculate the padding of struct/tuple fields.
  * It is also used for enums.
  *
+ * The result is rounded up to the alignment of the whole aggregate, matching
+ * what LLVM does: without that trailing padding 'sizeof' would disagree with
+ * the stride used to index an array of that type.
+ *
  * @param iter used to take the type from the current field.
  * @param fields must be a dynamic array because it uses veclen.
+ * @param packed when true fields are laid out back to back, with no padding.
  */
-static usize alignFields(void **fields, ZType *(*iter)(void *)) {
-    usize cur = 0;
+static usize alignFields(void **fields, ZType *(*iter)(void *), bool packed) {
     usize res = 0;
+    usize aggAlign = 1;
+
     for (usize i = 0; i < veclen(fields); i++) {
-        cur = typeSize(iter(fields[i]));
-        if (cur) res = (res + cur - 1) / cur * cur;
-        res += cur;
+        ZType *field = iter(fields[i]);
+        if (!packed) {
+            usize align = typeAlign(field);
+            if (align > aggAlign) aggAlign = align;
+            res = alignUp(res, align);
+        }
+        res += typeSize(field);
     }
 
-    return res;
+    return packed ? res : alignUp(res, aggAlign);
 }
 
 static inline ZType *alignStructFieldIter(void *item) {
@@ -313,7 +330,8 @@ usize typeSize(ZType *type) {
     case Z_TYPE_STRUCT: {
         res = alignFields(
             (void **)type->strct.fields,
-            alignStructFieldIter
+            alignStructFieldIter,
+            query(type->strct.annotations, "packed") != NULL
         );
         return res;
     }
@@ -321,14 +339,69 @@ usize typeSize(ZType *type) {
     case Z_TYPE_TUPLE:
         return alignFields(
             (void **)type->tuple,
-            alignTupleFieldIter
+            alignTupleFieldIter,
+            false
         );
 
+    /* Optional pointers uses `none` as the niche value,
+     * other types uses a struct {data, flag:u1} */
     case Z_TYPE_OPTIONAL:
         if (type->optional->kind == Z_TYPE_POINTER) return 8;
-        return 1 + typeSize(type->optional);
+        return alignUp(
+            typeSize(type->optional) + 1,
+            typeAlign(type->optional)
+        );
 
     default: return 0;
+    }
+}
+
+/**
+ * @brief Calculates the alignment of the type.
+ *
+ * Mirrors typeSize: every type laid out as an LLVM aggregate is aligned like
+ * its most strictly aligned member, and scalars are aligned like their size.
+ */
+static usize typeAlign(ZType *type) {
+    if (!type) return 1;
+    switch (type->kind) {
+    case Z_TYPE_STRUCT: {
+        if (query(type->strct.annotations, "packed")) return 1;
+        usize res = 1;
+        for (usize i = 0; i < veclen(type->strct.fields); i++) {
+            usize cur = typeAlign(type->strct.fields[i]->resolved);
+            if (cur > res) res = cur;
+        }
+        return res;
+    }
+
+    case Z_TYPE_TUPLE: {
+        usize res = 1;
+        for (usize i = 0; i < veclen(type->tuple); i++) {
+            usize cur = typeAlign(type->tuple[i]);
+            if (cur > res) res = cur;
+        }
+        return res;
+    }
+
+    /* {len: u64, ptr: *u8} and {obj: *u8, vtable: *u8} */
+    case Z_TYPE_ARRAY:
+    case Z_TYPE_FACET:      return 8;
+
+    /* TODO: put the buffer before the flag. *./
+    /* {flag: i8, buf: [n x i8]} */
+    case Z_TYPE_ENUM:
+    case Z_TYPE_SUM:        return 1;
+
+    case Z_TYPE_OPTIONAL:
+        return type->optional->kind == Z_TYPE_POINTER
+            ? 8
+            : typeAlign(type->optional);
+
+    default: {
+        usize size = typeSize(type);
+        return size ? size : 1;
+    }
     }
 }
 
@@ -3115,21 +3188,28 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
         func,
         &self, 1, label(ctx, "iter.next"));
 
-    if (!fitsInRegister(call) && stack) {
+    /* An optional pointer uses the null pointer as its niche, so it has no
+     * separate flag field and the payload is the returned value itself. */
+    bool nichePtr = callNode->resolved->optional->kind == Z_TYPE_POINTER;
+
+    if (nichePtr || !fitsInRegister(call)) {
         LLVMBuildStore(ctx->builder, call, stack->stack);
     }
 
-    LLVMValueRef cond = _getFlagOptional(ctx, callNode->resolved, stack->stack, LLVMIntNE);
+    LLVMValueRef cond = _getFlagOptional(ctx, callNode->resolved,
+        nichePtr ? call : stack->stack, LLVMIntNE);
 
     makecondbr(ctx->builder, cond, body, end);
 
     LLVMPositionBuilderAtEnd(ctx->builder, body);
 
-    LLVMValueRef dataPtr = LLVMBuildStructGEP2(
-        ctx->builder,
-        genType(ctx, callNode->resolved),
-        stack->stack, 0, label(ctx, "optional.data.ptr")
-    );
+    LLVMValueRef dataPtr = nichePtr
+        ? stack->stack
+        : LLVMBuildStructGEP2(
+            ctx->builder,
+            genType(ctx, callNode->resolved),
+            stack->stack, 0, label(ctx, "optional.data.ptr")
+        );
 
     putDestructuredPatternInStack(
         ctx, callNode->resolved->optional,

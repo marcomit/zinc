@@ -1143,6 +1143,13 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
         for (usize i = 0; i < veclen(type->tuple); i++)
             type->tuple[i] = _resolveTypeRef(ctx, type->tuple[i], seen);
         return type;
+    case Z_TYPE_OPTIONAL:
+        type->optional = _resolveTypeRef(ctx, type->optional, seen);
+        return type;
+    case Z_TYPE_SUM:
+        for (usize i = 0; i < veclen(type->sumType); i++)
+            type->sumType[i] = _resolveTypeRef(ctx, type->sumType[i], seen);
+        return type;
     default: return type;
     }
 }
