@@ -8,7 +8,7 @@
 //
 // When match-as-expression with break is implemented this test should start
 // passing (XPASS) and be promoted to tests/pass/.
-foreign printf :: fn (*char, ...) u0
+printf :: foreign fn (*char, ...) u0
 
 Color :: enum {
     Red

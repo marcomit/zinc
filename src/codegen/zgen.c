@@ -3537,7 +3537,6 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, b
         stackPointer = elem;
     }
 
-    info(ctx->state, node->tok, "alloca %s", stype(overrided));
     LLVMTypeRef type = genType(ctx, overrided);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
 
@@ -3636,9 +3635,8 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         }
         genFuncVars(ctx, node->call.callee);
         if (!typesPrimitive(node->resolved)) {
-            printf("%s is primitive\n", stype(node->resolved));
             buildFuncVar(ctx, node, node->resolved, false);
-        } else printf("%s is not primitive\n", stype(node->resolved));
+        }
         for (usize i = 0; i < veclen(node->call.args); i++) {
             ZNode *arg = node->call.args[i];
             genFuncVars(ctx, arg);
