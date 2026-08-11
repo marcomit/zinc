@@ -2897,12 +2897,30 @@ LLVMValueRef getFlagOptional(ZCodegen *ctx,
     return _getFlagOptional(ctx, type, value, LLVMIntEQ);
 }
 
+static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
+    if (!type || !left) return NULL;
+    LLVMValueRef right = NULL;
+
+    if (type->kind == Z_TYPE_PRIMITIVE) {
+        right = LLVMConstNull(genType(ctx, type));
+    }
+
+    return LLVMBuildICmp(
+        ctx->builder, LLVMIntNE, left, right, label(ctx, "cond")
+    );
+}
+
 static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
-    // LLVMValueRef base = genExpr(ctx, node->unwrap.base);
-    // if (node->unwrap.kind == UNWRAP_ELSE) {
-    //     LLVMValueRef cond = getFlagOptional(ctx, node->unwrap.base->resolved, base);
-    //
-    // }
+    LLVMValueRef base = genExpr(ctx, node->unwrap.base);
+
+    switch (node->unwrap.kind) {
+    case UNWRAP_BREAK:
+    case UNWRAP_CONTINUE:
+    case UNWRAP_RETURN:
+
+    default: return NULL;
+    }
+
     return NULL;
 }
 

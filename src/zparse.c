@@ -665,33 +665,28 @@ static ZNode *parseLogicalOr(ZParser *parser) {
 
     while (true) {
         ZToken *or      = peek(parser);
-        ZNode *right    = NULL;
+        ZNode *right    = NULL, *expr = NULL;
+        int unwrapKind  = 0;
         if (!match(parser, TOK_OR)) return node;
         else if (check(parser, TOK_BREAK)) {
-            ZNode *expr             = parseBreak(parser);
-            right                   = makenode(NODE_UNWRAP);
-            right->unwrap.base      = node;
-            right->unwrap.orExpr    = expr;
-            right->unwrap.kind      = UNWRAP_BREAK;
+            expr        = parseBreak(parser);
+            unwrapKind  = UNWRAP_BREAK;
         } else if (match(parser, TOK_CONTINUE)) {
-            ZNode *expr             = parseBreak(parser);
-            right                   = makenode(NODE_UNWRAP);
-            right->unwrap.base      = node;
-            right->unwrap.orExpr    = expr;
-            right->unwrap.kind      = UNWRAP_CONTINUE;
+            expr        = parseBreak(parser);
+            unwrapKind  = UNWRAP_CONTINUE;
         } else if (match(parser, TOK_RETURN)) {
-            ZNode *expr             = parseBreak(parser);
-            right                   = makenode(NODE_UNWRAP);
-            right->unwrap.base      = node;
-            right->unwrap.orExpr    = expr;
-            right->unwrap.kind      = UNWRAP_RETURN;
+            expr        = parseBreak(parser);
+            unwrapKind  = UNWRAP_RETURN;
         } else if (match(parser, TOK_DO)) {
-            ZNode *expr             = parseExpr(parser);
+            expr        = parseExpr(parser);
+            unwrapKind  = UNWRAP_DO;
+        }
+
+        if (expr) {
             right                   = makenode(NODE_UNWRAP);
             right->unwrap.base      = node;
             right->unwrap.orExpr    = expr;
-            right->unwrap.kind      = UNWRAP_ELSE;
-
+            right->unwrap.kind      = unwrapKind;
         } else {
             ZNode *expr             = tryParse(parser, parseLogicalAnd(parser));
             if (!expr) return node;

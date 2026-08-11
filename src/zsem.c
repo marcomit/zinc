@@ -2139,7 +2139,7 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         base->result.success;
 
     switch (curr->unwrap.kind) {
-    case UNWRAP_ELSE: {
+    case UNWRAP_DO: {
         ZType *orelse = resolveType(ctx, curr->unwrap.orExpr, inferred);
         ZType *promoted = typesCompatible(ctx, orelse, success);
         if (!promoted) {
