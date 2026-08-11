@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ...) u0
+    printf : fn (*char, ..) u0
 }
 
 Position :: struct {
@@ -32,11 +32,11 @@ Stats :: struct {
 
 // Flatten-safe composition
 Player :: struct  {
-    ...Position
-    ...Velocity
-    ...Acceleration
-    ...Metadata
-    ...Stats
+    ..Position
+    ..Velocity
+    ..Acceleration
+    ..Metadata
+    ..Stats
 }
 
 Player self :: impl {

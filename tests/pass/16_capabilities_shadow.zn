@@ -3,7 +3,7 @@
 // Uses a simple Tag struct so we can read which capability is active.
 
 c :: foreign {
-    printf: fn (*char, ...) u0
+    printf: fn (*char, ..) u0
 }
 
 Tag :: struct {

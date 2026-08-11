@@ -1,5 +1,5 @@
 pub io :: foreign {
-    printf:     fn (*char, ...) u0
+    printf:     fn (*char, ..) u0
     putchar:    fn (i32)       i32
     perror:     fn (*char)      u0
     exit:       fn (i32)        u0

@@ -1,0 +1,73 @@
+printf :: foreign fn (*char, ..) u0
+
+sumRange :: fn (lo: i32, hi: i32) i32 {
+    total := 0
+    for i in lo..hi {
+        total += i
+    }
+    return total
+}
+
+main :: fn () i32 {
+
+    printf("basic\n")
+    for i in 0..5 {
+        printf("%d\n", i)
+    }
+
+
+    printf("vars\n")
+    lo := 2
+    hi := 6
+    for i in lo..hi {
+        printf("%d\n", i)
+    }
+
+    printf("empty\n")
+    for i in 3..3 {
+        printf("never\n")
+    }
+    for i in 5..2 {
+        printf("never\n")
+    }
+
+    printf("break\n")
+    for i in 0..10 {
+        if i == 4 { break }
+        printf("%d\n", i)
+    }
+
+
+    printf("continue\n")
+    for i in 0..6 {
+        if i == 2 { continue }
+        printf("%d\n", i)
+    }
+
+    printf("nested\n")
+    for i in 0..3 {
+        for j in 0..3 {
+            printf("%d%d\n", i, j)
+        }
+    }
+
+
+    printf("unsigned\n")
+    ulo: u64 = 0
+    uhi: u64 = 4
+    for i in ulo..uhi {
+        printf("%llu\n", i)
+    }
+
+
+    printf("defer\n")
+    for i in 0..3 {
+        defer printf("d%d\n", i)
+        printf("b%d\n", i)
+    }
+
+    printf("sum\n")
+    printf("%d\n", sumRange(1, 5))
+
+    return 0
+}

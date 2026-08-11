@@ -16,7 +16,7 @@ c :: foreign {
 
     nanosleep : fn (*timespec, *timespec) i32
 
-    printf : fn (*char, ...) u0
+    printf : fn (*char, ..) u0
 }
 
 ThreadContext :: struct {

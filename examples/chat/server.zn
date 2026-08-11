@@ -5,8 +5,8 @@ use <std.io.mutex>
 use <std.io.net>
 
 libc :: foreign {
-    printf:     fn (*char, ...) u0
-    snprintf:   fn (*char, u64, *char, ...) i32
+    printf:     fn (*char, ..) u0
+    snprintf:   fn (*char, u64, *char, ..) i32
     fflush:     fn (*u8) i32
 }
 

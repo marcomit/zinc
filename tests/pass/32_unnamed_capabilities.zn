@@ -1,4 +1,4 @@
-printf :: foreign fn (*char, ...) u0
+printf :: foreign fn (*char, ..) u0
 
 Logger :: struct { level: i32 }
 Context :: struct { val: i32 }

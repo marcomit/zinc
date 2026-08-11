@@ -2,7 +2,7 @@
 // `Local` is declared in `foo`, so referencing it from `main` is an error.
 
 c :: foreign {
-    printf : fn (*char, ...) u0
+    printf : fn (*char, ..) u0
 }
 
 foo :: fn () u0 {

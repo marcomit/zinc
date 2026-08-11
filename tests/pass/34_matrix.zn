@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ...) u0
+    printf : fn (*char, ..) u0
 }
 
 printMatrix :: fn (matrix: [][]i32) u0 {

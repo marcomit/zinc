@@ -1,4 +1,4 @@
-printf :: foreign fn (*char, ...) u0
+printf :: foreign fn (*char, ..) u0
 
 // Same name as the private test in test.zn; must not collide with it.
 test :: fn () u0 {

@@ -1,4 +1,4 @@
-printf :: foreign fn (*char, ...) u0
+printf :: foreign fn (*char, ..) u0
 exit :: foreign fn (i32) u0
 
 void  :: type u0

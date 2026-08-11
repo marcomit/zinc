@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ...) u0
+    printf : fn (*char, ..) u0
 }
 
 sumAndPrint :: fn (s: []i32) u0 {
@@ -44,10 +44,10 @@ main :: fn () i32 {
     c.printf("%d\n", fib[0])
 
     // Full-slice and pass to function
-    sumAndPrint(arr[0:])
+    sumAndPrint(arr[0..])
 
     // Slice with range
-    mid := arr[1:4]
+    mid := arr[1..4]
     sumAndPrint(mid)
 
     // Multi-element arithmetic
@@ -55,16 +55,16 @@ main :: fn () i32 {
     c.printf("%d\n", vals[0] + vals[1] + vals[2])
 
     // Slice len field
-    head := fib[:4]
+    head := fib[..4]
     c.printf("%d\n", head.len)
 
     // Slice of slice
-    inner := arr[1:4]
-    inner2 := inner[1:]
+    inner := arr[1..4]
+    inner2 := inner[1..]
     printSlice(inner2)
 
     // Mutation through slice propagates to original array
-    s := arr[0:]
+    s := arr[0..]
     s[0] = 42
     c.printf("%d\n", arr[0])
 

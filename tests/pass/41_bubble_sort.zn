@@ -1,4 +1,4 @@
-printf :: foreign fn (*char, ...) u0
+printf :: foreign fn (*char, ..) u0
 main :: fn () i32 {
     arr := [5, 2, 8, 1, 9, 3]
     n := arr.len

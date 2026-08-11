@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ...) u0
+    printf : fn (*char, ..) u0
     malloc : fn (u64) *u8
 }
 

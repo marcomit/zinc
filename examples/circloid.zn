@@ -22,7 +22,7 @@ KEY_R     :: 82
 MAX_ENEMIES :: 64
 
 c :: foreign {
-    sprintf : fn (*char, *char, ...) i32
+    sprintf : fn (*char, *char, ..) i32
 }
 
 Enemy :: struct {
