@@ -1,33 +1,9 @@
-#[lang(type_info)]
-Type :: enum {
-    Void
-    Bool(u1)
-    Integer(u8, u1)
-    Float(u8)
-    Struct(*char, []StructField)
-    Enum(*char, []TypeInfoStruct)
-    Pointer(*Type)
-    Optional(*Type)
-    Error(*Type, *Type)
-}
-
-#[lang(type_info_struct)]
-TypeInfoStruct :: struct {
-    name: *char
-    fields: []StructField
-}
-
-#[lang(type_info_struct_field)]
-StructField :: struct {
-    name: *char
-    typeref: Type
-}
-
-#[lang(reflect)]
-foreign reflect :: fn (T) Type
-
+printf :: foreign fn (*char, ..) u0
 
 main :: fn () i32 {
-
+    nums := [1, 2, 3, 4, 5, 6, 7]
+    for num in nums {
+        printf("Num: %d\n", num)
+    }
     return 0
 }

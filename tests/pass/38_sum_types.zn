@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ...) u0
+    printf : fn (*char, ..) u0
 }
 
 // Inline-if producing a sum type: branches have different types

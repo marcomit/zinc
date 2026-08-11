@@ -1,4 +1,4 @@
-printf :: foreign fn (*char, ...) u0
+printf :: foreign fn (*char, ..) u0
 
 Point :: struct {
     x: i32

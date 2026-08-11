@@ -23,15 +23,15 @@ main :: fn () i32 {
     arr := [0, 1, 2, 3, 4]
 
     // arr[2:] -> {ptr: &arr[2], len: 3} -> {2, 3, 4}
-    tail := arr[2:]
+    tail := arr[2..]
     printSlice(tail)
 
     // arr[:3] -> {ptr: &arr[0], len: 3} -> {0, 1, 2}
-    head := arr[:3]
+    head := arr[..3]
     printSlice(head)
 
     // arr[1:4] -> {ptr: &arr[1], len: 3} -> {1, 2, 3}
-    mid := arr[1:4]
+    mid := arr[1..4]
     printSlice(mid)
 
     // .len field
@@ -43,7 +43,7 @@ main :: fn () i32 {
     putchar(10)
 
     // slice of slice: mid[1:] -> {2, 3}
-    inner := mid[1:]
+    inner := mid[1..]
     printSlice(inner)
 
     // element mutation through slice

@@ -6,7 +6,7 @@ pub Random :: struct {
 }
 
 c :: foreign {
-    printf: fn (*char, ...) u0
+    printf: fn (*char, ..) u0
 }
 
 Random :: impl {

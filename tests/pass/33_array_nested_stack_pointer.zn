@@ -1,4 +1,4 @@
-c :: foreign { printf : fn (*char, ...) u0 }
+c :: foreign { printf : fn (*char, ..) u0 }
 
 Pt :: struct { x: i32 y: i32 }
 

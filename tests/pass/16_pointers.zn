@@ -1,6 +1,6 @@
 c :: foreign {
     malloc : fn (u64) *u8
-    printf : fn (*char, ...) u0
+    printf : fn (*char, ..) u0
 }
 
 Node :: struct  {

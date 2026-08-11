@@ -276,6 +276,8 @@ struct ZType {
             /* Array of Z_TYPE_STRUCT. */
             ZNode       **fields;
             ZType       **generics;
+
+            ZToken      *integer;
         } enm;
 
         ZType **tuple;

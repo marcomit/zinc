@@ -36,7 +36,7 @@ field_declaration =
     field_type identifier
   | identifier ":" field_type ;
 
-struct_embed = "..." type ;
+struct_embed = ".." type ;
 
 enum_declaration =
     identifier [ comptime_params ] "::" "enum" "{" { enum_variant } "}" ;
@@ -88,7 +88,7 @@ parameter_list = "(" [
         [ "," ]
     ] ")" ;
 
-parameter_or_variadic = parameter | "..." ;
+parameter_or_variadic = parameter | ".." ;
 
 parameter =
     field_type identifier

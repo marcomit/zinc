@@ -2,7 +2,7 @@ use <std::io::thread>
 
 libc :: foreign {
     putchar : fn (i32) i32
-    printf  :  fn (*char, ...) u0
+    printf  :  fn (*char, ..) u0
 }
 
 EXIT_CODE :: 27

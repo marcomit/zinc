@@ -407,21 +407,9 @@ static ZNode *parsePrimary(ZParser *parser) {
     return NULL;
 }
 
-static ZNode *parseSlice(ZParser *parser, ZNode *previous) {
-    expect(parser, TOK_LSBRACKET);
-    ZNode *start    = tryParse(parser, parseExpr(parser));
-    expect(parser, TOK_COLON);
-    ZNode *end      = tryParse(parser, parseExpr(parser));
-    expect(parser, TOK_RSBRACKET);
-
-    ZNode *node     = makenode(NODE_SLICE);
-    node->slice.base    = previous;
-    node->slice.start   = start;
-    node->slice.end     = end;
-    return node;
-}
-
 static ZNode *parseArrSubscript(ZParser *parser, ZNode *previous) {
+    if (!canPeek(parser) || peek(parser)->newlineBefore) return previous;
+
     expect(parser, TOK_LSBRACKET);
     ZNode *index = tryParse(parser, parseExpr(parser));
     expect(parser, TOK_RSBRACKET);
@@ -483,6 +471,9 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
 
 static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
     ZToken *start = peek(parser);
+
+    if (!canPeek(parser) || peek(parser)->newlineBefore) return previous;
+
     expect(parser, TOK_LPAREN);
     ZNode **args = parseArgs(parser);
     expect(parser, TOK_RPAREN);
@@ -514,25 +505,22 @@ static ZNode *parseCast(ZParser *parser, ZNode *previous) {
 }
 
 static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
-    ZParserSnapshot *snap = store(parser);
-    pushErrorCheckpoint(parser);
-    ZNode *res = parseArrSubscript(parser, previous);
-    if (res) {
-        commitErrors(parser);
-        return res;
-    }
-    rollbackErrors(parser);
-    undo(parser, snap);
-    snap = store(parser);
+    ZNode *node = parseArrSubscript(parser, previous);
+    if (!node) return NULL;
 
-    res = parseSlice(parser, previous);
-    if (!res) {
-        error(parser->state, peek(parser), "is not a slice");
-        rollbackErrors(parser);
-        return NULL;
+    if (node->type != NODE_SUBSCRIPT || !node->subscript.index) return node;
+
+    if (node->subscript.index->type == NODE_RANGE) {
+        ZNode *i = node->subscript.index;
+        ZNode *slice        = makenode(NODE_SLICE);
+        slice->slice.start  = i->binary.left;
+        slice->slice.end    = i->binary.right;
+        slice->slice.base   = node->subscript.arr;
+        slice->tok          = previous->tok;
+        return slice;
     }
-    commitErrors(parser);
-    return res;
+
+    return node;
 }
 
 static ZNode *parseExtractValue(ZParser *parser, ZNode *previous) {
@@ -676,46 +664,46 @@ static ZNode *parseLogicalOr(ZParser *parser) {
     ZNode *node = parseLogicalAnd(parser);
 
     while (true) {
-        ZToken *or = peek(parser);
+        ZToken *or      = peek(parser);
+        ZNode *right    = NULL;
         if (!match(parser, TOK_OR)) return node;
         else if (check(parser, TOK_BREAK)) {
             ZNode *expr             = parseBreak(parser);
-            ZNode *orelse           = makenode(NODE_UNWRAP);
-            orelse->unwrap.base     = node;
-            orelse->unwrap.orExpr   = expr;
-            orelse->unwrap.kind     = UNWRAP_BREAK;
+            right                   = makenode(NODE_UNWRAP);
+            right->unwrap.base      = node;
+            right->unwrap.orExpr    = expr;
+            right->unwrap.kind      = UNWRAP_BREAK;
         } else if (match(parser, TOK_CONTINUE)) {
             ZNode *expr             = parseBreak(parser);
-            ZNode *orelse           = makenode(NODE_UNWRAP);
-            orelse->unwrap.base     = node;
-            orelse->unwrap.orExpr   = expr;
-            orelse->unwrap.kind     = UNWRAP_CONTINUE;
+            right                   = makenode(NODE_UNWRAP);
+            right->unwrap.base      = node;
+            right->unwrap.orExpr    = expr;
+            right->unwrap.kind      = UNWRAP_CONTINUE;
         } else if (match(parser, TOK_RETURN)) {
             ZNode *expr             = parseBreak(parser);
-            ZNode *orelse           = makenode(NODE_UNWRAP);
-            orelse->unwrap.base     = node;
-            orelse->unwrap.orExpr   = expr;
-            orelse->unwrap.kind     = UNWRAP_RETURN;
+            right                   = makenode(NODE_UNWRAP);
+            right->unwrap.base      = node;
+            right->unwrap.orExpr    = expr;
+            right->unwrap.kind      = UNWRAP_RETURN;
         } else if (match(parser, TOK_DO)) {
-            ZNode *expr = parseExpr(parser);
-            ZNode *orelse = makenode(NODE_UNWRAP);
-            orelse->unwrap.base     = node;
-            orelse->unwrap.orExpr   = expr;
-            orelse->unwrap.kind     = UNWRAP_ELSE;
+            ZNode *expr             = parseExpr(parser);
+            right                   = makenode(NODE_UNWRAP);
+            right->unwrap.base      = node;
+            right->unwrap.orExpr    = expr;
+            right->unwrap.kind      = UNWRAP_ELSE;
 
-            node = orelse;
-        }
-        else {
-            ZNode *right = tryParse(parser, parseLogicalAnd(parser));
-            if (!right) return node;
+        } else {
+            ZNode *expr             = tryParse(parser, parseLogicalAnd(parser));
+            if (!expr) return node;
 
-            ZNode *root         = makenode(NODE_BINARY);
-            root->tok           = or;
-            root->binary.left   = node;
-            root->binary.right  = right;
-            root->binary.op     = or;
-            node                = root;
+            right               = makenode(NODE_BINARY);
+            right->tok          = or;
+            right->binary.left  = node;
+            right->binary.right = expr;
+            right->binary.op    = or;
         }
+
+        node = right;
     }
 
     return node;
@@ -807,10 +795,36 @@ static ZNode *parseUpdate(ZParser *parser) {
     return assign;
 }
 
+static ZNode *parseRangeExpr(ZParser *parser) {
+    ZNode *left = tryParse(parser, parseLogicalOr(parser));
+
+    if (!canPeek(parser)                ||
+        !check(parser, TOK_DOUBLE_DOT)  ||
+        peek(parser)->newlineBefore     ) {
+        return left;
+    }
+
+    ZToken *op   = consume(parser);
+    ZNode *right = tryParse(parser, parseLogicalOr(parser));
+
+    if (!left && !right) {
+        error(parser->state, op, "a range needs at least one endpoint");
+        return NULL;
+    }
+
+    ZNode *range        = makenode(NODE_RANGE);
+    range->binary.op    = op;
+    range->binary.left  = left;
+    range->binary.right = right;
+    range->tok          = op;
+
+    return range;
+}
+
 static ZNode *parseBinary(ZParser *parser) {
     ZTokenType valids[] = { TOK_EQ };
     return parseGenericBinary(
-        parser, parseLogicalOr, parseBinary,
+        parser, parseRangeExpr, parseLogicalOr,
         valids, arrlen(valids)
     );
 }
@@ -1295,7 +1309,7 @@ static ZNode *parseFieldOptName(ZParser *parser) {
 static ZNode *parseStructField(ZParser *parser) {
     guard(canPeek(parser));
 
-    if (match(parser, TOK_TRIPLE_DOT)) {
+    if (match(parser, TOK_DOUBLE_DOT)) {
         if (!check(parser, TOK_IDENT)) {
             error(parser->state, peek(parser), "Expected a struct here");
             return NULL;
@@ -1377,6 +1391,11 @@ static ZType *parseAnonEnum(ZParser *parser, ZAnnotation **annotations) {
     ZToken *start = peek(parser);
     expect(parser, TOK_ENUM);
 
+    ZToken *integer = NULL;
+    if (checkMask(parser, TOK_SIGNED | TOK_UNSIGNED)) {
+        integer = consume(parser);
+    }
+
     ZType **generics = NULL;
     if (check(parser, TOK_LSBRACKET)) {
         generics = parseGenericsDecl(parser);
@@ -1396,6 +1415,7 @@ static ZType *parseAnonEnum(ZParser *parser, ZAnnotation **annotations) {
     type->enm.generics          = generics;
     type->enm.fields            = fields;
     type->tok                   = start;
+    type->enm.integer           = integer;
 
     return type;
 }
@@ -2652,7 +2672,7 @@ static ZType *parseFuncType(ZParser *parser) {
     bool variadic   = false;
 
     do {
-        if (match(parser, TOK_TRIPLE_DOT)) {
+        if (match(parser, TOK_DOUBLE_DOT)) {
             variadic = true;
             // break;
         } else {

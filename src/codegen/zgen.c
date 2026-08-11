@@ -65,11 +65,46 @@ static void endScope(ZCodegen *ctx) {
     ctx->scope = ctx->scope->parent;
 }
 
+/**
+ * @brief Insert a pointer of the stack into the current scope.
+ */
 static void putLLVMValueRef(ZCodegen *ctx, char *key, LLVMValueRef value) {
     ZLLVMSymbol *symbol = makesymbol(ctx);
-    symbol->name = key;
-    symbol->value = value;
+    symbol->name        = key;
+    symbol->value       = value;
+    symbol->isValue     = false;
     vecpush(ctx->scope->symbols, symbol);
+}
+
+/**
+ * @brief Insert an arbitrary value into the current scope.
+ */
+static void putLLVMValue(ZCodegen *ctx, char *key, LLVMValueRef value) {
+    ZLLVMSymbol *symbol = makesymbol(ctx);
+    symbol->name        = key;
+    symbol->value       = value;
+    symbol->isValue     = true;
+    vecpush(ctx->scope->symbols, symbol);
+}
+
+/**
+ * @brief Returns the symbol saved in the scope's chain.
+ *
+ * Used in `getLLVMValueRef`
+ */
+static ZLLVMSymbol *getLLVMSymbol(ZCodegen *ctx, const char *key) {
+    if (!key) return NULL;
+    ZLLVMScope *current = ctx->scope;
+    while (current) {
+        usize len = veclen(current->symbols);
+        for (usize i = 0; i < len; i++) {
+            if (strcmp(current->symbols[i]->name, key) == 0) {
+                return current->symbols[i];
+            }
+        }
+        current = current->parent;
+    }
+    return NULL;
 }
 
 /**
@@ -79,19 +114,9 @@ static void putLLVMValueRef(ZCodegen *ctx, char *key, LLVMValueRef value) {
  *
  * @see genIdent to see how it's used.
  */
-static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, char *key) {
-    if (!key) return NULL;
-    ZLLVMScope *cur = ctx->scope;
-    while (cur) {
-        usize len = veclen(cur->symbols);
-        for (usize i = len; i-- > 0;) {
-            if (strcmp(cur->symbols[i]->name, key) == 0) {
-                return cur->symbols[i]->value;
-            }
-        }
-        cur = cur->parent;
-    }
-    return NULL;
+static LLVMValueRef getLLVMValueRef(ZCodegen *ctx, const char *key) {
+    ZLLVMSymbol *sym = getLLVMSymbol(ctx, key);
+    return sym ? sym->value : NULL;
 }
 
 static LLVMValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
@@ -822,19 +847,23 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
     }
 
     char *key = manglingIdent(node);
-    LLVMValueRef val = getLLVMValueRef(ctx, key);
-    if (!val) {
+    ZLLVMSymbol *sym = getLLVMSymbol(ctx, key);
+    if (!sym) {
         error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
         return NULL;
     }
+
     /* Local allocas and global variables are pointers - load to get the value.
        Functions and other constants are returned directly. */
-    LLVMValueKind kind = LLVMGetValueKind(val);
+    LLVMValueKind kind = LLVMGetValueKind(sym->value);
+
+    if (sym->isValue) return sym->value;
+
     if (kind == LLVMInstructionValueKind || kind == LLVMGlobalVariableValueKind) {
         LLVMTypeRef type = genType(ctx, node->resolved);
-        return LLVMBuildLoad2(ctx->builder, type, val, node->tok->str);
+        return LLVMBuildLoad2(ctx->builder, type, sym->value, node->tok->str);
     }
-    return val;
+    return sym->value;
 }
 
 /**
@@ -1393,6 +1422,8 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
             1,              name
         );
     } else if (arrType->kind == Z_TYPE_ARRAY) {
+        emitBoundCheck(ctx, node->tok, i, type, ptr);
+
         LLVMTypeRef elemType = genType(ctx, arrType->array.base);
         LLVMTypeRef ptrType = LLVMPointerType(elemType, 0);
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
@@ -1402,7 +1433,6 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
         LLVMValueRef basePtr = LLVMBuildLoad2(
             ctx->builder, ptrType, fieldPtr, name
         );
-        emitBoundCheck(ctx, node->tok, i, type, ptr);
         return LLVMBuildGEP2(
             ctx->builder,   elemType,
             basePtr,        &i,
@@ -3158,14 +3188,145 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     endScope(ctx);
 }
 
+static void genForInRange(ZCodegen *ctx, ZNode *node) {
+    if (node->forin.iter->type != NODE_RANGE) return;
+    ZNode *iter             = node->forin.iter;
+    ZVarDestructPattern *b  = node->forin.binding;
+    LLVMTypeRef type        = genType(ctx, iter->resolved);
+    LLVMValueRef startExpr  = genExpr(ctx, iter->binary.left);
+    LLVMValueRef endExpr    = genExpr(ctx, iter->binary.right);
+
+    LLVMBasicBlockRef org   = LLVMGetInsertBlock(ctx->builder);
+    LLVMBasicBlockRef entry = makeblock(ctx, "forin.entry");
+    LLVMBasicBlockRef body  = makeblock(ctx, "forin.body");
+    LLVMBasicBlockRef end   = makeblock(ctx, "forin.end");
+    LLVMBasicBlockRef step  = makeblock(ctx, "forin.step");
+
+    bool uns = typeIsUnsigned(iter->resolved);
+
+    makebr(ctx->builder, entry);
+
+
+    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+    LLVMValueRef curr = LLVMBuildPhi(
+        ctx->builder, type, label(ctx, "forin.i"));
+    LLVMAddIncoming(curr, &startExpr, &org, 1);
+
+
+    LLVMValueRef cond = LLVMBuildICmp(
+        ctx->builder, uns ? LLVMIntULT : LLVMIntSLT, curr, endExpr, label(ctx, "forin.cond")
+    );
+    makecondbr(ctx->builder, cond, body, end);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, body);
+
+    beginScope(Z_SCOPE_LOOP, ctx);
+    ctx->scope->startLoop   = step;
+    ctx->scope->endLoop     = end;
+
+    putLLVMValue(ctx, stoken(b->tok), curr);
+
+    genStmt(ctx, node->forin.body);
+
+    // Fire all defer statements
+    genChainDefer(ctx, ctx->scope->parent);
+
+    endScope(ctx);
+
+    makebr(ctx->builder, step);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, step);
+    LLVMValueRef next = LLVMBuildAdd(
+        ctx->builder, curr,
+        LLVMConstInt(type, 1, false),
+        label(ctx, "forin.next")
+    );
+
+    LLVMAddIncoming(curr, &next, &step, 1);
+    makebr(ctx->builder, entry);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, end);
+}
+
+static void genForInArray(ZCodegen *ctx, ZNode *node) {
+    ZType *base             = node->forin.iter->resolved->array.base;
+    ZNode *iter             = node->forin.iter;
+    LLVMValueRef arr        = genExpr(ctx, iter);
+    LLVMTypeRef typeRef     = genType(ctx, base);
+    ZVarDestructPattern *b  = node->forin.binding;
+
+    LLVMBasicBlockRef org   = LLVMGetInsertBlock(ctx->builder);
+    LLVMBasicBlockRef entry = makeblock(ctx, "forin.entry");
+    LLVMBasicBlockRef body  = makeblock(ctx, "forin.body");
+    LLVMBasicBlockRef step  = makeblock(ctx, "forin.step");
+    LLVMBasicBlockRef end   = makeblock(ctx, "forin.end");
+    LLVMValueRef startIdx   = LLVMConstNull(i64Type);
+    LLVMValueRef arrayLen   = LLVMBuildExtractValue(ctx->builder, arr, 0, label(ctx, "arr.len"));
+    LLVMValueRef arrayPtr   = LLVMBuildExtractValue(ctx->builder, arr, 1, label(ctx, "arr.ptr"));
+
+    makebr(ctx->builder, entry);
+    LLVMPositionBuilderAtEnd(ctx->builder, entry);
+    LLVMValueRef curr = LLVMBuildPhi(ctx->builder, i64Type, label(ctx, "forin.index"));
+    LLVMValueRef cond = LLVMBuildICmp(
+        ctx->builder, LLVMIntULT, curr, arrayLen, label(ctx, "forin.cond")
+    );
+    makecondbr(ctx->builder, cond, body, end);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, body);
+    LLVMAddIncoming(curr, &startIdx, &org, 1);
+
+    beginScope(Z_SCOPE_LOOP, ctx);
+
+    ZLLVMScope *scope       = ctx->scope->parent;
+    ctx->scope->startLoop   = step;
+    ctx->scope->endLoop     = end;
+
+    LLVMValueRef item = LLVMBuildGEP2(
+        ctx->builder, typeRef, arrayPtr,
+        &curr, 1, label(ctx, "forin.item")
+    );
+
+    if (b->type == Z_VAR_TUPLE) {
+        putDestructuredPatternInStack(ctx, iter->resolved->array.base, b->tuple[0], item);
+        putLLVMValue(ctx, b->tuple[1]->tok->str, curr);
+    } else {
+        putDestructuredPatternInStack(ctx, iter->resolved->array.base, b, item);
+    }
+
+    genStmt(ctx, node->forin.body);
+    genChainDefer(ctx, scope);
+    endScope(ctx);
+    makebr(ctx->builder, step);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, step);
+    LLVMValueRef next = LLVMBuildAdd(
+        ctx->builder, curr, LLVMConstInt(i64Type, 1, false), label(ctx, "forin.next")
+    );
+
+    LLVMAddIncoming(curr, &next, &step, 1);
+    makebr(ctx->builder, entry);
+
+
+    LLVMPositionBuilderAtEnd(ctx->builder, end);
+}
+
 static void genForIn(ZCodegen *ctx, ZNode *node) {
+    if (node->forin.iter->type == NODE_RANGE) {
+        genForInRange(ctx, node);
+        return;
+    }
+
     ZNode *callNode = node->forin.iterNextRef;
-    ZNode *member   = callNode->call.callee;
 
-    LLVMValueRef func = getLLVMValueRef(ctx, member->memberAccess.mangled);
-    LLVMTypeRef funcType = LLVMGlobalGetValueType(func);
+    if (!callNode && node->forin.iter->resolved->kind == Z_TYPE_ARRAY) {
+        genForInArray(ctx, node);
+        return;
+    }
 
-    LLVMValueRef self = genLvalue(ctx,
+    ZNode *member           = callNode->call.callee;
+    LLVMValueRef func       = getLLVMValueRef(ctx, member->memberAccess.mangled);
+    LLVMTypeRef funcType    = LLVMGlobalGetValueType(func);
+    LLVMValueRef self       = genLvalue(ctx,
         member->memberAccess.object->unary.operand
     );
 
@@ -3180,7 +3341,7 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
         return;
     }
 
-    LLVMBuildBr(ctx->builder, entry);
+    makebr(ctx->builder, entry);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
     LLVMValueRef call = LLVMBuildCall2(
         ctx->builder,
@@ -3211,11 +3372,14 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
             stack->stack, 0, label(ctx, "optional.data.ptr")
         );
 
+    beginScope(Z_SCOPE_LOOP, ctx);
     putDestructuredPatternInStack(
         ctx, callNode->resolved->optional,
         node->forin.binding, dataPtr
     );
     genStmt(ctx, node->forin.body);
+    endScope(ctx);
+
     LLVMBuildBr(ctx->builder, entry);
 
     LLVMPositionBuilderAtEnd(ctx->builder, end);

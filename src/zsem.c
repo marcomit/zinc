@@ -498,6 +498,12 @@ static void putStruct(ZThreadSem *ctx, ZNode *node) {
 }
 
 static void putEnum(ZThreadSem *ctx, ZNode *node) {
+    /* enum integers can't hold payload. */
+    if (node->resolved->enm.integer) {
+        for (usize i = 0; i < veclen(node->enumDef.fields); i++) {
+            // (node->enumDef.fields[i]->field.type);
+        }
+    }
     putRawSymbol(
         ctx,
         Z_SYM_ENUM,
@@ -2203,6 +2209,30 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_SLICE:        result = resolveSlice       (ctx, curr, inferred);      break;
     case NODE_IF:           result = resolveIf          (ctx, curr, inferred);      break;
     case NODE_UNWRAP:       result = resolveUnwrap      (ctx, curr, inferred);      break;
+    case NODE_RANGE: {
+        ZType *left     = resolveType(ctx, curr->binary.left, inferred);
+        ZType *right    = resolveType(ctx, curr->binary.right, inferred);
+
+        if (!isPrimitive(left) && !isInteger(left->primitive.token)) {
+            error(ctx->state, curr->binary.left->tok, "operand of a range expression must be an integer");
+        }
+
+        if (!isPrimitive(right) && !isInteger(right->primitive.token)) {
+            error(ctx->state, curr->binary.right->tok, "operand of a range expression must be an integer");
+        }
+
+        ZType *promoted = typesCompatible(ctx, left, right);
+        if (!promoted) {
+            error(ctx->state, curr->tok,
+              "'%s' and '%s' are not compatible", stype(left), stype(right)
+            );
+        } else {
+            result = promoted;
+            curr->binary.left = implicitCast(ctx, curr->binary.left, promoted);
+            curr->binary.right = implicitCast(ctx, curr->binary.right, promoted);
+        }
+        break;
+    }
     case NODE_VAR_DECL:
         /* Used when a var-decl appears as a sub-expression (unusual but safe). */
         if (curr->resolved) {
@@ -2964,67 +2994,90 @@ static void analyzeMatchStmt(ZThreadSem *ctx, ZNode *curr) {
 
 static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZType *iter = resolveType(ctx, curr->forin.iter, inferred);
+    ZVarDestructPattern *binding = curr->forin.binding;
 
-    ZType *iterPtr = makeTypeThread(ctx, Z_TYPE_POINTER);
-    iterPtr->tok = iter->tok;
-    iterPtr->base = iter;
+    ZType *itemType = NULL;
+    ZType *elemType = iter;
 
-    ZFuncTable *table = resolveFuncTable(ctx, iterPtr);
-    if (!table || !hashset_has(table->seenReceiverFuncs, "next")) {
-        error(ctx->state, curr->forin.iter->tok,
-            "iterator expression doesn't implement 'next' function"
-        );
-        return;
-    }
+    bool isInt = isPrimitive(iter) && isInteger(iter->primitive.token);
+    bool isArr = iter->kind == Z_TYPE_ARRAY;
 
-    usize idx = 0;
-    for (usize i = 0; i < veclen(table->funcDef); i++) {
-        if (strcmp(table->funcDef[i]->funcDef.name->str, "next") == 0) {
-            idx = i;
-            break;
+    if (curr->forin.iter->type != NODE_RANGE && !isInt && !isArr) {
+        ZType *iterPtr = makeTypeThread(ctx, Z_TYPE_POINTER);
+        iterPtr->tok = iter->tok;
+        iterPtr->base = iter;
+
+        ZFuncTable *table = resolveFuncTable(ctx, iterPtr);
+        if (!table || !hashset_has(table->seenReceiverFuncs, "next")) {
+            error(ctx->state, curr->forin.iter->tok,
+                "'%s' doesn't implement 'next' function", stype(iter)
+            );
+            return;
         }
+
+        usize idx = 0;
+        for (usize i = 0; i < veclen(table->funcDef); i++) {
+            if (strcmp(table->funcDef[i]->funcDef.name->str, "next") == 0) {
+                idx = i;
+                break;
+            }
+        }
+        ZNode *funcRef = table->funcDef[idx];
+        if (veclen(funcRef->resolved->func.args) != 0) {
+            error(ctx->state, funcRef->tok,
+                "'next' function expects 0 arguments, got %zu",
+                veclen(funcRef->resolved->func.args)
+            );
+        }
+        itemType = funcRef->resolved->func.ret;
+
+        if (itemType->kind != Z_TYPE_OPTIONAL) {
+            error(ctx->state, funcRef->tok,
+                "'next' function must return an optional type, got '%s'",
+                stype(itemType)
+            );
+            return;
+        }
+        ZToken *tok             = curr->forin.iter->tok;
+        ZNode *call             = makeNodeThread(ctx, NODE_CALL);
+        ZNode *iterAddr         = makeNodeThread(ctx, NODE_UNARY);
+        iterAddr->unary.operand = curr->forin.iter;
+        iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, tok->start);
+
+        ZNode *iterCall                     = makeNodeThread(ctx, NODE_MEMBER);
+        iterCall->memberAccess.object       = iterAddr;
+        iterCall->memberAccess.field        = makeTokenThread(ctx, TOK_IDENT, tok->start);
+        iterCall->memberAccess.field->str   = "next";
+        iterCall->memberAccess.mangled      = funcRef->funcDef.mangled;
+
+        call->call.callee       = iterCall;
+        call->call.args         = NULL;
+        call->call.func         = funcRef;
+        call->call.capabilities = NULL;
+        call->resolved          = funcRef->resolved->func.ret;
+
+        curr->forin.iterNextRef = call;
+
+        elemType = itemType->optional;
+    } else if (isArr) {
+        elemType = iter->array.base;
     }
-    ZNode *funcRef = table->funcDef[idx];
-    if (veclen(funcRef->resolved->func.args) != 0) {
-        error(ctx->state, funcRef->tok,
-            "'next' function expects 0 arguments, got %zu",
-            veclen(funcRef->resolved->func.args)
-        );
-    }
-    ZType *itemType = funcRef->resolved->func.ret;
-
-    if (itemType->kind != Z_TYPE_OPTIONAL) {
-        error(ctx->state, funcRef->tok,
-            "'next' function must return an optional type, got '%s'",
-            stype(itemType)
-        );
-        return;
-    }
-    ZToken *tok             = curr->forin.iter->tok;
-    ZNode *call             = makeNodeThread(ctx, NODE_CALL);
-    ZNode *iterAddr         = makeNodeThread(ctx, NODE_UNARY);
-    iterAddr->unary.operand = curr->forin.iter;
-    iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, tok->start);
-
-    ZNode *iterCall                     = makeNodeThread(ctx, NODE_MEMBER);
-    iterCall->memberAccess.object       = iterAddr;
-    iterCall->memberAccess.field        = makeTokenThread(ctx, TOK_IDENT, tok->start);
-    iterCall->memberAccess.field->str   = "next";
-    iterCall->memberAccess.mangled      = funcRef->funcDef.mangled;
-
-    call->call.callee       = iterCall;
-    call->call.args         = NULL;
-    call->call.func         = funcRef;
-    call->call.capabilities = NULL;
-    call->resolved          = funcRef->resolved->func.ret;
-
-    curr->forin.iterNextRef = call;
-
     beginScope(ctx, curr->forin.body);
 
     ctx->loopDepth++;
 
-    putVarPattern(ctx, curr, itemType->optional, curr->forin.binding, true);
+    if (isArr && binding->type == Z_VAR_TUPLE) {
+         if (veclen(binding->tuple) > 2)
+            error(ctx->state, binding->tok, "Must be at least two elements");
+
+        putVarPattern(ctx, curr, elemType, binding->tuple[0], false);
+        if (veclen(binding->tuple) == 2) {
+            putVarPattern(ctx, curr, u64Type, binding->tuple[1], false);
+        }
+    } else {
+        putVarPattern(ctx, curr, elemType, curr->forin.binding, true);
+    }
+
     analyzeBlock(ctx, curr->forin.body, false);
     ctx->loopDepth--;
 

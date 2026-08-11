@@ -4,7 +4,7 @@ use <std.io.net>
 use <std.io.thread>
 
 libc :: foreign {
-    printf: fn (*char, ...) u0
+    printf: fn (*char, ..) u0
     strcmp: fn (*char, *char) i32
     strlen: fn (*char) u64
 }

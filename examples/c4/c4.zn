@@ -3,8 +3,8 @@ use <std::mem::gpa>
 
 libc :: foreign {
     putchar : fn (i32) i32
-    scanf   : fn (*char, ...) i32
-    printf  : fn (*char, ...) u0
+    scanf   : fn (*char, ..) i32
+    printf  : fn (*char, ..) u0
     memset  : fn (*u8, i32, u64) *u8
 }
 

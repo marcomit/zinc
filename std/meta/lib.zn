@@ -1,21 +1,22 @@
+printf :: foreign fn (*char, ..) u0
+
 #[lang(type_info)]
 Type :: enum {
-    hash: u32
-
     Void
     Bool(u1)
     Integer(u8, u1)
     Float(u8)
     Struct(*char, []StructField)
-    Enum(*char, []TypeInfoStruct)
+    Enum(*char, []EnumVariant)
     Pointer(*Type)
     Optional(*Type)
     Error(*Type, *Type)
     Func(*Type, []*Type)
+    Sum([]*Type)
 }
 
-#[lang(type_info_struct)]
-TypeInfoStruct :: struct {
+#[lang(type_info_enum_variant)]
+EnumVariant :: struct {
     name: *char
     fields: []StructField
 }
@@ -23,7 +24,7 @@ TypeInfoStruct :: struct {
 #[lang(type_info_struct_field)]
 StructField :: struct {
     name: *char
-    typeref: Type
+    typeref: *Type
 }
 
 #[lang(source_location_type)]
@@ -35,14 +36,70 @@ pub SourceLocation :: struct {
 }
 
 #[lang(source_location_func)]
-pub foreign here :: SourceLocation
+pub here :: foreign SourceLocation
 
-func :: fn (loc: SourceLocation) u0 {
+pub reflect :: foreign fn (T) Type
+
+printStructField :: fn (field: StructField) {
+    if field.name { printf("%s: ", field.name) }
+
+    printType(field.typeref)
 }
 
-main :: fn () i32 {
+printVariant :: fn (variant: EnumVariant) {
+    printf("%s(", variant.name)
+    for field in variant.fields {
+        printStructField(field)
+    }
+    printf(")")
+}
 
-    func(here)
-
-    return 0
+pub printType :: fn (t: Type) {
+    match t {
+    .Void -> printf("void"),
+    .Bool(val) -> printf(if val do "true" else "false"),
+    .Integer(width, signed) -> printf("%s%d", if signed do "i" else "u", width),
+    .Float(f) -> printf("f%d", f),
+    .Struct(name, fields) {
+        printf("%s :: struct {\n")
+        for field in fields {
+            printStructField(field)
+            printf("\n")
+        }
+        printf("}")
+    },
+    .Enum(name, variants) {
+        printf("%s :: enum {\n")
+        for variant in variants {
+            printVariant(variant)
+            printf("\n")
+        }
+        printf("}")
+    },
+    .Pointer(base) {
+        printf("*")
+        printType(base)
+    },
+    .Optional(base) {
+        printf("?")
+        printType(base)
+    },
+    .Error(success, error) {
+        printType(success)
+        printf("!")
+        printType(error)
+    },
+    .Func(ret, args) {
+        printf("fn (")
+        for arg in args do printType(arg)
+        printf(") ")
+        printType(ret)
+    },
+    .Sum(types) {
+        for i in types.len {
+            printType(types[i])
+            if i != types.len - 1 do printf(" | ")
+        }
+    }
+    }
 }

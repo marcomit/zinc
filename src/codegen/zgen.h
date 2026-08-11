@@ -42,6 +42,7 @@ typedef struct ZLLVMSymbol {
     ZNode *node;
     LLVMValueRef value;
     LLVMTypeRef type;
+    bool isValue;
 } ZLLVMSymbol;
 
 typedef struct {

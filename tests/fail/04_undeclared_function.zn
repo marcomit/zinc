@@ -1,4 +1,4 @@
-foreign u0 printf(*char, ...)
+foreign u0 printf(*char, ..)
 foreign *u8 malloc(u64)
 
 struct Node {
