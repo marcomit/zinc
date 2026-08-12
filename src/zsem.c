@@ -852,6 +852,8 @@ bool typesEqual(ZType *a, ZType *b) {
 
     if (a->kind != b->kind) return false;
 
+    // if (a->hash && b->hash && a->hash == b->hash) return true;
+
     switch (a->kind) {
     case Z_TYPE_PRIMITIVE:
         return tokeneq(a->primitive.token, b->primitive.token);

@@ -1603,7 +1603,8 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
 
 static ZAnnotation **parseAnnotations(ZParser *parser) {
     expect(parser, TOK_HASHTAG);
-    expect(parser, TOK_LSBRACKET);
+
+    bool group = match(parser, TOK_LSBRACKET);
 
     ZAnnotation **annotations   = NULL;
     ZAnnotation *annotation     = NULL;
@@ -1615,9 +1616,9 @@ static ZAnnotation **parseAnnotations(ZParser *parser) {
             break;
         }
         vecpush(annotations, annotation);
-    } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
+    } while (!check(parser, TOK_RSBRACKET) && match(parser, group ? TOK_COMMA : TOK_HASHTAG));
 
-    expect(parser, TOK_RSBRACKET);
+    if (group) expect(parser, TOK_RSBRACKET);
 
     return annotations;
 }
@@ -3079,7 +3080,7 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     ZAnnotation **annotations   = NULL;
     do {
         annotations = NULL;
-        if (check(parser, TOK_HASHTAG) && checkAhead(parser, TOK_LSBRACKET, 1)) {
+        if (check(parser, TOK_HASHTAG)) {
             annotations = parseAnnotations(parser);
         }
         public = match(parser, TOK_PUB);
@@ -3220,7 +3221,7 @@ static ZNode *parse(ZParser *parser) {
     ZTokenType t = start->type;
     ZAnnotation **annotations = NULL;
 
-    if (t == TOK_HASHTAG && checkAhead(parser, TOK_LSBRACKET, 1)) {
+    if (t == TOK_HASHTAG) {
         annotations = parseAnnotations(parser);
     }
 

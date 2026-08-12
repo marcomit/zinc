@@ -2203,7 +2203,7 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
             return NULL;
         }
 
-        // checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
+        checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
 
         LLVMValueRef dataPtr = LLVMBuildStructGEP2(
                 ctx->builder, genType(ctx, resolved), stack->stack,
@@ -2901,8 +2901,23 @@ static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
     if (!type || !left) return NULL;
     LLVMValueRef right = NULL;
 
-    if (type->kind == Z_TYPE_PRIMITIVE) {
+    switch (type->kind) {
+    case Z_TYPE_PRIMITIVE:
         right = LLVMConstNull(genType(ctx, type));
+        break;
+    case Z_TYPE_OPTIONAL:
+        if (type->optional->kind == Z_TYPE_POINTER) {
+            right = LLVMConstNull(genType(ctx, type->optional));
+        } else {
+            left = LLVMBuildExtractValue(ctx->builder, left, 1, label(ctx, "cond"));
+            right = LLVMConstNull(i1Type);
+        }
+        break;
+    case Z_TYPE_RESULT:
+        right = LLVMConstNull(i8Type);
+        left = LLVMBuildExtractValue(ctx->builder, left, 1, label(ctx, "cond"));
+    default:
+        break;
     }
 
     return LLVMBuildICmp(
