@@ -405,7 +405,10 @@ struct ZAnnotation {
     ZAnnotationKind     kind;
     ZToken              *tok;
     union {
-        ZToken          *ident;
+        struct {
+            ZLangItemType   li;
+            ZToken          *tok;
+        } ident;
         ZToken          *literal;
         ZAnnotation     **nested;
         struct {
@@ -663,6 +666,7 @@ struct ZNode {
             char            *mangled;
             ZSymbol         *sym;
             ZNode           *ref;
+            ZLangItemType   li;
         } identNode;
 
         struct {
@@ -1009,7 +1013,7 @@ ZAnnotation *queryFrom(ZAnnotation **, const char *, usize *);
 ZAnnotation *queryArg(ZAnnotation *, const char *);
 ZAnnotation *annArg(ZAnnotation *, usize);
 usize annLen(ZAnnotation *);
-
+ZLangItemType getLangItemType(ZNode *);
 void analyzeAnnotations(ZState *state, ZNode *node);
 
 #endif

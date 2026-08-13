@@ -1413,6 +1413,7 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             return NULL;
         }
         callee->identNode.ref = sym->node;
+        callee->identNode.li  = getLangItemType(sym->node);
 
         if (sym->kind == Z_SYM_FACET) {
             if (veclen(args) != 1) {
@@ -1668,6 +1669,8 @@ static ZType *resolveIdentByScope(ZThreadSem *ctx, ZScope *scope, ZNode *node) {
     }
     node->identNode.ref = sym->node;
     node->identNode.sym = sym;
+    node->identNode.li  = getLangItemType(sym->node);
+
     if (sym->node->type == NODE_FUNC) {
         node->identNode.mangled = sym->node->funcDef.mangled;
         ZNode *fn = sym->node;

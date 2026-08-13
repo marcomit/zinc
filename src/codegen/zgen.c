@@ -853,6 +853,11 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
         return NULL;
     }
 
+    ZLangItemType li = getLangItemType(node);
+    if (li && LangBuiltins[li]) {
+        return LangBuiltins[li](ctx, node);
+    }
+
     char *key = manglingIdent(node);
     ZLLVMSymbol *sym = getLLVMSymbol(ctx, key);
     if (!sym) {
@@ -1582,17 +1587,6 @@ static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
         ctx->builder, LLVMPointerType(i8Type, 0), funcSlot,
         label(ctx, "func")
     );
-}
-
-static inline ZLangItemType getLangItemType(ZNode *callee) {
-    if (!callee || callee->type != NODE_IDENTIFIER) return Z_LANG_NONE;
-    ZNode *ref = callee->identNode.ref;
-
-    for (ZLangItemType i = 1; i < Z_LANG_COUNT; i++) {
-        if (LangItems[i] == ref) return i;
-    }
-
-    return Z_LANG_NONE;
 }
 
 /**

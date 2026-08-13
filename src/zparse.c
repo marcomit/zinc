@@ -1596,8 +1596,9 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
         return arg;
     }
 
-    arg->kind   = Z_ANN_IDENT;
-    arg->ident  = curr;
+    arg->kind       = Z_ANN_IDENT;
+    arg->ident.tok  = curr;
+    arg->ident.li   = Z_LANG_NONE;
     return arg;
 }
 

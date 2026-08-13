@@ -112,8 +112,8 @@ static void analyzeAnnotation(
             error(state, annotation->tok, "Lang-item already registered");
             return;
         }
+        annotation->ident.li = item->langItem;
         LangItems[item->langItem] = node;
-        info(state, annotation->tok, "Registered lang item");
     }
 
     if (annotation->kind == Z_ANN_NESTED) {
@@ -276,7 +276,21 @@ ZAnnotation *query(ZAnnotation **anns, const char *name) {
     return queryFrom(anns, name, NULL);
 }
 
-void test(ZAnnotation **annotations) {
-    ZAnnotation *inl = query(annotations, "inline");
-    queryArg(inl, "always");
+ZLangItemType getLangItemType(ZNode *node) {
+    if (!node) return Z_LANG_NONE;
+    ZAnnotation **anns = NULL;
+    switch (node->type) {
+    case NODE_FOREIGN:  anns = node->foreignDecl.annotations;   break;
+    case NODE_IMPL:     anns = node->impl.annotations;          break;
+    case NODE_FUNC:     anns = node->funcDef.annotations;       break;
+    case NODE_STRUCT:   anns = node->structDef.annotations;     break;
+    case NODE_ENUM:     anns = node->enumDef.annotations;       break;
+    case NODE_IDENTIFIER: return node->identNode.li;
+    default: break;
+    }
+
+    ZAnnotation *lang = query(anns, "lang");
+    if (!lang) return Z_LANG_NONE;
+    lang = annArg(lang, 0);
+    return lang->ident.li;
 }

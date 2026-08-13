@@ -150,6 +150,7 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
 }
 
 LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
+    printf("Emit panic\n");
     if (veclen(call->call.args) != 1) {
         error(
             ctx->state, call->tok,
@@ -159,4 +160,8 @@ LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
     LLVMBuildTrap(ctx);
     printf("Emitted panic\n");
     return LLVMConstNull(i0Type);
+}
+
+LLVMValueRef genHere(ZCodegen *ctx, ZNode *node) {
+    return NULL;
 }
