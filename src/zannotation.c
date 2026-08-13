@@ -4,13 +4,13 @@
 #include "zinc.h"
 
 struct ZAnnotationSpec {
-    const char *name;
-    u32 spec;
-    ZLangItem langItem;
-    ZAnnotationTarget targetMask;
-    u8 minArg, maxArg;
-    bool repeatable;
-    ZAnnotationSpec *args;
+    const char          *name;
+    u32                 spec;
+    ZLangItemType       langItem;
+    ZAnnotationTarget   targetMask;
+    u8                  minArg, maxArg;
+    bool                repeatable;
+    ZAnnotationSpec     *args;
 };
 
 struct ZAnnotationQuery {
@@ -27,14 +27,15 @@ static const ZAnnotationSpec Literal = {
 #define None { NULL, 0, 0, 0, 0, 0, false, NULL }
 
 static ZAnnotationSpec LangItemsSpec[] = {
-    { "type_info",              Z_ANN_IDENT, Z_LANG_TYPE_INFO,                 Z_TRG_ENUM,     0, 0, false, NULL },
-    { "type_info_struct",       Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT,          Z_TRG_STRUCT,   0, 0, false, NULL },
-    { "type_info_struct_field", Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT_FIELD,    Z_TRG_STRUCT,   0, 0, false, NULL },
+    { "type_info",              Z_ANN_IDENT, Z_LANG_TYPE_INFO,                  Z_TRG_ENUM,     0, 0, false, NULL },
+    { "type_info_struct",       Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT,           Z_TRG_STRUCT,   0, 0, false, NULL },
+    { "type_info_struct_field", Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT_FIELD,     Z_TRG_STRUCT,   0, 0, false, NULL },
 
-    { "reflect",                Z_ANN_IDENT, Z_LANG_REFLECT,                   Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "reflect",                Z_ANN_IDENT, Z_LANG_REFLECT,                    Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "panic",                  Z_ANN_IDENT, Z_LANG_PANIC,                      Z_TRG_FOREIGN,  0, 0, false, NULL },
 
-    { "source_location_type",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_TYPE,      Z_TRG_STRUCT,   0, 0, false, NULL },
-    { "source_location_func",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_FUNC,      Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "source_location_type",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_TYPE,       Z_TRG_STRUCT,   0, 0, false, NULL },
+    { "source_location_func",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_FUNC,       Z_TRG_FOREIGN,  0, 0, false, NULL },
 
     None,
 };

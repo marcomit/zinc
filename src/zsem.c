@@ -2159,7 +2159,7 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             error(ctx->state, curr->tok, "Cannot convert an optional type to a result");
             return success;
         } else if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isResult) {
-            if (typesCompatible(ctx,
+            if (!typesCompatible(ctx,
                     base->result.error,
                     ctx->currentFuncRet->result.error)) {
                 error(ctx->state, curr->tok,

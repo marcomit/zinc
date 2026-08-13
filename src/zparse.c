@@ -671,11 +671,11 @@ static ZNode *parseLogicalOr(ZParser *parser) {
         else if (check(parser, TOK_BREAK)) {
             expr        = parseBreak(parser);
             unwrapKind  = UNWRAP_BREAK;
-        } else if (match(parser, TOK_CONTINUE)) {
-            expr        = parseBreak(parser);
+        } else if (check(parser, TOK_CONTINUE)) {
+            expr        = parseContinue(parser);
             unwrapKind  = UNWRAP_CONTINUE;
-        } else if (match(parser, TOK_RETURN)) {
-            expr        = parseBreak(parser);
+        } else if (check(parser, TOK_RETURN)) {
+            expr        = parseReturn(parser);
             unwrapKind  = UNWRAP_RETURN;
         } else if (match(parser, TOK_DO)) {
             expr        = parseExpr(parser);

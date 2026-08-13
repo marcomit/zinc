@@ -12,6 +12,7 @@
 
 #include "zgen.h"
 #include "zinc.h"
+#include <iso646.h>
 
 static void         genStmt             (ZCodegen *, ZNode *);
 static void         genBlock            (ZCodegen *, ZNode *);
@@ -38,6 +39,12 @@ _Thread_local LLVMTypeRef i64Type  = NULL;
 
 _Thread_local LLVMTypeRef f32Type  = NULL;
 _Thread_local LLVMTypeRef f64Type  = NULL;
+
+extern ZNode *LangItems[Z_LANG_COUNT];
+
+ZBuiltinFn LangBuiltins[Z_LANG_COUNT] = {
+    [Z_LANG_PANIC] = genPanic,
+};
 
 static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {
     ZLLVMSymbol *self = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMSymbol));
@@ -1577,6 +1584,17 @@ static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
     );
 }
 
+static inline ZLangItemType getLangItemType(ZNode *callee) {
+    if (!callee || callee->type != NODE_IDENTIFIER) return Z_LANG_NONE;
+    ZNode *ref = callee->identNode.ref;
+
+    for (ZLangItemType i = 1; i < Z_LANG_COUNT; i++) {
+        if (LangItems[i] == ref) return i;
+    }
+
+    return Z_LANG_NONE;
+}
+
 /**
  * @brief Generates a call to a function.
  *
@@ -1595,6 +1613,11 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef func   = NULL;
     LLVMValueRef *args  = NULL;
     ZNode *callee       = node->call.callee;
+
+    ZLangItemType li = getLangItemType(callee);
+    if (li && LangBuiltins[li]) {
+        return LangBuiltins[li](ctx, node);
+    }
 
     if (callee->type == NODE_IDENTIFIER && callee->resolved->kind == Z_TYPE_FACET) {
         ZLLVMStack *stack = getStackValue(ctx, node);
@@ -2928,11 +2951,14 @@ static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
 static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef base = genExpr(ctx, node->unwrap.base);
 
+
     switch (node->unwrap.kind) {
     case UNWRAP_BREAK:
     case UNWRAP_CONTINUE:
-    case UNWRAP_RETURN:
-
+    case UNWRAP_RETURN: {
+        LLVMValueRef cond = genCond(ctx, base, node->unwrap.base->resolved);
+        break;
+    }
     default: return NULL;
     }
 

@@ -111,12 +111,19 @@ typedef enum {
     Z_LANG_TYPE_INFO_STRUCT_FIELD,
 
     Z_LANG_REFLECT,
+    Z_LANG_PANIC,
 
     Z_LANG_SOURCE_LOCATION_TYPE,
     Z_LANG_SOURCE_LOCATION_FUNC,
     Z_LANG_HERE,
 
     Z_LANG_COUNT
+} ZLangItemType;
+
+typedef struct {
+    ZLangItemType   type;
+    ZNode           *node;
+
 } ZLangItem;
 
 typedef struct {

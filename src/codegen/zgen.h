@@ -142,9 +142,17 @@ void labelCnt   (ZCodegen *);
 char *labelTok  (ZCodegen *, ZToken *);
 char *labelStr  (ZCodegen *, char *);
 
+void emitRuntimeError(ZCodegen *, ZToken *, const char *);
 void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
 void initializeMemoryToZero(ZCodegen *, LLVMValueRef, ZType *);
 void checkUnsafeUnwrap(ZCodegen *, LLVMValueRef, ZType *, ZToken *);
+
 LLVMValueRef getFlagOptional(ZCodegen *, ZType *, LLVMValueRef);
+
+/* ================== Lang Item Dispatchers ================== */
+typedef LLVMValueRef (*ZBuiltinFn) (ZCodegen *, ZNode *);
+
+LLVMValueRef genPanic(ZCodegen *, ZNode *);
+LLVMValueRef genReflect(ZCodegen *, ZNode *);
 
 #endif //!Z_GEN
