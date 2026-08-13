@@ -1609,13 +1609,13 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return NULL;
     }
 
-    if (veclen(curr->structlit.fields) != veclen(structSym->type->strct.fields)) {
+    if (veclen(curr->structlit.fields) != veclen(symType->strct.fields)) {
         warning(ctx->state, curr->tok, "Some fields not initialized");
     }
 
     for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
         ZNode *field        = curr->structlit.fields[i];
-        ZNode *structField  = getStructField(ctx, structSym->type, field->tok);
+        ZNode *structField  = getStructField(ctx, symType, field->tok);
         ZType *expectedType = resolveTypeRef(ctx, structField->field.type);
         ZType *type         = resolveType(ctx, field->varDecl.rvalue, expectedType);
         ZType *promoted     = NULL;
