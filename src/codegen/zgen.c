@@ -12,6 +12,7 @@
 
 #include "zgen.h"
 #include "zinc.h"
+#include <iso646.h>
 
 static void         genStmt             (ZCodegen *, ZNode *);
 static void         genBlock            (ZCodegen *, ZNode *);
@@ -38,6 +39,12 @@ _Thread_local LLVMTypeRef i64Type  = NULL;
 
 _Thread_local LLVMTypeRef f32Type  = NULL;
 _Thread_local LLVMTypeRef f64Type  = NULL;
+
+extern ZNode *LangItems[Z_LANG_COUNT];
+
+ZBuiltinFn LangBuiltins[Z_LANG_COUNT] = {
+    [Z_LANG_PANIC] = genPanic,
+};
 
 static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {
     ZLLVMSymbol *self = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMSymbol));
@@ -846,6 +853,11 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
         return NULL;
     }
 
+    ZLangItemType li = getLangItemType(node);
+    if (li && LangBuiltins[li]) {
+        return LangBuiltins[li](ctx, node);
+    }
+
     char *key = manglingIdent(node);
     ZLLVMSymbol *sym = getLLVMSymbol(ctx, key);
     if (!sym) {
@@ -1596,6 +1608,11 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef *args  = NULL;
     ZNode *callee       = node->call.callee;
 
+    ZLangItemType li = getLangItemType(callee);
+    if (li && LangBuiltins[li]) {
+        return LangBuiltins[li](ctx, node);
+    }
+
     if (callee->type == NODE_IDENTIFIER && callee->resolved->kind == Z_TYPE_FACET) {
         ZLLVMStack *stack = getStackValue(ctx, node);
         return genFacetConstruct(ctx, stack, callee->resolved, node->call.args[0]);
@@ -2203,7 +2220,7 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
             return NULL;
         }
 
-        // checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
+        checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
 
         LLVMValueRef dataPtr = LLVMBuildStructGEP2(
                 ctx->builder, genType(ctx, resolved), stack->stack,
@@ -2897,30 +2914,121 @@ LLVMValueRef getFlagOptional(ZCodegen *ctx,
     return _getFlagOptional(ctx, type, value, LLVMIntEQ);
 }
 
+static LLVMValueRef genLeftCond(ZCodegen *ctx, LLVMValueRef val, ZType *type) {
+    if (!type) return NULL;
+    switch (type->kind) {
+    case Z_TYPE_PRIMITIVE: return val;
+    case Z_TYPE_OPTIONAL:
+        if (type->optional->kind == Z_TYPE_POINTER) return val;
+    case Z_TYPE_RESULT:
+        return LLVMBuildExtractValue(ctx->builder, val, 0, label(ctx, "extract"));
+    default: return NULL;
+    }
+    return NULL;
+}
+
+static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
+    if (!type || !left) return NULL;
+    LLVMValueRef right = NULL;
+
+    switch (type->kind) {
+    case Z_TYPE_PRIMITIVE:
+        right = LLVMConstNull(genType(ctx, type));
+        break;
+    case Z_TYPE_OPTIONAL:
+        if (type->optional->kind == Z_TYPE_POINTER) {
+            right = LLVMConstNull(genType(ctx, type->optional));
+        } else {
+            left = LLVMBuildExtractValue(ctx->builder, left, 1, label(ctx, "cond"));
+            right = LLVMConstNull(i1Type);
+        }
+        break;
+    case Z_TYPE_RESULT:
+        right = LLVMConstNull(i8Type);
+        left = LLVMBuildExtractValue(ctx->builder, left, 1, label(ctx, "cond"));
+    default:
+        break;
+    }
+
+    return LLVMBuildICmp(
+        ctx->builder, LLVMIntNE, left, right, label(ctx, "cond")
+    );
+}
+
 static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
-    // LLVMValueRef base = genExpr(ctx, node->unwrap.base);
-    // if (node->unwrap.kind == UNWRAP_ELSE) {
-    //     LLVMValueRef cond = getFlagOptional(ctx, node->unwrap.base->resolved, base);
-    //
-    // }
+    ZType *baseType     = node->unwrap.base->resolved;
+    LLVMValueRef base   = genExpr(ctx, node->unwrap.base);
+    int kind            = node->unwrap.kind;
+
+    switch (node->unwrap.kind) {
+    case UNWRAP_BREAK:
+    case UNWRAP_CONTINUE:
+    case UNWRAP_RETURN: {
+        LLVMValueRef cond = genCond(ctx, base, node->unwrap.base->resolved);
+        LLVMBasicBlockRef success = makeblock(ctx, "unwrap.success");
+        LLVMBasicBlockRef then = makeblock(ctx, "unwrap.failure");
+
+
+        makecondbr(ctx->builder, cond, then, success);
+        LLVMPositionBuilderAtEnd(ctx->builder, success);
+
+        genStmt(ctx, node->unwrap.orExpr);
+
+        LLVMPositionBuilderAtEnd(ctx->builder, then);
+        return base;
+    }
+    case UNWRAP_DO: {
+        LLVMTypeRef typeRef         = genType(ctx, node->resolved);
+        LLVMValueRef payload        = LLVMBuildExtractValue(
+            ctx->builder, base, 0, label(ctx, "unwrap.payload")
+        );
+
+        LLVMValueRef cond           = genCond(
+            ctx, base, node->unwrap.base->resolved
+        );
+
+        LLVMBasicBlockRef origin    = LLVMGetInsertBlock(ctx->builder);
+        LLVMBasicBlockRef fail      = makeblock(ctx, "unwrap.fail");
+        LLVMBasicBlockRef merge     = makeblock(ctx, "unwrap.merge");
+
+        makecondbr(ctx->builder, cond, merge, fail);
+        LLVMPositionBuilderAtEnd(ctx->builder, fail);
+        LLVMValueRef orexpr = genExpr(ctx, node->unwrap.orExpr);
+        fail = LLVMGetInsertBlock(ctx->builder);
+        makebr(ctx->builder, merge);
+
+        LLVMPositionBuilderAtEnd(ctx->builder, merge);
+        LLVMValueRef phi = LLVMBuildPhi(
+            ctx->builder, typeRef, label(ctx, "unwrap.phi")
+        );
+        LLVMAddIncoming(phi,
+            (LLVMValueRef[]){ payload, orexpr },
+            (LLVMBasicBlockRef[]){ origin, fail },
+            2
+        );
+        return phi;
+    }
+    default: return NULL;
+    }
+
     return NULL;
 }
 
 static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef res = NULL;
     switch (node->type) {
-    case NODE_IF:               res = genInlineIf       (ctx, node); break;
     case NODE_CALL:             res = genCall           (ctx, node); break;
     case NODE_CAST:             res = genCast           (ctx, node); break;
     case NODE_UNARY:            res = genUnary          (ctx, node); break;
     case NODE_BINARY:           res = genBinary         (ctx, node); break;
     case NODE_LITERAL:          res = genLit            (ctx, node); break;
-    case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
     case NODE_IDENTIFIER:       res = genIdent          (ctx, node); break;
-    case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
-    case NODE_FUNC:             res = genAnonFunc       (ctx, node); break;
-    case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
     case NODE_UNWRAP:           res = genUnwrap         (ctx, node); break;
+    case NODE_FUNC:             res = genAnonFunc       (ctx, node); break;
+    case NODE_IF:               res = genInlineIf       (ctx, node); break;
+    case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
+    case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
+    case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
 
     case NODE_MEMBER:
         if (node->memberAccess.object &&

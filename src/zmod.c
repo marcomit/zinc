@@ -449,7 +449,7 @@ static void printMacroPattern(ZMacroPattern *pattern, u8 depth) {
 
 static void printAnnotation(ZAnnotation *arg) {
     switch (arg->kind) {
-    case Z_ANN_IDENT:   printToken(arg->ident);     break;
+    case Z_ANN_IDENT:   printToken(arg->ident.tok); break;
     case Z_ANN_LIT:     printToken(arg->literal);   break;
     case Z_ANN_NESTED:
         printf("%s(", stoken(arg->tok));

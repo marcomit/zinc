@@ -4,13 +4,13 @@
 #include "zinc.h"
 
 struct ZAnnotationSpec {
-    const char *name;
-    u32 spec;
-    ZLangItem langItem;
-    ZAnnotationTarget targetMask;
-    u8 minArg, maxArg;
-    bool repeatable;
-    ZAnnotationSpec *args;
+    const char          *name;
+    u32                 spec;
+    ZLangItemType       langItem;
+    ZAnnotationTarget   targetMask;
+    u8                  minArg, maxArg;
+    bool                repeatable;
+    ZAnnotationSpec     *args;
 };
 
 struct ZAnnotationQuery {
@@ -27,14 +27,16 @@ static const ZAnnotationSpec Literal = {
 #define None { NULL, 0, 0, 0, 0, 0, false, NULL }
 
 static ZAnnotationSpec LangItemsSpec[] = {
-    { "type_info",              Z_ANN_IDENT, Z_LANG_TYPE_INFO,                 Z_TRG_ENUM,     0, 0, false, NULL },
-    { "type_info_struct",       Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT,          Z_TRG_STRUCT,   0, 0, false, NULL },
-    { "type_info_struct_field", Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT_FIELD,    Z_TRG_STRUCT,   0, 0, false, NULL },
+    { "type_info",              Z_ANN_IDENT, Z_LANG_TYPE_INFO,                  Z_TRG_ENUM,     0, 0, false, NULL },
+    { "type_info_struct",       Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT,           Z_TRG_STRUCT,   0, 0, false, NULL },
+    { "type_info_struct_field", Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT_FIELD,     Z_TRG_STRUCT,   0, 0, false, NULL },
+    { "type_info_enum_variant", Z_ANN_IDENT, Z_LANG_TYPE_INFO_ENUM_VARIANT,     Z_TRG_STRUCT,   0, 0, false, NULL },
 
-    { "reflect",                Z_ANN_IDENT, Z_LANG_REFLECT,                   Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "reflect",                Z_ANN_IDENT, Z_LANG_REFLECT,                    Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "panic",                  Z_ANN_IDENT, Z_LANG_PANIC,                      Z_TRG_FOREIGN,  0, 0, false, NULL },
 
-    { "source_location_type",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_TYPE,      Z_TRG_STRUCT,   0, 0, false, NULL },
-    { "source_location_func",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_FUNC,      Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "source_location_type",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_TYPE,       Z_TRG_STRUCT,   0, 0, false, NULL },
+    { "source_location_func",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_FUNC,       Z_TRG_FOREIGN,  0, 0, false, NULL },
 
     None,
 };
@@ -111,8 +113,8 @@ static void analyzeAnnotation(
             error(state, annotation->tok, "Lang-item already registered");
             return;
         }
+        annotation->ident.li = item->langItem;
         LangItems[item->langItem] = node;
-        info(state, annotation->tok, "Registered lang item");
     }
 
     if (annotation->kind == Z_ANN_NESTED) {
@@ -275,7 +277,21 @@ ZAnnotation *query(ZAnnotation **anns, const char *name) {
     return queryFrom(anns, name, NULL);
 }
 
-void test(ZAnnotation **annotations) {
-    ZAnnotation *inl = query(annotations, "inline");
-    queryArg(inl, "always");
+ZLangItemType getLangItemType(ZNode *node) {
+    if (!node) return Z_LANG_NONE;
+    ZAnnotation **anns = NULL;
+    switch (node->type) {
+    case NODE_FOREIGN:  anns = node->foreignDecl.annotations;   break;
+    case NODE_IMPL:     anns = node->impl.annotations;          break;
+    case NODE_FUNC:     anns = node->funcDef.annotations;       break;
+    case NODE_STRUCT:   anns = node->structDef.annotations;     break;
+    case NODE_ENUM:     anns = node->enumDef.annotations;       break;
+    case NODE_IDENTIFIER: return node->identNode.li;
+    default: break;
+    }
+
+    ZAnnotation *lang = query(anns, "lang");
+    if (!lang) return Z_LANG_NONE;
+    lang = annArg(lang, 0);
+    return lang->ident.li;
 }

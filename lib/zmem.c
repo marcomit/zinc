@@ -10,7 +10,7 @@
 #define ARENA_ALIGNMENT ((usize)8)
 #define ARENA_ALIGN(size) (((size) + (ARENA_ALIGNMENT - 1)) & ~(ARENA_ALIGNMENT - 1))
 
-#define ARENA_MIN_BUCKET KiB(64)
+#define ARENA_MIN_BUCKET KiB(32)
 #define ARENA_MAX_BUCKET MiB(2)
 
 /* Allocate a bucket with an exact buffer size. Callers compute the size:

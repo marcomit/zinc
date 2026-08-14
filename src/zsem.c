@@ -852,6 +852,8 @@ bool typesEqual(ZType *a, ZType *b) {
 
     if (a->kind != b->kind) return false;
 
+    // if (a->hash && b->hash && a->hash == b->hash) return true;
+
     switch (a->kind) {
     case Z_TYPE_PRIMITIVE:
         return tokeneq(a->primitive.token, b->primitive.token);
@@ -1411,6 +1413,7 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             return NULL;
         }
         callee->identNode.ref = sym->node;
+        callee->identNode.li  = getLangItemType(sym->node);
 
         if (sym->kind == Z_SYM_FACET) {
             if (veclen(args) != 1) {
@@ -1607,13 +1610,13 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return NULL;
     }
 
-    if (veclen(curr->structlit.fields) != veclen(structSym->type->strct.fields)) {
+    if (veclen(curr->structlit.fields) != veclen(symType->strct.fields)) {
         warning(ctx->state, curr->tok, "Some fields not initialized");
     }
 
     for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
         ZNode *field        = curr->structlit.fields[i];
-        ZNode *structField  = getStructField(ctx, structSym->type, field->tok);
+        ZNode *structField  = getStructField(ctx, symType, field->tok);
         ZType *expectedType = resolveTypeRef(ctx, structField->field.type);
         ZType *type         = resolveType(ctx, field->varDecl.rvalue, expectedType);
         ZType *promoted     = NULL;
@@ -1666,6 +1669,8 @@ static ZType *resolveIdentByScope(ZThreadSem *ctx, ZScope *scope, ZNode *node) {
     }
     node->identNode.ref = sym->node;
     node->identNode.sym = sym;
+    node->identNode.li  = getLangItemType(sym->node);
+
     if (sym->node->type == NODE_FUNC) {
         node->identNode.mangled = sym->node->funcDef.mangled;
         ZNode *fn = sym->node;
@@ -2139,7 +2144,7 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         base->result.success;
 
     switch (curr->unwrap.kind) {
-    case UNWRAP_ELSE: {
+    case UNWRAP_DO: {
         ZType *orelse = resolveType(ctx, curr->unwrap.orExpr, inferred);
         ZType *promoted = typesCompatible(ctx, orelse, success);
         if (!promoted) {
@@ -2153,11 +2158,12 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 
     case UNWRAP_RETURN:
+        analyzeStmt(ctx, curr->unwrap.orExpr);
         if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isOptional) {
             error(ctx->state, curr->tok, "Cannot convert an optional type to a result");
             return success;
         } else if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isResult) {
-            if (typesCompatible(ctx,
+            if (!typesCompatible(ctx,
                     base->result.error,
                     ctx->currentFuncRet->result.error)) {
                 error(ctx->state, curr->tok,
@@ -2171,6 +2177,7 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     case UNWRAP_BREAK:
     case UNWRAP_CONTINUE:
+        analyzeStmt(ctx, curr->unwrap.orExpr);
         if (ctx->loopDepth == 0) {
             error(ctx->state, curr->tok, "Must be inside a loop");
         }

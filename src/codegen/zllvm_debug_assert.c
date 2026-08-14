@@ -148,3 +148,20 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
 
     LLVMPositionBuilderAtEnd(ctx->builder, cont);
 }
+
+LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
+    printf("Emit panic\n");
+    if (veclen(call->call.args) != 1) {
+        error(
+            ctx->state, call->tok,
+            "Expected 1 argument, got %zu", veclen(call->call.args));
+    }
+    emitRuntimeDebugPrint(ctx, call->tok, stoken(call->call.args[0]->tok));
+    LLVMBuildTrap(ctx);
+    printf("Emitted panic\n");
+    return LLVMConstNull(i0Type);
+}
+
+LLVMValueRef genHere(ZCodegen *ctx, ZNode *node) {
+    return NULL;
+}

@@ -109,14 +109,22 @@ typedef enum {
     Z_LANG_TYPE_INFO,
     Z_LANG_TYPE_INFO_STRUCT,
     Z_LANG_TYPE_INFO_STRUCT_FIELD,
+    Z_LANG_TYPE_INFO_ENUM_VARIANT,
 
     Z_LANG_REFLECT,
+    Z_LANG_PANIC,
 
     Z_LANG_SOURCE_LOCATION_TYPE,
     Z_LANG_SOURCE_LOCATION_FUNC,
     Z_LANG_HERE,
 
     Z_LANG_COUNT
+} ZLangItemType;
+
+typedef struct {
+    ZLangItemType   type;
+    ZNode           *node;
+
 } ZLangItem;
 
 typedef struct {
@@ -398,7 +406,10 @@ struct ZAnnotation {
     ZAnnotationKind     kind;
     ZToken              *tok;
     union {
-        ZToken          *ident;
+        struct {
+            ZLangItemType   li;
+            ZToken          *tok;
+        } ident;
         ZToken          *literal;
         ZAnnotation     **nested;
         struct {
@@ -656,6 +667,7 @@ struct ZNode {
             char            *mangled;
             ZSymbol         *sym;
             ZNode           *ref;
+            ZLangItemType   li;
         } identNode;
 
         struct {
@@ -700,7 +712,7 @@ struct ZNode {
 
         struct {
             enum {
-                UNWRAP_ELSE,
+                UNWRAP_DO,
                 UNWRAP_RETURN,
                 UNWRAP_BREAK,
                 UNWRAP_CONTINUE
@@ -1002,7 +1014,7 @@ ZAnnotation *queryFrom(ZAnnotation **, const char *, usize *);
 ZAnnotation *queryArg(ZAnnotation *, const char *);
 ZAnnotation *annArg(ZAnnotation *, usize);
 usize annLen(ZAnnotation *);
-
+ZLangItemType getLangItemType(ZNode *);
 void analyzeAnnotations(ZState *state, ZNode *node);
 
 #endif

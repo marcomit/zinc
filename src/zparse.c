@@ -665,33 +665,28 @@ static ZNode *parseLogicalOr(ZParser *parser) {
 
     while (true) {
         ZToken *or      = peek(parser);
-        ZNode *right    = NULL;
+        ZNode *right    = NULL, *expr = NULL;
+        int unwrapKind  = 0;
         if (!match(parser, TOK_OR)) return node;
         else if (check(parser, TOK_BREAK)) {
-            ZNode *expr             = parseBreak(parser);
-            right                   = makenode(NODE_UNWRAP);
-            right->unwrap.base      = node;
-            right->unwrap.orExpr    = expr;
-            right->unwrap.kind      = UNWRAP_BREAK;
-        } else if (match(parser, TOK_CONTINUE)) {
-            ZNode *expr             = parseBreak(parser);
-            right                   = makenode(NODE_UNWRAP);
-            right->unwrap.base      = node;
-            right->unwrap.orExpr    = expr;
-            right->unwrap.kind      = UNWRAP_CONTINUE;
-        } else if (match(parser, TOK_RETURN)) {
-            ZNode *expr             = parseBreak(parser);
-            right                   = makenode(NODE_UNWRAP);
-            right->unwrap.base      = node;
-            right->unwrap.orExpr    = expr;
-            right->unwrap.kind      = UNWRAP_RETURN;
+            expr        = parseBreak(parser);
+            unwrapKind  = UNWRAP_BREAK;
+        } else if (check(parser, TOK_CONTINUE)) {
+            expr        = parseContinue(parser);
+            unwrapKind  = UNWRAP_CONTINUE;
+        } else if (check(parser, TOK_RETURN)) {
+            expr        = parseReturn(parser);
+            unwrapKind  = UNWRAP_RETURN;
         } else if (match(parser, TOK_DO)) {
-            ZNode *expr             = parseExpr(parser);
+            expr        = parseExpr(parser);
+            unwrapKind  = UNWRAP_DO;
+        }
+
+        if (expr) {
             right                   = makenode(NODE_UNWRAP);
             right->unwrap.base      = node;
             right->unwrap.orExpr    = expr;
-            right->unwrap.kind      = UNWRAP_ELSE;
-
+            right->unwrap.kind      = unwrapKind;
         } else {
             ZNode *expr             = tryParse(parser, parseLogicalAnd(parser));
             if (!expr) return node;
@@ -1601,14 +1596,16 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
         return arg;
     }
 
-    arg->kind   = Z_ANN_IDENT;
-    arg->ident  = curr;
+    arg->kind       = Z_ANN_IDENT;
+    arg->ident.tok  = curr;
+    arg->ident.li   = Z_LANG_NONE;
     return arg;
 }
 
 static ZAnnotation **parseAnnotations(ZParser *parser) {
     expect(parser, TOK_HASHTAG);
-    expect(parser, TOK_LSBRACKET);
+
+    bool group = match(parser, TOK_LSBRACKET);
 
     ZAnnotation **annotations   = NULL;
     ZAnnotation *annotation     = NULL;
@@ -1620,9 +1617,9 @@ static ZAnnotation **parseAnnotations(ZParser *parser) {
             break;
         }
         vecpush(annotations, annotation);
-    } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
+    } while (!check(parser, TOK_RSBRACKET) && match(parser, group ? TOK_COMMA : TOK_HASHTAG));
 
-    expect(parser, TOK_RSBRACKET);
+    if (group) expect(parser, TOK_RSBRACKET);
 
     return annotations;
 }
@@ -1800,7 +1797,7 @@ static ZNode *parseLoops(ZParser *parser) {
         return node;
     }
 
-    ZParseFunc f[] = { parseForLet, parseForIn, parseWhile };
+    ZParseFunc f[] = { parseForIn, parseForLet, parseWhile };
     ZNode *node = parseOrGrammar(parser, f, sizeof(f) / sizeof(f[0]));
 
     if (node) node->tok = start;
@@ -2330,11 +2327,31 @@ static ZVarDestructPattern *parseMultiDestructVar(ZParser *parser) {
     return pattern;
 }
 
+static ZNode *parseMultiExpr(ZParser *parser) {
+    ZToken *start = peek(parser);
+    ZNode *curr = tryParse(parser, parseExpr(parser));
+    if (!curr || !check(parser, TOK_COMMA)) return curr;
+
+    ZNode **list = NULL;
+    vecpush(list, curr);
+
+    while (curr && match(parser, TOK_COMMA)) {
+        curr = tryParse(parser, parseExpr(parser));
+        if (!curr) break;
+        vecpush(list, curr);
+    }
+
+    ZNode *tuple    = makenode(NODE_TUPLE_LIT);
+    tuple->tok      = start;
+    tuple->tuplelit = list;
+    return tuple;
+}
+
 static ZNode *parseVarInferred(ZParser *parser) {
     ZVarDestructPattern *pattern = parseMultiDestructVar(parser);
 
     expect(parser, TOK_ASSIGN);
-    ZNode *expr = tryParse(parser, parseExpr(parser));
+    ZNode *expr = parseMultiExpr(parser);
 
     if (!expr) {
         error(parser->state, peek(parser), "Expected expression after ':='");
@@ -2350,10 +2367,6 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
         error(parser->state, start, "Expected an identifier or destructure pattern");
         return NULL;
     }
-    // else if (!start->newlineBefore) {
-    //     error(parser->state, start,
-    //             "Variable declaration must be defined in the same line");
-    // }
 
     ZVarDestructPattern *var = parseDestructVar(parser, false);
 
@@ -2372,7 +2385,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
         if (match(parser, TOK_OPT)) {
             uninit = true;
         } else {
-            expr = tryParse(parser, parseExpr(parser));
+            expr = parseMultiExpr(parser);
             if (!expr) {
                 error(parser->state, peek(parser), "Expected expression after '='");
                 return NULL;
@@ -2421,8 +2434,9 @@ static ZNode *parseTupleLit(ZParser *parser) {
     }
     expect(parser, TOK_RPAREN);
 
-    ZNode *node = makenode(NODE_TUPLE_LIT);
-    node->tuplelit = fields;
+    ZNode *node     = makenode(NODE_TUPLE_LIT);
+    node->tok       = start;
+    node->tuplelit  = fields;
 
     if (veclen(fields) < 2) {
         error(parser->state, start, "Expected at least 2 itesm");
@@ -3084,7 +3098,7 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     ZAnnotation **annotations   = NULL;
     do {
         annotations = NULL;
-        if (check(parser, TOK_HASHTAG) && checkAhead(parser, TOK_LSBRACKET, 1)) {
+        if (check(parser, TOK_HASHTAG)) {
             annotations = parseAnnotations(parser);
         }
         public = match(parser, TOK_PUB);
@@ -3225,7 +3239,7 @@ static ZNode *parse(ZParser *parser) {
     ZTokenType t = start->type;
     ZAnnotation **annotations = NULL;
 
-    if (t == TOK_HASHTAG && checkAhead(parser, TOK_LSBRACKET, 1)) {
+    if (t == TOK_HASHTAG) {
         annotations = parseAnnotations(parser);
     }
 
