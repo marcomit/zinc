@@ -19,7 +19,7 @@ main :: fn () i32 {
 
 
     printf("indexed\n")
-    for (v, i) in arr {
+    for v, i in arr {
         printf("%llu:%d\n", i, v)
     }
 

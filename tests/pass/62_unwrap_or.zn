@@ -1,0 +1,39 @@
+printf :: foreign fn (*char, ..) u0
+
+opt :: fn (n: i32) ?i32 {
+    if n < 0 { return none }
+    return n
+}
+
+double_or :: fn (n: i32) i32 {
+    v := opt(n) or return -1
+    return v * 2
+}
+
+main :: fn (argc: i32) i32 {
+    a := opt(-5) or do 999
+    b := opt(7)  or do 999
+    printf("do: a=%d b=%d\n", a, b)
+
+    c := (opt(-1) or do 40) + 2
+    d := (opt(3)  or do 40) + 2
+    printf("do-expr: c=%d d=%d\n", c, d)
+
+    sum := 0
+    for i in -3..4 {
+        v := opt(i) or continue
+        sum += v
+    }
+    printf("continue-sum=%d\n", sum)
+
+    seen := 0
+    for i in 0..6 {
+        v := opt(3 - i) or break
+        seen += v
+    }
+    printf("break-seen=%d\n", seen)
+
+    printf("return: %d %d\n", double_or(10), double_or(-4))
+
+    return 0
+}
