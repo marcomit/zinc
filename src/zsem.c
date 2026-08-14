@@ -2158,6 +2158,7 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 
     case UNWRAP_RETURN:
+        analyzeStmt(ctx, curr->unwrap.orExpr);
         if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isOptional) {
             error(ctx->state, curr->tok, "Cannot convert an optional type to a result");
             return success;
@@ -2176,6 +2177,7 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     case UNWRAP_BREAK:
     case UNWRAP_CONTINUE:
+        analyzeStmt(ctx, curr->unwrap.orExpr);
         if (ctx->loopDepth == 0) {
             error(ctx->state, curr->tok, "Must be inside a loop");
         }

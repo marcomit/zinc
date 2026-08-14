@@ -1797,7 +1797,7 @@ static ZNode *parseLoops(ZParser *parser) {
         return node;
     }
 
-    ZParseFunc f[] = { parseForLet, parseForIn, parseWhile };
+    ZParseFunc f[] = { parseForIn, parseForLet, parseWhile };
     ZNode *node = parseOrGrammar(parser, f, sizeof(f) / sizeof(f[0]));
 
     if (node) node->tok = start;
@@ -2327,11 +2327,31 @@ static ZVarDestructPattern *parseMultiDestructVar(ZParser *parser) {
     return pattern;
 }
 
+static ZNode *parseMultiExpr(ZParser *parser) {
+    ZToken *start = peek(parser);
+    ZNode *curr = tryParse(parser, parseExpr(parser));
+    if (!curr || !check(parser, TOK_COMMA)) return curr;
+
+    ZNode **list = NULL;
+    vecpush(list, curr);
+
+    while (curr && match(parser, TOK_COMMA)) {
+        curr = tryParse(parser, parseExpr(parser));
+        if (!curr) break;
+        vecpush(list, curr);
+    }
+
+    ZNode *tuple    = makenode(NODE_TUPLE_LIT);
+    tuple->tok      = start;
+    tuple->tuplelit = list;
+    return tuple;
+}
+
 static ZNode *parseVarInferred(ZParser *parser) {
     ZVarDestructPattern *pattern = parseMultiDestructVar(parser);
 
     expect(parser, TOK_ASSIGN);
-    ZNode *expr = tryParse(parser, parseExpr(parser));
+    ZNode *expr = parseMultiExpr(parser);
 
     if (!expr) {
         error(parser->state, peek(parser), "Expected expression after ':='");
@@ -2347,10 +2367,6 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
         error(parser->state, start, "Expected an identifier or destructure pattern");
         return NULL;
     }
-    // else if (!start->newlineBefore) {
-    //     error(parser->state, start,
-    //             "Variable declaration must be defined in the same line");
-    // }
 
     ZVarDestructPattern *var = parseDestructVar(parser, false);
 
@@ -2369,7 +2385,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
         if (match(parser, TOK_OPT)) {
             uninit = true;
         } else {
-            expr = tryParse(parser, parseExpr(parser));
+            expr = parseMultiExpr(parser);
             if (!expr) {
                 error(parser->state, peek(parser), "Expected expression after '='");
                 return NULL;
@@ -2418,8 +2434,9 @@ static ZNode *parseTupleLit(ZParser *parser) {
     }
     expect(parser, TOK_RPAREN);
 
-    ZNode *node = makenode(NODE_TUPLE_LIT);
-    node->tuplelit = fields;
+    ZNode *node     = makenode(NODE_TUPLE_LIT);
+    node->tok       = start;
+    node->tuplelit  = fields;
 
     if (veclen(fields) < 2) {
         error(parser->state, start, "Expected at least 2 itesm");

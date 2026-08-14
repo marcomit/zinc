@@ -30,6 +30,7 @@ static ZAnnotationSpec LangItemsSpec[] = {
     { "type_info",              Z_ANN_IDENT, Z_LANG_TYPE_INFO,                  Z_TRG_ENUM,     0, 0, false, NULL },
     { "type_info_struct",       Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT,           Z_TRG_STRUCT,   0, 0, false, NULL },
     { "type_info_struct_field", Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT_FIELD,     Z_TRG_STRUCT,   0, 0, false, NULL },
+    { "type_info_enum_variant", Z_ANN_IDENT, Z_LANG_TYPE_INFO_ENUM_VARIANT,     Z_TRG_STRUCT,   0, 0, false, NULL },
 
     { "reflect",                Z_ANN_IDENT, Z_LANG_REFLECT,                    Z_TRG_FOREIGN,  0, 0, false, NULL },
     { "panic",                  Z_ANN_IDENT, Z_LANG_PANIC,                      Z_TRG_FOREIGN,  0, 0, false, NULL },
