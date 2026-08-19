@@ -118,6 +118,9 @@ typedef enum {
     Z_LANG_SOURCE_LOCATION_FUNC,
     Z_LANG_HERE,
 
+    Z_LANG_VOLATILE_LOAD,
+    Z_LANG_VOLATILE_STORE,
+
     Z_LANG_COUNT
 } ZLangItemType;
 
@@ -160,6 +163,10 @@ typedef struct {
 
     char            optimizationLevel;
     ZLTOMode        ltoMode;
+
+    char            *targetTriple;
+    char            *targetCPU;
+    char            *targetFeatures;
     ZEmitMode       emit;
     ZMode           mode;
     ZNode           *root;
@@ -218,7 +225,8 @@ typedef enum ZTypeKind {
     Z_TYPE_NAMESPACE,
     Z_TYPE_SUM,
     Z_TYPE_OPTIONAL,
-    Z_TYPE_RESULT
+    Z_TYPE_RESULT,
+    Z_TYPE_CHAIN
 } ZTypeKind;
 
 struct ZType {
@@ -309,6 +317,8 @@ struct ZType {
             ZType *success;
             ZType *error;
         } result;
+
+        ZToken **chain;
     };
 
     /* Future implementation:

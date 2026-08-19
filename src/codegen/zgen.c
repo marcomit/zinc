@@ -21,8 +21,8 @@ static void         genFuncVars         (ZCodegen *, ZNode *);
 static usize        addFuncArgs         (ZCodegen *, LLVMValueRef, ZNode **, usize, bool);
 static void         genNamespace        (ZCodegen *, ZNode *);
 LLVMTypeRef         genType             (ZCodegen *, ZType *);
-static LLVMValueRef genExpr             (ZCodegen *, ZNode *);
-static LLVMValueRef genLvalue           (ZCodegen *ctx, ZNode *node);
+LLVMValueRef        genExpr             (ZCodegen *, ZNode *);
+LLVMValueRef        genLValue           (ZCodegen *, ZNode *);
 static LLVMValueRef genForeign          (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto    (ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genFacetConstruct   (ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
@@ -43,7 +43,12 @@ _Thread_local LLVMTypeRef f64Type  = NULL;
 extern ZNode *LangItems[Z_LANG_COUNT];
 
 ZBuiltinFn LangBuiltins[Z_LANG_COUNT] = {
-    [Z_LANG_PANIC] = genPanic,
+    [Z_LANG_PANIC]          = genPanic,
+    [Z_LANG_HERE]           = genHere,
+    [Z_LANG_REFLECT]        = genReflect,
+
+    [Z_LANG_VOLATILE_LOAD]  = genVolatileLoad,
+    [Z_LANG_VOLATILE_STORE] = genVolatileStore,
 };
 
 static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {
@@ -1241,7 +1246,7 @@ static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef genSlicePtr(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack       = getStackValue(ctx, node);
     ZType *baseType         = node->slice.base->resolved;
-    LLVMValueRef ptr        = genLvalue(ctx, node->slice.base);
+    LLVMValueRef ptr        = genLValue(ctx, node->slice.base);
     LLVMTypeRef sliceType   = genType(ctx, baseType);
     LLVMTypeRef elemType    = genType(ctx, baseType->array.base);
     if (!ptr) {
@@ -1384,12 +1389,12 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
         return LLVMBuildStructGEP2(
             ctx->builder,
             genType(ctx, baseType),
-            genLvalue(ctx, node->memberAccess.object),
+            genLValue(ctx, node->memberAccess.object),
             tok->integer,
             label(ctx, tok)
         );
     } else if (objType->kind == Z_TYPE_ARRAY) {
-        LLVMValueRef ptr = genLvalue(ctx, node->memberAccess.object);
+        LLVMValueRef ptr = genLValue(ctx, node->memberAccess.object);
         i32 index = -1;
 
         if      (strcmp(tok->str, "len") == 0) index = 0;
@@ -1407,7 +1412,7 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
 
     LLVMValueRef objPtr    = objType->kind == Z_TYPE_POINTER
         ? genExpr  (ctx, node->memberAccess.object)
-        : genLvalue(ctx, node->memberAccess.object);
+        : genLValue(ctx, node->memberAccess.object);
 
     LLVMValueRef chain = genStructGEPChain(
         ctx, baseType, objPtr, path
@@ -1416,7 +1421,7 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
 }
 
 static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef ptr        = genLvalue(ctx, node->subscript.arr);
+    LLVMValueRef ptr        = genLValue(ctx, node->subscript.arr);
     LLVMValueRef i          = genExpr(ctx, node->subscript.index);
     ZType *arrType          = node->subscript.arr->resolved;
     LLVMTypeRef type        = genType(ctx, arrType);
@@ -1551,7 +1556,7 @@ static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
     ZNode *obj          = node->memberAccess.object;
     ZToken *field       = node->memberAccess.field;
     LLVMTypeRef type    = genType(ctx, obj->resolved);
-    LLVMValueRef objRef = genLvalue(ctx, obj);
+    LLVMValueRef objRef = genLValue(ctx, obj);
 
     ZNode **funcs = obj->resolved->facet.funcs;
     i32 index = -1;
@@ -1621,7 +1626,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         callee->memberAccess.object->resolved &&
         callee->memberAccess.object->resolved->kind == Z_TYPE_FACET) {
         ZNode *obj          = callee->memberAccess.object;
-        LLVMValueRef facet  = genLvalue(ctx, obj);
+        LLVMValueRef facet  = genLValue(ctx, obj);
         LLVMTypeRef type    = genType(ctx, obj->resolved);
 
         LLVMValueRef objSlot = LLVMBuildStructGEP2(
@@ -1808,10 +1813,10 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
 /**
  * @brief Loads the addresso of the expression.
  *
- * genLvalue is used to load the address of the expression rather than the value.
+ * genLValue is used to load the address of the expression rather than the value.
  * meanwhile the function to load the value is genExpr.
  */
-static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
+LLVMValueRef genLValue(ZCodegen *ctx, ZNode *node) {
     if (!node) return NULL;
     switch (node->type) {
     case NODE_ARRAY_LIT:        return genArrayLitPtr       (ctx, node);
@@ -1848,7 +1853,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
             return NULL;
         }
 
-        LLVMValueRef ptr = genLvalue(ctx, node->unary.operand);
+        LLVMValueRef ptr = genLValue(ctx, node->unary.operand);
         LLVMTypeRef typeRef = genType(ctx, node->unary.operand->resolved);
         ptr = LLVMBuildLoad2(ctx->builder, typeRef, ptr, label(ctx, node->tok));
         return ptr;
@@ -1856,7 +1861,7 @@ static LLVMValueRef genLvalue(ZCodegen *ctx, ZNode *node) {
     default:
         error(ctx->state,
                 node->tok,
-                "Node '%d' not handled in 'genLvalue'",
+                "Node '%d' not handled in 'genLValue'",
                 node->type);
         return NULL;
     }
@@ -2064,7 +2069,7 @@ static LLVMValueRef genNumericOperator(ZCodegen *ctx,
 }
 
 static LLVMValueRef genCompoundOperator(ZCodegen *ctx, ZNode *root) {
-    LLVMValueRef leftRef    = genLvalue(ctx, root->binary.left);
+    LLVMValueRef leftRef    = genLValue(ctx, root->binary.left);
     if (!leftRef) return NULL;
     LLVMValueRef leftValue  = LLVMBuildLoad2(ctx->builder,
         genType(ctx, root->binary.left->resolved),
@@ -2132,7 +2137,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         return call;
     }
     if (root->binary.op->type == TOK_EQ) {
-        LLVMValueRef ptr = genLvalue(ctx, root->binary.left);
+        LLVMValueRef ptr = genLValue(ctx, root->binary.left);
         LLVMValueRef val = genExpr(ctx, root->binary.right);
         if (!ptr) {
             error(ctx->state, root->tok, "lvalue failed");
@@ -2243,7 +2248,7 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
 
 static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     if (node->unary.operat->type == TOK_REF)
-        return genLvalue(ctx, node->unary.operand);
+        return genLValue(ctx, node->unary.operand);
 
     LLVMValueRef arg = genExpr(ctx, node->unary.operand);
     ZTokenType op = node->unary.operat->type;
@@ -2281,7 +2286,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
         return loaded;
     }
     case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
-    case TOK_REF:   return genLvalue(ctx, node->unary.operand);
+    case TOK_REF:   return genLValue(ctx, node->unary.operand);
     case TOK_BITNOT: {
         LLVMTypeRef ref         = LLVMTypeOf(arg);
         LLVMValueRef allOnes    = LLVMConstAllOnes(ref);
@@ -2956,9 +2961,7 @@ static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
 }
 
 static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
-    ZType *baseType     = node->unwrap.base->resolved;
     LLVMValueRef base   = genExpr(ctx, node->unwrap.base);
-    int kind            = node->unwrap.kind;
 
     switch (node->unwrap.kind) {
     case UNWRAP_BREAK:
@@ -3014,7 +3017,7 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
-static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
+LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef res = NULL;
     switch (node->type) {
     case NODE_CALL:             res = genCall           (ctx, node); break;
@@ -3044,7 +3047,7 @@ static LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     case NODE_ENUM_LIT:
     case NODE_ENUM_LIT_NO_PAYLOAD:
     case NODE_SLICE: {
-        LLVMValueRef ptr = genLvalue(ctx, node);
+        LLVMValueRef ptr = genLValue(ctx, node);
         /* Function fields are stored as ptr in structs (unsized types can't
          * be embedded directly), so load as ptr rather than the bare
          * function type. */
@@ -3434,7 +3437,7 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
     ZNode *member           = callNode->call.callee;
     LLVMValueRef func       = getLLVMValueRef(ctx, member->memberAccess.mangled);
     LLVMTypeRef funcType    = LLVMGlobalGetValueType(func);
-    LLVMValueRef self       = genLvalue(ctx,
+    LLVMValueRef self       = genLValue(ctx,
         member->memberAccess.object->unary.operand
     );
 
@@ -3578,7 +3581,7 @@ static void genDefer(ZCodegen *ctx, ZNode *node) {
 }
 
 static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef cond = genLvalue(ctx, node->match.cond);
+    LLVMValueRef cond = genLValue(ctx, node->match.cond);
     ZType *condType = node->match.cond->resolved;
     usize armLen = veclen(node->match.arms);
     LLVMBasicBlockRef *blocks = arenaAlloc(ctx->module->allocator, sizeof(LLVMBasicBlockRef) * (armLen+1));
@@ -4454,7 +4457,9 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     LLVMInitializeAllAsmParsers();
     LLVMInitializeAllAsmPrinters();
 
-    char *triple = LLVMGetDefaultTargetTriple();
+    bool hostTriple = (ctx->state->targetTriple == NULL);
+    char *triple = hostTriple ? LLVMGetDefaultTargetTriple()
+                              : strdup(ctx->state->targetTriple);
     LLVMSetTarget(ctx->mod, triple);
 
     LLVMTargetRef target;
@@ -4462,15 +4467,20 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     if (LLVMGetTargetFromTriple(triple, &target, &errmsg)) {
         error(ctx->state, NULL, "Failed to get target: %s", errmsg);
         LLVMDisposeMessage(errmsg);
-        LLVMDisposeMessage(triple);
+        free(triple);
         return false;
     }
 
+    const char *cpu      = ctx->state->targetCPU      ? ctx->state->targetCPU      : "generic";
+    const char *features = ctx->state->targetFeatures ? ctx->state->targetFeatures : "";
+
+    LLVMRelocMode reloc = hostTriple ? LLVMRelocPIC : LLVMRelocStatic;
+
     char optlvl = ctx->state->optimizationLevel ? ctx->state->optimizationLevel : '2';
     LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
-        target, triple, "generic", "",
+        target, triple, cpu, features,
         toCodeGenLevel(optlvl),
-        LLVMRelocPIC,
+        reloc,
         LLVMCodeModelDefault
     );
 
@@ -4510,7 +4520,7 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     }
 
     LLVMDisposeTargetMachine(machine);
-    LLVMDisposeMessage(triple);
+    free(triple);
     return ok;
 }
 

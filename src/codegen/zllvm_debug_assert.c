@@ -9,7 +9,6 @@
  */
 #include "zgen.h"
 #include "zinc.h"
-#include <string.h>
 
 extern _Thread_local LLVMTypeRef i0Type;
 extern _Thread_local LLVMTypeRef i1Type;
@@ -19,6 +18,8 @@ extern _Thread_local LLVMTypeRef i32Type;
 extern _Thread_local LLVMTypeRef i64Type;
 extern _Thread_local LLVMTypeRef f32Type;
 extern _Thread_local LLVMTypeRef f64Type;
+
+extern ZNode *LangItems[Z_LANG_COUNT];
 
 #define LLVM_UBSAN_TRAP     "llvm.ubsantrap"
 #define LLVM_DEBUG_TRACE    "zn.debug.trace"
@@ -150,7 +151,6 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
 }
 
 LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
-    printf("Emit panic\n");
     if (veclen(call->call.args) != 1) {
         error(
             ctx->state, call->tok,
@@ -158,10 +158,39 @@ LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
     }
     emitRuntimeDebugPrint(ctx, call->tok, stoken(call->call.args[0]->tok));
     LLVMBuildTrap(ctx);
-    printf("Emitted panic\n");
     return LLVMConstNull(i0Type);
 }
 
-LLVMValueRef genHere(ZCodegen *ctx, ZNode *node) {
+LLVMValueRef genReflect(ZCodegen *ctx, ZNode *node) {
     return NULL;
+}
+
+LLVMValueRef genHere(ZCodegen *ctx, ZNode *node) {
+    ZNode *sourceLocType = LangItems[Z_LANG_SOURCE_LOCATION_TYPE];
+    if (!sourceLocType) {
+        error(ctx->state, node->tok, "SourceLocationType not found");
+        return NULL;
+    }
+
+    ZType *type = sourceLocType->resolved;
+    return LLVMConstNull(genType(ctx, type));
+}
+
+LLVMValueRef genVolatileStore(ZCodegen *ctx, ZNode *node) {
+    ZNode *base = node->call.args[0];
+    ZNode *val  = node->call.args[1];
+    LLVMValueRef store = LLVMBuildStore(
+        ctx->builder, genExpr(ctx, val), genLValue(ctx, base)
+    );
+    LLVMSetVolatile(store, true);
+    return NULL;
+}
+
+LLVMValueRef genVolatileLoad(ZCodegen *ctx, ZNode *node) {
+    LLVMTypeRef typeRef = genType(ctx, node->resolved);
+    LLVMValueRef load = LLVMBuildLoad2(
+        ctx->builder, typeRef, genLValue(ctx, node->call.args[0]), label(ctx, "volatile.load")
+    );
+    LLVMSetVolatile(load, true);
+    return load;
 }

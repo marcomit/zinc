@@ -79,6 +79,9 @@ enum {
     OPT_RELEASE,
     OPT_RELEASE_FAST,
     OPT_RELEASE_SMALL,
+    OPT_TARGET,
+    OPT_MCPU,
+    OPT_MFEATURES,
 };
 
 static struct option long_options[] = {
@@ -94,6 +97,9 @@ static struct option long_options[] = {
     {"release",                 no_argument,        NULL,   OPT_RELEASE             },
     {"release-fast",            no_argument,        NULL,   OPT_RELEASE_FAST        },
     {"release-small",           no_argument,        NULL,   OPT_RELEASE_SMALL       },
+    {"target",                  required_argument,  NULL,   OPT_TARGET              },
+    {"mcpu",                    required_argument,  NULL,   OPT_MCPU                },
+    {"mfeatures",               required_argument,  NULL,   OPT_MFEATURES           },
     {NULL,                      0,                  NULL,   0                       }
 };
 
@@ -154,6 +160,9 @@ ZState *loadState(int argc, char **argv) {
         case OPT_RELEASE:               state->optimizationLevel = '2';                                 break;
         case OPT_RELEASE_FAST:          state->optimizationLevel = '3';                                 break;
         case OPT_RELEASE_SMALL:         state->optimizationLevel = 's';                                 break;
+        case OPT_TARGET:                state->targetCPU = optarg;                                      break;
+        case OPT_MCPU:                  state->targetTriple = optarg;                                   break;
+        case OPT_MFEATURES:             state->targetFeatures = optarg;                                 break;
         case OPT_LTO:
             if      (strcmp(optarg, "off")  == 0) state->ltoMode = Z_LTO_OFF;
             else if (strcmp(optarg, "thin") == 0) state->ltoMode = Z_LTO_THIN;
