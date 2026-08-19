@@ -180,7 +180,7 @@ LLVMValueRef genVolatileStore(ZCodegen *ctx, ZNode *node) {
     ZNode *base = node->call.args[0];
     ZNode *val  = node->call.args[1];
     LLVMValueRef store = LLVMBuildStore(
-        ctx->builder, genExpr(ctx, val), genLValue(ctx, base)
+        ctx->builder, genExpr(ctx, val), genExpr(ctx, base)
     );
     LLVMSetVolatile(store, true);
     return NULL;
@@ -189,7 +189,7 @@ LLVMValueRef genVolatileStore(ZCodegen *ctx, ZNode *node) {
 LLVMValueRef genVolatileLoad(ZCodegen *ctx, ZNode *node) {
     LLVMTypeRef typeRef = genType(ctx, node->resolved);
     LLVMValueRef load = LLVMBuildLoad2(
-        ctx->builder, typeRef, genLValue(ctx, node->call.args[0]), label(ctx, "volatile.load")
+        ctx->builder, typeRef, genExpr(ctx, node->call.args[0]), label(ctx, "volatile.load")
     );
     LLVMSetVolatile(load, true);
     return load;
