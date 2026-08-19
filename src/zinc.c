@@ -50,7 +50,10 @@ static void usage(char *program) {
     printf("\t --release-fast            Alias for -O3\n");
     printf("\t --release-small           Alias for -Os\n");
     printf("\nLink-time optimization:\n");
-    printf("\t --lto=off|thin|full       Set LTO mode (default: off)\n");
+    printf("\t --lto=off|thin|full      Set LTO mode (default: off)\n");
+    printf("\t --target                 Target triple used by LLVM\n");
+    printf("\t --mcpu                   CPU Target\n");
+    printf("\t --mfeatures              LLVM Features\n");
 }
 
 #define CHECK_FLAG(flag, name) if (flag) {                                  \
@@ -160,8 +163,8 @@ ZState *loadState(int argc, char **argv) {
         case OPT_RELEASE:               state->optimizationLevel = '2';                                 break;
         case OPT_RELEASE_FAST:          state->optimizationLevel = '3';                                 break;
         case OPT_RELEASE_SMALL:         state->optimizationLevel = 's';                                 break;
-        case OPT_TARGET:                state->targetCPU = optarg;                                      break;
-        case OPT_MCPU:                  state->targetTriple = optarg;                                   break;
+        case OPT_TARGET:                state->targetTriple = optarg;                                   break;
+        case OPT_MCPU:                  state->targetCPU = optarg;                                      break;
         case OPT_MFEATURES:             state->targetFeatures = optarg;                                 break;
         case OPT_LTO:
             if      (strcmp(optarg, "off")  == 0) state->ltoMode = Z_LTO_OFF;
