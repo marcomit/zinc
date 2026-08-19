@@ -1617,6 +1617,12 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
         ZNode *field        = curr->structlit.fields[i];
         ZNode *structField  = getStructField(ctx, symType, field->tok);
+
+        if (!structField) {
+            error(ctx->state, field->tok, "Invalid struct field");
+            continue;
+        }
+
         ZType *expectedType = resolveTypeRef(ctx, structField->field.type);
         ZType *type         = resolveType(ctx, field->varDecl.rvalue, expectedType);
         ZType *promoted     = NULL;

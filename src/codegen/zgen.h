@@ -134,6 +134,9 @@ typedef struct {
 void LLVMAddFuncAttribute(ZCodegen *ctx, LLVMValueRef func, const char *llvmAttr);
 
 LLVMTypeRef genType(ZCodegen *, ZType *);
+LLVMValueRef genExpr(ZCodegen *, ZNode *);
+LLVMValueRef genLValue(ZCodegen *, ZNode *);
+
 LLVMBasicBlockRef makeblock(ZCodegen *, char *);
 void makebr(LLVMBuilderRef, LLVMBasicBlockRef);
 void makecondbr(LLVMBuilderRef, LLVMValueRef, LLVMBasicBlockRef, LLVMBasicBlockRef);
@@ -152,7 +155,10 @@ LLVMValueRef getFlagOptional(ZCodegen *, ZType *, LLVMValueRef);
 /* ================== Lang Item Dispatchers ================== */
 typedef LLVMValueRef (*ZBuiltinFn) (ZCodegen *, ZNode *);
 
-LLVMValueRef genPanic(ZCodegen *, ZNode *);
-LLVMValueRef genReflect(ZCodegen *, ZNode *);
+LLVMValueRef genPanic           (ZCodegen *, ZNode *);
+LLVMValueRef genReflect         (ZCodegen *, ZNode *);
+LLVMValueRef genHere            (ZCodegen *, ZNode *);
+LLVMValueRef genVolatileLoad    (ZCodegen *, ZNode *);
+LLVMValueRef genVolatileStore   (ZCodegen *, ZNode *);
 
 #endif //!Z_GEN

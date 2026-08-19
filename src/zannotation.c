@@ -38,6 +38,9 @@ static ZAnnotationSpec LangItemsSpec[] = {
     { "source_location_type",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_TYPE,       Z_TRG_STRUCT,   0, 0, false, NULL },
     { "source_location_func",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_FUNC,       Z_TRG_FOREIGN,  0, 0, false, NULL },
 
+    { "volatile_load",          Z_ANN_IDENT, Z_LANG_VOLATILE_LOAD,              Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "volatile_store",         Z_ANN_IDENT, Z_LANG_VOLATILE_STORE,             Z_TRG_FOREIGN,  0, 0, false, NULL },
+
     None,
 };
 

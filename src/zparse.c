@@ -1959,6 +1959,11 @@ static ZNode *parseAnonFunc(ZParser *parser) {
 
     expect(parser, TOK_FN);
 
+    ZType **generics = NULL;
+    if (check(parser, TOK_LSBRACKET)) {
+        generics = parseGenericsDecl(parser);
+    }
+
     if (!check(parser, TOK_LPAREN)) return NULL;
 
     ZNode **args = parseGenericList(parser,
@@ -1995,13 +2000,13 @@ static ZNode *parseAnonFunc(ZParser *parser) {
     ZNode *func = NULL;
     func                        = makenode(NODE_FUNC);
     func->funcDef.args          = args;
+    func->funcDef.generics      = generics;
     func->funcDef.capabilities  = capabilities;
     func->funcDef.pub           = false;
     func->funcDef.annotations   = NULL;
     func->funcDef.receiver      = NULL;
     func->funcDef.base          = NULL;
     func->funcDef.name          = NULL;
-    func->funcDef.generics      = NULL;
     func->funcDef.body          = body;
     func->funcDef.mangled       = NULL;
     func->funcDef.ret           = type;
@@ -2078,6 +2083,11 @@ static ZNode *parseFuncDecl(ZParser *parser,
     expect(parser, TOK_DOUBLE_COLON);
     expect(parser, TOK_FN);
 
+    ZType **generics = NULL;
+    if (check(parser, TOK_LSBRACKET)) {
+        generics = parseGenericsDecl(parser);
+    }
+
     ZNode **args = parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
         parseFuncArgument,  true
@@ -2094,7 +2104,6 @@ static ZNode *parseFuncDecl(ZParser *parser,
 
     ZNode **capabilities = parseCapabilityList(parser);
 
-    ZType **generics = NULL;
     if (match(parser, TOK_WHERE)) {
         generics = parseGenericsDecl(parser);
         if (!generics) {
