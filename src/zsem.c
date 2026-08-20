@@ -738,9 +738,6 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
         return a;
     }
 
-    if (a->kind == Z_TYPE_POINTER && isNumeric(b)) return a;
-    if (b->kind == Z_TYPE_POINTER && isNumeric(a)) return b;
-
     if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
         return a;
     } else if (b->kind == Z_TYPE_POINTER && a->kind == Z_TYPE_NONE) {

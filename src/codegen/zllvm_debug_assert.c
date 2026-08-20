@@ -7,6 +7,7 @@
  * @copyright Copyright (c) 2025, Marco Menegazzi
  *            SPDX-License-Identifier: BSD-3-Clause
  */
+#include "base.h"
 #include "zgen.h"
 #include "zinc.h"
 
@@ -193,4 +194,28 @@ LLVMValueRef genVolatileLoad(ZCodegen *ctx, ZNode *node) {
     );
     LLVMSetVolatile(load, true);
     return load;
+}
+
+LLVMValueRef genPtrOffset(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef ptr    = genExpr(ctx, node->call.args[0]);
+    LLVMValueRef offset = genExpr(ctx, node->call.args[1]);
+    LLVMTypeRef type    = genType(ctx, node->call.args[0]->resolved);
+
+    return LLVMBuildGEP2(
+        ctx->builder, type, ptr, &offset, 1, label(ctx, "builtin.ptr_offset")
+    );
+}
+
+LLVMValueRef genPtrToInt(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef ptr = genExpr(ctx, node->call.args[0]);
+    return LLVMBuildPtrToInt(
+        ctx->builder, ptr, i64Type, label(ctx, "builtin.ptr_to_int")
+    );
+}
+
+LLVMValueRef genPtrFromInt(ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef ptr = genExpr(ctx, node->call.args[0]);
+    return LLVMBuildIntToPtr(
+        ctx->builder, ptr, LLVMPointerTypeInContext(ctx->ctx, 0), label(ctx, "builtin.ptr_from_int")
+    );
 }

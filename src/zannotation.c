@@ -41,6 +41,10 @@ static ZAnnotationSpec LangItemsSpec[] = {
     { "volatile_load",          Z_ANN_IDENT, Z_LANG_VOLATILE_LOAD,              Z_TRG_FOREIGN,  0, 0, false, NULL },
     { "volatile_store",         Z_ANN_IDENT, Z_LANG_VOLATILE_STORE,             Z_TRG_FOREIGN,  0, 0, false, NULL },
 
+    { "ptr_offset",             Z_ANN_IDENT, Z_LANG_PTR_OFFSET,                 Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "ptr_to_int",             Z_ANN_IDENT, Z_LANG_PTR_TO_INT,                 Z_TRG_FOREIGN,  0, 0, false, NULL },
+    { "ptr_from_int",           Z_ANN_IDENT, Z_LANG_PTR_FROM_INT,               Z_TRG_FOREIGN,  0, 0, false, NULL },
+
     None,
 };
 
