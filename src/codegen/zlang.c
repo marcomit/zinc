@@ -11,7 +11,7 @@ extern _Thread_local LLVMTypeRef f32Type;
 extern _Thread_local LLVMTypeRef f64Type;
 extern ZNode *LangItems[Z_LANG_COUNT];
 
-LLVMValueRef genBuiltin(ZCodegen *, ZNode *);
+bool genBuiltin(ZCodegen *, ZNode *, LLVMValueRef *);
 
 typedef LLVMValueRef (*ZBuiltinFn) (ZCodegen *, ZNode *);
 typedef ZType *(*ZValidateFn) (ZState *, ZNode *);
@@ -119,10 +119,16 @@ ZValidateFn LangValidators[Z_LANG_COUNT] = {
     #undef LANG
 };
 
-LLVMValueRef genBuiltin(ZCodegen *ctx, ZNode *node) {
-    ZLangItemType li = getLangItemType(node);
-    if (!LangBuiltins[li]) return NULL;
-    return LangBuiltins[li](ctx, node);
+bool genBuiltin(ZCodegen *ctx, ZNode *node, LLVMValueRef *out) {
+    ZNode *langNode = node;
+    if (node->type == NODE_CALL) langNode = node->call.callee;
+
+    ZLangItemType li = getLangItemType(langNode);
+    if (!li || !LangBuiltins[li]) return false;
+
+    LLVMValueRef result = LangBuiltins[li](ctx, node);
+    if (out) *out = result;
+    return true;
 }
 
 void validate(ZState *ctx, ZNode *node) {

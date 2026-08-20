@@ -848,8 +848,8 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
         return NULL;
     }
 
-    LLVMValueRef builtin = genBuiltin(ctx, node);
-    if (builtin) return builtin;
+    LLVMValueRef builtin = NULL;
+    if (genBuiltin(ctx, node, &builtin)) return builtin;
 
     char *key = manglingIdent(node);
     ZLLVMSymbol *sym = getLLVMSymbol(ctx, key);
@@ -1601,8 +1601,8 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef *args  = NULL;
     ZNode *callee       = node->call.callee;
 
-    LLVMValueRef builtin = genBuiltin(ctx, node);
-    if (builtin) return builtin;
+    LLVMValueRef builtin = NULL;
+    if (genBuiltin(ctx, node, &builtin)) return builtin;
 
     if (callee->type == NODE_IDENTIFIER && callee->resolved->kind == Z_TYPE_FACET) {
         ZLLVMStack *stack = getStackValue(ctx, node);
