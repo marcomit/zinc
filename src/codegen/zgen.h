@@ -151,7 +151,7 @@ void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRe
 void initializeMemoryToZero(ZCodegen *, LLVMValueRef, ZType *);
 void checkUnsafeUnwrap(ZCodegen *, LLVMValueRef, ZType *, ZToken *);
 void LLVMBuildTrap(ZCodegen *);
-LLVMValueRef genBuiltin(ZCodegen *, ZNode *);
+bool genBuiltin(ZCodegen *, ZNode *, LLVMValueRef *out);
 
 LLVMValueRef getFlagOptional(ZCodegen *, ZType *, LLVMValueRef);
 
