@@ -25,7 +25,7 @@ extern ZNode *LangItems[Z_LANG_COUNT];
 #define LLVM_UBSAN_TRAP     "llvm.ubsantrap"
 #define LLVM_DEBUG_TRACE    "zn.debug.trace"
 
-static void LLVMBuildTrap(ZCodegen *ctx) {
+void LLVMBuildTrap(ZCodegen *ctx) {
     u32 ubsanId                 = LLVMLookupIntrinsicID(
         LLVM_UBSAN_TRAP, strlen(LLVM_UBSAN_TRAP));
 
@@ -149,79 +149,4 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
     LLVMBuildTrap(ctx);
 
     LLVMPositionBuilderAtEnd(ctx->builder, cont);
-}
-
-LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
-    if (veclen(call->call.args) != 1) {
-        error(
-            ctx->state, call->tok,
-            "Expected 1 argument, got %zu", veclen(call->call.args));
-    }
-    emitRuntimeDebugPrint(ctx, call->tok, stoken(call->call.args[0]->tok));
-    LLVMBuildTrap(ctx);
-    return LLVMConstNull(i0Type);
-}
-
-LLVMValueRef genReflect(ZCodegen *ctx, ZNode *node) {
-    return NULL;
-}
-
-LLVMValueRef genHere(ZCodegen *ctx, ZNode *node) {
-    ZNode *sourceLocType = LangItems[Z_LANG_SOURCE_LOCATION_TYPE];
-    if (!sourceLocType) {
-        error(ctx->state, node->tok, "SourceLocationType not found");
-        return NULL;
-    }
-
-    ZType *type = sourceLocType->resolved;
-    return LLVMConstNull(genType(ctx, type));
-}
-
-LLVMValueRef genVolatileStore(ZCodegen *ctx, ZNode *node) {
-    ZNode *base = node->call.args[0];
-    ZNode *val  = node->call.args[1];
-    LLVMValueRef store = LLVMBuildStore(
-        ctx->builder, genExpr(ctx, val), genExpr(ctx, base)
-    );
-    LLVMSetVolatile(store, true);
-    return NULL;
-}
-
-LLVMValueRef genVolatileLoad(ZCodegen *ctx, ZNode *node) {
-    LLVMTypeRef typeRef = genType(ctx, node->resolved);
-    LLVMValueRef load = LLVMBuildLoad2(
-        ctx->builder, typeRef, genExpr(ctx, node->call.args[0]), label(ctx, "volatile.load")
-    );
-    LLVMSetVolatile(load, true);
-    return load;
-}
-
-LLVMValueRef genPtrOffset(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef ptr    = genExpr(ctx, node->call.args[0]);
-    LLVMValueRef offset = genExpr(ctx, node->call.args[1]);
-
-    ZType *ptrType      = node->call.args[0]->resolved;
-    ZType *pointeeType  = ptrType;
-    if (ptrType && ptrType->kind == Z_TYPE_POINTER) {
-        pointeeType = ptrType->base;
-    }
-    LLVMTypeRef type    = genType(ctx, pointeeType);
-
-    return LLVMBuildGEP2(
-        ctx->builder, type, ptr, &offset, 1, label(ctx, "builtin.ptr_offset")
-    );
-}
-
-LLVMValueRef genPtrToInt(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef ptr = genExpr(ctx, node->call.args[0]);
-    return LLVMBuildPtrToInt(
-        ctx->builder, ptr, i64Type, label(ctx, "builtin.ptr_to_int")
-    );
-}
-
-LLVMValueRef genPtrFromInt(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef ptr = genExpr(ctx, node->call.args[0]);
-    return LLVMBuildIntToPtr(
-        ctx->builder, ptr, LLVMPointerTypeInContext(ctx->ctx, 0), label(ctx, "builtin.ptr_from_int")
-    );
 }

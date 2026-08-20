@@ -63,6 +63,7 @@ typedef struct ZAnnotation  ZAnnotation;
 extern ZType *none;
 extern ZType *u0Type;
 extern ZType *u1Type;
+extern ZType *charType;
 extern ZType *u64Type;
 extern ZType *modType;
 
@@ -106,24 +107,9 @@ typedef enum {
 typedef enum {
     Z_LANG_NONE,
 
-    Z_LANG_TYPE_INFO,
-    Z_LANG_TYPE_INFO_STRUCT,
-    Z_LANG_TYPE_INFO_STRUCT_FIELD,
-    Z_LANG_TYPE_INFO_ENUM_VARIANT,
-
-    Z_LANG_REFLECT,
-    Z_LANG_PANIC,
-
-    Z_LANG_SOURCE_LOCATION_TYPE,
-    Z_LANG_SOURCE_LOCATION_FUNC,
-    Z_LANG_HERE,
-
-    Z_LANG_VOLATILE_LOAD,
-    Z_LANG_VOLATILE_STORE,
-
-    Z_LANG_PTR_OFFSET,
-    Z_LANG_PTR_TO_INT,
-    Z_LANG_PTR_FROM_INT,
+    #define LANG(id, n, t, f, v) id,
+    #include "zlang.def"
+    #undef LANG
 
     Z_LANG_COUNT
 } ZLangItemType;
@@ -1029,6 +1015,7 @@ ZAnnotation *queryArg(ZAnnotation *, const char *);
 ZAnnotation *annArg(ZAnnotation *, usize);
 usize annLen(ZAnnotation *);
 ZLangItemType getLangItemType(ZNode *);
-void analyzeAnnotations(ZState *state, ZNode *node);
+void analyzeAnnotations(ZState *, ZNode *);
+void validate(ZState *, ZNode *);
 
 #endif
