@@ -199,7 +199,13 @@ LLVMValueRef genVolatileLoad(ZCodegen *ctx, ZNode *node) {
 LLVMValueRef genPtrOffset(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef ptr    = genExpr(ctx, node->call.args[0]);
     LLVMValueRef offset = genExpr(ctx, node->call.args[1]);
-    LLVMTypeRef type    = genType(ctx, node->call.args[0]->resolved);
+
+    ZType *ptrType      = node->call.args[0]->resolved;
+    ZType *pointeeType  = ptrType;
+    if (ptrType && ptrType->kind == Z_TYPE_POINTER) {
+        pointeeType = ptrType->base;
+    }
+    LLVMTypeRef type    = genType(ctx, pointeeType);
 
     return LLVMBuildGEP2(
         ctx->builder, type, ptr, &offset, 1, label(ctx, "builtin.ptr_offset")
