@@ -49,6 +49,10 @@ ZBuiltinFn LangBuiltins[Z_LANG_COUNT] = {
 
     [Z_LANG_VOLATILE_LOAD]  = genVolatileLoad,
     [Z_LANG_VOLATILE_STORE] = genVolatileStore,
+
+    [Z_LANG_PTR_OFFSET]     = genPtrOffset,
+    [Z_LANG_PTR_TO_INT]     = genPtrToInt,
+    [Z_LANG_PTR_FROM_INT]   = genPtrFromInt
 };
 
 static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {

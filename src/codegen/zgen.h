@@ -160,5 +160,8 @@ LLVMValueRef genReflect         (ZCodegen *, ZNode *);
 LLVMValueRef genHere            (ZCodegen *, ZNode *);
 LLVMValueRef genVolatileLoad    (ZCodegen *, ZNode *);
 LLVMValueRef genVolatileStore   (ZCodegen *, ZNode *);
+LLVMValueRef genPtrOffset       (ZCodegen *, ZNode *);
+LLVMValueRef genPtrToInt        (ZCodegen *, ZNode *);
+LLVMValueRef genPtrFromInt      (ZCodegen *, ZNode *);
 
 #endif //!Z_GEN

@@ -121,6 +121,10 @@ typedef enum {
     Z_LANG_VOLATILE_LOAD,
     Z_LANG_VOLATILE_STORE,
 
+    Z_LANG_PTR_OFFSET,
+    Z_LANG_PTR_TO_INT,
+    Z_LANG_PTR_FROM_INT,
+
     Z_LANG_COUNT
 } ZLangItemType;
 
