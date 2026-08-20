@@ -27,24 +27,9 @@ static const ZAnnotationSpec Literal = {
 #define None { NULL, 0, 0, 0, 0, 0, false, NULL }
 
 static ZAnnotationSpec LangItemsSpec[] = {
-    { "type_info",              Z_ANN_IDENT, Z_LANG_TYPE_INFO,                  Z_TRG_ENUM,     0, 0, false, NULL },
-    { "type_info_struct",       Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT,           Z_TRG_STRUCT,   0, 0, false, NULL },
-    { "type_info_struct_field", Z_ANN_IDENT, Z_LANG_TYPE_INFO_STRUCT_FIELD,     Z_TRG_STRUCT,   0, 0, false, NULL },
-    { "type_info_enum_variant", Z_ANN_IDENT, Z_LANG_TYPE_INFO_ENUM_VARIANT,     Z_TRG_STRUCT,   0, 0, false, NULL },
-
-    { "reflect",                Z_ANN_IDENT, Z_LANG_REFLECT,                    Z_TRG_FOREIGN,  0, 0, false, NULL },
-    { "panic",                  Z_ANN_IDENT, Z_LANG_PANIC,                      Z_TRG_FOREIGN,  0, 0, false, NULL },
-
-    { "source_location_type",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_TYPE,       Z_TRG_STRUCT,   0, 0, false, NULL },
-    { "source_location_func",   Z_ANN_IDENT, Z_LANG_SOURCE_LOCATION_FUNC,       Z_TRG_FOREIGN,  0, 0, false, NULL },
-
-    { "volatile_load",          Z_ANN_IDENT, Z_LANG_VOLATILE_LOAD,              Z_TRG_FOREIGN,  0, 0, false, NULL },
-    { "volatile_store",         Z_ANN_IDENT, Z_LANG_VOLATILE_STORE,             Z_TRG_FOREIGN,  0, 0, false, NULL },
-
-    { "ptr_offset",             Z_ANN_IDENT, Z_LANG_PTR_OFFSET,                 Z_TRG_FOREIGN,  0, 0, false, NULL },
-    { "ptr_to_int",             Z_ANN_IDENT, Z_LANG_PTR_TO_INT,                 Z_TRG_FOREIGN,  0, 0, false, NULL },
-    { "ptr_from_int",           Z_ANN_IDENT, Z_LANG_PTR_FROM_INT,               Z_TRG_FOREIGN,  0, 0, false, NULL },
-
+    #define LANG(id, name, type, func, valid) { name, Z_ANN_IDENT, id, Z_TRG_##type, 0, 0, false, NULL },
+    #include "zlang.def"
+    #undef LANG
     None,
 };
 
@@ -302,3 +287,5 @@ ZLangItemType getLangItemType(ZNode *node) {
     lang = annArg(lang, 0);
     return lang->ident.li;
 }
+
+

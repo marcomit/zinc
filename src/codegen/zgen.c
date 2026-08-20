@@ -36,24 +36,10 @@ _Thread_local LLVMTypeRef i8Type   = NULL;
 _Thread_local LLVMTypeRef i16Type  = NULL;
 _Thread_local LLVMTypeRef i32Type  = NULL;
 _Thread_local LLVMTypeRef i64Type  = NULL;
-
 _Thread_local LLVMTypeRef f32Type  = NULL;
 _Thread_local LLVMTypeRef f64Type  = NULL;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
-
-ZBuiltinFn LangBuiltins[Z_LANG_COUNT] = {
-    [Z_LANG_PANIC]          = genPanic,
-    [Z_LANG_HERE]           = genHere,
-    [Z_LANG_REFLECT]        = genReflect,
-
-    [Z_LANG_VOLATILE_LOAD]  = genVolatileLoad,
-    [Z_LANG_VOLATILE_STORE] = genVolatileStore,
-
-    [Z_LANG_PTR_OFFSET]     = genPtrOffset,
-    [Z_LANG_PTR_TO_INT]     = genPtrToInt,
-    [Z_LANG_PTR_FROM_INT]   = genPtrFromInt
-};
 
 static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {
     ZLLVMSymbol *self = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMSymbol));
@@ -862,10 +848,8 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
         return NULL;
     }
 
-    ZLangItemType li = getLangItemType(node);
-    if (li && LangBuiltins[li]) {
-        return LangBuiltins[li](ctx, node);
-    }
+    LLVMValueRef builtin = genBuiltin(ctx, node);
+    if (builtin) return builtin;
 
     char *key = manglingIdent(node);
     ZLLVMSymbol *sym = getLLVMSymbol(ctx, key);
@@ -1617,10 +1601,8 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef *args  = NULL;
     ZNode *callee       = node->call.callee;
 
-    ZLangItemType li = getLangItemType(callee);
-    if (li && LangBuiltins[li]) {
-        return LangBuiltins[li](ctx, node);
-    }
+    LLVMValueRef builtin = genBuiltin(ctx, node);
+    if (builtin) return builtin;
 
     if (callee->type == NODE_IDENTIFIER && callee->resolved->kind == Z_TYPE_FACET) {
         ZLLVMStack *stack = getStackValue(ctx, node);

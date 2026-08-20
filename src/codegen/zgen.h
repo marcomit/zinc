@@ -146,22 +146,13 @@ char *labelTok  (ZCodegen *, ZToken *);
 char *labelStr  (ZCodegen *, char *);
 
 void emitRuntimeError(ZCodegen *, ZToken *, const char *);
+void emitRuntimeDebugPrint(ZCodegen *, ZToken *, const char *);
 void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
 void initializeMemoryToZero(ZCodegen *, LLVMValueRef, ZType *);
 void checkUnsafeUnwrap(ZCodegen *, LLVMValueRef, ZType *, ZToken *);
+void LLVMBuildTrap(ZCodegen *);
+LLVMValueRef genBuiltin(ZCodegen *, ZNode *);
 
 LLVMValueRef getFlagOptional(ZCodegen *, ZType *, LLVMValueRef);
-
-/* ================== Lang Item Dispatchers ================== */
-typedef LLVMValueRef (*ZBuiltinFn) (ZCodegen *, ZNode *);
-
-LLVMValueRef genPanic           (ZCodegen *, ZNode *);
-LLVMValueRef genReflect         (ZCodegen *, ZNode *);
-LLVMValueRef genHere            (ZCodegen *, ZNode *);
-LLVMValueRef genVolatileLoad    (ZCodegen *, ZNode *);
-LLVMValueRef genVolatileStore   (ZCodegen *, ZNode *);
-LLVMValueRef genPtrOffset       (ZCodegen *, ZNode *);
-LLVMValueRef genPtrToInt        (ZCodegen *, ZNode *);
-LLVMValueRef genPtrFromInt      (ZCodegen *, ZNode *);
 
 #endif //!Z_GEN
