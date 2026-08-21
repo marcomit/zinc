@@ -258,7 +258,7 @@ char *manglingIdent(ZNode *ident) {
     }
 }
 
-static usize typeAlign(ZType *type);
+static usize typeAlign(ZState *, ZType *type);
 
 static inline usize alignUp(usize size, usize align) {
     if (!align) return size;
@@ -279,18 +279,18 @@ static inline usize alignUp(usize size, usize align) {
  * @param fields must be a dynamic array because it uses veclen.
  * @param packed when true fields are laid out back to back, with no padding.
  */
-static usize alignFields(void **fields, ZType *(*iter)(void *), bool packed) {
+static usize alignFields(ZState *state, void **fields, ZType *(*iter)(void *), bool packed) {
     usize res = 0;
     usize aggAlign = 1;
 
     for (usize i = 0; i < veclen(fields); i++) {
         ZType *field = iter(fields[i]);
         if (!packed) {
-            usize align = typeAlign(field);
+            usize align = typeAlign(state, field);
             if (align > aggAlign) aggAlign = align;
             res = alignUp(res, align);
         }
-        res += typeSize(field);
+        res += typeSize(state, field);
     }
 
     return packed ? res : alignUp(res, aggAlign);
@@ -310,11 +310,32 @@ static inline ZType *alignTupleFieldIter(void *item) { return (ZType *)item; }
     usize largest = 0;                                                          \
     usize len_ = veclen(fields);                                                \
     for (usize i = 0; i < len_; i++) {                                          \
-        usize cur = typeSize(getType((fields)[i]));                             \
+        usize cur = typeSize(state, getType((fields)[i]));                      \
         if (cur > largest) largest = cur;                                       \
     }                                                                           \
     largest;                                                                    \
 })
+
+static inline usize typePrimitiveSize(ZState *state, ZToken *tok) {
+    switch (tok->type) {
+    case TOK_VOID:  return 0;
+    case TOK_BOOL:
+    case TOK_I8:
+    case TOK_U8:
+    case TOK_CHAR:  return 1;
+    case TOK_I16:
+    case TOK_U16:   return 2;
+    case TOK_I32:
+    case TOK_U32:
+    case TOK_F32:   return 4;
+    case TOK_I64:
+    case TOK_U64:
+    case TOK_F64:   return 8;
+    case TOK_USIZE:
+    case TOK_ISIZE: return state->pointerSize;
+    default:        return 0;
+    }
+}
 
 /**
  * @brief Calculates the size of the type.
@@ -327,35 +348,24 @@ static inline ZType *alignTupleFieldIter(void *item) { return (ZType *)item; }
  * - The flag that indicates the active variant and it is u8
  * - The buffer where its size is the size of the largest variant.
  */
-usize typeSize(ZType *type) {
+usize typeSize(ZState *state, ZType *type) {
     usize res = 0;
     switch (type->kind) {
-    case Z_TYPE_PRIMITIVE:
-        switch (type->primitive.token->type) {
-        case TOK_VOID:  return 0;
-        case TOK_BOOL:
-        case TOK_I8:
-        case TOK_U8:
-        case TOK_CHAR:  return 1;
-        case TOK_I16:
-        case TOK_U16:   return 2;
-        case TOK_I32:
-        case TOK_U32:
-        case TOK_F32:   return 4;
-        case TOK_I64:
-        case TOK_U64:
-        case TOK_F64:   return 8;
-        default:        return 0;
-        }
-    case Z_TYPE_POINTER:    return 8; /* 64-bit pointer */
-    case Z_TYPE_FUNCTION:   return 8; /* function pointer */
-    case Z_TYPE_ARRAY:      return 16;/* {length: u64, ptr: *u8}*/
-    case Z_TYPE_FACET:      return 16;/* {obj: *u8, vtable: *u8}, see genFacetType */
-    case Z_TYPE_ENUM:       return typeLargestType(type->enm.fields) + 1;
+    case Z_TYPE_PRIMITIVE:  return typePrimitiveSize(state, type->primitive.token);
+    case Z_TYPE_POINTER:    return state->pointerSize;
+    case Z_TYPE_FUNCTION:   return state->pointerSize; /* function pointer */
+    case Z_TYPE_ARRAY:      return 8 + state->pointerSize;/* {length: u64, ptr: *u8}*/
+    case Z_TYPE_FACET:      return state->pointerSize * 2;/* {obj: *u8, vtable: *u8}, see genFacetType */
+    case Z_TYPE_ENUM: {
+        usize flag = 1;
+        if (type->enm.integer) flag = typePrimitiveSize(state, type->enm.integer);
+        return typeLargestType(type->enm.fields) + flag;
+    }
     case Z_TYPE_SUM:        return typeLargestType(type->sumType) + 1;
 
     case Z_TYPE_STRUCT: {
         res = alignFields(
+            state,
             (void **)type->strct.fields,
             alignStructFieldIter,
             query(type->strct.annotations, "packed") != NULL
@@ -365,6 +375,7 @@ usize typeSize(ZType *type) {
 
     case Z_TYPE_TUPLE:
         return alignFields(
+            state,
             (void **)type->tuple,
             alignTupleFieldIter,
             false
@@ -373,10 +384,10 @@ usize typeSize(ZType *type) {
     /* Optional pointers uses `none` as the niche value,
      * other types uses a struct {data, flag:u1} */
     case Z_TYPE_OPTIONAL:
-        if (type->optional->kind == Z_TYPE_POINTER) return 8;
+        if (type->optional->kind == Z_TYPE_POINTER) return state->pointerSize;
         return alignUp(
-            typeSize(type->optional) + 1,
-            typeAlign(type->optional)
+            typeSize(state, type->optional) + 1,
+            typeAlign(state, type->optional)
         );
 
     default: return 0;
@@ -389,14 +400,14 @@ usize typeSize(ZType *type) {
  * Mirrors typeSize: every type laid out as an LLVM aggregate is aligned like
  * its most strictly aligned member, and scalars are aligned like their size.
  */
-static usize typeAlign(ZType *type) {
+static usize typeAlign(ZState *state, ZType *type) {
     if (!type) return 1;
     switch (type->kind) {
     case Z_TYPE_STRUCT: {
         if (query(type->strct.annotations, "packed")) return 1;
         usize res = 1;
         for (usize i = 0; i < veclen(type->strct.fields); i++) {
-            usize cur = typeAlign(type->strct.fields[i]->resolved);
+            usize cur = typeAlign(state, type->strct.fields[i]->resolved);
             if (cur > res) res = cur;
         }
         return res;
@@ -405,7 +416,7 @@ static usize typeAlign(ZType *type) {
     case Z_TYPE_TUPLE: {
         usize res = 1;
         for (usize i = 0; i < veclen(type->tuple); i++) {
-            usize cur = typeAlign(type->tuple[i]);
+            usize cur = typeAlign(state, type->tuple[i]);
             if (cur > res) res = cur;
         }
         return res;
@@ -413,7 +424,7 @@ static usize typeAlign(ZType *type) {
 
     /* {len: u64, ptr: *u8} and {obj: *u8, vtable: *u8} */
     case Z_TYPE_ARRAY:
-    case Z_TYPE_FACET:      return 8;
+    case Z_TYPE_FACET:      return state->pointerSize;
 
     /* TODO: put the buffer before the flag. */
     /* {flag: i8, buf: [n x i8]} */
@@ -422,11 +433,11 @@ static usize typeAlign(ZType *type) {
 
     case Z_TYPE_OPTIONAL:
         return type->optional->kind == Z_TYPE_POINTER
-            ? 8
-            : typeAlign(type->optional);
+            ? state->pointerSize
+            : typeAlign(state, type->optional);
 
     default: {
-        usize size = typeSize(type);
+        usize size = typeSize(state, type);
         return size ? size : 1;
     }
     }
@@ -441,8 +452,8 @@ static usize typeAlign(ZType *type) {
  * parameters of a body or pushes call arguments must agree on this, otherwise
  * the argument count of a call does not match its callee.
  */
-static bool isRuntimeParam(ZType *type) {
-    return type && typeSize(type) > 0;
+static bool isRuntimeParam(ZState *state, ZType *type) {
+    return type && typeSize(state, type) > 0;
 }
 
 static bool _getStructIndex(ZType *strct, char *fieldName, u32 **path) {
@@ -532,6 +543,36 @@ static void putStructInCache(ZCodegen *ctx, const char *name, LLVMTypeRef strct)
     vecpush(ctx->structTypes, strct);
 }
 
+static LLVMTypeRef genPrimitiveType(ZCodegen *ctx, ZToken *tok) {
+    switch (tok->type) {
+    case TOK_VOID:  return i0Type;
+    case TOK_BOOL:  return i1Type;
+    case TOK_CHAR:
+    case TOK_I8:
+    case TOK_U8:    return i8Type;
+    case TOK_I16:
+    case TOK_U16:   return i16Type;
+    case TOK_RUNE:
+    case TOK_I32:
+    case TOK_U32:   return i32Type;
+    case TOK_I64:
+    case TOK_U64:   return i64Type;
+    case TOK_F32:   return f32Type;
+    case TOK_F64:   return f64Type;
+    case TOK_USIZE:
+    case TOK_ISIZE: return LLVMPointerTypeInContext(ctx->ctx, 0);
+    default: {
+        LLVMTypeRef ref = getCachedStruct(ctx, tok->str);
+        if (ref) return ref;
+        error(ctx->state,
+                    tok,
+                    "unknown primitive type '%s'",
+                    tok->str);
+        return NULL;
+    }
+    }
+}
+
 static LLVMTypeRef genStructType(ZCodegen *ctx, ZType *type) {
     const char *name    = type->strct.name->str;
 
@@ -587,7 +628,9 @@ static LLVMTypeRef genEnumType(ZCodegen *ctx, ZType *type) {
         genType(ctx, fields[i]->resolved);
     }
 
-    usize largest = typeSize(type);
+    usize largest = typeSize(ctx->state, type);
+    LLVMTypeRef flag = i8Type;
+    if (type->enm.integer) flag = genPrimitiveType(ctx, type->enm.integer);
     LLVMStructSetBody(enumType,
             (LLVMTypeRef[]){
         // Flag integer
@@ -660,6 +703,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     case Z_TYPE_ENUM:       return genEnumType  (ctx, type);
     case Z_TYPE_STRUCT:     return genStructType(ctx, type);
     case Z_TYPE_FACET:      return genFacetType (ctx);
+    case Z_TYPE_PRIMITIVE:  return genPrimitiveType(ctx, type->primitive.token);
 
     case Z_TYPE_GENERIC:
         if (veclen(type->generic.instantiations) == 0) {
@@ -667,34 +711,6 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         }
         return NULL;
 
-    case Z_TYPE_PRIMITIVE: {
-        const ZToken *name = type->primitive.token;
-        switch (name->type) {
-        case TOK_VOID:  return i0Type;
-        case TOK_BOOL:  return i1Type;
-        case TOK_CHAR:
-        case TOK_I8:
-        case TOK_U8:    return i8Type;
-        case TOK_I16:
-        case TOK_U16:   return i16Type;
-        case TOK_RUNE:
-        case TOK_I32:
-        case TOK_U32:   return i32Type;
-        case TOK_I64:
-        case TOK_U64:   return i64Type;
-        case TOK_F32:   return f32Type;
-        case TOK_F64:   return f64Type;
-        default: {
-            LLVMTypeRef ref = getCachedStruct(ctx, name->str);
-            if (ref) return ref;
-            error(ctx->state,
-                        type->primitive.token,
-                        "unknown primitive type '%s'",
-                        name->str);
-            return NULL;
-        }
-        }
-    }
 
     case Z_TYPE_POINTER: {
         ZType *base = type->base;
@@ -729,7 +745,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     }
 
     case Z_TYPE_SUM: {
-        usize largest = typeSize(type);
+        usize largest = typeSize(ctx->state, type);
         LLVMTypeRef elems[] = {
             i8Type,
             LLVMArrayType(i8Type, largest - 1)
@@ -1508,11 +1524,11 @@ static LLVMTypeRef buildFuncType(ZCodegen *ctx, ZType *type) {
     LLVMTypeRef *params = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * ((argc + args) ? (argc + args) : 1));
     usize len = 0;
     for (usize i = 0; i < argc; i++) {
-        if (!isRuntimeParam(type->func.capabilities[i])) continue;
+        if (!isRuntimeParam(ctx->state, type->func.capabilities[i])) continue;
         params[len++] = genType(ctx, type->func.capabilities[i]);
     }
     for (usize i = 0; i < args; i++) {
-        if (!isRuntimeParam(type->func.args[i])) continue;
+        if (!isRuntimeParam(ctx->state, type->func.args[i])) continue;
         params[len++] = genType(ctx, type->func.args[i]);
     }
     LLVMTypeRef ret = genType(ctx, type->func.ret);
@@ -1530,7 +1546,7 @@ static LLVMTypeRef buildFacetFuncType(ZCodegen *ctx, ZType *type) {
 
     usize len = 1;
     for (usize i = 0; i < argc; i++) {
-        if (!isRuntimeParam(type->func.args[i])) continue;
+        if (!isRuntimeParam(ctx->state, type->func.args[i])) continue;
         params[len++] = genType(ctx, type->func.args[i]);
     }
 
@@ -1708,7 +1724,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
             warning(ctx->state, node->tok, "Capability not resolved");
             continue;
         }
-        if (!isRuntimeParam(cap->resolved)) continue;
+        if (!isRuntimeParam(ctx->state, cap->resolved)) continue;
         LLVMValueRef capability = getCapabilityRef(
             ctx, cap->resolved
         );
@@ -1734,7 +1750,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
 
         /* The argument is still evaluated for its side effects, but a zero
          * sized one is not part of the callee signature, see isRuntimeParam. */
-        if (!isRuntimeParam(node->call.args[i]->resolved)) continue;
+        if (!isRuntimeParam(ctx->state, node->call.args[i]->resolved)) continue;
 
         /* Args already holds the receiver and the capabilities that survived
          * the filtering, so its length is the LLVM parameter index. */
@@ -2806,7 +2822,7 @@ static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
 
     for (usize i = 0; i < capLen; i++) {
         ZType *capType = node->resolved->func.capabilities[i];
-        if (!isRuntimeParam(capType)) continue;
+        if (!isRuntimeParam(ctx->state, capType)) continue;
         arguments[len++] = genType(ctx, capType);
     }
 
@@ -2814,7 +2830,7 @@ static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
 
     for (usize i = 0; i < argLen; i++) {
         ZType *at = node->resolved->func.args[i];
-        if (!isRuntimeParam(at)) continue;
+        if (!isRuntimeParam(ctx->state, at)) continue;
         arguments[len] = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION)
             arguments[len] = LLVMPointerType(arguments[len], 0);
@@ -3049,7 +3065,7 @@ LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     }
 
     case NODE_SIZEOF: {
-        usize size = typeSize(node->sizeofExpr.type);
+        usize size = typeSize(ctx->state, node->sizeofExpr.type);
         res = LLVMConstInt(i64Type, (u64)size, /*sign_extend=*/0);
         break;
     }
@@ -3099,7 +3115,7 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
     usize len = 0;
     for (usize i = 0; i < argc; i++) {
         ZType *at = node->resolved->func.args[i];
-        if (!isRuntimeParam(at)) continue;
+        if (!isRuntimeParam(ctx->state, at)) continue;
         paramTypes[len] = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION) {
             paramTypes[len] = LLVMPointerType(paramTypes[len], 0);
@@ -3107,7 +3123,7 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
             /* C ABI on all supported targets (x86-64, AArch64) passes small
              * non-HFA structs as a packed integer of the same size.  HFAs use
              * SIMD/FP registers and LLVM handles them correctly as-is. */
-            usize sz = typeSize(at);
+            usize sz = typeSize(ctx->state, at);
             if      (sz <= 4) paramTypes[len] = i32Type;
             else if (sz <= 8) paramTypes[len] = i64Type;
         }
@@ -4027,7 +4043,7 @@ static usize addFuncArgs(ZCodegen *ctx,
         LLVMTypeRef paramType = NULL;
         LLVMValueRef slot = NULL;
         paramType = genType(ctx, argType);
-        if (!isRuntimeParam(argType)) {
+        if (!isRuntimeParam(ctx->state, argType)) {
             /* Nothing was passed, but the name still has to resolve in the
              * body: give it a slot of its own (zero sized) instead. */
             slot = LLVMBuildAlloca(ctx->builder, paramType, name);
@@ -4124,14 +4140,14 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
 
     for (usize i = 0; i < veclen(f->funcDef.capabilities); i++) {
         ZType *capType = f->funcDef.capabilities[i]->field.type;
-        if (!isRuntimeParam(capType)) continue;
+        if (!isRuntimeParam(ctx->state, capType)) continue;
         LLVMTypeRef refType = genType(ctx, capType);
         vecpush(args, refType);
     }
 
     for (usize i = 0; i < veclen(f->funcDef.args); i++) {
         ZType *at = f->funcDef.args[i]->field.type;
-        if (!isRuntimeParam(at)) continue;
+        if (!isRuntimeParam(ctx->state, at)) continue;
         LLVMTypeRef arg = genType(ctx, at);
         if (at->kind == Z_TYPE_FUNCTION)
             arg = LLVMPointerType(arg, 0);
@@ -4394,12 +4410,12 @@ static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
          * and every call built from this type has the wrong argument count. */
         for (usize i = 0; i < veclen(node->funcDef.capabilities); i++) {
             ZType *capType = node->funcDef.capabilities[i]->field.type;
-            if (!isRuntimeParam(capType)) continue;
+            if (!isRuntimeParam(ctx->state, capType)) continue;
             vecpush(args, genType(ctx, capType));
         }
         for (usize i = 0; i < veclen(node->funcDef.args); i++) {
             ZType *at = node->funcDef.args[i]->field.type;
-            if (!isRuntimeParam(at)) continue;
+            if (!isRuntimeParam(ctx->state, at)) continue;
             LLVMTypeRef arg = genType(ctx, at);
             if (at->kind == Z_TYPE_FUNCTION)
                 arg = LLVMPointerType(arg, 0);
@@ -4434,6 +4450,48 @@ static void buildOptPipeline(char level, char *buf, usize bufsize) {
     if      (lvl == 's') snprintf(buf, bufsize, "default<Os>");
     else if (lvl == 'z') snprintf(buf, bufsize, "default<Oz>");
     else                 snprintf(buf, bufsize, "default<O%c>", lvl);
+}
+
+bool initTargetMachine(ZState *state) {
+    LLVMInitializeAllTargetInfos();
+    LLVMInitializeAllTargets();
+    LLVMInitializeAllTargetMCs();
+    LLVMInitializeAllAsmParsers();
+    LLVMInitializeAllAsmPrinters();
+
+    bool hostTriple = (state->targetTriple == NULL);
+    char *triple = hostTriple ? LLVMGetDefaultTargetTriple()
+                              : strdup(state->targetTriple);
+
+    LLVMTargetRef target;
+    char *errmsg = NULL;
+    if (LLVMGetTargetFromTriple(triple, &target, &errmsg)) {
+        error(state, NULL, "Failed to get target: %s", errmsg);
+        LLVMDisposeMessage(errmsg);
+        LLVMDisposeMessage(triple);
+        return false;
+    }
+
+    const char *cpu         = state->targetCPU      ? state->targetCPU      : "generic";
+    const char *features    = state->targetFeatures ? state->targetFeatures : "";
+    LLVMRelocMode reloc     = hostTriple            ? LLVMRelocPIC          : LLVMRelocStatic;
+
+    char optlvl = state->optimizationLevel ? state->optimizationLevel : '2';
+    LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
+        target, triple, cpu, features,
+        toCodeGenLevel(optlvl),
+        reloc,
+        LLVMCodeModelDefault
+    );
+
+    LLVMTargetDataRef layout    = LLVMCreateTargetDataLayout(machine);
+    state->pointerSize          = LLVMPointerSize(layout);
+    state->targetMachine        = machine;
+    state->targetTriple         = triple;
+    state->dataLayout           = LLVMCopyStringRepOfTargetData(layout);
+
+    LLVMDisposeTargetData(layout);
+    return true;
 }
 
 static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileType fileType) {
@@ -4471,6 +4529,8 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     );
 
     LLVMTargetDataRef layout = LLVMCreateTargetDataLayout(machine);
+
+    ctx->state->pointerSize = LLVMPointerSize(layout);
     char *layout_str = LLVMCopyStringRepOfTargetData(layout);
     LLVMSetDataLayout(ctx->mod, layout_str);
     LLVMDisposeMessage(layout_str);

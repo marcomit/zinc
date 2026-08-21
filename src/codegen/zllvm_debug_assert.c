@@ -115,7 +115,7 @@ void initializeMemoryToZero(ZCodegen *ctx, LLVMValueRef value, ZType *type) {
     LLVMBuildMemSet(
         ctx->builder, value,
         LLVMConstInt(i8Type, 0, 0),
-        LLVMConstInt(i64Type, typeSize(type), 0),
+        LLVMConstInt(i64Type, typeSize(ctx->state, type), 0),
         8
     );
 }

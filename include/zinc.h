@@ -154,6 +154,18 @@ typedef struct {
     char            optimizationLevel;
     ZLTOMode        ltoMode;
 
+    /* Size of the pointer in bytes (used for usize/isize).
+     * Initialized inside the code generator after creating the target.
+     * */
+    usize           pointerSize;
+
+
+    /* opaque LLVMTargetMachineRef. */
+    void            *targetMachine;
+
+    /* Data layout string. */
+    char            *dataLayout;
+
     char            *targetTriple;
     char            *targetCPU;
     char            *targetFeatures;
@@ -947,7 +959,7 @@ ZSemantic *zanalyze(ZState *, ZNode *);
 /* Code generation */
 void zcompile(ZState *, ZNode *, const char *);
 
-usize typeSize(ZType *);
+usize typeSize(ZState *, ZType *);
 void typesSort(ZType **);
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
@@ -1017,5 +1029,6 @@ usize annLen(ZAnnotation *);
 ZLangItemType getLangItemType(ZNode *);
 void analyzeAnnotations(ZState *, ZNode *);
 void validate(ZState *, ZNode *);
+bool initTargetMachine(ZState *);
 
 #endif

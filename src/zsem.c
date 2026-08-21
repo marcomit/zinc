@@ -829,11 +829,7 @@ int compareTypes(const void *a, const void *b) {
     ZType *typeA = *(ZType * const *)a;
     ZType *typeB = *(ZType * const *)b;
 
-    int sizeA = (int)typeSize(typeA) << 2;
-    int sizeB = (int)typeSize(typeB) << 2;
-
-    // return sizeB - sizeA;
-    return sizeA - sizeB;
+    return (typeA->hash > typeB->hash) - (typeA->hash < typeB->hash);
 }
 
 inline void typesSort(ZType **types) {

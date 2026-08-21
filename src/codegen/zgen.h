@@ -97,38 +97,40 @@ typedef struct ZLLVMScope {
 } ZLLVMScope;
 
 typedef struct {
-    ZState              *state;
-    ZModuleAllocator    *module;
-    LLVMContextRef      ctx;
+    ZState                  *state;
+    ZModuleAllocator        *module;
+    LLVMContextRef          ctx;
 
-    LLVMModuleRef       *modules;
-    LLVMModuleRef       mod;
+    LLVMModuleRef           *modules;
+    LLVMModuleRef           mod;
 
-    LLVMBuilderRef      builder;
+    LLVMBuilderRef          builder;
 
-    ZLLVMScope          *scope;
+    ZLLVMScope              *scope;
 
     /* Struct type cache - parallel arrays keyed by name */
-    const char          **structNames;
-    LLVMTypeRef         *structTypes;
+    const char              **structNames;
+    LLVMTypeRef             *structTypes;
 
-    LLVMValueRef        currentFunc;
-    ZNode               *currentFuncNode;
+    LLVMValueRef            currentFunc;
+    ZNode                   *currentFuncNode;
 
     /* all operations are named with an incremental number
      * and converted to hex format. */
-    usize               count;
+    usize                   count;
 
     /* buffer for operation names for storing the hex number. */
-    char                *str;
+    char                    *str;
 
     /* Modules already forward-declared / defined into ctx->mod, keyed by
      * module name. A module can be reached through several import paths (and
      * re-imports carry an empty module.root), so these guard against emitting
      * a body twice - which would append a second definition to the same
      * function - and terminate on cyclic imports. */
-    hashset_t           seenModuleDecls;
-    hashset_t           seenModuleDefs;
+    hashset_t               seenModuleDecls;
+    hashset_t               seenModuleDefs;
+
+    LLVMTargetMachineRef    machine;
 } ZCodegen;
 
 void LLVMAddFuncAttribute(ZCodegen *ctx, LLVMValueRef func, const char *llvmAttr);
