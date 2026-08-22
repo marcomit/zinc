@@ -560,7 +560,8 @@ static LLVMTypeRef genPrimitiveType(ZCodegen *ctx, ZToken *tok) {
     case TOK_F32:   return f32Type;
     case TOK_F64:   return f64Type;
     case TOK_USIZE:
-    case TOK_ISIZE: return LLVMPointerTypeInContext(ctx->ctx, 0);
+    case TOK_ISIZE:
+        return LLVMIntTypeInContext(ctx->ctx, ctx->state->pointerSize * 8);
     default: {
         LLVMTypeRef ref = getCachedStruct(ctx, tok->str);
         if (ref) return ref;
