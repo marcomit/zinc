@@ -244,6 +244,7 @@ int pipeline(ZState *state) {
     ZToken **tokens = ztokenize(state);
     if (!tokens) return 1;
 
+    if (!initTargetMachine(state)) return 1;
     initPrimitiveTypes();
 
     if (!canAdvance(state)) return 2;
