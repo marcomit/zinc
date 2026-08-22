@@ -166,6 +166,9 @@ typedef struct {
     /* Data layout string. */
     char            *dataLayout;
 
+    /* Triple used for codegen. */
+    char            *resolvedTriple;
+
     char            *targetTriple;
     char            *targetCPU;
     char            *targetFeatures;

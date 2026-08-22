@@ -635,11 +635,11 @@ static LLVMTypeRef genEnumType(ZCodegen *ctx, ZType *type) {
     LLVMStructSetBody(enumType,
             (LLVMTypeRef[]){
         // Flag integer
-        i8Type,
+        flag,
 
         // Buffer array with the largest field
         LLVMArrayType(i8Type, largest - 1)
-    }, 2, 0);
+    }, largest == 0 ? 1 : 2, 0);
 
     return enumType;
 }
@@ -4488,7 +4488,7 @@ bool initTargetMachine(ZState *state) {
     LLVMTargetDataRef layout    = LLVMCreateTargetDataLayout(machine);
     state->pointerSize          = LLVMPointerSize(layout);
     state->targetMachine        = machine;
-    state->targetTriple         = triple;
+    state->resolvedTriple       = triple;
     state->dataLayout           = LLVMCopyStringRepOfTargetData(layout);
 
     LLVMDisposeTargetData(layout);
