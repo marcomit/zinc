@@ -26,7 +26,7 @@ static std::string runCmd(const char *cmd) {
     return s;
 }
 
-extern "C" int zinc_lld_link(const char *objfile, const char *outfile,
+extern "C" int zinc_lld_link(bool nostdlib, const char *objfile, const char *outfile,
     const char **extra_args, int extra_args_count) {
 #if defined(__APPLE__)
     std::string sdk = runCmd("xcrun --sdk macosx --show-sdk-path 2>/dev/null");
@@ -52,9 +52,11 @@ extern "C" int zinc_lld_link(const char *objfile, const char *outfile,
         "-platform_version", "macos",
         ver.c_str(), ver.c_str(),
         "-syslibroot", sdk.c_str(),
-        "-lSystem",
-        objfile,
     };
+
+    if (!nostdlib) args.push_back("-lSystem");
+
+    args.push_back(objfile);
 
     for (int i = 0; i < extra_args_count; i++) {
         args.push_back(extra_args[i]);
@@ -72,12 +74,15 @@ extern "C" int zinc_lld_link(const char *objfile, const char *outfile,
     return res.retCode;
 
 #elif defined(_WIN32) && defined(__MINGW32__)
-    // On MSYS2/MinGW64, delegate linking to clang — it handles the sysroot,
+    // On MSYS2/MinGW64, delegate linking to clang  -  it handles the sysroot,
     // CRT startup files, and MinGW runtime libraries automatically.
     // system() on MinGW uses cmd.exe; errors from clang flow to our stderr.
     char cmd[8192];
-    // Quote both paths — they may contain spaces or backslashes.
-    int n = snprintf(cmd, sizeof(cmd), "clang -o \"%s\" \"%s\"", outfile, objfile);
+    // Quote both paths  -  they may contain spaces or backslashes.
+    // In nostdlib mode, ask clang to omit the CRT startup files and default
+    // libraries so the caller controls the entry point and runtime.
+    int n = snprintf(cmd, sizeof(cmd), "clang %s-o \"%s\" \"%s\"",
+                     nostdlib ? "-nostdlib " : "", outfile, objfile);
     for (int i = 0; i < extra_args_count && n < (int)sizeof(cmd) - 256; i++)
         n += snprintf(cmd + n, sizeof(cmd) - n, " \"%s\"", extra_args[i]);
     int ret = system(cmd);
@@ -90,9 +95,17 @@ extern "C" int zinc_lld_link(const char *objfile, const char *outfile,
         "lld-link",
         "/nologo",
         "/subsystem:console",
-        "/defaultlib:libcmt",
-        "/defaultlib:oldnames",
     };
+    // The default C runtime libraries are only pulled in for hosted builds.
+    // Under nostdlib the caller supplies its own entry point and runtime, and
+    // /nodefaultlib keeps lld from injecting libcmt / oldnames references.
+    if (!nostdlib) {
+        args.push_back("/defaultlib:libcmt");
+        args.push_back("/defaultlib:oldnames");
+    } else {
+        args.push_back("/nodefaultlib");
+        args.push_back("/entry:_start");
+    }
     args.push_back(objfile);
     for (int i = 0; i < extra_args_count; i++)
         args.push_back(extra_args[i]);
@@ -136,27 +149,35 @@ extern "C" int zinc_lld_link(const char *objfile, const char *outfile,
     const char *dynlinker  = "/lib/ld-linux.so.2";
 #endif
 
-    std::vector<const char *> args = {
-        "ld.lld",
-        "-m",               emulation,
-        "--dynamic-linker", dynlinker,
-    };
-    if (!libdir.empty()) {
-        args.push_back("-L");
-        args.push_back(libdir.c_str());
-    }
-    args.insert(args.end(), {
-        crt1.c_str(),
-        crti.c_str(),
-        objfile,
-        "-lc",
-    });
+    std::vector<const char *> args = { "ld.lld", "-m", emulation };
 
-    for (int i = 0; i < extra_args_count; i++) {
-        args.push_back(extra_args[i]);
+    if (nostdlib) {
+        // Freestanding link: no CRT startup objects, no libc, and no dynamic
+        // linker. The program provides its own entry point (default `_start`,
+        // overridable through extra_args, e.g. `-e kmain` or `-T kernel.ld`).
+        // Produce a static image so nothing is resolved at load time.
+        args.push_back("-static");
+        args.push_back(objfile);
+        for (int i = 0; i < extra_args_count; i++)
+            args.push_back(extra_args[i]);
+    } else {
+        args.push_back("--dynamic-linker");
+        args.push_back(dynlinker);
+        if (!libdir.empty()) {
+            args.push_back("-L");
+            args.push_back(libdir.c_str());
+        }
+        args.insert(args.end(), {
+            crt1.c_str(),
+            crti.c_str(),
+            objfile,
+            "-lc",
+        });
+        for (int i = 0; i < extra_args_count; i++)
+            args.push_back(extra_args[i]);
+        args.push_back(crtn.c_str());
     }
 
-    args.push_back(crtn.c_str());
     args.push_back("-o");
     args.push_back(outfile);
 

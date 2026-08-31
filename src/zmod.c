@@ -938,6 +938,20 @@ char *readfile(char *filename) {
     return buff;
 }
 
+/* Format a printf-style message into a freshly allocated, NUL-terminated
+ * string. Does not consume `args` destructively beyond a single pass. */
+static char *vformat(const char *fmt, va_list args) {
+    va_list copy;
+    va_copy(copy, args);
+    int len = vsnprintf(NULL, 0, fmt, copy);
+    va_end(copy);
+    if (len < 0) return NULL;
+
+    char *out = allocator.alloc((size_t)len + 1);
+    if (out) vsnprintf(out, (size_t)len + 1, fmt, args);
+    return out;
+}
+
 ZLog *vmakelog( ZState *state,
                 ZLogLevel level,
                 char *filename,
@@ -954,17 +968,12 @@ ZLog *vmakelog( ZState *state,
     log->src_file = src_file;
     log->src_line = src_line;
 
-    va_list args_copy;
+    /* Arena memory is not zeroed; initialize the catalog fields explicitly. */
+    log->code = Z_DIAG_NONE;
+    log->hint = NULL;
+    log->notes = NULL;
 
-    va_copy(args_copy, args);
-
-    int len = vsnprintf(NULL, 0, fmt, args_copy);
-    va_end(args_copy);
-
-    log->message = allocator.alloc((size_t)len + 1);
-    if (log->message) {
-        vsnprintf(log->message, (size_t)len + 1, fmt, args);
-    }
+    log->message = vformat(fmt, args);
     log->phase = state->currentPhase;
     vecpush(state->logs, log);
 
@@ -996,6 +1005,88 @@ LOG_FUNC(_error,    Z_ERROR)
 LOG_FUNC(_warning,  Z_WARNING)
 LOG_FUNC(_info,     Z_INFO)
 LOG_FUNC(_debug,    Z_DEBUG)
+
+/* ---- Catalog-driven diagnostics (zdiag.def) --------------------------- */
+
+static const char *diagCodeNames[] = {
+    [Z_DIAG_NONE] = NULL,
+    #define DIAG(code, level, msg, hint) [code] = #code,
+    #include "zdiag.def"
+    #undef DIAG
+};
+
+static const char *diagMessages[] = {
+    [Z_DIAG_NONE] = NULL,
+    #define DIAG(code, level, msg, hint) [code] = msg,
+    #include "zdiag.def"
+    #undef DIAG
+};
+
+static const char *diagHints[] = {
+    [Z_DIAG_NONE] = NULL,
+    #define DIAG(code, level, msg, hint) [code] = hint,
+    #include "zdiag.def"
+    #undef DIAG
+};
+
+static const ZLogLevel diagLevels[] = {
+    [Z_DIAG_NONE] = Z_ERROR,
+    #define DIAG(code, level, msg, hint) [code] = level,
+    #include "zdiag.def"
+    #undef DIAG
+};
+
+ZLog *_log(ZState *state, ZToken *tok, ZDiagCode code,
+                 const char *src_file, int src_line, ...) {
+    pthread_mutex_lock(&logLock);
+
+    va_list args;
+    va_start(args, src_line);
+    ZLog *log = vmakelog(state, diagLevels[code],
+                         tok ? tok->filename : NULL,
+                         tok, src_file, src_line,
+                         diagMessages[code], args);
+    va_end(args);
+
+    log->code = code;
+    /* Catalog default hint (may be overridden by a later emitHint). Stored as
+     * a const string; emitHint replaces it with an owned formatted copy. */
+    log->hint = (char *)diagHints[code];
+
+    pthread_mutex_unlock(&logLock);
+    return log;
+}
+
+ZLog *emitHint(ZLog *log, const char *fmt, ...) {
+    if (!log) return log;
+    pthread_mutex_lock(&logLock);
+
+    va_list args;
+    va_start(args, fmt);
+    log->hint = vformat(fmt, args);
+    va_end(args);
+
+    pthread_mutex_unlock(&logLock);
+    return log;
+}
+
+ZLog *emitNote(ZLog *log, ZToken *tok, const char *fmt, ...) {
+    if (!log) return log;
+    pthread_mutex_lock(&logLock);
+
+    va_list args;
+    va_start(args, fmt);
+    char *message = vformat(fmt, args);
+    va_end(args);
+
+    ZLogNote *note = zalloc(ZLogNote);
+    note->token = tok;
+    note->message = message;
+    vecpush(log->notes, note);
+
+    pthread_mutex_unlock(&logLock);
+    return log;
+}
 
 static char *resolvePath(ZState *state, char *filename) {
     if (!state->filename) return filename;
@@ -1133,10 +1224,22 @@ static void printLog(ZState *state, ZLog *log) {
 
     if (log->token) printf("%zu:%zu: ", log->token->row, log->token->col);
 
-    printf(COLOR_BOLD "\n  %s%s\033[0m: ", colors[log->level], levels[log->level]);
-    printf("%s\n", log->message);
+    printf(COLOR_BOLD "\n  %s%s\033[0m", colors[log->level], levels[log->level]);
+    if (log->code != Z_DIAG_NONE)
+        printf(COLOR_BOLD "[%s]\033[0m", diagCodeNames[log->code]);
+    printf(": %s\n", log->message);
 
     if (log->token) printLineHighlight(log->token, colors[log->level]);
+
+    /* Cause chain: each note may point at its own span. */
+    for (usize i = 0; i < veclen(log->notes); i++) {
+        ZLogNote *note = log->notes[i];
+        printf(COLOR_BOLD "  note\033[0m: %s\n", note->message);
+        if (note->token) printLineHighlight(note->token, COLOR_BOLD);
+    }
+
+    if (log->hint)
+        printf(COLOR_BOLD "  hint\033[0m: %s\n", log->hint);
 }
 
 bool canAdvance(ZState *state) {
