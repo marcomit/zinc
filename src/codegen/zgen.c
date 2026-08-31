@@ -4666,7 +4666,8 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
         return;
     }
 
-    if (state->emit == Z_EMIT_EXE && !LLVMGetNamedFunction(ctx->mod, "main")) {
+    if (state->emit == Z_EMIT_EXE && !state->nostdlib &&
+        !LLVMGetNamedFunction(ctx->mod, "main")) {
         error(state, NULL, "[LLVM: function main not registered]");
     }
 
@@ -4739,7 +4740,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
         timer_start(&state->phaseTime);
     }
 
-    int ret = zinc_lld_link(objfile, output,
+    int ret = zinc_lld_link(state->nostdlib, objfile, output,
             (const char**)state->extraArgs, veclen(state->extraArgs));
 
     if (state->verbose) {

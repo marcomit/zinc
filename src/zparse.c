@@ -2500,24 +2500,29 @@ static ZNode *_parseStructLit(ZParser *parser, ZToken **chain) {
     structlit->structlit.chain      = chain;
     structlit->structlit.generics   = generics;
     structlit->tok                  = veclast(chain);
+    ZNode *expr                     = NULL;
+    ZNode *var                      = NULL;
 
     do {
         if (!check(parser, TOK_IDENT)) break;
-        ZVarDestructPattern *node = makeDestructIdent(consume(parser));
+        ZToken *tok                 = consume(parser);
+        ZVarDestructPattern *node   = makeDestructIdent(tok);
+        expr                        = NULL;
+        var                         = NULL;
 
-        if (!match(parser, TOK_EQ)) {
-            error(parser->state,
-                        peek(parser),
-                        "Expected a ':', got %s",
-                        stoken(peek(parser)));
-            return NULL;
+        if (match(parser, TOK_EQ)) {
+            expr = tryParse(parser, parseExpr(parser));
+            if (!expr) return NULL;
+        } else if (check(parser, TOK_COMMA) || check(parser, TOK_RBRACKET)) {
+            expr = makenode(NODE_IDENTIFIER);
+            expr->tok = tok;
+            expr->identNode.tok = tok;
+        } else {
+            error(parser->state, peek(parser),
+                "Expected tokens: ('=', ','), got '%s'", peek(parser)
+            );
         }
-
-        ZNode *expr = tryParse(parser, parseExpr(parser));
-
-        if (!expr) return NULL;
-
-        ZNode *var = makenodevar(node, NULL, expr);
+        var = makenodevar(node, NULL, expr);
         vecpush(structlit->structlit.fields, var);
     } while (!check(parser, TOK_RBRACKET) && match(parser, TOK_COMMA));
 
