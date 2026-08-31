@@ -50,7 +50,7 @@ COMPILE_EXIT=0
 compile() {
     local src="$1" bin="$2" log="$3"
     COMPILE_EXIT=0
-    "$ZINC" "$src" -o "$bin" > "$log" 2>&1 || COMPILE_EXIT=$?
+    "$ZINC" "build" "$src" -o "$bin" > "$log" 2>&1 || COMPILE_EXIT=$?
 }
 
 run_pass_test() {

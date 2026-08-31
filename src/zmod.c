@@ -968,7 +968,6 @@ ZLog *vmakelog( ZState *state,
     log->src_file = src_file;
     log->src_line = src_line;
 
-    /* Arena memory is not zeroed; initialize the catalog fields explicitly. */
     log->code = Z_DIAG_NONE;
     log->hint = NULL;
     log->notes = NULL;
@@ -1006,32 +1005,16 @@ LOG_FUNC(_warning,  Z_WARNING)
 LOG_FUNC(_info,     Z_INFO)
 LOG_FUNC(_debug,    Z_DEBUG)
 
-/* ---- Catalog-driven diagnostics (zdiag.def) --------------------------- */
+typedef struct {
+    const char      *code;
+    const char      *message;
+    const char      *hint;
+    const ZLogLevel level;
+} ZDiagnostic;
 
-static const char *diagCodeNames[] = {
-    [Z_DIAG_NONE] = NULL,
-    #define DIAG(code, level, msg, hint) [code] = #code,
-    #include "zdiag.def"
-    #undef DIAG
-};
-
-static const char *diagMessages[] = {
-    [Z_DIAG_NONE] = NULL,
-    #define DIAG(code, level, msg, hint) [code] = msg,
-    #include "zdiag.def"
-    #undef DIAG
-};
-
-static const char *diagHints[] = {
-    [Z_DIAG_NONE] = NULL,
-    #define DIAG(code, level, msg, hint) [code] = hint,
-    #include "zdiag.def"
-    #undef DIAG
-};
-
-static const ZLogLevel diagLevels[] = {
-    [Z_DIAG_NONE] = Z_ERROR,
-    #define DIAG(code, level, msg, hint) [code] = level,
+static const ZDiagnostic ZDiagnostics[] = {
+    [Z_DIAG_NONE] = (ZDiagnostic){ NULL, NULL, NULL, 0 },
+    #define DIAG(code, level, msg, hint) [code] = (ZDiagnostic){ #code, msg, hint, level },
     #include "zdiag.def"
     #undef DIAG
 };
@@ -1042,16 +1025,14 @@ ZLog *_log(ZState *state, ZToken *tok, ZDiagCode code,
 
     va_list args;
     va_start(args, src_line);
-    ZLog *log = vmakelog(state, diagLevels[code],
+    ZLog *log = vmakelog(state, ZDiagnostics[code].level,
                          tok ? tok->filename : NULL,
                          tok, src_file, src_line,
-                         diagMessages[code], args);
+                         ZDiagnostics[code].message, args);
     va_end(args);
 
     log->code = code;
-    /* Catalog default hint (may be overridden by a later emitHint). Stored as
-     * a const string; emitHint replaces it with an owned formatted copy. */
-    log->hint = (char *)diagHints[code];
+    log->hint = (char *)ZDiagnostics[code].hint;
 
     pthread_mutex_unlock(&logLock);
     return log;
@@ -1226,7 +1207,7 @@ static void printLog(ZState *state, ZLog *log) {
 
     printf(COLOR_BOLD "\n  %s%s\033[0m", colors[log->level], levels[log->level]);
     if (log->code != Z_DIAG_NONE)
-        printf(COLOR_BOLD "[%s]\033[0m", diagCodeNames[log->code]);
+        printf(COLOR_BOLD "[%s]\033[0m", ZDiagnostics[log->code].code);
     printf(": %s\n", log->message);
 
     if (log->token) printLineHighlight(log->token, colors[log->level]);

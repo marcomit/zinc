@@ -265,11 +265,12 @@ static ZErrorCode version(ZState *state) {
 }
 
 static ZErrorCode help(ZState *state) {
+    (void)state;
     usage("");
     return Z_OK;
 }
 
-#define EMPTY_COMMAND (ZCliCommand){ NULL }
+#define EMPTY_COMMAND (ZCliCommand){ NULL, NULL, NULL, 0, 0, NULL, NULL, 0 }
 
 static const ZCliCommand ZCommands[] = {
     { "build",      "Compile a source file",    long_options,   1, 1,   compile,    NULL, Z_CMD_NEEDS_INPUT },
