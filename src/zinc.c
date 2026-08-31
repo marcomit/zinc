@@ -279,8 +279,13 @@ static const ZCliCommand ZCommands[] = {
 
 bool loadOptions(const ZCliCommand *cmd, int argc, char **argv) {
     int opt;
-    while (( opt = getopt_long(argc, argv, "dvo:l:L:O:", cmd->options, NULL) ) != -1) {
+    optind = 1;
+    while (( opt = getopt_long(argc, argv, "-dvo:l:L:O:", cmd->options, NULL) ) != -1) {
         switch (opt) {
+        case 1:
+            if ((int)veclen(state->argv) < cmd->maxArgs)
+                vecpush(state->argv, optarg);
+            break;
         case 'L': {
             usize len = 3 + strlen(optarg);
             char *lib = znalloc(char, len);
@@ -345,6 +350,15 @@ bool loadOptions(const ZCliCommand *cmd, int argc, char **argv) {
         default: usage(argv[0]); return false;
         }
     }
+
+    if ((int)veclen(state->argv) < cmd->minArgs) {
+        fprintf(
+            stderr,
+            "Expected at least %d argument(s), got %d\n",
+            cmd->minArgs, (int)veclen(state->argv)
+        );
+        return false;
+    }
     return true;
 }
 
@@ -381,18 +395,6 @@ static const ZCliCommand *getCmd(const ZCliCommand *root, int *argc, char ***arg
     }
     if (!res) return NULL;
 
-    if (*argc < res->minArgs) {
-        fprintf(
-            stderr,
-            "Expected at least %d argument(s), got %d",
-            res->minArgs, *argc
-        );
-        return NULL;
-    }
-
-    for (int i = optind; i < *argc && i < optind + res->maxArgs; i++) {
-        vecpush(state->argv, (*argv)[i]);
-    }
     return res;
 }
 
