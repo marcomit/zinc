@@ -279,13 +279,24 @@ static const ZCliCommand ZCommands[] = {
 
 bool loadOptions(const ZCliCommand *cmd, int argc, char **argv) {
     int opt;
+    /* Leading '+' disables argv permutation (POSIX mode): getopt stops at the
+     * first non-option and returns -1 with optind pointing at it. We collect
+     * that positional ourselves and resume, so options and positionals work in
+     * any order. Unlike the default permuting mode - whose behaviour differs
+     * across glibc/BSD/mingw - '+' is honoured consistently everywhere, and it
+     * avoids relying on the RETURN_IN_ORDER ('-') mode that mingw lacks. */
     optind = 1;
-    while (( opt = getopt_long(argc, argv, "-dvo:l:L:O:", cmd->options, NULL) ) != -1) {
+    while (optind < argc) {
+        opt = getopt_long(argc, argv, "+dvo:l:L:O:", cmd->options, NULL);
+        if (opt == -1) {
+            if (optind < argc) {
+                if ((int)veclen(state->argv) < cmd->maxArgs)
+                    vecpush(state->argv, argv[optind]);
+                optind++;
+            }
+            continue;
+        }
         switch (opt) {
-        case 1:
-            if ((int)veclen(state->argv) < cmd->maxArgs)
-                vecpush(state->argv, optarg);
-            break;
         case 'L': {
             usize len = 3 + strlen(optarg);
             char *lib = znalloc(char, len);
