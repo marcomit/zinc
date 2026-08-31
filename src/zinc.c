@@ -192,7 +192,7 @@ static void initState(ZState *state) {
     visit(state, &filename, false);
 }
 
-ZErrorCode pipeline(ZState *state) {
+static ZErrorCode pipeline(ZState *state) {
     initState(state);
     if (state->verbose) timer_start(&state->phaseTime);
 
@@ -223,16 +223,13 @@ ZErrorCode pipeline(ZState *state) {
 
     if (!canAdvance(state)) return Z_CODEGEN_ERROR;
 
-    if (state->verbose) {
-
-    }
-    printAllocation(state);
+    if (state->verbose) printAllocation(state);
 
     for (usize i = 0; i < veclen(state->modules); i++) {
         arenaFree(state->modules[i]->allocator);
     }
 
-    return 0;
+    return Z_OK;
 }
 
 static ZErrorCode run(ZState *state) {
