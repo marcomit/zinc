@@ -23,7 +23,10 @@ if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
 fi
 
 EXE_EXT=""
-case "${OSTYPE:-}" in msys*|cygwin*) EXE_EXT=".exe" ;; esac
+case "${OSTYPE:-}" in msys*|cygwin*|win32*) EXE_EXT=".exe" ;; esac
+# $OSTYPE is unreliable under the msys2 {0} / MINGW64 CI shell, so also probe
+# uname. The compiler force-appends .exe on Windows regardless.
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) EXE_EXT=".exe" ;; esac
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -37,12 +40,28 @@ failed=0
 xfailed=0
 xpassed=0
 
-TMP_DIR=$(mktemp -d)
+# Create the scratch dir under the current working directory rather than the
+# MSYS /tmp mount. zinc is a native Windows binary and does not do MSYS/Cygwin
+# POSIX path translation, so a "/tmp/..." path from mktemp would be resolved by
+# zinc against the current drive root and land somewhere bash isn't looking.
+# A dir next to us is resolved identically by both.
+TMP_DIR=$(mktemp -d "./.zinc-test.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-binary_was_produced() {
+# Resolve the binary the compiler actually produced. On Windows the compiler
+# force-appends ".exe" to the -o name (see zgen.c), so the file on disk may not
+# match the path we asked for. Echo the real path if it exists, else nothing.
+resolve_binary() {
     local bin="$1"
-    [ -f "$bin" ] && [ -x "$bin" ]
+    if [ -f "$bin" ] && [ -x "$bin" ]; then
+        printf '%s' "$bin"
+    elif [ -f "$bin.exe" ] && [ -x "$bin.exe" ]; then
+        printf '%s' "$bin.exe"
+    fi
+}
+
+binary_was_produced() {
+    [ -n "$(resolve_binary "$1")" ]
 }
 
 COMPILE_EXIT=0
@@ -50,7 +69,7 @@ COMPILE_EXIT=0
 compile() {
     local src="$1" bin="$2" log="$3"
     COMPILE_EXIT=0
-    "$ZINC" "$src" -o "$bin" > "$log" 2>&1 || COMPILE_EXIT=$?
+    "$ZINC" "build" "$src" -o "$bin" > "$log" 2>&1 || COMPILE_EXIT=$?
 }
 
 run_pass_test() {
@@ -62,7 +81,9 @@ run_pass_test() {
 
     compile "$src" "$bin" "$compile_log"
 
-    if ! binary_was_produced "$bin"; then
+    local realbin
+    realbin=$(resolve_binary "$bin")
+    if [ -z "$realbin" ]; then
         echo -e "  ${RED}FAIL${NC}  $name"
         echo -e "       compilation did not produce a binary"
         if [ -s "$compile_log" ]; then
@@ -74,7 +95,7 @@ run_pass_test() {
 
     # Run the binary
     local actual exit_code
-    actual=$("$bin" 2>/dev/null) || exit_code=$?
+    actual=$("$realbin" 2>/dev/null) || exit_code=$?
     exit_code=${exit_code:-0}
 
     if [ "$exit_code" -ne 0 ]; then
@@ -132,7 +153,9 @@ run_xfail_test() {
 
     compile "$src" "$bin" "$compile_log"
 
-    if ! binary_was_produced "$bin"; then
+    local realbin
+    realbin=$(resolve_binary "$bin")
+    if [ -z "$realbin" ]; then
         echo -e "  ${YELLOW}XFAIL${NC} $name  (expected - compiler rejected)"
         xfailed=$((xfailed + 1))
         return
@@ -140,7 +163,7 @@ run_xfail_test() {
 
     # Binary was produced - check output if an .expected file exists
     local actual exit_code
-    actual=$("$bin" 2>/dev/null) || exit_code=$?
+    actual=$("$realbin" 2>/dev/null) || exit_code=$?
     exit_code=${exit_code:-0}
 
     if [ -f "$expected" ]; then

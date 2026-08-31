@@ -26,6 +26,8 @@
 // #define VEC_FREE allocator.free
 // #endif
 
+#define ZINC_VERSION "0.2.0"
+
 static ZState *state    = NULL;
 
 ZType *none     = NULL;
@@ -35,26 +37,62 @@ ZType *u1Type   = NULL;
 ZType *u64Type  = NULL;
 ZType *modType  = NULL;
 
+typedef enum {
+    Z_OK = 0,
+    Z_INVALID_COMMAND,
+    Z_INVALID_STATE,
+    Z_LEXICAL_ERROR,
+    Z_SYNTAX_ERROR,
+    Z_SEMANTIC_ERROR,
+    Z_CODEGEN_ERROR,
+} ZErrorCode;
+
+typedef enum {
+    Z_CMD_NEEDS_INPUT = 1 << 0x00
+} ZCliFlags;
+
+typedef ZErrorCode (*ZCliCallback)(ZState *);
+typedef struct ZCliCommand ZCliCommand;
+struct ZCliCommand {
+    const char      *name;
+    const char      *summary;
+    struct option   *options;
+
+    int minArgs;
+    int maxArgs;
+
+    ZCliCallback    callback;
+    ZCliCommand     *subcommand;
+
+    /* The number of arguments this command expect.
+     * e.g. the command build needs the file as input. */
+    int             argc;
+};
+
 static void usage(char *program) {
-    printf("Usage: %s <filename> [options]\n", program);
-    printf("Options:\n");
-    printf("\t -d --debug               Enable debug mode (sets -O0)\n");
-    printf("\t -v --verbose             Enable verbose mode\n");
-    printf("\t --emit=exe|obj|ir|asm    Select output type (default: exe)\n");
-    printf("\t --unused-variable        Suppress 'unused variable' warnings\n");
-    printf("\t --unused-function        Suppress 'unused function' warnings\n");
-    printf("\t --unused-struct          Suppress 'unused struct' warnings\n");
-    printf("\t --skip-llvm-validation   Does not verify the generated LLVM code\n");
-    printf("\nOptimization:\n");
-    printf("\t -O0 -O1 -O2 -O3 -Os -Oz  Set optimization level (default: -O2)\n");
-    printf("\t --release                 Alias for -O2\n");
-    printf("\t --release-fast            Alias for -O3\n");
-    printf("\t --release-small           Alias for -Os\n");
-    printf("\nLink-time optimization:\n");
-    printf("\t --lto=off|thin|full      Set LTO mode (default: off)\n");
-    printf("\t --target                 Target triple used by LLVM\n");
-    printf("\t --mcpu                   CPU Target\n");
-    printf("\t --mfeatures              LLVM Features\n");
+    printf(
+        "Usage: %s <filename> [options]\n%s", program,
+        "Options:\n"
+        "\t -d --debug               Enable debug mode (sets -O0)\n"
+        "\t -v --verbose             Enable verbose mode\n"
+        "\t --emit=exe|obj|ir|asm    Select output type (default: exe)\n"
+        "\t --unused-variable        Suppress 'unused variable' warnings\n"
+        "\t --unused-function        Suppress 'unused function' warnings\n"
+        "\t --unused-struct          Suppress 'unused struct' warnings\n"
+        "\t --skip-llvm-validation   Does not verify the generated LLVM code\n"
+        "\nOptimization:\n"
+        "\t -O0 -O1 -O2 -O3 -Os -Oz  Set optimization level (default: -O2)\n"
+        "\t --release                 Alias for -O2\n"
+        "\t --release-fast            Alias for -O3\n"
+        "\t --release-small           Alias for -Os\n"
+        "\nLink-time optimization:\n"
+        "\t --lto=off|thin|full      Set LTO mode (default: off)\n"
+        "\t --target                 Target triple used by LLVM\n"
+        "\t --mcpu                   CPU Target\n"
+        "\t --mfeatures              LLVM Features\n"
+        "\t --nostdlib               Link freestanding: no libc, CRT, or dynamic linker\n"
+        "\t --Xlinker <arg>          Pass <arg> straight through to the linker\n"
+    );
 }
 
 #define CHECK_FLAG(flag, name) if (flag) {                                  \
@@ -86,6 +124,8 @@ enum {
     OPT_TARGET,
     OPT_MCPU,
     OPT_MFEATURES,
+    OPT_NOSTDLIB,
+    OPT_XLINKER
 };
 
 static struct option long_options[] = {
@@ -104,19 +144,158 @@ static struct option long_options[] = {
     {"target",                  required_argument,  NULL,   OPT_TARGET              },
     {"mcpu",                    required_argument,  NULL,   OPT_MCPU                },
     {"mfeatures",               required_argument,  NULL,   OPT_MFEATURES           },
+    {"nostdlib",                no_argument,        NULL,   OPT_NOSTDLIB            },
+    {"Xlinker",                 required_argument,  NULL,   OPT_XLINKER             },
     {NULL,                      0,                  NULL,   0                       }
 };
 
-ZState *loadState(int argc, char **argv) {
-    if (argc < 2) { usage(argv[0]); return NULL; }
+void printAllocation(ZState *state) {
+    if (!state->verbose) return;
 
-    char *filename = argv[1];
-    state = makestate();
+    usize used = arenaLength(allocator.ctx);
+    usize allocated = arenaSize(allocator.ctx);
+    for (usize i = 0; i < veclen(state->modules); i++) {
+        used += arenaLength(state->modules[i]->allocator);
+        allocated += arenaSize(state->modules[i]->allocator);
+    }
 
+    static const char *labels[] = {
+        "b",
+        "Kb",
+        "Mb",
+        "Gb",
+    };
+
+    int label = 0;
+    while (allocated > 1024 && label < 3) {
+        used >>= 10;
+        allocated >>= 10;
+        label++;
+    }
+
+    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %zu/%zu %s\n",
+        used, allocated, labels[label]
+    );
+}
+
+static void initState(ZState *state) {
+    char *filename = state->argv[0];
+    if (!state->output) {
+        char *copy = strdup(filename);
+
+        char *base = basename(copy);
+        char *dot = strrchr(base, '.');
+        if (dot) *dot = '\0';
+        state->output = base;
+    }
+
+    visit(state, &filename, false);
+}
+
+static ZErrorCode pipeline(ZState *state) {
+    initState(state);
+    if (state->verbose) timer_start(&state->phaseTime);
+
+    ZToken **tokens = ztokenize(state);
+    if (!tokens) return Z_LEXICAL_ERROR;
+
+    if (!initTargetMachine(state)) return Z_CODEGEN_ERROR;
+    initPrimitiveTypes();
+
+    if (!canAdvance(state)) return Z_LEXICAL_ERROR;
+
+    ZNode *root = zparse(state, tokens);
+
+    if (!canAdvance(state)) return Z_SYNTAX_ERROR;
+    zanalyze(state, root);
+
+    if (state->debug) printNode(root, 0);
+
+    if (!canAdvance(state)) return Z_SEMANTIC_ERROR;
+
+    if (state->verbose) {
+        const char *format;
+        double elapsed = timer_elapsed(state->phaseTime, &format);
+        printf(COLOR_BOLD COLOR_CYAN "  Frontend:   " COLOR_RESET "%.2f%s\n", elapsed, format);
+    }
+
+    zcompile(state, root, state->output);
+
+    if (!canAdvance(state)) return Z_CODEGEN_ERROR;
+
+    if (state->verbose) printAllocation(state);
+
+    for (usize i = 0; i < veclen(state->modules); i++) {
+        arenaFree(state->modules[i]->allocator);
+    }
+
+    return Z_OK;
+}
+
+static ZErrorCode run(ZState *state) {
+    return pipeline(state);
+}
+
+static ZErrorCode compile(ZState *state) {
+    struct timespec start;
+    timer_start(&start);
+
+    ZErrorCode res = pipeline(state);
+
+    printLogs(state);
+
+    allocator.close();
+
+    if (!res) {
+        const char *format;
+        double elapsed = timer_elapsed(start, &format);
+        printf("  " COLOR_BOLD COLOR_GREEN "Total:      " COLOR_RESET
+            "%.02f%s\n", elapsed, format);
+    }
+    return res;
+}
+
+static ZErrorCode version(ZState *state) {
+    (void)state;
+    printf("v" ZINC_VERSION "\n");
+    return Z_OK;
+}
+
+static ZErrorCode help(ZState *state) {
+    (void)state;
+    usage("");
+    return Z_OK;
+}
+
+#define EMPTY_COMMAND (ZCliCommand){ NULL, NULL, NULL, 0, 0, NULL, NULL, 0 }
+
+static const ZCliCommand ZCommands[] = {
+    { "build",      "Compile a source file",    long_options,   1, 1,   compile,    NULL, Z_CMD_NEEDS_INPUT },
+    { "run",        "Compile and execute",      long_options,   1, 1,   run,        NULL, 0 },
+    { "version",    "Show zinc's version",      NULL,           0, 0,   version,    NULL, 0 },
+    { "help",       "Show help for a command",  NULL,           0, 1,   help,       NULL, 0 },
+    EMPTY_COMMAND
+};
+
+bool loadOptions(const ZCliCommand *cmd, int argc, char **argv) {
     int opt;
-    optind = 2;
-
-    while (( opt = getopt_long(argc, argv, "dvo:l:L:O:", long_options, NULL) ) != -1) {
+    /* Leading '+' disables argv permutation (POSIX mode): getopt stops at the
+     * first non-option and returns -1 with optind pointing at it. We collect
+     * that positional ourselves and resume, so options and positionals work in
+     * any order. Unlike the default permuting mode - whose behaviour differs
+     * across glibc/BSD/mingw - '+' is honoured consistently everywhere, and it
+     * avoids relying on the RETURN_IN_ORDER ('-') mode that mingw lacks. */
+    optind = 1;
+    while (optind < argc) {
+        opt = getopt_long(argc, argv, "+dvo:l:L:O:", cmd->options, NULL);
+        if (opt == -1) {
+            if (optind < argc) {
+                if ((int)veclen(state->argv) < cmd->maxArgs)
+                    vecpush(state->argv, argv[optind]);
+                optind++;
+            }
+            continue;
+        }
         switch (opt) {
         case 'L': {
             usize len = 3 + strlen(optarg);
@@ -161,6 +340,8 @@ ZState *loadState(int argc, char **argv) {
         case OPT_UNUSED_VAR:            SET_FLAG(state->unusedVar,          "Unused variable flag");    break;
         case OPT_UNUSED_STRUCT:         SET_FLAG(state->unusedStruct,       "Unused struct flag");      break;
         case OPT_SKIP_LLVM_VALIDATION:  SET_FLAG(state->skipLLVMValidation, "Skip llvm validation");    break;
+        case OPT_NOSTDLIB:              SET_FLAG(state->nostdlib,           "No libc");                 break;
+        case OPT_XLINKER:               vecpush(state->extraArgs, strdup(optarg));                      break;
         case OPT_RELEASE:               state->optimizationLevel = '2';                                 break;
         case OPT_RELEASE_FAST:          state->optimizationLevel = '3';                                 break;
         case OPT_RELEASE_SMALL:         state->optimizationLevel = 's';                                 break;
@@ -177,51 +358,19 @@ ZState *loadState(int argc, char **argv) {
                 return NULL;
             }
             break;
-        default: usage(argv[0]); return NULL;
+        default: usage(argv[0]); return false;
         }
     }
 
-    if (!state->output) {
-        char *copy = strdup(filename);
-
-        char *base = basename(copy);
-        char *dot = strrchr(base, '.');
-        if (dot) *dot = '\0';
-        state->output = base;
+    if ((int)veclen(state->argv) < cmd->minArgs) {
+        fprintf(
+            stderr,
+            "Expected at least %d argument(s), got %d\n",
+            cmd->minArgs, (int)veclen(state->argv)
+        );
+        return false;
     }
-
-    visit(state, &filename, false);
-
-    return state;
-}
-
-void printAllocation(ZState *state) {
-    if (!state->verbose) return;
-
-    usize used = arenaLength(allocator.ctx);
-    usize allocated = arenaSize(allocator.ctx);
-    for (usize i = 0; i < veclen(state->modules); i++) {
-        used += arenaLength(state->modules[i]->allocator);
-        allocated += arenaSize(state->modules[i]->allocator);
-    }
-
-    static const char *labels[] = {
-        "b",
-        "Kb",
-        "Mb",
-        "Gb",
-    };
-
-    int label = 0;
-    while (allocated > 1024 && label < 3) {
-        used >>= 10;
-        allocated >>= 10;
-        label++;
-    }
-
-    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %zu/%zu %s\n",
-        used, allocated, labels[label]
-    );
+    return true;
 }
 
 void handler(int sig) {
@@ -238,71 +387,51 @@ void handler(int sig) {
     _exit(1);
 }
 
-int pipeline(ZState *state) {
-    if (state->verbose) timer_start(&state->phaseTime);
+static const ZCliCommand *getCmd(const ZCliCommand *root, int *argc, char ***argv) {
+    const ZCliCommand *res = NULL;
+    while (*argc >= 2) {
+        const char *word = (*argv)[1];
+        const ZCliCommand *cmd = NULL;
+        for (const ZCliCommand *curr = root; curr->name && !cmd; curr++) {
+            if (strcmp(curr->name, word) == 0) cmd = curr;
+        }
+        if (!cmd) return NULL;
+        (*argc)--; (*argv)++;
 
-    ZToken **tokens = ztokenize(state);
-    if (!tokens) return 1;
-
-    if (!initTargetMachine(state)) return 1;
-    initPrimitiveTypes();
-
-    if (!canAdvance(state)) return 2;
-
-    ZNode *root = zparse(state, tokens);
-
-    if (!canAdvance(state)) return 3;
-    zanalyze(state, root);
-
-    if (state->debug) printNode(root, 0);
-
-    if (!canAdvance(state)) return 4;
-
-    if (state->verbose) {
-        const char *format;
-        double elapsed = timer_elapsed(state->phaseTime, &format);
-        printf(COLOR_BOLD COLOR_CYAN "  Frontend:   " COLOR_RESET "%.2f%s\n", elapsed, format);
+        if (!cmd->subcommand) {
+            res = cmd;
+            break;
+        }
+        root = cmd->subcommand;
     }
+    if (!res) return NULL;
 
-    zcompile(state, root, state->output);
-
-    if (!canAdvance(state)) return 5;
-
-    if (state->verbose) {
-
-    }
-    printAllocation(state);
-
-    for (usize i = 0; i < veclen(state->modules); i++) {
-        arenaFree(state->modules[i]->allocator);
-    }
-
-    return 0;
+    return res;
 }
 
 int main(int argc, char **argv) {
+#define err(code, ...) { fprintf(stderr, __VA_ARGS__); usage(program); return code; }
+    char *program = *argv;
+
+
+    if (argc < 2) err(Z_INVALID_COMMAND, "Invalid argument\n");
+
+
     signal(SIGSEGV, handler);
     signal(SIGTRAP, handler);
     allocator.open();
-    state = loadState(argc, argv);
 
-    if (!state) return 1;
+    state = makestate();
 
-    struct timespec start;
-    timer_start(&start);
+    if (!state) err(Z_INVALID_STATE, "Invalid state\n");
 
-    int res = pipeline(state);
+    const ZCliCommand *cmd = getCmd(ZCommands, &argc, &argv);
 
-    printLogs(state);
-
-    allocator.close();
-
-    if (!res) {
-        const char *format;
-        double elapsed = timer_elapsed(start, &format);
-        printf("  " COLOR_BOLD COLOR_GREEN "Total:      " COLOR_RESET
-            "%.02f%s\n", elapsed, format);
+    if (!cmd) err(Z_INVALID_COMMAND, "Invalid command\n");
+    if (!loadOptions(cmd, argc, argv)) {
+        fprintf(stderr, "Invalid option\n");
+        return Z_INVALID_COMMAND;
     }
 
-    return res;
+    return cmd->callback(state);
 }

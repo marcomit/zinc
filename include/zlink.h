@@ -9,8 +9,9 @@ extern "C" {
 #endif
 
 int zinc_lld_link(
-        const char *objfile,        const char *outfile,
-        const char **extra_args,    int extra_args_count);
+    bool nostdlib,
+    const char *objfile,        const char *outfile,
+    const char **extra_args,    int extra_args_count);
 
 #ifdef __cplusplus
 }

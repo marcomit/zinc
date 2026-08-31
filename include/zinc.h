@@ -81,12 +81,44 @@ typedef enum {
     Z_PHASE_GENERATE
 } ZPhase;
 
+/* A secondary, located annotation attached to a diagnostic: the "cause"
+ * chain ("previously defined here", "required by this bound", ...). Each note
+ * carries its own optional span so it can point at a different token. */
+typedef struct {
+    char            *message;
+    ZToken          *token;
+} ZLogNote;
+
+/* Stable diagnostic codes, generated from the catalog in zdiag.def.
+ * Z_DIAG_NONE (0) marks a log created without a catalog entry. */
+typedef enum {
+    Z_DIAG_NONE = 0,
+
+    #define DIAG(code, level, msg, hint) code,
+    #include "zdiag.def"
+    #undef DIAG
+
+    Z_DIAG_COUNT
+} ZDiagCode;
+
 typedef struct {
     char            *filename;
     char            *message;
     ZToken          *token;
     ZLogLevel       level;
     ZPhase          phase;
+
+    /* Catalog code (Z_DIAG_NONE when emitted via the raw error()/warning()
+     * path). Drives `--explain` and stable, message-agnostic tests. */
+    ZDiagCode       code;
+
+    /* Single actionable suggestion. May be a static catalog default or a
+     * formatted string produced by emitHint(). NULL when absent. */
+    char            *hint;
+
+    /* Cause chain, appended by emitNote(). vec (NULL == empty). */
+    ZLogNote        **notes;
+
     const char      *src_file;
     int             src_line;
 } ZLog;
@@ -137,6 +169,7 @@ typedef struct {
     char            *currentPath;
     char            *filename;
     char            *homePath;
+    char            **argv;
 
     char            **pathFiles;
     char            **visitedFiles;
@@ -150,6 +183,8 @@ typedef struct {
 
     bool            skipLLVMValidation;
     bool            verbose;
+
+    bool            nostdlib;
 
     char            optimizationLevel;
     ZLTOMode        ltoMode;
@@ -231,7 +266,7 @@ typedef enum ZTypeKind {
     Z_TYPE_SUM,
     Z_TYPE_OPTIONAL,
     Z_TYPE_RESULT,
-    Z_TYPE_CHAIN
+    // Z_TYPE_CHAIN
 } ZTypeKind;
 
 struct ZType {
@@ -987,6 +1022,13 @@ void _debug  (ZState *, ZToken *, const char *, int, const char *, ...);
 #define warning(state, tok, ...) _warning(state, tok, __FILE__, __LINE__, __VA_ARGS__)
 #define info(state, tok, ...)    _info   (state, tok, __FILE__, __LINE__, __VA_ARGS__)
 #define debug(state, tok, ...)   _debug  (state, tok, __FILE__, __LINE__, __VA_ARGS__)
+
+ZLog *_log(ZState *, ZToken *, ZDiagCode, const char *, int, ...);
+ZLog *emitHint  (ZLog *, const char *, ...);
+ZLog *emitNote  (ZLog *, ZToken *, const char *, ...);
+
+#define log(state, tok, code, ...) \
+    _log(state, tok, code, __FILE__, __LINE__, ##__VA_ARGS__)
 
 void printLogs(ZState *);
 void initPrimitiveTypes();
