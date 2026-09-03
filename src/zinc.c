@@ -80,6 +80,7 @@ static void usage(char *program) {
         "\t --unused-function        Suppress 'unused function' warnings\n"
         "\t --unused-struct          Suppress 'unused struct' warnings\n"
         "\t --skip-llvm-validation   Does not verify the generated LLVM code\n"
+        "\t --dump-ast               Prints the AST of the entire program with all files\n"
         "\nOptimization:\n"
         "\t -O0 -O1 -O2 -O3 -Os -Oz  Set optimization level (default: -O2)\n"
         "\t --release                 Alias for -O2\n"
@@ -125,7 +126,8 @@ enum {
     OPT_MCPU,
     OPT_MFEATURES,
     OPT_NOSTDLIB,
-    OPT_XLINKER
+    OPT_XLINKER,
+    OPT_DUMP_AST
 };
 
 static struct option long_options[] = {
@@ -146,6 +148,7 @@ static struct option long_options[] = {
     {"mfeatures",               required_argument,  NULL,   OPT_MFEATURES           },
     {"nostdlib",                no_argument,        NULL,   OPT_NOSTDLIB            },
     {"Xlinker",                 required_argument,  NULL,   OPT_XLINKER             },
+    {"dump-ast",                no_argument,        NULL,   OPT_DUMP_AST            },
     {NULL,                      0,                  NULL,   0                       }
 };
 
@@ -209,7 +212,7 @@ static ZErrorCode pipeline(ZState *state) {
     if (!canAdvance(state)) return Z_SYNTAX_ERROR;
     zanalyze(state, root);
 
-    if (state->debug) printNode(root, 0);
+    if (state->dumpAst) printNode(root, 0);
 
     if (!canAdvance(state)) return Z_SEMANTIC_ERROR;
 
@@ -341,6 +344,7 @@ bool loadOptions(const ZCliCommand *cmd, int argc, char **argv) {
         case OPT_UNUSED_STRUCT:         SET_FLAG(state->unusedStruct,       "Unused struct flag");      break;
         case OPT_SKIP_LLVM_VALIDATION:  SET_FLAG(state->skipLLVMValidation, "Skip llvm validation");    break;
         case OPT_NOSTDLIB:              SET_FLAG(state->nostdlib,           "No libc");                 break;
+        case OPT_DUMP_AST:              SET_FLAG(state->dumpAst,            "Dump ast");                break;
         case OPT_XLINKER:               vecpush(state->extraArgs, strdup(optarg));                      break;
         case OPT_RELEASE:               state->optimizationLevel = '2';                                 break;
         case OPT_RELEASE_FAST:          state->optimizationLevel = '3';                                 break;
