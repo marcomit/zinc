@@ -215,8 +215,7 @@ static void addStaticFunc(ZThreadSem *ctx, ZNode *func) {
     ZFuncTable *cur = putOrInsertFuncTable(ctx, base);
     char *name = func->funcDef.name->str;
     if (!hashset_insert(&cur->seenStaticFuncs, name)) {
-        error(ctx->state, func->tok,
-                "Duplicate static function '%s'", name);
+        zlog(ctx->state, func->tok, Z0001, name);
         return;
     }
 
@@ -228,10 +227,10 @@ static void addReceiverFunc(ZThreadSem *ctx, ZNode *node) {
     ZFuncTable *table       = putOrInsertFuncTable(ctx, receiver->field.type);
 
     if (!hashset_insert(&table->seenReceiverFuncs, node->funcDef.name->str)) {
-        error(ctx->state,
-            node->funcDef.name,
-            "Duplicate receiver function '%s'", stoken(node->funcDef.name)
-        );
+        ZLog *diag = zlog(ctx->state, node->funcDef.name, Z0002,
+                               stoken(node->funcDef.name));
+        emitHint(diag, "rename '%s' or move it into a separate impl",
+                 stoken(node->funcDef.name));
     }
     vecpush(table->funcDef, node);
 }
@@ -252,20 +251,16 @@ static void putStaticFunc(ZThreadSem *ctx, ZNode *node) {
     ZType *baseType = node->funcDef.base;
 
     if (baseType->kind != Z_TYPE_PRIMITIVE) {
-        error(ctx->state, node->tok,
-                "Static function must be attached to a primitive type");
+        zlog(ctx->state, node->tok, Z0005);
         return;
     }
     ZToken *base = baseType->primitive.token;
     if (!base) {
-        error(ctx->state,
-                node->tok,
-                "Invalid 'putStaticFunc' call, base is not setted");
+        zlog(ctx->state, node->tok, Z0007);
         return;
     } else if (node->funcDef.receiver) {
-        error(ctx->state,
-                node->tok,
-                "Invalid 'putStaticFunc' call, receiver cannot be setted");
+        zlog(ctx->state, node->tok, Z0008);
+        return;
     }
 
     addStaticFunc(ctx, node);
@@ -738,12 +733,12 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
         return a;
     }
 
-    if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_NONE) {
+    u32 noneCompatible = Z_TYPE_POINTER | Z_TYPE_OPTIONAL;
+
+    if (a->kind & noneCompatible && b->kind == Z_TYPE_NONE) {
         return a;
-    } else if (b->kind == Z_TYPE_POINTER && a->kind == Z_TYPE_NONE) {
+    } else if (b->kind & noneCompatible && a->kind == Z_TYPE_NONE) {
         return b;
-    } else if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_POINTER) {
-        return a;
     }
 
     if (typesEqual(a, b)) return b;
@@ -1146,6 +1141,14 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
         return type;
     case Z_TYPE_OPTIONAL:
         type->optional = _resolveTypeRef(ctx, type->optional, seen);
+        return type;
+
+    case Z_TYPE_RESULT:
+        _resolveTypeRef(ctx, type->result.success, seen);
+        _resolveTypeRef(ctx, type->result.error, seen);
+        if (typesEqual(type->result.success, type->result.error)) {
+            error(ctx->state, type->tok, "Success and error types can't be equal");
+        }
         return type;
     case Z_TYPE_SUM:
         for (usize i = 0; i < veclen(type->sumType); i++)
@@ -1860,8 +1863,11 @@ static ZType *resolveArrayInit(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
 }
 
 static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    ZType     *operand = resolveType(ctx, curr->unary.operand, inferred);
     ZTokenType op      = curr->unary.operat->type;
+    if (inferred) {
+        if (op == TOK_REF) inferred = inferred->base;
+    }
+    ZType     *operand = resolveType(ctx, curr->unary.operand, inferred);
 
     if (!operand) {
         error(ctx->state, curr->tok, "Unresolved type");
@@ -1869,7 +1875,7 @@ static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 
     switch (op) {
-    case TOK_REF: {/* &expr => *T */
+    case TOK_REF: {
         ZType *ptr  = makeTypeThread(ctx, Z_TYPE_POINTER);
         ptr->base   = operand;
         ptr->tok    = curr->tok;
@@ -2815,7 +2821,6 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
             error(ctx->state, curr->tok, "Return type not resolved");
             return;
         }
-        retType     = resolveTypeRef(ctx, retType);
     }
 
     curr->resolved  = retType;
@@ -2827,7 +2832,7 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
         sumTypeIndexOf(ctx->currentFuncRet, u0Type) != -1;
 
     bool isVoidRet  = isVoid(retType);
-    bool isVoid = isType(ctx->currentFuncRet, TOK_VOID);
+    bool isVoid     = isType(ctx->currentFuncRet, TOK_VOID);
 
     if (isVoid && !isVoidRet) {
         error(ctx->state, ctx->currentFunc->tok,
@@ -2850,7 +2855,10 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
             if (retType->kind == Z_TYPE_NONE ||
                 typesCompatible(ctx, retType, ctx->currentFuncRet->optional))
                 return;
+        } else if (ctx->currentFuncRet->kind == Z_TYPE_RESULT) {
+
         }
+
         if (!promoted) {
             error(ctx->state, curr->tok,
                 "Expected type %s, got %s",
