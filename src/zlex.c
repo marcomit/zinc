@@ -513,7 +513,7 @@ ZLexer *makelexer(ZState *state) {
     char *program = readfile(state->filename);
 
     if (!program) {
-        error(state, NULL, strerror(errno));
+        error(state, NULL, "[%s]:%s", state->filename, strerror(errno));
         return NULL;
     }
 

@@ -1575,7 +1575,9 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZToken **chain      = curr->structlit.chain;
     ZToken *ident       = veclast(curr->structlit.chain);
     if (veclen(chain) == 1 && ident->type == TOK_DOT) {
-        symType         = resolveTypeRef(ctx, inferred);
+        ZType *expected = inferred->kind == Z_TYPE_OPTIONAL ?
+            inferred->optional : inferred;
+        symType         = resolveTypeRef(ctx, expected);
         if (!symType) {
             error(ctx->state, ident,
                 "struct type can't be inferred here"

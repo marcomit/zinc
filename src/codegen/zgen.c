@@ -12,7 +12,6 @@
 
 #include "zgen.h"
 #include "zinc.h"
-#include <iso646.h>
 
 static void         genStmt             (ZCodegen *, ZNode *);
 static void         genBlock            (ZCodegen *, ZNode *);
@@ -2221,25 +2220,10 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
     if (resolved->kind == Z_TYPE_OPTIONAL) {
         if (resolved->optional->kind == Z_TYPE_POINTER) return arg;
 
-        ZLLVMStack *stack = getStackValue(ctx, node);
+        checkUnsafeUnwrap(ctx, arg, resolved, node->tok);
 
-        if (!stack) {
-            error(ctx->state, node->tok, "Missing stack value");
-            return NULL;
-        }
-
-        checkUnsafeUnwrap(ctx, stack->stack, resolved, node->tok);
-
-        LLVMValueRef dataPtr = LLVMBuildStructGEP2(
-                ctx->builder, genType(ctx, resolved), stack->stack,
-                0, label(ctx, "unwrap.ptr")
-        );
-
-        return LLVMBuildLoad2(
-            ctx->builder,
-            genType(ctx, resolved->optional),
-            dataPtr,
-            label(ctx, "unwrap.data")
+        return LLVMBuildExtractValue(
+            ctx->builder, arg, 0, label(ctx, "unwrap.ptr")
         );
     } else if (resolved->kind == Z_TYPE_RESULT) {
         warning(ctx->state, node->tok, "Error branch not implemented");
@@ -2900,14 +2884,8 @@ LLVMValueRef _getFlagOptional(ZCodegen *ctx,
         );
     }
 
-    LLVMValueRef flagPtr = LLVMBuildStructGEP2(
-        ctx->builder, genType(ctx, type),
-        value, 1, label(ctx, "optional.flag.ptr")
-    );
-
-    LLVMValueRef flag = LLVMBuildLoad2(
-        ctx->builder,
-        i1Type, flagPtr, label(ctx, "optional.flag")
+    LLVMValueRef flag = LLVMBuildExtractValue(
+        ctx->builder, value, 1, label(ctx, "optional.flag")
     );
 
     return LLVMBuildICmp(
