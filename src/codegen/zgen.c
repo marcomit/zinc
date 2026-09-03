@@ -3449,8 +3449,14 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
         LLVMBuildStore(ctx->builder, call, stack->stack);
     }
 
+    LLVMValueRef value = nichePtr ? call : stack->stack;
+
+    value = LLVMBuildLoad2(
+        ctx->builder, genType(ctx, callNode->resolved), value, label(ctx, "optional.data")
+    );
+
     LLVMValueRef cond = _getFlagOptional(ctx, callNode->resolved,
-        nichePtr ? call : stack->stack, LLVMIntNE);
+        value, LLVMIntNE);
 
     makecondbr(ctx->builder, cond, body, end);
 
