@@ -40,7 +40,7 @@ Thread :: impl {
         ctx.func = func
         ctx.data = data
 
-        t := Thread { handle: 0 }
+        t := Thread { handle= 0 }
 
         c.pthread_create(&t.handle, none, thread_trampoline, ctx)
         return t
@@ -48,11 +48,11 @@ Thread :: impl {
 
     pub sleep :: fn (millis: i64) u0 {
         req := timespec {
-            tv_sec: millis / 1000,
-            tv_nsec: (millis % 1000) * 1000000
+            tv_sec= millis / 1000,
+            tv_nsec= (millis % 1000) * 1000000
         }
 
-        rem := timespec { tv_sec: 0, tv_nsec: 0 }
+        rem := timespec { tv_sec= 0, tv_nsec= 0 }
 
         c.nanosleep(&req, &rem)
     }

@@ -11,7 +11,7 @@ c :: foreign {
 
 Random :: impl {
     pub by_value :: fn () Random {
-        return Random { state: 0x853c49e6748fea9b, inc: 0xda3e39cb94b95bdb }
+        return Random { state = 0x853c49e6748fea9b, inc = 0xda3e39cb94b95bdb }
     }
 
     pub by_ref :: fn () *Random with Allocator {
