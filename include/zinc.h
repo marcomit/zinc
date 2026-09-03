@@ -183,6 +183,7 @@ typedef struct {
 
     bool            skipLLVMValidation;
     bool            verbose;
+    bool            dumpAst;
 
     bool            nostdlib;
 
