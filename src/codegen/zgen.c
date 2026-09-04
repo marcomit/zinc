@@ -1413,6 +1413,7 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
         ? genExpr  (ctx, node->memberAccess.object)
         : genLValue(ctx, node->memberAccess.object);
 
+    emitNullCheck(ctx, objPtr, node->tok);
     LLVMValueRef chain = genStructGEPChain(
         ctx, baseType, objPtr, path
     );

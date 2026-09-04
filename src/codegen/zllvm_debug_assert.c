@@ -150,3 +150,28 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
 
     LLVMPositionBuilderAtEnd(ctx->builder, cont);
 }
+
+void emitNullCheck(ZCodegen *ctx, LLVMValueRef value, ZToken *tok) {
+    LLVMBasicBlockRef fail = makeblock(ctx, "fail");
+    LLVMBasicBlockRef cont = makeblock(ctx, "continue");
+
+    LLVMValueRef cond = LLVMBuildICmp(
+        ctx->builder, LLVMIntEQ, value,
+        LLVMConstNull(LLVMPointerTypeInContext(ctx->ctx, 0)),
+        label(ctx, "null.check")
+    );
+    makecondbr(ctx->builder, cond, fail, cont);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, fail);
+    emitRuntimeDebugPrint(
+        ctx, tok, "Trying to read null value, maybe uninitialized or freed memory"
+    );
+    LLVMBuildTrap(ctx);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, cont);
+}
+
+LLVMValueRef loadWithNullDeref(ZCodegen *ctx, LLVMTypeRef type, LLVMValueRef value, ZToken *tok) {
+    emitNullCheck(ctx, value, tok);
+    return LLVMBuildLoad2(ctx->builder, type, value, stoken(tok));
+}
