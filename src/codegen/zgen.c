@@ -2188,8 +2188,7 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg) {
     ZType *resolved = node->unary.operand->resolved;
 
-    if (resolved->kind != Z_TYPE_OPTIONAL   &&
-        resolved->kind != Z_TYPE_RESULT     ) {
+    if (!typeKindIs(resolved->kind, TYPE_WRAPPER_MASK)) {
         zlog(ctx->state, node->tok, Z301E, stype(resolved));
         return NULL;
     }

@@ -262,20 +262,17 @@ char *stype(ZType *type) {
 }
 
 static const u64 KIND_PRIME[] = {
-    0xE142EA7D17BE3111ULL,  // Z_TYPE_PRIMITIVE
-    0x9064005C3985C3CFULL,  // Z_TYPE_POINTER
-    0xBF87E362CF8D446BULL,  // Z_TYPE_STRUCT
-    0xC8A639D015B52909ULL,  // Z_TYPE_ARRAY
-    0xC797B2C957207247ULL,  // Z_TYPE_FUNCTION
-    0xFDE31A516694C343ULL,  // Z_TYPE_TUPLE
-    0xC4007D5AE88DA719ULL,  // Z_TYPE_GENERIC
-    0xFF9D3E64C1A6423BULL,  // Z_TYPE_FACET
-    0x8CF2B69B0577AEA9ULL,  // Z_TYPE_ENUM
-    0xE92AC1391F4A8CA1ULL,  // Z_TYPE_NONE
-    0xA7AA7CBC23377BBDULL,  // Z_TYPE_NAMESPACE
-    0xAD78DC4BFB9E8DDBULL,  // Z_TYPE_SUM
-    0x9E3779B185EBCA87ULL,  // Z_TYPE_OPTIONAL
-    0xC2B2AE3D27D4EB4FULL,  // Z_TYPE_RESULT
+    #define TYPE(name, masks, prime) [name] = prime,
+    #include "ztype.def"
+    #undef TYPE
+};
+_Static_assert(sizeof(KIND_PRIME) / sizeof(KIND_PRIME[0]) == Z_TYPE_COUNT,
+               "KIND_PRIME must have exactly one entry per ZTypeKind");
+
+const u16 ZTypeMasks[Z_TYPE_COUNT] = {
+    #define TYPE(name, masks, prime) [name] = (masks),
+    #include "ztype.def"
+    #undef TYPE
 };
 
 inline u32 hashtoken(ZToken *tok) {
@@ -360,6 +357,9 @@ u32 hashType(ZType *type) {
     case Z_TYPE_NAMESPACE:
     case Z_TYPE_NONE:
         // No structural payload compared by typesEqual; the kind seed suffices.
+        break;
+    case Z_TYPE_COUNT:
+        // Not a kind; only the catalog sentinel.
         break;
     }
 

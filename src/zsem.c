@@ -710,11 +710,9 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
         return a;
     }
 
-    u32 noneCompatible = Z_TYPE_POINTER | Z_TYPE_OPTIONAL;
-
-    if (a->kind & noneCompatible && b->kind == Z_TYPE_NONE) {
+    if (typeKindIs(a->kind, TYPE_NULLABLE_MASK) && b->kind == Z_TYPE_NONE) {
         return a;
-    } else if (b->kind & noneCompatible && a->kind == Z_TYPE_NONE) {
+    } else if (typeKindIs(b->kind, TYPE_NULLABLE_MASK) && a->kind == Z_TYPE_NONE) {
         return b;
     } else if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_POINTER) {
         return a;
@@ -1710,11 +1708,11 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 
     case TOK_PLUS:
-        if (left->kind == Z_TYPE_POINTER &&
+        if (left && left->kind == Z_TYPE_POINTER &&
             isNumeric(right)             ) {
             return left;
         }
-        if (right->kind == Z_TYPE_POINTER    &&
+        if (right && right->kind == Z_TYPE_POINTER    &&
             isNumeric(left)) {
             return right;
         }
@@ -1826,8 +1824,7 @@ static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return u1Type;
 
     case TOK_ESCL:
-        if (operand->kind != Z_TYPE_OPTIONAL &&
-            operand->kind != Z_TYPE_RESULT) {
+        if (!typeKindIs(operand->kind, TYPE_WRAPPER_MASK)) {
             zlog(ctx->state, curr->unary.operat, Z301E, stype(operand));
             return NULL;
         }
@@ -2054,9 +2051,8 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     bool isOptional = base->kind == Z_TYPE_OPTIONAL;
     bool isResult   = base->kind == Z_TYPE_RESULT;
 
-    if (base->kind != Z_TYPE_OPTIONAL   &&
-        base->kind != Z_TYPE_RESULT     &&
-        base->kind != Z_TYPE_NONE       ) {
+    if (!typeKindIs(base->kind, TYPE_WRAPPER_MASK) &&
+        base->kind != Z_TYPE_NONE) {
         zlog(ctx->state, curr->tok, Z3025, stype(base));
         return NULL;
     }

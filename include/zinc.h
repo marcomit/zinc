@@ -253,22 +253,16 @@ typedef enum {
 } ZNodeType;
 
 typedef enum ZTypeKind {
-    Z_TYPE_PRIMITIVE    = 1 << 0x00,
-    Z_TYPE_POINTER      = 1 << 0x01,
-    Z_TYPE_STRUCT       = 1 << 0x02,
-    Z_TYPE_ARRAY        = 1 << 0x03,
-    Z_TYPE_FUNCTION     = 1 << 0x04,
-    Z_TYPE_TUPLE        = 1 << 0x05,
-    Z_TYPE_GENERIC      = 1 << 0x06,        // Instantiated generic type, e.g. List[int]
-    Z_TYPE_FACET        = 1 << 0x07,
-    Z_TYPE_ENUM         = 1 << 0x08,
-    Z_TYPE_NONE         = 1 << 0x09,
-    Z_TYPE_NAMESPACE    = 1 << 0x0A,
-    Z_TYPE_SUM          = 1 << 0x0B,
-    Z_TYPE_OPTIONAL     = 1 << 0x0C,
-    Z_TYPE_RESULT       = 1 << 0x0D,
-    // Z_TYPE_CHAIN
+    #define TYPE(name, masks, prime) name,
+    #include "ztype.def"
+    #undef TYPE
+
+    Z_TYPE_COUNT
 } ZTypeKind;
+
+extern const u16 ZTypeMasks[Z_TYPE_COUNT];
+
+#define typeKindIs(kind, mask) ((ZTypeMasks[(kind)] & (mask)) != 0)
 
 struct ZType {
     ZTypeKind   kind;
