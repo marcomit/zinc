@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025, Marco Menegazzi
+
+#ifndef TYPE_MASKS
+#define TYPE_MASKS
+
+#define TYPE_NULLABLE_MASK  (1 << 0x00)     /* can hold 'none'                  */
+#define TYPE_WRAPPER_MASK   (1 << 0x01)     /* wraps a payload that '!' unwraps */
+
+#endif
+
+/*    kind              category bits                               hash seed */
+TYPE(Z_TYPE_PRIMITIVE, 0,                                      0xE142EA7D17BE3111ULL)
+TYPE(Z_TYPE_POINTER,   TYPE_NULLABLE_MASK,                     0x9064005C3985C3CFULL)
+TYPE(Z_TYPE_STRUCT,    0,                                      0xBF87E362CF8D446BULL)
+TYPE(Z_TYPE_ARRAY,     0,                                      0xC8A639D015B52909ULL)
+TYPE(Z_TYPE_FUNCTION,  0,                                      0xC797B2C957207247ULL)
+TYPE(Z_TYPE_TUPLE,     0,                                      0xFDE31A516694C343ULL)
+TYPE(Z_TYPE_GENERIC,   0,                                      0xC4007D5AE88DA719ULL)
+TYPE(Z_TYPE_FACET,     0,                                      0xFF9D3E64C1A6423BULL)
+TYPE(Z_TYPE_ENUM,      0,                                      0x8CF2B69B0577AEA9ULL)
+TYPE(Z_TYPE_NONE,      0,                                      0xE92AC1391F4A8CA1ULL)
+TYPE(Z_TYPE_NAMESPACE, 0,                                      0xA7AA7CBC23377BBDULL)
+TYPE(Z_TYPE_SUM,       0,                                      0xAD78DC4BFB9E8DDBULL)
+TYPE(Z_TYPE_OPTIONAL,  TYPE_NULLABLE_MASK | TYPE_WRAPPER_MASK, 0x9E3779B185EBCA87ULL)
+TYPE(Z_TYPE_RESULT,    TYPE_WRAPPER_MASK,                      0xC2B2AE3D27D4EB4FULL)

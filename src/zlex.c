@@ -239,18 +239,14 @@ static u32 decodeHexCode(ZLexer *l, char **src, int len) {
     for (int i = 0; i < len; i++) {
         char c = **src;
         if (!c) {
-            error(l->state,
-                veclast(l->tokens),
-                "Unexpected end of unicode code point"
-            );
+            zlog(l->state, veclast(l->tokens), Z1001);
             return 0xFFFD;
         }
         if      (c >= '0' && c <= '9') cp = (cp << 4) | (u32)(c - '0');
         else if (c >= 'a' && c <= 'f') cp = (cp << 4) | (u32)(c - 'a' + 10);
         else if (c >= 'A' && c <= 'F') cp = (cp << 4) | (u32)(c - 'A' + 10);
         else {
-            error(l->state, veclast(l->tokens),
-                "Invalid unicode code point");
+            zlog(l->state, veclast(l->tokens), Z1002);
             return 0xFFFD;
         }
         (*src)++;
@@ -322,7 +318,7 @@ static ZToken *parseString(ZLexer *l) {
         tok->col    = l->col;
         tok->sourcePtr = start - 1;
         tok->sourceLinePtr = l->line;
-        error(l->state, tok, "Unterminated string");
+        zlog(l->state, tok, Z1003);
         return NULL;
     }
     vecpush(buff, '\0');
@@ -379,7 +375,7 @@ static ZToken *parseSymbol(ZLexer *l) {
     #undef TOK_SYMBOLS
     #undef DEF
 
-    error(l->state, veclast(l->tokens), "Unexpected symbol");
+    zlog(l->state, veclast(l->tokens), Z1004);
 
 
     ZToken *tok = maketoken(0, l->current, l->current);
@@ -397,7 +393,7 @@ static ZToken *parseHexNumber(ZLexer *l) {
 
     errno = 0;
     unsigned long long value = strtoull(start, NULL, 16);
-    if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
+    if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
 
     return makeinteger((i64)value, start, l->current);
 }
@@ -411,7 +407,7 @@ static ZToken *parseBinNumber(ZLexer *l) {
 
     errno = 0;
     unsigned long long value = strtoull(start, NULL, 2);
-    if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
+    if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
 
     return makeinteger((i64)value, start, l->current);
 }
@@ -441,7 +437,7 @@ static ZToken *parseNumber(ZLexer *l) {
         next(l);  // consume 'e' or 'E'
         if (*l->current == '+' || *l->current == '-') next(l);
         if (!isdigit(*l->current)) {
-            error(l->state, veclast(l->tokens), "Expected exponent digits");
+            zlog(l->state, veclast(l->tokens), Z1006);
             return NULL;
         }
         while (isdigit(*l->current)) next(l);
@@ -450,13 +446,13 @@ static ZToken *parseNumber(ZLexer *l) {
     if (isFloat) {
         errno = 0;
         double value = strtod(start, NULL);
-        if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid float range %.10s", start);
+        if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1007, start);
         return makefloat(value, start, l->current);
     }
 
     errno = 0;
     long long value = strtoll(start, NULL, 10);
-    if (errno == ERANGE) error(l->state, veclast(l->tokens), "Invalid integer range %.10s", start);
+    if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
 
     return makeinteger(value, start, l->current);
 }
@@ -502,7 +498,7 @@ static void skipMultilineComments(ZLexer *l) {
         next(l);
     }
     if (!l->current[0] || !l->current[1]) {
-        error(l->state, veclast(l->tokens), "Unterminated multiline comment");
+        zlog(l->state, veclast(l->tokens), Z1008);
         return;
     }
 
@@ -513,7 +509,7 @@ ZLexer *makelexer(ZState *state) {
     char *program = readfile(state->filename);
 
     if (!program) {
-        error(state, NULL, "[%s]:%s", state->filename, strerror(errno));
+        zlog(state, NULL, Z1009, state->filename, strerror(errno));
         return NULL;
     }
 
@@ -569,7 +565,7 @@ ZToken **ztokenize(ZState *state) {
         }
 
         if (!curr) {
-            error(l->state, veclast(l->tokens), "Unexpected symbol\n");
+            zlog(l->state, veclast(l->tokens), Z1004);
             next(l);
         } else {
             curr->sourceLinePtr = sourceLinePtr;

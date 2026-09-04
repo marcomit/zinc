@@ -564,10 +564,7 @@ static LLVMTypeRef genPrimitiveType(ZCodegen *ctx, ZToken *tok) {
     default: {
         LLVMTypeRef ref = getCachedStruct(ctx, tok->str);
         if (ref) return ref;
-        error(ctx->state,
-                    tok,
-                    "unknown primitive type '%s'",
-                    tok->str);
+        zlog(ctx->state, tok, Z4001, tok->str);
         return NULL;
     }
     }
@@ -692,7 +689,7 @@ static LLVMTypeRef genFacetType(ZCodegen *ctx) {
  */
 LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     if (!type) {
-        error(ctx->state, NULL, "Invalid 'genType' call");
+        zlog(ctx->state, NULL, Z900C);
         return LLVMVoidTypeInContext(ctx->ctx);
     }
 
@@ -707,7 +704,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 
     case Z_TYPE_GENERIC:
         if (veclen(type->generic.instantiations) == 0) {
-            error(ctx->state, type->tok, "Generics not resolved");
+            zlog(ctx->state, type->tok, Z900D);
         }
         return NULL;
 
@@ -715,7 +712,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     case Z_TYPE_POINTER: {
         ZType *base = type->base;
         if (!base) {
-            error(ctx->state, type->tok, "Pointer must have a base type");
+            zlog(ctx->state, type->tok, Z4002);
             return NULL;
         }
         if (base && base->kind == Z_TYPE_PRIMITIVE &&
@@ -767,7 +764,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         }, 2, false);
     }
     default:
-        error(ctx->state, NULL, "genType: unhandled type '%s'", stype(type));
+        zlog(ctx->state, NULL, Z900E, stype(type));
         return NULL;
     }
 }
@@ -853,14 +850,13 @@ static LLVMValueRef genLit(ZCodegen *ctx, ZNode *node) {
  * */
 static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
     if (!node) {
-        error(ctx->state, NULL, "'genIdent' called with a null node");
+        zlog(ctx->state, NULL, Z900F);
         return NULL;
     } else if (!node->tok) {
-        error(ctx->state, NULL,
-                "'genIdent' called with a null token on node %d", node->type);
+        zlog(ctx->state, NULL, Z9010, node->type);
         return NULL;
     } else if (!node->resolved) {
-        error(ctx->state, node->tok, "%zu doesn't have the resolved field", node->type);
+        zlog(ctx->state, node->tok, Z9011, node->type);
         return NULL;
     }
 
@@ -870,7 +866,7 @@ static LLVMValueRef genIdent(ZCodegen *ctx, ZNode *node) {
     char *key = manglingIdent(node);
     ZLLVMSymbol *sym = getLLVMSymbol(ctx, key);
     if (!sym) {
-        error(ctx->state, node->tok, "'%s' not found in the current scope", node->tok->str);
+        zlog(ctx->state, node->tok, Z301F, node->tok->str);
         return NULL;
     }
 
@@ -939,10 +935,10 @@ static void putDestructuredPatternInStack(
         ZVarDestructPattern *pattern,
         LLVMValueRef ptr) {
     if (!pattern) {
-        error(ctx->state, NULL, "Called 'putDestructuredPatternInStack' with null pattern");
+        zlog(ctx->state, NULL, Z9012);
         return;
     } else if (!type) {
-        error(ctx->state, pattern->tok, "Called 'putDestructuredPatternInStack' with null type");
+        zlog(ctx->state, pattern->tok, Z9013);
         return;
     }
 
@@ -972,8 +968,8 @@ static void putDestructuredPatternInStack(
             }
 
             if (idx == -1) {
-                error(ctx->state, pattern->fields[i]->key,
-                        "Invalid struct field '%s'",
+                zlog(ctx->state, pattern->fields[i]->key,
+                        Z4013,
                         pattern->fields[i]->key->str);
                 continue;
             }
@@ -1009,7 +1005,7 @@ static void putDestructuredPatternInStack(
     case Z_VAR_ENUM: {
         i32 variantIndex = enumIndexField(type, pattern->prop);
         if (variantIndex == -1) {
-            error(ctx->state, pattern->prop, "Variant not found");
+            zlog(ctx->state, pattern->prop, Z9014);
             return;
         }
         ZType *variantType          = type->enm.fields[variantIndex]->resolved;
@@ -1036,7 +1032,7 @@ static void putDestructuredPatternInStack(
         break;
     }
     default:
-        error(ctx->state, pattern->tok, "Unhandled destruct pattern");
+        zlog(ctx->state, pattern->tok, Z9002);
         break;
     }
 }
@@ -1053,14 +1049,14 @@ static void putDestructuredPatternInStack(
 static void genGlobalVar(ZCodegen *ctx, ZNode *node) {
     ZVarDestructPattern *pat = node->varDecl.pattern;
     if (!pat || pat->type != Z_VAR_IDENT) {
-        error(ctx->state, node->tok, "Global variable must use a simple identifier pattern");
+        zlog(ctx->state, node->tok, Z4003);
         return;
     }
 
     char *name = pat->ident->str;
     LLVMValueRef global = getLLVMValueRef(ctx, name);
     if (!global) {
-        error(ctx->state, node->tok, "Global '%s' was not forward-declared", name);
+        zlog(ctx->state, node->tok, Z9015, name);
         return;
     }
 
@@ -1071,12 +1067,11 @@ static void genGlobalVar(ZCodegen *ctx, ZNode *node) {
 
     LLVMValueRef init = genExpr(ctx, node->varDecl.rvalue);
     if (!init) {
-        error(ctx->state, node->tok, "Failed to generate initializer for '%s'", name);
+        zlog(ctx->state, node->tok, Z9016, name);
         return;
     }
     if (!LLVMIsConstant(init)) {
-        error(ctx->state, node->tok,
-            "Global variable '%s' initializer must be a constant expression", name);
+        zlog(ctx->state, node->tok, Z4004, name);
         return;
     }
     LLVMSetInitializer(global, init);
@@ -1102,14 +1097,14 @@ static void genZeroInit(ZCodegen *ctx, ZType *type, ZLLVMStack *stack) {
 
 static void genVarDecl(ZCodegen *ctx, ZNode *node) {
     if (!node->resolved) {
-        error(ctx->state, node->tok, "Invalid 'genVarDecl' call");
+        zlog(ctx->state, node->tok, Z9017);
         return;
     }
 
     if (!node->varDecl.rvalue) {
         ZLLVMStack *stack = getStackValue(ctx, node);
         if (!stack) {
-            error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
+            zlog(ctx->state, node->tok, Z9018, node->tok->str);
             return;
         }
 
@@ -1123,7 +1118,7 @@ static void genVarDecl(ZCodegen *ctx, ZNode *node) {
     ZNode *rvalue = node->varDecl.rvalue;
     ZLLVMStack *stack = getStackValue(ctx, rvalue);
     if (!stack) {
-        error(ctx->state, node->tok, "Missing stack allocation for '%s'", node->tok->str);
+        zlog(ctx->state, node->tok, Z9018, node->tok->str);
         return;
     }
 
@@ -1167,10 +1162,10 @@ static LLVMValueRef genStructGEPChain(ZCodegen *ctx,
  */
 static void storeArray(ZCodegen *ctx, ZLLVMStack *stack, LLVMValueRef length) {
     if (!stack->stackType) {
-        error(ctx->state, NULL, "Missing stack type");
+        zlog(ctx->state, NULL, Z9019);
         return;
     } else if (!stack->elemType) {
-        error(ctx->state, NULL, "Missing stack elem type");
+        zlog(ctx->state, NULL, Z901A);
     }
     LLVMValueRef lenField = LLVMBuildStructGEP2(
         ctx->builder, stack->stackType, stack->stack, 0, "len");
@@ -1196,10 +1191,10 @@ static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack = getStackValue(ctx, node);
 
     if (!stack) {
-        error(ctx->state, node->tok, "Missing stack value");
+        zlog(ctx->state, node->tok, Z901B);
         return NULL;
     } else if (!stack->elem) {
-        error(ctx->state, node->tok, "Missing 'elem' field");
+        zlog(ctx->state, node->tok, Z901C);
         return NULL;
     }
 
@@ -1222,7 +1217,7 @@ static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
         ZNode *elem = node->arraylit[i];
         LLVMValueRef val = genExpr(ctx, elem);
         if (!val) {
-            error(ctx->state, elem->tok, "Array element could not be compiled");
+            zlog(ctx->state, elem->tok, Z901D);
             return NULL;
         }
         /* A call returning a struct comes back as an aggregate value,
@@ -1254,11 +1249,11 @@ static LLVMValueRef genSlicePtr(ZCodegen *ctx, ZNode *node) {
     LLVMTypeRef sliceType   = genType(ctx, baseType);
     LLVMTypeRef elemType    = genType(ctx, baseType->array.base);
     if (!ptr) {
-        error(ctx->state, node->slice.base->tok, "pointer not found");
+        zlog(ctx->state, node->slice.base->tok, Z901E);
         return NULL;
     }
     if (!stack) {
-        error(ctx->state, node->tok, "Missing stack allocation");
+        zlog(ctx->state, node->tok, Z901F);
         return NULL;
     }
 
@@ -1313,7 +1308,7 @@ static LLVMValueRef genSlicePtr(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef genStructLitPtr(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack = getStackValue(ctx, node);
     if (!stack) {
-        error(ctx->state, node->tok, "Stack value not found");
+        zlog(ctx->state, node->tok, Z9020);
         return NULL;
     }
     return genStructLitInto(ctx, node, stack->stack);
@@ -1345,7 +1340,7 @@ static LLVMValueRef genTupleLitPtr(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack = getStackValue(ctx, node);
 
     if (!stack) {
-        error(ctx->state, node->tok, "Stack allocation not found");
+        zlog(ctx->state, node->tok, Z9021);
     }
     return genTupleLitInto(ctx, node, stack->stack);
 }
@@ -1361,8 +1356,8 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
 
         LLVMValueRef val = key ? getLLVMValueRef(ctx, key) : NULL;
         if (!val) {
-            error(ctx->state, node->tok,
-                "'%s' not found in the current scope",
+            zlog(ctx->state, node->tok,
+                Z301F,
                 key ? key : stoken(node->memberAccess.field));
         }
         return val;
@@ -1381,13 +1376,13 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
     } else if (baseType->kind == Z_TYPE_STRUCT) {
         path = getStructIndex(baseType, tok->str);
         if (!path) {
-            error(ctx->state, tok, "'%s' member not found", tok->str);
+            zlog(ctx->state, tok, Z9022, tok->str);
             return NULL;
         }
     } else if (baseType->kind == Z_TYPE_TUPLE) {
         if (tok->integer > (i32)veclen(baseType->tuple) ||
             tok->integer < 0) {
-            error(ctx->state, tok, "Invalid index %d for tuple", tok->integer);
+            zlog(ctx->state, tok, Z4005, tok->integer);
             return NULL;
         }
         return LLVMBuildStructGEP2(
@@ -1404,7 +1399,7 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
         if      (strcmp(tok->str, "len") == 0) index = 0;
         else if (strcmp(tok->str, "ptr") == 0) index = 1;
         else {
-            error(ctx->state, tok, "Unknown field");
+            zlog(ctx->state, tok, Z9023);
             return NULL;
         }
 
@@ -1460,10 +1455,7 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
             1,              name
         );
     }
-    error(ctx->state, node->tok,
-        "Invalid subscript for type %s",
-        stype(node->resolved)
-    );
+    zlog(ctx->state, node->tok, Z4006, stype(node->resolved));
     return NULL;
 }
 
@@ -1471,13 +1463,13 @@ static LLVMValueRef _genEnumLitPtr(ZCodegen *ctx,
         ZNode *node, ZToken *variant, ZNode **args) {
     ZLLVMStack *stack   = getStackValue(ctx, node);
     if (!stack) {
-        error(ctx->state, node->tok, "Missing stack value");
+        zlog(ctx->state, node->tok, Z901B);
         return NULL;
     }
 
     i32 index = enumIndexField(node->resolved, variant);
     if (index == -1) {
-        error(ctx->state, variant, "Field not found");
+        zlog(ctx->state, variant, Z9024);
         return NULL;
     }
 
@@ -1571,7 +1563,7 @@ static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
         }
     }
     if (index == -1) {
-        error(ctx->state, field, "facet has no member '%s'", stoken(field));
+        zlog(ctx->state, field, Z4007, stoken(field));
         return NULL;
     }
 
@@ -1656,24 +1648,23 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
         else if (target->type == NODE_FOREIGN)  key = stoken(target->foreignDecl.name);
 
         if (!key) {
-            error(ctx->state, callee->tok,
-                "'%s' is not callable", stoken(callee->memberAccess.field));
+            zlog(ctx->state, callee->tok,
+                Z00A8, stoken(callee->memberAccess.field));
             return NULL;
         }
 
         func = getLLVMValueRef(ctx, key);
         if (!func) {
-            error(ctx->state, callee->tok,
-                "Function '%s' not found", key);
+            zlog(ctx->state, callee->tok, Z4008, key);
             return NULL;
         }
     } else if (callee->type == NODE_MEMBER && callee->memberAccess.mangled) {
         /* Receiver method call: look up the global function and inject self. */
         func = getLLVMValueRef(ctx, callee->memberAccess.mangled);
 
-        if (!func) error(ctx->state,
+        if (!func) zlog(ctx->state,
                     callee->tok,
-                    "Receiver function '%s' not found",
+                    Z4009,
                     callee->memberAccess.mangled);
 
         LLVMValueRef self = genExpr(ctx, callee->memberAccess.object);
@@ -1715,13 +1706,13 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     for (usize i = 0; i < veclen(node->call.capabilities); i++) {
         ZNode *cap = node->call.capabilities[i];
         if (!cap) {
-            warning(ctx->state, node->tok, "Empty capability");
+            zlog(ctx->state, node->tok, Z9025);
             continue;
         } else if (!cap->tok) {
-            warning(ctx->state, node->tok, "Empty tok field");
+            zlog(ctx->state, node->tok, Z9026);
             continue;
         } else if (!cap->resolved) {
-            warning(ctx->state, node->tok, "Capability not resolved");
+            zlog(ctx->state, node->tok, Z9027);
             continue;
         }
         if (!isRuntimeParam(ctx->state, cap->resolved)) continue;
@@ -1729,12 +1720,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
             ctx, cap->resolved
         );
         if (!capability) {
-            error(
-                ctx->state,
-                cap->tok,
-                "Capability '%s' not found",
-                stoken(cap->tok)
-            );
+            zlog(ctx->state, cap->tok, Z00A4, stoken(cap->tok));
         } else {
             capability = LLVMBuildLoad2(
                 ctx->builder,
@@ -1833,7 +1819,7 @@ LLVMValueRef genLValue(ZCodegen *ctx, ZNode *node) {
         genCall(ctx, node);
         ZLLVMStack *stack = getStackValue(ctx, node);
         if (!stack) {
-            error(ctx->state, node->tok, "Invalid call");
+            zlog(ctx->state, node->tok, Z9028);
             return NULL;
         }
         return stack->stack;
@@ -1842,16 +1828,14 @@ LLVMValueRef genLValue(ZCodegen *ctx, ZNode *node) {
         char *key = manglingIdent(node);
         LLVMValueRef val = getLLVMValueRef(ctx, key);
         if (!val) {
-            error(ctx->state, node->tok,
-                    "'%s' not found in the current scope",
-                    node->tok->str);
+            zlog(ctx->state, node->tok, Z301F, node->tok->str);
             return NULL;
         }
         return val;
     }
     case NODE_UNARY: {
         if (node->unary.operat->type != TOK_STAR) {
-            error(ctx->state, node->tok, "Unhandled unary operator");
+            zlog(ctx->state, node->tok, Z9029);
             return NULL;
         }
 
@@ -1861,10 +1845,7 @@ LLVMValueRef genLValue(ZCodegen *ctx, ZNode *node) {
         return ptr;
     }
     default:
-        error(ctx->state,
-                node->tok,
-                "Node '%d' not handled in 'genLValue'",
-                node->type);
+        zlog(ctx->state, node->tok, Z902A, node->type);
         return NULL;
     }
 }
@@ -1885,7 +1866,7 @@ i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
 static void storeSumVariant(ZCodegen *ctx, LLVMValueRef alloca, LLVMTypeRef sumLLVMType,
                             i32 tag, LLVMValueRef val, ZType *valType) {
     if (tag < 0) {
-        error(ctx->state, NULL, "sum-type tag must be a positive integer");
+        zlog(ctx->state, NULL, Z400A);
     }
     LLVMBuildStore(
         ctx->builder,
@@ -1919,8 +1900,7 @@ static void storeSumBranch(ZCodegen *ctx, LLVMValueRef alloca, LLVMTypeRef sumLL
     }
     i32 tag = sumTypeIndexOf(sumType, valType);
     if (tag == -1) {
-        error(ctx->state, valType ? valType->tok : NULL,
-              "Branch type is not a variant of the sum type");
+        zlog(ctx->state, valType ? valType->tok : NULL, Z400B);
         return;
     }
     storeSumVariant(ctx, alloca, sumLLVMType, tag, val, valType);
@@ -1948,7 +1928,7 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
     if (node->resolved && node->resolved->kind == Z_TYPE_SUM) {
         stack = getStackValue(ctx, node);
         if (!stack) {
-            error(ctx->state, node->tok, "Missing stack value");
+            zlog(ctx->state, node->tok, Z901B);
             return NULL;
         }
         sumLLVMType = genType(ctx, node->resolved);
@@ -2036,7 +2016,7 @@ static LLVMValueRef genNumericOperator(ZCodegen *ctx,
         case TOK_GTE:   return LLVMBuildFCmp(ctx->builder, LLVMRealOGE, left, right, l);
         case TOK_EQEQ:  return LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, left, right, l);
         case TOK_NOTEQ: return LLVMBuildFCmp(ctx->builder, LLVMRealONE, left, right, l);
-        default:        error(ctx->state, tok, "Unknown binary operator"); return NULL;
+        default:        zlog(ctx->state, tok, Z902B); return NULL;
         }
     }
 
@@ -2066,7 +2046,7 @@ static LLVMValueRef genNumericOperator(ZCodegen *ctx,
     case TOK_BITOR: return LLVMBuildOr  (ctx->builder, left, right, l);
     case TOK_BITXOR:return LLVMBuildXor (ctx->builder, left, right, l);
     case TOK_REF:   return LLVMBuildAnd (ctx->builder, left, right, l);
-    default:        error(ctx->state, tok, "Unknown binary operator"); return NULL;
+    default:        zlog(ctx->state, tok, Z902B); return NULL;
     }
 }
 
@@ -2093,7 +2073,7 @@ static LLVMValueRef genCompoundOperator(ZCodegen *ctx, ZNode *root) {
     case TOK_SELF_MUL:      op = TOK_STAR;      break;
     case TOK_SELF_DIV:      op = TOK_DIV;       break;
     default:
-        error(ctx->state, root->tok, "Invalid self-assign operator");
+        zlog(ctx->state, root->tok, Z902C);
         return NULL;
     }
 
@@ -2142,11 +2122,11 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
         LLVMValueRef ptr = genLValue(ctx, root->binary.left);
         LLVMValueRef val = genExpr(ctx, root->binary.right);
         if (!ptr) {
-            error(ctx->state, root->tok, "lvalue failed");
+            zlog(ctx->state, root->tok, Z902D);
             return NULL;
         }
         if (!val) {
-            error(ctx->state, root->tok, "rvalue failed");
+            zlog(ctx->state, root->tok, Z902E);
             return NULL;
         }
         LLVMBuildStore(ctx->builder, val, ptr);
@@ -2208,12 +2188,8 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
 static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg) {
     ZType *resolved = node->unary.operand->resolved;
 
-    if (resolved->kind != Z_TYPE_OPTIONAL   &&
-        resolved->kind != Z_TYPE_RESULT     ) {
-        error(ctx->state, node->tok,
-            "'!' can be used only with optional and result types, got '%s'",
-            stype(resolved)
-        );
+    if (!typeKindIs(resolved->kind, TYPE_WRAPPER_MASK)) {
+        zlog(ctx->state, node->tok, Z301E, stype(resolved));
         return NULL;
     }
 
@@ -2226,7 +2202,7 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
             ctx->builder, arg, 0, label(ctx, "unwrap.ptr")
         );
     } else if (resolved->kind == Z_TYPE_RESULT) {
-        warning(ctx->state, node->tok, "Error branch not implemented");
+        zlog(ctx->state, node->tok, Z902F);
         return NULL;
     } else {
         return NULL;
@@ -2282,7 +2258,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
 
     case TOK_ESCL:  return genUnsafeUnwrap(ctx, node, arg);
     default:
-        error(ctx->state, node->unary.operat, "Unknown unary operator");
+        zlog(ctx->state, node->unary.operat, Z9029);
         return NULL;
     }
 
@@ -2382,7 +2358,7 @@ static LLVMValueRef genFacetConstruct(ZCodegen *ctx,
     ZLLVMStack *stack, ZType *facet, ZNode *obj) {
     LLVMValueRef objRef = genExpr(ctx, obj);
     if (!stack) {
-        error(ctx->state, obj->tok, "Missing stack value");
+        zlog(ctx->state, obj->tok, Z901B);
         return NULL;
     }
 
@@ -2390,7 +2366,7 @@ static LLVMValueRef genFacetConstruct(ZCodegen *ctx,
     LLVMValueRef vtable = getLLVMValueRef(ctx, vtableName);
 
     if (!vtable) {
-        error(ctx->state, obj->tok, "vtable not found");
+        zlog(ctx->state, obj->tok, Z9030);
         return NULL;
     }
 
@@ -2454,13 +2430,13 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
     if (to->kind == Z_TYPE_SUM && from->kind != Z_TYPE_SUM) {
         ZLLVMStack *stack = getStackValue(ctx, node);
         if (!stack) {
-            error(ctx->state, node->tok, "Missing stack value for sum type cast");
+            zlog(ctx->state, node->tok, Z9031);
             return NULL;
         }
         LLVMValueRef val = genExpr(ctx, node->castExpr.expr);
         i32 tag = sumTypeIndexOf(to, from);
         if (tag == -1) {
-            error(ctx->state, node->tok, "Type is not a variant of the sum type");
+            zlog(ctx->state, node->tok, Z400C);
             return NULL;
         }
         LLVMTypeRef sumLLVMType = genType(ctx, to);
@@ -2483,7 +2459,7 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
         node->castExpr.expr->type == NODE_ARRAY_LIT) {
         ZLLVMStack *stack = getStackValue(ctx, node);
         if (!stack) {
-            error(ctx->state, node->tok, "Missing stack value for array cast");
+            zlog(ctx->state, node->tok, Z9032);
             return NULL;
         }
         ZNode *lit = node->castExpr.expr;
@@ -2520,10 +2496,7 @@ static LLVMValueRef genStructLitInto(
         ZNode *var = fields[i];
         ZToken *name = var->varDecl.pattern->tok;
         if (!var->varDecl.rvalue) {
-            error(ctx->state,
-                    var->tok,
-                    "Missing rvalue in struct literal for field '%s'",
-                    name);
+            zlog(ctx->state, var->tok, Z400D, name);
         }
         LLVMValueRef val = genExpr(ctx, var->varDecl.rvalue);
 
@@ -2531,7 +2504,7 @@ static LLVMValueRef genStructLitInto(
         ZNode *field = getStructField(node->resolved, name->str);
 
         if (!field) {
-            error(ctx->state, name, "Unknown field '%s'", name->str);
+            zlog(ctx->state, name, Z400E, name->str);
             continue;
         }
 
@@ -2549,20 +2522,20 @@ static LLVMValueRef genStructLitInto(
 
 // static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
 //     if (!node || !node->resolved) {
-//         error(ctx->state, node ? node->tok : NULL, "Invalid genStaticAccess");
+//         zlog(ctx->state, node ? node->tok : NULL, Z9033);
 //         return NULL;
 //     }
 //
 //     char *mangled = node->staticAccess.mangled;
 //
 //     if (!mangled) {
-//         error(ctx->state, node->tok, "Mangled name not saved");
+//         zlog(ctx->state, node->tok, Z9034);
 //     }
 //
 //     LLVMValueRef val = getLLVMValueRef(ctx, mangled);
 //
 //     if (!val) {
-//         error(ctx->state, node->tok, "Unknown name '%s'", mangled);
+//         zlog(ctx->state, node->tok, Z400F, mangled);
 //         return NULL;
 //     }
 //     LLVMValueKind kind = LLVMGetValueKind(val);
@@ -2624,11 +2597,7 @@ static void matchEnumPattern(
     i32 variantIndex = enumIndexField(type, pattern->prop);
 
     if (variantIndex == -1) {
-        error(ctx->state,
-            pattern->prop,
-            "Enum variant '%s' not found",
-            stoken(pattern->prop)
-        );
+        zlog(ctx->state, pattern->prop, Z4010, stoken(pattern->prop));
         return;
     }
     ZType *variantType = type->enm.fields[variantIndex]->resolved;
@@ -2703,7 +2672,7 @@ static void matchSumPattern(
         LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
     i32 index = sumTypeIndexOf(type, pattern->sum.type);
     if (index == -1) {
-        error(ctx->state, pattern->sum.type->tok, "type not found");
+        zlog(ctx->state, pattern->sum.type->tok, Z9035);
         return;
     }
 
@@ -2734,7 +2703,7 @@ static void matchPattern(
     case Z_VAR_LIT:     matchLitPattern     (ctx, type, pattern, ptr, failBranch); break;
     case Z_VAR_SUM:     matchSumPattern     (ctx, type, pattern, ptr, failBranch); break;
     default:
-        error(ctx->state, pattern->tok, "Unknown pattern %d", pattern->type);
+        zlog(ctx->state, pattern->tok, Z9036, pattern->type);
         break;
     }
 }
@@ -2778,13 +2747,13 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
         char *key = manglingIdent(rvalue);
         ptr = getLLVMValueRef(ctx, key);
         if (!ptr) {
-            error(ctx->state, rvalue->tok, "'%s' not found", rvalue->tok->str);
+            zlog(ctx->state, rvalue->tok, Z4011, rvalue->tok->str);
             return NULL;
         }
     } else {
         ZLLVMStack *stack = getStackValue(ctx, rvalue);
         if (!stack) {
-            error(ctx->state, node->tok, "Missing stack value");
+            zlog(ctx->state, node->tok, Z901B);
             return NULL;
         }
         ptr = stack->stack;
@@ -3051,10 +3020,7 @@ LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
 
     default:
         printf("Node '%d' not handled\n", node->type);
-        error(ctx->state,
-                node->tok,
-                "Node '%d' not yet implemented in the code generator",
-                node->type);
+        zlog(ctx->state, node->tok, Z9037, node->type);
         break;
     }
 
@@ -3146,7 +3112,7 @@ static void genRet(ZCodegen *ctx, ZNode *ret) {
     ZType *expectedFuncType = ctx->currentFuncNode->resolved;
     ZType *expectedRetType  = expectedFuncType->func.ret;
     if (!expectedRetType) {
-        error(ctx->state, ret->tok, "Return type not resolved");
+        zlog(ctx->state, ret->tok, Z3043);
         return;
     }
 
@@ -3161,8 +3127,7 @@ static void genRet(ZCodegen *ctx, ZNode *ret) {
         if (exprType && exprType->kind != Z_TYPE_SUM) {
             i32 tag = sumTypeIndexOf(expectedRetType, exprType);
             if (tag == -1) {
-                error(ctx->state, ret->tok,
-                    "Return type is not a variant of the sum type");
+                zlog(ctx->state, ret->tok, Z4012);
                 return;
             }
             LLVMTypeRef sumLLVMType = genType(ctx, expectedRetType);
@@ -3188,7 +3153,7 @@ static void genRet(ZCodegen *ctx, ZNode *ret) {
     genRetChainDefer(ctx);
 
     if (!val) {
-        error(ctx->state, ret->tok, "val not generated");
+        zlog(ctx->state, ret->tok, Z9038);
         return;
     }
 
@@ -3429,7 +3394,7 @@ static void genForIn(ZCodegen *ctx, ZNode *node) {
     ZLLVMStack *stack       = getStackValue(ctx, callNode);
 
     if (!stack) {
-        error(ctx->state, node->tok, "Missing stack value");
+        zlog(ctx->state, node->tok, Z901B);
         return;
     }
 
@@ -3498,7 +3463,7 @@ static void genBlock(ZCodegen *ctx, ZNode *block) {
  */
 static void genBreak(ZCodegen *ctx, ZNode *node) {
     if (!ctx->scope->endLoop) {
-        error(ctx->state, node->tok, "'break' statement is not in a loop");
+        zlog(ctx->state, node->tok, Z302C);
         return;
     }
 
@@ -3523,7 +3488,7 @@ static void genBreak(ZCodegen *ctx, ZNode *node) {
  */
 static void genContinue(ZCodegen *ctx, ZNode *node) {
     if (!ctx->scope->startLoop) {
-        error(ctx->state, node->tok, "'continue' statement is not in a loop");
+        zlog(ctx->state, node->tok, Z302D);
         return;
     }
 
@@ -3662,10 +3627,7 @@ static void genStmt(ZCodegen *ctx, ZNode *stmt) {
     default: {
         LLVMValueRef compiled = genExpr(ctx, stmt);
         if (!compiled) {
-            error(ctx->state, stmt->tok,
-                "Node '%d' failed to compile",
-                stmt->type
-            );
+            zlog(ctx->state, stmt->tok, Z9039, stmt->type);
         }
         break;
     }
@@ -3704,7 +3666,7 @@ static void _buildNestedEnumStackRef(ZCodegen *ctx,
     i32 variantIndex = enumIndexField(node->resolved, variant);
 
     if (variantIndex == -1) {
-        error(ctx->state, variant, "Field not found");
+        zlog(ctx->state, variant, Z9024);
         return;
     }
 
@@ -3762,7 +3724,7 @@ static void buildNestedFuncVar(
             );
 
             if (veclen(path) == 0) {
-                error(ctx->state, name, "Field not found");
+                zlog(ctx->state, name, Z9024);
                 continue;
             }
 
@@ -3851,11 +3813,10 @@ static void buildNestedFuncVar(
  * */
 static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, bool force) {
     if (!node) {
-        error(ctx->state, NULL, "'buildFuncVar' called with a null node");
+        zlog(ctx->state, NULL, Z903A);
         return NULL;
     } else if (!node->resolved || !overrided) {
-        error(ctx->state, node->tok,
-                "Missing resolved type for node %d", node->type);
+        zlog(ctx->state, node->tok, Z903B, node->type);
         return NULL;
     }
 
@@ -3972,7 +3933,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     }
     case NODE_CALL:
         if (!node->resolved) {
-            error(ctx->state, node->tok, "Unresolved type");
+            zlog(ctx->state, node->tok, Z00A2);
             break;
         }
         genFuncVars(ctx, node->call.callee);
@@ -4234,9 +4195,7 @@ static void genFacetVtable(ZCodegen *ctx, ZNode *root, LLVMValueRef *ptrs) {
         ZType *facet = root->impl.facets[i];
 
         if (!facet || facet->kind != Z_TYPE_FACET) {
-            error(ctx->state, facet->tok,
-                "Expected a facet, got '%s'", stype(facet)
-            );
+            zlog(ctx->state, facet->tok, Z304D, stype(facet));
         }
         char *buf = encodeFacetVTable(facet, root->impl.base);
 
@@ -4257,9 +4216,7 @@ static void genFacetVtable(ZCodegen *ctx, ZNode *root, LLVMValueRef *ptrs) {
                 }
             }
             if (!fn) {
-                error(ctx->state, fname,
-                    "impl of facet '%s' is missing method '%s'", stype(facet), stoken(fname)
-                );
+                zlog(ctx->state, fname, Z305A, stype(facet), stoken(fname));
             }
             vtable[j] = fn;
         }
@@ -4304,7 +4261,7 @@ static void compile(ZCodegen *ctx, ZNode *root) {
         break;
     }
     default:
-        error(ctx->state, root->tok, "(compilation not yet implemented for %d)", root->type);
+        zlog(ctx->state, root->tok, Z903C, root->type);
         break;
     }
     endModule(ctx);
@@ -4451,7 +4408,7 @@ bool initTargetMachine(ZState *state) {
     LLVMTargetRef target;
     char *errmsg = NULL;
     if (LLVMGetTargetFromTriple(triple, &target, &errmsg)) {
-        error(state, NULL, "Failed to get target: %s", errmsg);
+        zlog(state, NULL, Z4014, errmsg);
         LLVMDisposeMessage(errmsg);
         LLVMDisposeMessage(triple);
         return false;
@@ -4494,7 +4451,7 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     LLVMTargetRef target;
     char *errmsg = NULL;
     if (LLVMGetTargetFromTriple(triple, &target, &errmsg)) {
-        error(ctx->state, NULL, "Failed to get target: %s", errmsg);
+        zlog(ctx->state, NULL, Z4014, errmsg);
         LLVMDisposeMessage(errmsg);
         free(triple);
         return false;
@@ -4529,7 +4486,7 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
         LLVMDisposePassBuilderOptions(pb_opts);
         if (err) {
             char *msg = LLVMGetErrorMessage(err);
-            error(ctx->state, NULL, "Optimization failed: %s", msg);
+            zlog(ctx->state, NULL, Z4015, msg);
             LLVMDisposeErrorMessage(msg);
             LLVMDisposeTargetMachine(machine);
             LLVMDisposeMessage(triple);
@@ -4540,12 +4497,12 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     bool ok;
     if (ctx->state->ltoMode != Z_LTO_OFF) {
         ok = (LLVMWriteBitcodeToFile(ctx->mod, filename) == 0);
-        if (!ok) error(ctx->state, NULL, "Failed to write bitcode to %s", filename);
+        if (!ok) zlog(ctx->state, NULL, Z4016, filename);
     } else {
         ok = !LLVMTargetMachineEmitToFile(machine, ctx->mod, (char *)filename,
                                           fileType, &errmsg);
         if (!ok) {
-            error(ctx->state, NULL, "Failed to emit object file: %s", errmsg);
+            zlog(ctx->state, NULL, Z4017, errmsg);
             LLVMDisposeMessage(errmsg);
         }
     }
@@ -4582,7 +4539,7 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
         if (!state->skipLLVMValidation) {
             char *verifyErr = NULL;
             if (LLVMVerifyModule(gens[i]->mod, LLVMReturnStatusAction, &verifyErr)) {
-                error(state, NULL, "[LLVM: invalid module '%s'] %s", name, verifyErr);
+                zlog(state, NULL, Z4018, name, verifyErr);
                 LLVMDisposeMessage(verifyErr);
                 continue;
             }
@@ -4593,12 +4550,12 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
         LLVMModuleRef imported  = NULL;
 
         if (LLVMParseBitcodeInContext2(ctx, buf, &imported)) {
-            error(state, NULL, "[LLVM: Import of module '%s' failed]", name);
+            zlog(state, NULL, Z4019, name);
             continue;
         }
 
         if (LLVMLinkModules2(module, imported)) {
-            error(state, NULL, "[LLVM: Link of module '%s' failed]", name);
+            zlog(state, NULL, Z401A, name);
         }
         freeCodegen(gens[i]);
     }
@@ -4652,14 +4609,14 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 
     if (state->emit == Z_EMIT_EXE && !state->nostdlib &&
         !LLVMGetNamedFunction(ctx->mod, "main")) {
-        error(state, NULL, "[LLVM: function main not registered]");
+        zlog(state, NULL, Z401B);
     }
 
     char *errmsg = NULL;
 
 
     if (!state->skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
-        error(state, NULL, "LLVM: %s", errmsg);
+        zlog(state, NULL, Z401C, errmsg);
         LLVMDisposeMessage(errmsg);
         freeCodegen(ctx);
         return;
@@ -4669,7 +4626,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     if (state->emit == Z_EMIT_IR) {
         if (!output) output = "output.ll";
         if (LLVMPrintModuleToFile(ctx->mod, output, &errmsg)) {
-            error(state, NULL, "Failed to write IR file: %s", errmsg);
+            zlog(state, NULL, Z401D, errmsg);
             LLVMDisposeMessage(errmsg);
             goto end;
         }
@@ -4693,7 +4650,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     size_t objnameLen = strlen(output) + strlen(objext) + 1;
     char *objfileBuf = malloc(objnameLen);
     if (!objfileBuf) {
-        error(state, NULL, "Failed to allocate temporary object filename");
+        zlog(state, NULL, Z401E);
         freeCodegen(ctx);
         return;
     }
@@ -4739,7 +4696,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
 #endif
 
     if (ret != 0) {
-        error(state, NULL, "Linker failed with code %d", ret);
+        zlog(state, NULL, Z401F, ret);
         goto end;
     }
 

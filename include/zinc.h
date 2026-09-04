@@ -253,22 +253,16 @@ typedef enum {
 } ZNodeType;
 
 typedef enum ZTypeKind {
-    Z_TYPE_PRIMITIVE,
-    Z_TYPE_POINTER,
-    Z_TYPE_STRUCT,
-    Z_TYPE_ARRAY,
-    Z_TYPE_FUNCTION,
-    Z_TYPE_TUPLE,
-    Z_TYPE_GENERIC,        // Instantiated generic type, e.g. List[int]
-    Z_TYPE_FACET,
-    Z_TYPE_ENUM,
-    Z_TYPE_NONE,
-    Z_TYPE_NAMESPACE,
-    Z_TYPE_SUM,
-    Z_TYPE_OPTIONAL,
-    Z_TYPE_RESULT,
-    // Z_TYPE_CHAIN
+    #define TYPE(name, masks, prime) name,
+    #include "ztype.def"
+    #undef TYPE
+
+    Z_TYPE_COUNT
 } ZTypeKind;
+
+extern const u16 ZTypeMasks[Z_TYPE_COUNT];
+
+#define typeKindIs(kind, mask) ((ZTypeMasks[(kind)] & (mask)) != 0)
 
 struct ZType {
     ZTypeKind   kind;
@@ -872,6 +866,12 @@ typedef struct ZCapability {
     ZNode **nodes;
 } ZCapability;
 
+typedef struct {
+    ZNode *origin;
+    const char *name;
+    int depth;
+} ZProvenance;
+
 struct ZScope {
     ZSymbol         **symbols;
     ZScope          *parent;
@@ -1028,7 +1028,7 @@ ZLog *_log(ZState *, ZToken *, ZDiagCode, const char *, int, ...);
 ZLog *emitHint  (ZLog *, const char *, ...);
 ZLog *emitNote  (ZLog *, ZToken *, const char *, ...);
 
-#define log(state, tok, code, ...) \
+#define zlog(state, tok, code, ...) \
     _log(state, tok, code, __FILE__, __LINE__, ##__VA_ARGS__)
 
 void printLogs(ZState *);
