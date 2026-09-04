@@ -252,7 +252,7 @@ ZNode *expandMacro(ZParser *parser) {
         let vars = macro->macro.captured;
         for (usize i = 0; i < veclen(vars); i++) {
             if (vars[i]->useCount == 0) {
-                warning(parser->state, vars[i]->name, "Unused variable");
+                zlog(parser->state, vars[i]->name, Z3007);
             }
         }
 

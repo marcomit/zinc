@@ -18,9 +18,7 @@ typedef ZType *(*ZValidateFn) (ZState *, ZNode *);
 
 static LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
     if (veclen(call->call.args) != 1) {
-        error(
-            ctx->state, call->tok,
-            "Expected 1 argument, got %zu", veclen(call->call.args));
+        zlog(ctx->state, call->tok, Z4020, veclen(call->call.args));
     }
     emitRuntimeDebugPrint(ctx, call->tok, stoken(call->call.args[0]->tok));
     LLVMBuildTrap(ctx);
@@ -34,7 +32,7 @@ static LLVMValueRef genReflect(ZCodegen *ctx, ZNode *node) {
 static LLVMValueRef genHere(ZCodegen *ctx, ZNode *node) {
     ZNode *sourceLocType = LangItems[Z_LANG_SOURCE_LOCATION_TYPE];
     if (!sourceLocType) {
-        error(ctx->state, node->tok, "SourceLocationType not found");
+        zlog(ctx->state, node->tok, Z4021);
         return NULL;
     }
 
@@ -93,7 +91,7 @@ static LLVMValueRef genPtrFromInt(ZCodegen *ctx, ZNode *node) {
 }
 
 #define ensure(cond, tok, ...) if (!(cond)) {                               \
-    error(state, tok, __VA_ARGS__);                                         \
+    zlog(state, tok, __VA_ARGS__);                                          \
     return;                                                                 \
 }
 
@@ -139,8 +137,8 @@ void validate(ZState *ctx, ZNode *node) {
     }
 
     if (!typesEqual(node->resolved, LangExpectedType[li])) {
-        error(
-            ctx, node->tok, "Invalid lang item: expected type '%s', got '%s'",
+        zlog(
+            ctx, node->tok, Z4022,
             stype(LangExpectedType[li]), stype(node->resolved)
         );
     }

@@ -80,7 +80,7 @@ static void analyzeAnnotation(
         }
 
         if (!FLAG(annotation->kind, spec->spec)) {
-            error(state, annotation->tok, "Invalid annotation kind");
+            zlog(state, annotation->tok, Z5001);
             return;
         }
         item = spec;
@@ -89,20 +89,15 @@ static void analyzeAnnotation(
 
     if (!item) {
         if (mistargeted) {
-            error(state, annotation->tok,
-                "Annotation '%s' is not valid on this declaration",
-                stoken(annotation->tok)
-            );
+            zlog(state, annotation->tok, Z5002, stoken(annotation->tok));
         } else {
-            error(state, annotation->tok,
-                "Unknown annotation '%s'", stoken(annotation->tok)
-            );
+            zlog(state, annotation->tok, Z5003, stoken(annotation->tok));
         }
         return;
     }
     if (item->langItem) {
         if (LangItems[item->langItem]) {
-            error(state, annotation->tok, "Lang-item already registered");
+            zlog(state, annotation->tok, Z5004);
             return;
         }
         annotation->ident.li = item->langItem;
@@ -112,8 +107,8 @@ static void analyzeAnnotation(
     if (annotation->kind == Z_ANN_NESTED) {
         usize len = veclen(annotation->nested);
         if (len < item->minArg || len > item->maxArg) {
-            error(state, annotation->tok,
-                "Accepted from %d to %d, got %zu argument(s)",
+            zlog(state, annotation->tok,
+                Z5005,
                 item->minArg, item->maxArg, len
             );
             return;
@@ -207,8 +202,8 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
     for (usize i = 0; i < veclen(annotations); i++) {
         if (!hashset_insert(&seen, stoken(annotations[i]->tok))
             && !isRepeatable(annotations[i])) {
-            error(state, annotations[i]->tok,
-                "Annotation '%s' already declared",
+            zlog(state, annotations[i]->tok,
+                Z5006,
                 stoken(annotations[i]->tok)
             );
             continue;
