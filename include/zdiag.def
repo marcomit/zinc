@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2025, Marco Menegazzi
 
-DIAG(Z0001, Z_ERROR,   "Duplicate static function '%s'", "rename one of the definitions")
-DIAG(Z0002, Z_ERROR,   "Duplicate receiver function '%s'", "rename one of the definitions")
-DIAG(Z0003, Z_ERROR,   "receiver must be set", NULL)
-DIAG(Z0004, Z_ERROR,   "receiver functions cannot have a base", "remove the base qualifier")
-DIAG(Z0005, Z_ERROR,   "Static function must be attached to a primitive type", NULL)
-DIAG(Z0006, Z_WARNING, "No type provided for '%s'", "add an explicit type annotation")
+DIAG(Z0001, Z_ERROR,    "Duplicate static function '%s'", "rename one of the definitions")
+DIAG(Z0002, Z_ERROR,    "Duplicate receiver function '%s'", "rename one of the definitions")
+DIAG(Z0003, Z_ERROR,    "receiver must be set", NULL)
+DIAG(Z0004, Z_ERROR,    "receiver functions cannot have a base", "remove the base qualifier")
+DIAG(Z0005, Z_ERROR,    "Static function must be attached to a primitive type", NULL)
+DIAG(Z0006, Z_WARNING,  "No type provided for '%s'", "add an explicit type annotation")
+DIAG(Z0007, Z_ERROR,    "Invalid 'putStaticFunc' call, base is not setted", NULL)
+DIAG(Z0008, Z_ERROR,    "Invalid 'putStaticFunc' call, receiver cannot be setted", NULL)
