@@ -444,6 +444,19 @@ struct ZVarDestructPattern {
     };
 };
 
+typedef enum {
+    Z_INTERP_LIT,
+    Z_INTERP_EXPR
+} ZInterpolationType;
+
+typedef struct {
+    ZInterpolationType type;
+    union {
+        ZToken  *literal;
+        ZNode   *expr;
+    };
+} ZInterpolation;
+
 typedef enum ZAnnotationKind {
     Z_ANN_IDENT     = 1 << 0,
     Z_ANN_LIT       = 1 << 1,
@@ -710,6 +723,7 @@ struct ZNode {
             bool            pub;
         } macro;
 
+        ZInterpolation      **interpolation;
         ZToken              *literalTok;
         struct {
             ZToken          *tok;

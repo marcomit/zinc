@@ -327,6 +327,50 @@ static ZNode *parseArrayInit(ZParser *parser) {
     return node;
 }
 
+static ZInterpolation *makeinterpolation(ZInterpolationType type, void *ptr) {
+    ZInterpolation *self = zalloc(ZInterpolation);
+    self->expr = ptr;
+    return self;
+}
+
+static ZNode *parseLit(ZParser *parser) {
+    ZToken *start = peek(parser);
+    if (!start) return NULL;
+    if (start->type != TOK_STREAM) {
+        ZNode *node         = makenode(NODE_LITERAL);
+        node->literalTok    = consume(parser);
+        node->tok           = start;
+        return node;
+    }
+
+    ZNode *node = makenode(NODE_INTERPOLATION);
+    node->tok = start;
+    ZTokenStream *prev = parser->source;
+    parser->source = maketokstream(start->stream, NULL);
+
+    while (canPeek(parser)) {
+        ZInterpolation *interp = NULL;
+        if (check(parser, TOK_STR_START)) {
+            consume(parser);
+        } else if (check(parser, TOK_STR_LIT)) {
+            ZToken *lit = consume(parser);
+            interp = makeinterpolation(Z_INTERP_LIT, consume(parser));
+        } else {
+            // error
+            consume(parser); // consume the token to avoid a loop.
+        }
+
+        if (!interp) {
+            // error
+        }
+
+        vecpush(node->interpolation, interp);
+    }
+
+    parser->source = prev;
+    return node;
+}
+
 static ZNode *parsePrimary(ZParser *parser) {
     ZToken *start = peek(parser);
     guard(start);
@@ -358,10 +402,7 @@ static ZNode *parsePrimary(ZParser *parser) {
         node->tok           = node->identNode.tok;
         return node;
     } else if (checkMask(parser, TOK_LITERAL)) {
-        ZNode *node         = makenode(NODE_LITERAL);
-        node->literalTok    = consume(parser);
-        node->tok           = node->literalTok;
-        return node;
+        return parseLit(parser);
     } else if (check(parser, TOK_SIZEOF)) {
         ZToken *tok         = consume(parser);
         ZType *type         = parseType(parser);

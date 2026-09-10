@@ -1009,14 +1009,14 @@ static ZType *resolveLiteralType(ZThreadSem *ctx, ZToken *curr) {
     case TOK_STREAM: {
         ZNode *intstr = LangItems[Z_LANG_INTERPOLATED_STRING];
         if (!intstr) {
-            zlog(ctx->state, t->tok, Z00AA);
+            zlog(ctx->state, curr, Z00AA);
             return NULL;
         }
         ZType *arr          = makeTypeThread(ctx, Z_TYPE_ARRAY);
         arr->array.size     = 0;
         arr->array.dynamic  = false;
         arr->array.base     = intstr->resolved;
-        arr->tok            = t->tok;
+        arr->tok            = curr;
         return arr;
     }
     default: {
