@@ -37,13 +37,15 @@ typedef enum {
 
 } ZTokenType;
 
-typedef struct ZToken {
+typedef struct ZToken ZToken;
+struct ZToken {
     ZTokenType  type;
     union {
         char    *str;
         i64     integer;
         f64     floating;
         bool    boolean;
+        ZToken  **stream;
     };
     char        *filename;
     char        *sourcePtr;
@@ -53,7 +55,7 @@ typedef struct ZToken {
     usize       row;
     usize       col;
     bool        newlineBefore;
-} ZToken;
+};
 
 typedef struct ZNode        ZNode;
 typedef struct ZType        ZType;

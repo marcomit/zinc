@@ -3,6 +3,7 @@
 
 #include "zinc.h"
 #include <ctype.h>
+#include <string.h>
 
 #define FNV_OFFSET 2166136261u
 #define FNV_PRIME    16777619u
@@ -30,6 +31,9 @@ typedef struct {
 
     /* Track if newline was seen since last token */
     bool sawNewline;
+
+    /* Track the depth of {} brackets, used for string interpolation. */
+    i64 depth;
 
 } ZLexer;
 
@@ -60,6 +64,8 @@ u16 ZTokenMask[] = {
 
 #undef DEF
 };
+
+static bool emitNextToken(ZLexer *, ZToken **);
 
 inline bool tokmask(ZToken *tok, u16 mask) {
     return ZTokenMask[tok->type] & mask;
@@ -133,6 +139,7 @@ ZTokenType findKeyword(const char *ident, size_t len) {
 
 ZToken *maketoken(ZTokenType type, char *start, char *end) {
     ZToken *self    = zalloc(ZToken);
+    *self           = (ZToken){ 0 };
     self->type      = type;
     self->start     = start;
     self->end       = end;
@@ -292,7 +299,32 @@ static void pushCodepointUtf8(char **buff, u32 cp) {
     }
 }
 
+static ZToken **parseInterpolatedString(ZLexer *l) {
+    if (*l->current != '{') return NULL;
+    ZToken **list = NULL;
+    char *start = l->current;
+
+    ZToken *startInterp = maketoken(TOK_STR_START, l->current, l->current+1);
+    l->current++;
+    addToken(l, startInterp);
+
+    ZToken *curr = NULL;
+    while (emitNextToken(l, &curr)) {
+        if (!curr) break;
+        if (curr->type == TOK_LBRACKET && l->depth < 0 && *l->current == '"') {
+            curr->type = TOK_STR_END;
+            l->current++;
+            break;
+        }
+        vecpush(list, curr);
+    }
+    return list;
+}
+
 static ZToken *parseString(ZLexer *l) {
+    bool interpolated = *l->current == '#';
+    ZTokenType type = TOK_STR_LIT;
+    if (interpolated) next(l);
     if (*l->current != '"') return NULL;
     next(l);
 
@@ -300,11 +332,18 @@ static ZToken *parseString(ZLexer *l) {
     char *buff = NULL;
     char *src = l->current;
 
+    ZToken *list = NULL;
     while (*src && *src != '"') {
         u32 cp;
         if (*src == '\\' && *(src + 1)) {
             src++;
             cp = parseEscapeChar(l, &src);
+        } else if (interpolated && *src == '{') {
+            ZToken *lit = makestring(start, start, l->current);
+            l->col += src - l->current;
+            l->current = src;
+            ZToken **stream = parseInterpolatedString(l);
+            type = TOK_STREAM;
         } else {
             cp = decodeUtf8(&src);
         }
@@ -355,13 +394,15 @@ static ZToken *parseRune(ZLexer *l) {
     return makeRune(cp, start, src);
 }
 
+/*TODO: Replace the else-if chain with the trie. */
 static ZToken *parseSymbol(ZLexer *l) {
-    if (false) { /* Empty if statement only for macro definition*/ }
+    ZToken *sym = NULL;
+    if (false) { /* Empty if statement only for macro definition. */ }
     #define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) {         \
         ZToken *tok = maketoken(id, l->current, l->current + strlen(s));        \
         skip(l, strlen(s));                                                     \
         tok->str = s;                                                           \
-        return tok;                                                             \
+        sym = tok;                                                              \
     }
 
     #define TOK_SYMBOLS
@@ -375,12 +416,16 @@ static ZToken *parseSymbol(ZLexer *l) {
     #undef TOK_SYMBOLS
     #undef DEF
 
-    zlog(l->state, veclast(l->tokens), Z1004);
+    if (sym) {
+        zlog(l->state, veclast(l->tokens), Z1004);
+        ZToken *tok = maketoken(0, l->current, l->current);
+        tok->str = "";
+        return NULL;
+    }
 
-
-    ZToken *tok = maketoken(0, l->current, l->current);
-    tok->str = "";
-    return NULL;
+    if      (sym->type == TOK_LBRACKET) l->depth++;
+    else if (sym->type == TOK_RBRACKET) l->depth--;
+    return sym;
 }
 
 static ZToken *parseHexNumber(ZLexer *l) {
@@ -404,6 +449,18 @@ static ZToken *parseBinNumber(ZLexer *l) {
     char *start = l->current;
 
     while (*l->current == '0' || *l->current == '1') next(l);
+    if (start == l->current) {
+        ZToken *tok = maketoken(TOK_INT_LIT, start, l->current);
+        tok->filename = l->state->filename;
+        tok->row = l->row;
+        tok->col = l->col;
+        tok->sourceLinePtr = l->line;
+        tok->sourcePtr = l->current;
+        error(
+            l->state, tok,
+            "Invalid binary literal"
+        );
+    }
 
     errno = 0;
     unsigned long long value = strtoull(start, NULL, 2);
@@ -514,7 +571,6 @@ ZLexer *makelexer(ZState *state) {
     }
 
     ZLexer *self = zalloc(ZLexer);
-
     self->row           = 1;
     self->col           = 0;
     self->tokens        = NULL;
@@ -523,7 +579,44 @@ ZLexer *makelexer(ZState *state) {
     self->line          = program;
     self->state         = state;
     self->sawNewline    = true;  // First token is "after" a newline
+    self->depth         = 0;
     return self;
+}
+
+static bool emitNextToken(ZLexer *l, ZToken **curr) {
+    while (true) {
+        char *start = l->current;
+        skipSpaces(l);
+        skipInlineComments(l);
+        skipMultilineComments(l);
+        if (l->current == start) break;
+    }
+
+    if (!*l->current) return false;
+
+    char *sourcePtr = l->current;
+    char *sourceLinePtr = l->line;
+    if (*l->current == '"') {
+        *curr = parseString(l);
+    } else if (*l->current == '\'') {
+        *curr = parseRune(l);
+        if (!*curr) *curr = parseSymbol(l);
+    } else if (isalpha(*l->current) || *l->current == '_') {
+        *curr = parseLiteral(l);
+    } else if (isdigit(*l->current)) {
+        *curr = parseNumber(l);
+    } else {
+        *curr = parseSymbol(l);
+    }
+
+    if (*curr) {
+        (*curr)->sourceLinePtr = sourceLinePtr;
+        (*curr)->sourcePtr     = sourcePtr;
+        (*curr)->newlineBefore = l->sawNewline;
+        l->sawNewline       = false;
+    }
+
+    return true;
 }
 
 ZToken **ztokenize(ZState *state) {
@@ -536,44 +629,14 @@ ZToken **ztokenize(ZState *state) {
 
     initKeywords();
 
-    while (*l->current) {
-        curr = NULL;
-
-        while (true) {
-            char *start = l->current;
-            skipSpaces(l);
-            skipInlineComments(l);
-            skipMultilineComments(l);
-            if (l->current == start) break;
-        }
-
-        if (!*l->current) break;
-
-        char *sourcePtr = l->current;
-        char *sourceLinePtr = l->line;
-        if (*l->current == '"') {
-            curr = parseString(l);
-        } else if (*l->current == '\'') {
-            curr = parseRune(l);
-            if (!curr) curr = parseSymbol(l);
-        } else if (isalpha(*l->current) || *l->current == '_') {
-            curr = parseLiteral(l);
-        } else if (isdigit(*l->current)) {
-            curr = parseNumber(l);
-        } else {
-            curr = parseSymbol(l);
-        }
-
+    while (emitNextToken(l, &curr)) {
         if (!curr) {
             zlog(l->state, veclast(l->tokens), Z1004);
             next(l);
         } else {
-            curr->sourceLinePtr = sourceLinePtr;
-            curr->sourcePtr     = sourcePtr;
-            curr->newlineBefore = l->sawNewline;
-            l->sawNewline       = false;
             addToken(l, curr);
         }
+
     }
     return l->tokens;
 }
