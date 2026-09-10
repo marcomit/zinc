@@ -817,6 +817,8 @@ static void genChainDefer(ZCodegen *ctx, ZLLVMScope *scope) {
 
 static LLVMValueRef genLitTok(ZCodegen *ctx, ZToken *tok, ZType *type) {
     switch (tok->type) {
+    case TOK_STREAM:
+        return NULL;
     case TOK_STR_LIT:
         return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx, "string"));
     case TOK_INT_LIT:

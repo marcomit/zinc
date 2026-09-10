@@ -1,3 +1,9 @@
 use <std.mem>
 use <std.core.rand>
 use <std.libc>
+
+#lang(interpolated_string)
+pub InterpolatedString :: enum {
+    Literal(*char)
+    Obj(*char)
+}

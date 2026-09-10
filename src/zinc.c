@@ -2,7 +2,6 @@
 // Copyright (c) 2025, Marco Menegazzi
 
 #include "zinc.h"
-#include "base.h"
 #include "zcli.h"
 
 #include <time.h>

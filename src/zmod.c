@@ -87,6 +87,16 @@ static char *getHomePath() {
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
     switch(token->type) {
+    case TOK_STR_START: return "{";
+    case TOK_STR_END:   return "}";
+    case TOK_STREAM: {
+        char *buff = NULL;
+        for (usize i = 0; i < veclen(token->stream); i++) {
+            char *s = stoken(token->stream[i]);
+            vecunion(buff, s, strlen(s));
+        }
+        return buff;
+    }
     case TOK_STR_LIT:
     case TOK_IDENT:     return token->str;
     case TOK_INT_LIT:

@@ -15,7 +15,7 @@ Mutex :: impl {
     pub new :: fn () Mutex with Allocator {
         handle := alloc(64)
         c.pthread_mutex_init(handle, none)
-        return Mutex { handle: handle }
+        return .{ handle }
     }
 }
 

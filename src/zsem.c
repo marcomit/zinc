@@ -43,6 +43,8 @@
 #include <pthread.h>
 #include <stdatomic.h>
 
+extern ZNode *LangItems[Z_LANG_COUNT];
+
 static void analyze                 (ZThreadSem *, ZNode *);
 static void analyzeStruct           (ZThreadSem *, ZNode *);
 static void analyzeEnum             (ZThreadSem *, ZNode *);
@@ -1003,6 +1005,19 @@ static ZType *resolveLiteralType(ZThreadSem *ctx, ZToken *curr) {
         t->kind = Z_TYPE_POINTER;
         t->base   = base;
         break;
+    }
+    case TOK_STREAM: {
+        ZNode *intstr = LangItems[Z_LANG_INTERPOLATED_STRING];
+        if (!intstr) {
+            zlog(ctx->state, t->tok, Z00AA);
+            return NULL;
+        }
+        ZType *arr          = makeTypeThread(ctx, Z_TYPE_ARRAY);
+        arr->array.size     = 0;
+        arr->array.dynamic  = false;
+        arr->array.base     = intstr->resolved;
+        arr->tok            = t->tok;
+        return arr;
     }
     default: {
         t->primitive.token = makeTokenThread(ctx, TOK_VOID, NULL);

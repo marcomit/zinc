@@ -302,18 +302,19 @@ static void pushCodepointUtf8(char **buff, u32 cp) {
 static ZToken **parseInterpolatedString(ZLexer *l) {
     if (*l->current != '{') return NULL;
     ZToken **list = NULL;
-    char *start = l->current;
+    i64 baseDepth = l->depth;
 
     ZToken *startInterp = maketoken(TOK_STR_START, l->current, l->current+1);
-    l->current++;
-    addToken(l, startInterp);
+    next(l);
+    l->depth++;
+    vecpush(list, startInterp);
 
     ZToken *curr = NULL;
     while (emitNextToken(l, &curr)) {
         if (!curr) break;
-        if (curr->type == TOK_LBRACKET && l->depth < 0 && *l->current == '"') {
+        if (curr->type == TOK_RBRACKET && l->depth == baseDepth) {
             curr->type = TOK_STR_END;
-            l->current++;
+            vecpush(list, curr);
             break;
         }
         vecpush(list, curr);
@@ -332,18 +333,24 @@ static ZToken *parseString(ZLexer *l) {
     char *buff = NULL;
     char *src = l->current;
 
-    ZToken *list = NULL;
+    ZToken **list = NULL;
     while (*src && *src != '"') {
         u32 cp;
         if (*src == '\\' && *(src + 1)) {
             src++;
             cp = parseEscapeChar(l, &src);
         } else if (interpolated && *src == '{') {
-            ZToken *lit = makestring(start, start, l->current);
+            vecpush(buff, '\0');
+            ZToken *lit = makestring(strdup(buff), start, l->current);
+            vecpush(list, lit);
             l->col += src - l->current;
             l->current = src;
             ZToken **stream = parseInterpolatedString(l);
+            vecunion(list, stream, veclen(stream));
+            src = l->current;
             type = TOK_STREAM;
+            vecsetlen(buff, 0);
+            continue;
         } else {
             cp = decodeUtf8(&src);
         }
@@ -363,7 +370,12 @@ static ZToken *parseString(ZLexer *l) {
     vecpush(buff, '\0');
     l->current = src;
 
-    return makestring(buff, start, l->current);
+    ZToken *lit = makestring(buff, start, l->current);
+    if (type == TOK_STREAM) {
+        ZToken *stream = maketoken(TOK_STREAM, start - 1, l->current);
+        stream->stream = list;
+        return stream;
+    } else return lit;
 }
 
 static ZToken *makeRune(u32 codepoint, char *start, char *end) {
@@ -416,7 +428,7 @@ static ZToken *parseSymbol(ZLexer *l) {
     #undef TOK_SYMBOLS
     #undef DEF
 
-    if (sym) {
+    if (!sym) {
         zlog(l->state, veclast(l->tokens), Z1004);
         ZToken *tok = maketoken(0, l->current, l->current);
         tok->str = "";
@@ -596,7 +608,7 @@ static bool emitNextToken(ZLexer *l, ZToken **curr) {
 
     char *sourcePtr = l->current;
     char *sourceLinePtr = l->line;
-    if (*l->current == '"') {
+    if (*l->current == '"' || (*l->current == '#' && l->current[1] == '"')) {
         *curr = parseString(l);
     } else if (*l->current == '\'') {
         *curr = parseRune(l);
