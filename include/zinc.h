@@ -453,7 +453,12 @@ typedef struct {
     ZInterpolationType type;
     union {
         ZToken  *literal;
-        ZNode   *expr;
+        struct {
+            ZNode   *expr;
+
+            /* Reference to the implementation of the write method. */
+            ZNode   *writable;
+        };
     };
 } ZInterpolation;
 

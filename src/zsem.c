@@ -2221,6 +2221,38 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         }
         break;
 
+    case NODE_INTERPOLATION: {
+        ZNode *writable = LangItems[Z_LANG_WRITABLE];
+        for (usize i = 0; i < veclen(curr->interpolation); i++) {
+            ZInterpolation *interp = curr->interpolation[i];
+            switch (interp->type) {
+            case Z_INTERP_EXPR:
+                interp->expr->resolved = resolveType(ctx, interp->expr, NULL);
+                if (writable &&
+                    satisfyFacet(ctx, interp->expr->resolved, writable->resolved)) {
+                    interp->expr = implicitCast(
+                        ctx, interp->expr, writable->resolved
+                    );
+                }
+                break;
+            case Z_INTERP_LIT: break;
+            }
+        }
+        ZNode *intstr = LangItems[Z_LANG_INTERPOLATED_STRING];
+        if (!intstr) {
+            zlog(ctx->state, curr->tok, Z00AA);
+            return NULL;
+        }
+        ZType *arr          = makeTypeThread(ctx, Z_TYPE_ARRAY);
+        arr->array.size     = 0;
+        arr->array.dynamic  = false;
+        arr->array.base     = intstr->resolved;
+        arr->tok            = curr->tok;
+        result = arr;
+
+        break;
+    }
+
     default:
         zlog(ctx->state, curr->tok, Z9007, curr->type);
         break;
@@ -2437,7 +2469,8 @@ static ZType *resolveArrSubscript(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
 static bool satisfyFacet(ZThreadSem *ctx, ZType *type, ZType *facet) {
     if (!type) return false;
     if (type->kind != Z_TYPE_POINTER) {
-        zlog(ctx->state, type->tok, Z303C);
+        // zlog(ctx->state, type->tok, Z303C);
+        return false;
     }
     ZFuncTable *table = resolveFuncTable(ctx, type);
 

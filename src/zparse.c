@@ -328,8 +328,9 @@ static ZNode *parseArrayInit(ZParser *parser) {
 }
 
 static ZInterpolation *makeinterpolation(ZInterpolationType type, void *ptr) {
-    ZInterpolation *self = zalloc(ZInterpolation);
-    self->expr = ptr;
+    ZInterpolation *self    = zalloc(ZInterpolation);
+    self->expr              = ptr;
+    self->type              = type;
     return self;
 }
 
@@ -343,6 +344,7 @@ static ZNode *parseLit(ZParser *parser) {
         return node;
     }
 
+    consume(parser);
     ZNode *node = makenode(NODE_INTERPOLATION);
     node->tok = start;
     ZTokenStream *prev = parser->source;
@@ -352,8 +354,12 @@ static ZNode *parseLit(ZParser *parser) {
         ZInterpolation *interp = NULL;
         if (check(parser, TOK_STR_START)) {
             consume(parser);
+            ZNode *expr = parseExpr(parser);
+            if (!match(parser, TOK_STR_END)) {
+                error(parser->state, peek(parser), "Expected the end of the interpolation");
+            }
+            interp = makeinterpolation(Z_INTERP_EXPR, expr);
         } else if (check(parser, TOK_STR_LIT)) {
-            ZToken *lit = consume(parser);
             interp = makeinterpolation(Z_INTERP_LIT, consume(parser));
         } else {
             // error

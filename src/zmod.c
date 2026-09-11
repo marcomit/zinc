@@ -770,6 +770,21 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->unwrap.orExpr, depth);
         break;
 
+    case NODE_INTERPOLATION:
+        printf("\n");
+        for (usize i = 0; i < veclen(node->interpolation); i++) {
+            switch (node->interpolation[i]->type) {
+            case Z_INTERP_LIT:
+                indent(depth);
+                printf("%s\n", stoken(node->interpolation[i]->literal));
+                break;
+            case Z_INTERP_EXPR:
+                printNode(node->interpolation[i]->expr, depth);
+                break;
+            }
+        }
+        break;
+
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
