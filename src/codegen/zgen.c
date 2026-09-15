@@ -2877,25 +2877,13 @@ LLVMValueRef getFlagOptional(ZCodegen *ctx,
     return _getFlagOptional(ctx, type, value, LLVMIntEQ);
 }
 
-// static LLVMValueRef genLeftCond(ZCodegen *ctx, LLVMValueRef val, ZType *type) {
-//     if (!type) return NULL;
-//     switch (type->kind) {
-//     case Z_TYPE_PRIMITIVE: return val;
-//     case Z_TYPE_OPTIONAL:
-//         if (type->optional->kind == Z_TYPE_POINTER) return val;
-//     case Z_TYPE_RESULT:
-//         return LLVMBuildExtractValue(ctx->builder, val, 0, label(ctx, "extract"));
-//     default: return NULL;
-//     }
-//     return NULL;
-// }
-
 static LLVMValueRef genCond(ZCodegen *ctx,
     LLVMValueRef left, ZType *type, LLVMIntPredicate predicate) {
-    if (!type || !left) return NULL;
+    if (!type || !left || !typeKindIs(type->kind, TYPE_COMPARABLE_MASK)) return NULL;
     LLVMValueRef right = NULL;
 
     switch (type->kind) {
+    case Z_TYPE_POINTER:
     case Z_TYPE_PRIMITIVE:
         right = LLVMConstNull(genType(ctx, type));
         break;
@@ -2911,7 +2899,8 @@ static LLVMValueRef genCond(ZCodegen *ctx,
         right = LLVMConstNull(i8Type);
         left = LLVMBuildExtractValue(ctx->builder, left, 1, label(ctx, "cond"));
     default:
-        break;
+        error(ctx->state, type->tok, "Invalid type %s", stype(type));
+        return NULL;
     }
 
     return LLVMBuildICmp(

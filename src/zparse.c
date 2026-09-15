@@ -2273,15 +2273,16 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
             cur->prop = consume(parser);
             cur->args = NULL;
 
-            expect(parser, TOK_LPAREN);
-            if (!check(parser, TOK_RPAREN)) {
-                do {
-                    ZVarDestructPattern *item = parseDestructVar(parser, conditional);
-                    if (!item) break;
-                    vecpush(cur->args, item);
-                } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+            if (match(parser, TOK_LPAREN)) {
+                if (!check(parser, TOK_RPAREN)) {
+                    do {
+                        ZVarDestructPattern *item = parseDestructVar(parser, conditional);
+                        if (!item) break;
+                        vecpush(cur->args, item);
+                    } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+                }
+                expect(parser, TOK_RPAREN);
             }
-            expect(parser, TOK_RPAREN);
         } else {
             cur = makeVarDestructPattern(Z_VAR_IDENT);
             cur->ident = tok;
