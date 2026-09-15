@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2025, Marco Menegazzi
+
+#ifdef ZMIR_INSTRUCTIONS
+
+/*         builder           category        emitted IR              */
+INSTR(Alloca,           MEMORY,         "alloca")
+INSTR(Load2,            MEMORY,         "load")
+INSTR(Store,            MEMORY,         "store")
+INSTR(GEP2,             MEMORY,         "getelementptr")
+INSTR(StructGEP2,       MEMORY,         "getelementptr (field)")
+INSTR(MemSet,           MEMORY,         "call llvm.memset.*")
+
+INSTR(Add,              INT_ARITH,      "add")
+INSTR(Sub,              INT_ARITH,      "sub")
+INSTR(Mul,              INT_ARITH,      "mul")
+INSTR(SDiv,             INT_ARITH,      "sdiv")
+INSTR(UDiv,             INT_ARITH,      "udiv")
+INSTR(SRem,             INT_ARITH,      "srem")
+INSTR(URem,             INT_ARITH,      "urem")
+
+INSTR(FAdd,             FLOAT_ARITH,    "fadd")
+INSTR(FSub,             FLOAT_ARITH,    "fsub")
+INSTR(FMul,             FLOAT_ARITH,    "fmul")
+INSTR(FDiv,             FLOAT_ARITH,    "fdiv")
+INSTR(FRem,             FLOAT_ARITH,    "frem")
+
+INSTR(And,              BITWISE,        "and")
+INSTR(Or,               BITWISE,        "or")
+INSTR(Xor,              BITWISE,        "xor")
+INSTR(Shl,              BITWISE,        "shl")
+INSTR(LShr,             BITWISE,        "lshr")
+INSTR(AShr,             BITWISE,        "ashr")
+
+INSTR(ICmp,             COMPARE,        "icmp")
+INSTR(FCmp,             COMPARE,        "fcmp")
+
+INSTR(Trunc,            CAST,           "trunc")
+INSTR(ZExt,             CAST,           "zext")
+INSTR(SExt,             CAST,           "sext")
+INSTR(ZExtOrBitCast,    CAST,           "zext | bitcast")
+INSTR(FPTrunc,          CAST,           "fptrunc")
+INSTR(FPExt,            CAST,           "fpext")
+INSTR(FPToSI,           CAST,           "fptosi")
+INSTR(FPToUI,           CAST,           "fptoui")
+INSTR(SIToFP,           CAST,           "sitofp")
+INSTR(UIToFP,           CAST,           "uitofp")
+INSTR(PtrToInt,         CAST,           "ptrtoint")
+INSTR(IntToPtr,         CAST,           "inttoptr")
+INSTR(BitCast,          CAST,           "bitcast")
+
+INSTR(ExtractValue,     AGGREGATE,      "extractvalue")
+
+INSTR(Br,               CONTROL,        "br")
+INSTR(CondBr,           CONTROL,        "br i1")
+INSTR(Ret,              CONTROL,        "ret")
+INSTR(RetVoid,          CONTROL,        "ret void")
+INSTR(Phi,              CONTROL,        "phi")
+INSTR(Unreachable,      CONTROL,        "unreachable")
+INSTR(Call2,            CONTROL,        "call")
+
+INSTR(GlobalString,     GLOBAL,         "private constant [N x i8]")
+INSTR(GlobalStringPtr,  GLOBAL,         "private constant + getelementptr")
+
+#endif
+
+#ifdef ZMIR_ICMP
+
+/*       predicate        emitted IR */
+ICMP(LLVMIntEQ,      "eq")
+ICMP(LLVMIntNE,      "ne")
+ICMP(LLVMIntUGT,     "ugt")
+ICMP(LLVMIntUGE,     "uge")
+ICMP(LLVMIntULT,     "ult")
+ICMP(LLVMIntULE,     "ule")
+ICMP(LLVMIntSGT,     "sgt")
+ICMP(LLVMIntSGE,     "sge")
+ICMP(LLVMIntSLT,     "slt")
+ICMP(LLVMIntSLE,     "sle")
+
+#endif
+
+#ifdef ZMIR_FCMP
+
+FCMP(LLVMRealOEQ,    "oeq")
+FCMP(LLVMRealONE,    "one")
+FCMP(LLVMRealOGT,    "ogt")
+FCMP(LLVMRealOGE,    "oge")
+FCMP(LLVMRealOLT,    "olt")
+FCMP(LLVMRealOLE,    "ole")
+
+#endif
