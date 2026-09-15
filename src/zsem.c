@@ -720,7 +720,14 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
         return a;
     }
 
+
     if (typesEqual(a, b)) return b;
+
+    if (a->kind == Z_TYPE_OPTIONAL) {
+        return typesCompatible(ctx, a->optional, b);
+    } else if (b->kind == Z_TYPE_OPTIONAL) {
+        return typesCompatible(ctx, a, b->optional);
+    }
 
     if (b->kind == Z_TYPE_SUM) {
         for (usize i = 0; i < veclen(b->sumType); i++)
@@ -1264,16 +1271,34 @@ static ZFuncTable *resolveFuncTable(ZThreadSem *ctx, ZType *obj) {
 static ZNode *resolveFuncCallEmbedded(ZThreadSem *ctx,
     ZNode *curr, ZType *obj, ZToken *prop) {
     ZNode *ptr = NULL;
-    if (obj && obj->kind == Z_TYPE_STRUCT) {
-        for (usize i = 0; i < veclen(obj->strct.fields); i++) {
-            ZNode *field = obj->strct.fields[i];
-            if (field->type != NODE_EMBED_FIELD) continue;
-            if (ptr) {
-                zlog(ctx->state, prop, Z00A3, stype(ptr->resolved));
-            } else {
-                ptr = resolveFuncCallEmbedded(
-                    ctx, curr, field->resolved, prop);
+    if (obj) {
+        switch (obj->kind) {
+        case Z_TYPE_STRUCT:
+            for (usize i = 0; i < veclen(obj->strct.fields); i++) {
+                ZNode *field = obj->strct.fields[i];
+                if (field->type != NODE_EMBED_FIELD) continue;
+                if (ptr) {
+                    zlog(ctx->state, prop, Z00A3, stype(ptr->resolved));
+                } else {
+                    ptr = resolveFuncCallEmbedded(
+                        ctx, curr, field->resolved, prop);
+                }
             }
+            break;
+        case Z_TYPE_FACET:
+            for (usize i = 0; i < veclen(obj->facet.funcs); i++) {
+                ZNode *field = obj->facet.funcs[i];
+                if (field->type != NODE_EMBED_FIELD) continue;
+                if (ptr) {
+                    zlog(ctx->state, prop, Z00A3, stype(ptr->resolved));
+                } else {
+                    ptr = resolveFuncCallEmbedded(
+                        ctx, curr, field->resolved, prop);
+                }
+            }
+            break;
+
+        default: break;
         }
     }
 
@@ -2407,6 +2432,9 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         return pointer;
     } else if (objType->kind == Z_TYPE_FACET) {
         ZType *func = NULL;
+        ZNode *node = resolveStaticFuncTable(ctx, objType, field);
+        if (node) return node->resolved;
+
         for (usize i = 0; i < veclen(objType->facet.funcs); i++) {
             ZNode *funcField = objType->facet.funcs[i];
             if (tokeneq(field, funcField->field.identifier)) {
