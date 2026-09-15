@@ -61,32 +61,33 @@ INSTR(Call2,            CONTROL,        "call")
 
 INSTR(GlobalString,     GLOBAL,         "private constant [N x i8]")
 INSTR(GlobalStringPtr,  GLOBAL,         "private constant + getelementptr")
+INSTR(ConstInt,         GLOBAL,         "i<width> value")
 
 #endif
 
 #ifdef ZMIR_ICMP
 
 /*       predicate        emitted IR */
-ICMP(LLVMIntEQ,      "eq")
-ICMP(LLVMIntNE,      "ne")
-ICMP(LLVMIntUGT,     "ugt")
-ICMP(LLVMIntUGE,     "uge")
-ICMP(LLVMIntULT,     "ult")
-ICMP(LLVMIntULE,     "ule")
-ICMP(LLVMIntSGT,     "sgt")
-ICMP(LLVMIntSGE,     "sge")
-ICMP(LLVMIntSLT,     "slt")
-ICMP(LLVMIntSLE,     "sle")
+ICMP(IntEQ,      "eq")
+ICMP(IntNE,      "ne")
+ICMP(IntUGT,     "ugt")
+ICMP(IntUGE,     "uge")
+ICMP(IntULT,     "ult")
+ICMP(IntULE,     "ule")
+ICMP(IntSGT,     "sgt")
+ICMP(IntSGE,     "sge")
+ICMP(IntSLT,     "slt")
+ICMP(IntSLE,     "sle")
 
 #endif
 
 #ifdef ZMIR_FCMP
 
-FCMP(LLVMRealOEQ,    "oeq")
-FCMP(LLVMRealONE,    "one")
-FCMP(LLVMRealOGT,    "ogt")
-FCMP(LLVMRealOGE,    "oge")
-FCMP(LLVMRealOLT,    "olt")
-FCMP(LLVMRealOLE,    "ole")
+FCMP(RealOEQ,    "oeq")
+FCMP(RealONE,    "one")
+FCMP(RealOGT,    "ogt")
+FCMP(RealOGE,    "oge")
+FCMP(RealOLT,    "olt")
+FCMP(RealOLE,    "ole")
 
 #endif
