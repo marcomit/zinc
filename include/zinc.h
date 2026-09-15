@@ -257,7 +257,7 @@ typedef enum {
 } ZNodeType;
 
 typedef enum ZTypeKind {
-    #define TYPE(name, masks, prime) name,
+    #define TYPE(name, prime, masks) name,
     #include "ztype.def"
     #undef TYPE
 

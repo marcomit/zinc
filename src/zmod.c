@@ -272,7 +272,7 @@ char *stype(ZType *type) {
 }
 
 static const u64 KIND_PRIME[] = {
-    #define TYPE(name, masks, prime) [name] = prime,
+    #define TYPE(name, prime, masks) [name] = prime,
     #include "ztype.def"
     #undef TYPE
 };
@@ -280,7 +280,7 @@ _Static_assert(sizeof(KIND_PRIME) / sizeof(KIND_PRIME[0]) == Z_TYPE_COUNT,
                "KIND_PRIME must have exactly one entry per ZTypeKind");
 
 const u16 ZTypeMasks[Z_TYPE_COUNT] = {
-    #define TYPE(name, masks, prime) [name] = (masks),
+    #define TYPE(name, prime, masks) [name] = (masks),
     #include "ztype.def"
     #undef TYPE
 };

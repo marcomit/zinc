@@ -25,6 +25,7 @@ LLVMValueRef        genLValue           (ZCodegen *, ZNode *);
 static LLVMValueRef genForeign          (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto    (ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genFacetConstruct   (ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
+static LLVMValueRef genCond             (ZCodegen *, LLVMValueRef, ZType *, LLVMIntPredicate);
 static void         buildNestedFuncVar  (ZCodegen *, ZNode *, LLVMValueRef);
 
 /* ========== Native types ==========*/
@@ -2212,6 +2213,10 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
     }
 }
 
+static inline LLVMValueRef genNot(ZCodegen *ctx, ZType *base, LLVMValueRef val, const char *l) {
+    return genCond(ctx, val, base, LLVMIntEQ);
+}
+
 static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     if (node->unary.operat->type == TOK_REF)
         return genLValue(ctx, node->unary.operand);
@@ -2251,7 +2256,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
         }
         return loaded;
     }
-    case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
+    case TOK_NOT:   return genNot(ctx, node->unary.operand->resolved, arg, l);
     case TOK_REF:   return genLValue(ctx, node->unary.operand);
     case TOK_BITNOT: {
         LLVMTypeRef ref         = LLVMTypeOf(arg);
@@ -2872,20 +2877,21 @@ LLVMValueRef getFlagOptional(ZCodegen *ctx,
     return _getFlagOptional(ctx, type, value, LLVMIntEQ);
 }
 
-static LLVMValueRef genLeftCond(ZCodegen *ctx, LLVMValueRef val, ZType *type) {
-    if (!type) return NULL;
-    switch (type->kind) {
-    case Z_TYPE_PRIMITIVE: return val;
-    case Z_TYPE_OPTIONAL:
-        if (type->optional->kind == Z_TYPE_POINTER) return val;
-    case Z_TYPE_RESULT:
-        return LLVMBuildExtractValue(ctx->builder, val, 0, label(ctx, "extract"));
-    default: return NULL;
-    }
-    return NULL;
-}
+// static LLVMValueRef genLeftCond(ZCodegen *ctx, LLVMValueRef val, ZType *type) {
+//     if (!type) return NULL;
+//     switch (type->kind) {
+//     case Z_TYPE_PRIMITIVE: return val;
+//     case Z_TYPE_OPTIONAL:
+//         if (type->optional->kind == Z_TYPE_POINTER) return val;
+//     case Z_TYPE_RESULT:
+//         return LLVMBuildExtractValue(ctx->builder, val, 0, label(ctx, "extract"));
+//     default: return NULL;
+//     }
+//     return NULL;
+// }
 
-static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
+static LLVMValueRef genCond(ZCodegen *ctx,
+    LLVMValueRef left, ZType *type, LLVMIntPredicate predicate) {
     if (!type || !left) return NULL;
     LLVMValueRef right = NULL;
 
@@ -2909,7 +2915,7 @@ static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
     }
 
     return LLVMBuildICmp(
-        ctx->builder, LLVMIntNE, left, right, label(ctx, "cond")
+        ctx->builder, predicate, left, right, label(ctx, "cond")
     );
 }
 
@@ -2920,7 +2926,7 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     case UNWRAP_BREAK:
     case UNWRAP_CONTINUE:
     case UNWRAP_RETURN: {
-        LLVMValueRef cond = genCond(ctx, base, node->unwrap.base->resolved);
+        LLVMValueRef cond = genCond(ctx, base, node->unwrap.base->resolved, LLVMIntNE);
         LLVMBasicBlockRef success = makeblock(ctx, "unwrap.success");
         LLVMBasicBlockRef then = makeblock(ctx, "unwrap.failure");
 
@@ -2940,7 +2946,7 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
         );
 
         LLVMValueRef cond           = genCond(
-            ctx, base, node->unwrap.base->resolved
+            ctx, base, node->unwrap.base->resolved, LLVMIntNE
         );
 
         LLVMBasicBlockRef origin    = LLVMGetInsertBlock(ctx->builder);

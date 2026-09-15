@@ -1860,7 +1860,8 @@ static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return operand->base;
 
     case TOK_NOT:
-        curr->unary.operand = implicitCast(ctx, curr->unary.operand, u1Type);
+
+        // curr->unary.operand = implicitCast(ctx, curr->unary.operand, u1Type);
         return u1Type;
 
     case TOK_ESCL:
