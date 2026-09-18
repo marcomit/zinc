@@ -720,7 +720,6 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
         return a;
     }
 
-
     if (typesEqual(a, b)) return b;
 
     if (a->kind == Z_TYPE_OPTIONAL) {
@@ -2426,9 +2425,9 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         }
 
         return base->tuple[field->integer];
-    } else if (base->kind == Z_TYPE_ARRAY && strcmp(field->str, "len") == 0) {
+    } else if (base->kind == Z_TYPE_ARRAY && strcmp(stoken(field), "len") == 0) {
         return u64Type;
-    } else if (base->kind == Z_TYPE_ARRAY && strcmp(field->str, "ptr") == 0) {
+    } else if (base->kind == Z_TYPE_ARRAY && strcmp(stoken(field), "ptr") == 0) {
         ZType *pointer = makeTypeThread(ctx, Z_TYPE_POINTER);
         pointer->base = base->array.base;
         return pointer;

@@ -26,18 +26,21 @@ static LLVMValueRef genForeign          (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto    (ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genFacetConstruct   (ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
 static LLVMValueRef genCond             (ZCodegen *, LLVMValueRef, ZType *, LLVMIntPredicate);
+static LLVMValueRef genStrLitGlobal     (ZCodegen *, ZToken *, ZType *);
+static ZLLVMStack   *getStackValue      (ZCodegen *, ZNode *);
 static void         buildNestedFuncVar  (ZCodegen *, ZNode *, LLVMValueRef);
 
 /* ========== Native types ==========*/
 
-_Thread_local LLVMTypeRef i0Type   = NULL;
-_Thread_local LLVMTypeRef i1Type   = NULL;
-_Thread_local LLVMTypeRef i8Type   = NULL;
-_Thread_local LLVMTypeRef i16Type  = NULL;
-_Thread_local LLVMTypeRef i32Type  = NULL;
-_Thread_local LLVMTypeRef i64Type  = NULL;
-_Thread_local LLVMTypeRef f32Type  = NULL;
-_Thread_local LLVMTypeRef f64Type  = NULL;
+_Thread_local LLVMTypeRef i0Type        = NULL;
+_Thread_local LLVMTypeRef i1Type        = NULL;
+_Thread_local LLVMTypeRef i8Type        = NULL;
+_Thread_local LLVMTypeRef i16Type       = NULL;
+_Thread_local LLVMTypeRef i32Type       = NULL;
+_Thread_local LLVMTypeRef i64Type       = NULL;
+_Thread_local LLVMTypeRef f32Type       = NULL;
+_Thread_local LLVMTypeRef f64Type       = NULL;
+_Thread_local LLVMTypeRef StringType    = NULL;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
@@ -153,6 +156,13 @@ static void initNativeTypes(ZCodegen *ctx) {
 
     f32Type = LLVMFloatTypeInContext(ctx->ctx);
     f64Type = LLVMDoubleTypeInContext(ctx->ctx);
+
+    StringType = LLVMStructTypeInContext(
+        ctx->ctx,
+        (LLVMTypeRef []){
+            i64Type, LLVMPointerTypeInContext(ctx->ctx, 0)
+        }, 2, false
+    );
 
     // LLVMSourceLocation = LLVMStructCreateNamed(
     //         ctx->ctx, "builtin.SourceLocation"
@@ -822,8 +832,11 @@ static LLVMValueRef genLitTok(ZCodegen *ctx, ZToken *tok, ZType *type) {
     case TOK_STREAM:
         return NULL;
     case TOK_STR_LIT: {
-        LLVMValueRef data = LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx, "string"));
-        return data;
+        LLVMValueRef strPtr = genStrLitGlobal(ctx, tok, type);
+        return LLVMBuildLoad2(
+            ctx->builder,
+            genType(ctx, type), strPtr, label(ctx, "string.value")
+       );
     }
     case TOK_INT_LIT:
     case TOK_RUNE_LIT:
@@ -1400,6 +1413,7 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
         );
     } else if (objType->kind == Z_TYPE_ARRAY) {
         LLVMValueRef ptr = genLValue(ctx, node->memberAccess.object);
+        if (!ptr) return NULL;
         i32 index = -1;
 
         if      (strcmp(tok->str, "len") == 0) index = 0;
@@ -1805,6 +1819,41 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     return call;
 }
 
+static LLVMValueRef genStrLitGlobal(ZCodegen *ctx, ZToken *tok, ZType *resolved) {
+
+    const char *s           = stoken(tok);
+    usize len               = strlen(s);
+
+    LLVMTypeRef dataType    = LLVMArrayType2(i8Type, len + 1);
+    LLVMValueRef dataGlobal = LLVMAddGlobal(ctx->mod, dataType, label(ctx, "str.data"));
+
+    LLVMSetInitializer(
+        dataGlobal,
+        LLVMConstStringInContext2(ctx->ctx, s, len, false)
+    );
+    LLVMSetGlobalConstant(dataGlobal, true);
+    LLVMSetLinkage(dataGlobal, LLVMPrivateLinkage);
+    LLVMSetUnnamedAddr(dataGlobal, LLVMGlobalUnnamedAddr);
+
+    LLVMTypeRef descType = genType(ctx, resolved);
+    LLVMValueRef fields[] = {
+        LLVMConstInt(i64Type, len, false),
+        dataGlobal
+    };
+
+    LLVMValueRef globVal = LLVMAddGlobal(ctx->mod, descType, label(ctx, "str"));
+
+    LLVMSetInitializer(
+        globVal,
+        LLVMConstStructInContext(ctx->ctx, fields, 2, false)
+    );
+    LLVMSetGlobalConstant(globVal, true);
+    LLVMSetLinkage(globVal, LLVMPrivateLinkage);
+    LLVMSetUnnamedAddr(globVal, LLVMGlobalUnnamedAddr);
+
+    return globVal;
+}
+
 /**
  * @brief Loads the addresso of the expression.
  *
@@ -1822,6 +1871,10 @@ LLVMValueRef genLValue(ZCodegen *ctx, ZNode *node) {
     case NODE_TUPLE_LIT:        return genTupleLitPtr       (ctx, node);
     case NODE_MEMBER:           return genMemberAccessPtr   (ctx, node);
     case NODE_SUBSCRIPT:        return genSubscriptPtr      (ctx, node);
+    case NODE_LITERAL:
+        if (node->tok->type == TOK_STR_LIT)
+            return genStrLitGlobal(ctx, node->tok, node->resolved);
+        break;
     case NODE_CALL: {
         genCall(ctx, node);
         ZLLVMStack *stack = getStackValue(ctx, node);
@@ -2969,7 +3022,7 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
 }
 
 static void storeInterpolation(ZCodegen *ctx, LLVMValueRef slot, ZInterpolation *interp) {
-    ZNode *writable = LangItems[Z_LANG_WRITABLE];
+    // ZNode *writable = LangItems[Z_LANG_WRITABLE];
 
     switch (interp->type) {
     case Z_INTERP_EXPR:
