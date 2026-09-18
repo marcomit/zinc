@@ -1006,11 +1006,12 @@ static ZType *resolveLiteralType(ZThreadSem *ctx, ZToken *curr) {
         break;
     }
     case TOK_STR_LIT: {
-        /* String literals are *char */
+        /* String literals are []char */
         ZType *base = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
         base->primitive.token = makeTokenThread(ctx, TOK_CHAR, NULL);
-        t->kind = Z_TYPE_POINTER;
-        t->base   = base;
+        t->kind = Z_TYPE_ARRAY;
+        t->array.base = base;
+        t->array.size = strlen(stoken(curr));
         break;
     }
     case TOK_STREAM: {

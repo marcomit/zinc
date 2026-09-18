@@ -26,6 +26,7 @@ static LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
 }
 
 static LLVMValueRef genReflect(ZCodegen *ctx, ZNode *node) {
+
     return NULL;
 }
 
@@ -93,14 +94,6 @@ static LLVMValueRef genPtrFromInt(ZCodegen *ctx, ZNode *node) {
 #define ensure(cond, tok, ...) if (!(cond)) {                               \
     zlog(state, tok, __VA_ARGS__);                                          \
     return;                                                                 \
-}
-
-static ZType *ZPtr(ZType *base) {
-    ZType *res  = maketype(Z_TYPE_POINTER);
-    res->tok    = base->tok;
-    res->base   = base;
-    res->hash   = hash(res);
-    return res;
 }
 
 ZType *LangExpectedType[Z_LANG_COUNT] = { NULL };

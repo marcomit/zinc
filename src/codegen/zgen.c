@@ -816,12 +816,15 @@ static void genChainDefer(ZCodegen *ctx, ZLLVMScope *scope) {
     }
 }
 
+// TODO: compile string literals as an array chars.
 static LLVMValueRef genLitTok(ZCodegen *ctx, ZToken *tok, ZType *type) {
     switch (tok->type) {
     case TOK_STREAM:
         return NULL;
-    case TOK_STR_LIT:
-        return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx, "string"));
+    case TOK_STR_LIT: {
+        LLVMValueRef data = LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx, "string"));
+        return data;
+    }
     case TOK_INT_LIT:
     case TOK_RUNE_LIT:
         return LLVMConstInt(i32Type, tok->integer, true);
@@ -2213,7 +2216,7 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
     }
 }
 
-static inline LLVMValueRef genNot(ZCodegen *ctx, ZType *base, LLVMValueRef val, const char *l) {
+static inline LLVMValueRef genNot(ZCodegen *ctx, ZType *base, LLVMValueRef val) {
     return genCond(ctx, val, base, LLVMIntEQ);
 }
 
@@ -2256,7 +2259,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
         }
         return loaded;
     }
-    case TOK_NOT:   return genNot(ctx, node->unary.operand->resolved, arg, l);
+    case TOK_NOT:   return genNot(ctx, node->unary.operand->resolved, arg);
     case TOK_REF:   return genLValue(ctx, node->unary.operand);
     case TOK_BITNOT: {
         LLVMTypeRef ref         = LLVMTypeOf(arg);
@@ -2965,6 +2968,51 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+static void storeInterpolation(ZCodegen *ctx, LLVMValueRef slot, ZInterpolation *interp) {
+    ZNode *writable = LangItems[Z_LANG_WRITABLE];
+
+    switch (interp->type) {
+    case Z_INTERP_EXPR:
+        break;
+    case Z_INTERP_LIT:
+        break;
+    }
+}
+
+static LLVMValueRef genInterpolation(ZCodegen *ctx, ZNode *node) {
+    if (!LangItems[Z_LANG_INTERPOLATED_STRING]) {
+        error(ctx->state, node->tok, "Unable to compile interpolation due to missing lang-item 'interpolated_string', please define it!");
+        return NULL;
+    }
+
+    ZNode *writable = LangItems[Z_LANG_WRITABLE];
+    if (!writable) {
+        error(ctx->state, node->tok, "Unable to compile interpolation due to missing lang-item 'writable'");
+        return NULL;
+    }
+
+
+    ZLLVMStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        error(ctx->state, node->tok, "Missing stack value");
+        return NULL;
+    }
+
+    LLVMValueRef len = LLVMConstInt(i64Type, veclen(node->interpolation), false);
+    storeArray(ctx, stack, len);
+
+    LLVMTypeRef type = genType(ctx, writable->resolved);
+    for (usize i = 0; i < veclen(node->interpolation); i++) {
+        LLVMValueRef index  = LLVMConstInt(i64Type, i, false);
+        LLVMValueRef slot   = LLVMBuildGEP2(
+            ctx->builder,   type,   stack->elem,
+            &index,         1,      label(ctx, "interpolation.index")
+        );
+        storeInterpolation(ctx, slot, node->interpolation[i]);
+    }
+    return stack->stack;
+}
+
 LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef res = NULL;
     switch (node->type) {
@@ -2980,6 +3028,7 @@ LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
     case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
     case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
+    case NODE_INTERPOLATION:    res = genInterpolation  (ctx, node); break;
 
     case NODE_MEMBER:
         if (node->memberAccess.object &&

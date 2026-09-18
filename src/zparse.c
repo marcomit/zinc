@@ -2,7 +2,6 @@
 // Copyright (c) 2025, Marco Menegazzi
 
 #include "zinc.h"
-#include "zmem.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -68,7 +67,7 @@ static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
 static ZNode *parseVarInferred              (ZParser *);
 static ZNode *parseVarDefTyped              (ZParser *);
-static ZNode *parseBlockOrInline            (ZParser *);
+static ZNode *parseBlockOrInline            (ZParser *, bool);
 static ZNode *_parseStructLit               (ZParser *, ZToken **);
 
 /* File-level parsing functions */
@@ -1181,7 +1180,7 @@ static ZNode *parseCapabilityBlock(ZParser *parser) {
              !check(parser, TOK_DO)         &&
               match(parser, TOK_SEMICOLON)  );
 
-    ZNode *block                                = parseBlockOrInline(parser);
+    ZNode *block                                = parseBlockOrInline(parser, false);
     ZNode *capabilityBlock                      = makenode(NODE_CAPABILITY);
     capabilityBlock->capability.capabilities    = capabilities;
     capabilityBlock->capability.block           = block;
@@ -1253,18 +1252,19 @@ ZNode *parseStmt(ZParser *parser) {
     }
 }
 
-static ZNode *parseBlockOrInline(ZParser *parser) {
+static ZNode *parseBlockOrInline(ZParser *parser, bool wrap) {
+    ZToken *start = peek(parser);
     if (match(parser, TOK_DO)) {
         ZNode *expr = parseExpr(parser);
         if (!expr) {
             zlog(parser->state, peek(parser), Z2013);
             return NULL;
         }
-        return expr;
-        // ZNode *body = makenode(NODE_BLOCK);
-        // body->tok = start;
-        // vecpush(body->block, expr);
-        // return body;
+        if (!wrap) return expr;
+        ZNode *body = makenode(NODE_BLOCK);
+        body->tok = start;
+        vecpush(body->block, expr);
+        return body;
     } else if (check(parser, TOK_LBRACKET)) {
         return parseBlock(parser);
     } else {
@@ -1671,7 +1671,7 @@ static ZNode *parseCondDestructVar(ZParser *parser) {
 
 static ZNode *parseIfBlock(ZParser *parser) {
     if (check(parser, TOK_DO) || check(parser, TOK_LBRACKET)) {
-        return parseBlockOrInline(parser);
+        return parseBlockOrInline(parser, false);
     }
 
     ZNode *node = NULL;
@@ -1765,7 +1765,7 @@ static ZNode *parseWhile(ZParser *parser) {
     if (!cond) {
         zlog(parser->state, peek(parser), Z201F);
     }
-    ZNode *body = tryParse(parser, parseBlockOrInline(parser));
+    ZNode *body = tryParse(parser, parseBlockOrInline(parser, true));
 
     ZNode *node = makenode(NODE_WHILE);
     node->whileStmt.branch  = body;
@@ -1780,7 +1780,7 @@ static ZNode *parseForIn(ZParser *parser) {
     ZVarDestructPattern *binding = parseMultiDestructVar(parser);
     expect(parser, TOK_IN);
     ZNode *iter = tryParse(parser, parseExpr(parser));
-    ZNode *block = tryParse(parser, parseBlockOrInline(parser));
+    ZNode *block = tryParse(parser, parseBlockOrInline(parser, true));
 
     guard(binding && iter && block);
 
@@ -1798,7 +1798,7 @@ static ZNode *parseForLet(ZParser *parser) {
     expect(parser, TOK_FOR);
 
     ZNode *cond = tryParse(parser, parseCondDestructVar(parser));
-    ZNode *body = tryParse(parser, parseBlockOrInline(parser));
+    ZNode *body = tryParse(parser, parseBlockOrInline(parser, true));
     guard(body);
 
     ZNode *node = makenode(NODE_WHILE);
