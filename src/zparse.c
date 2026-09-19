@@ -62,6 +62,7 @@ static ZNode *parseAnonFunc                 (ZParser *);
 static ZNode *parseArrayLit                 (ZParser *);
 static ZNode *parseContinue                 (ZParser *);
 static ZNode *parseTupleLit                 (ZParser *);
+static ZType *parseBaseType                 (ZParser *);
 static ZType *parseFuncType                 (ZParser *);
 static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
@@ -938,7 +939,7 @@ static ZType *parseTypeArray(ZParser *parser) {
 
     expect(parser, TOK_RSBRACKET);
 
-    ZType *type = parseType(parser);
+    ZType *type = parseBaseType(parser);
     ensure(type, "Expected a type after [] brackets");
 
     ZType *arr = maketype(Z_TYPE_ARRAY);
@@ -2240,6 +2241,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
         bool isSumPattern =
             checkMask(parser, TOK_TYPES_MASK) ||
             check(parser, TOK_STAR) ||
+            check(parser, TOK_LSBRACKET) ||
             (check(parser, TOK_IDENT) && checkAhead(parser, TOK_LPAREN, 1));
 
         if (isSumPattern) {
@@ -2260,7 +2262,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
 
     ZToken *tok = consume(parser);
 
-    if (tokmask(tok, TOK_LITERAL)) {
+    if (tokmask(tok, TOK_LITERAL) && tok->type != TOK_STR_LIT) {
         cur = makeVarDestructPattern(Z_VAR_LIT);
         cur->ident = tok;
     } else if (tok->type == TOK_IDENT) {

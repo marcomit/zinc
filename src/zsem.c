@@ -703,45 +703,50 @@ static bool isComparable(ZThreadSem *ctx, ZType *type) {
  *
  * Note: this function does not work if a primitive type is aliased.
  * */
-static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
-    if (!a || !b) return NULL;
+static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
+    if (!from || !to) return NULL;
 
-    if (a->kind == Z_TYPE_FACET     &&
-        b->kind == Z_TYPE_POINTER   &&
-        satisfyFacet(ctx, b, a)     ) {
-        return a;
+    if (to->kind == Z_TYPE_FACET        &&
+        from->kind == Z_TYPE_POINTER    &&
+        satisfyFacet(ctx, from, to)     ) {
+        return from;
     }
 
-    if (typeKindIs(a->kind, TYPE_NULLABLE_MASK) && b->kind == Z_TYPE_NONE) {
-        return a;
-    } else if (typeKindIs(b->kind, TYPE_NULLABLE_MASK) && a->kind == Z_TYPE_NONE) {
-        return b;
-    } else if (a->kind == Z_TYPE_POINTER && b->kind == Z_TYPE_POINTER) {
-        return a;
+    if (to->kind == Z_TYPE_POINTER      &&
+        from->kind == Z_TYPE_ARRAY      ) {
+        return to;
     }
 
-    if (typesEqual(a, b)) return b;
-
-    if (a->kind == Z_TYPE_OPTIONAL) {
-        return typesCompatible(ctx, a->optional, b);
-    } else if (b->kind == Z_TYPE_OPTIONAL) {
-        return typesCompatible(ctx, a, b->optional);
+    if (typeKindIs(from->kind, TYPE_NULLABLE_MASK) && to->kind == Z_TYPE_NONE) {
+        return from;
+    } else if (typeKindIs(to->kind, TYPE_NULLABLE_MASK) && from->kind == Z_TYPE_NONE) {
+        return to;
+    } else if (from->kind == Z_TYPE_POINTER && to->kind == Z_TYPE_POINTER) {
+        return from;
     }
 
-    if (b->kind == Z_TYPE_SUM) {
-        for (usize i = 0; i < veclen(b->sumType); i++)
-            if (typesEqual(a, b->sumType[i])) return b;
-    }
-    if (a->kind == Z_TYPE_SUM) {
-        for (usize i = 0; i < veclen(a->sumType); i++)
-            if (typesEqual(b, a->sumType[i])) return a;
+    if (typesEqual(from, to)) return to;
+
+    if (from->kind == Z_TYPE_OPTIONAL) {
+        return typesCompatible(ctx, from->optional, to);
+    } else if (to->kind == Z_TYPE_OPTIONAL) {
+        return typesCompatible(ctx, from, to->optional);
     }
 
-    if (a->kind != Z_TYPE_PRIMITIVE || b->kind != Z_TYPE_PRIMITIVE)
+    if (to->kind == Z_TYPE_SUM) {
+        for (usize i = 0; i < veclen(to->sumType); i++)
+            if (typesEqual(from, to->sumType[i])) return to;
+    }
+    if (from->kind == Z_TYPE_SUM) {
+        for (usize i = 0; i < veclen(from->sumType); i++)
+            if (typesEqual(to, from->sumType[i])) return from;
+    }
+
+    if (from->kind != Z_TYPE_PRIMITIVE || to->kind != Z_TYPE_PRIMITIVE)
         return NULL;
 
-    ZToken *tokA    = a->primitive.token;
-    ZToken *tokB    = b->primitive.token;
+    ZToken *tokA    = from->primitive.token;
+    ZToken *tokB    = to->primitive.token;
     ZTokenType ta   = tokA->type;
     ZTokenType tb   = tokB->type;
 
@@ -751,17 +756,17 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
     u8 rb = typeRank(tb);
 
     if (isFloat(tokA) || isFloat(tokB)) {
-        return ra > rb ? a : b;
+        return ra > rb ? from : to;
     }
 
     if ((isSigned(tokA) && isSigned(tokB)) ||
         (isUnsigned(tokA) && isUnsigned(tokB)))
-        return ra > rb ? a : b;
+        return ra > rb ? from : to;
 
     /* signed vs unsigned */
     u8    signedRank   = isSigned(tokA) ? ra : rb;
     u8    unsignedRank = isSigned(tokA) ? rb : ra;
-    ZType *signedType  = isSigned(tokA) ? a  : b;
+    ZType *signedType  = isSigned(tokA) ? from  : to;
 
     if (signedRank > unsignedRank) return signedType;
 
@@ -772,7 +777,7 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *a, ZType *b) {
 
     ZType *promoted             = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
     promoted->primitive.token   = makeTokenThread(ctx, toSigned(signedRank + 1), NULL);
-    promoted->tok               = a->tok;
+    promoted->tok               = from->tok;
     return promoted;
 }
 
@@ -1628,7 +1633,7 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             return NULL;
         }
         structField->field.type = expectedType;
-        promoted = typesCompatible(ctx, expectedType, type);
+        promoted = typesCompatible(ctx, type, expectedType);
         if (!promoted) {
             zlog(ctx->state,
                 field->tok,
@@ -1712,20 +1717,25 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return left;
     }
 
+    if (op == TOK_EQ) {
+        /* Assignment is directional: the rhs is coerced to the lhs, never the
+         * other way round, so it must not go through the symmetric promotion. */
+        if (!isLvalue(curr->binary.left)) {
+            zlog(ctx->state, curr->binary.left->tok, Z3018);
+        }
+        if (!typesCompatible(ctx, right, left)) {
+            zlog(ctx->state, curr->binary.op, Z3019, stype(left), stype(right));
+        }
+        /* Assignment yields the type of the left-hand side. */
+        curr->binary.right = implicitCast(ctx, curr->binary.right, left);
+        return left;
+    }
+
     /* Auto promotion rules should be handled by typesCompatible. */
     ZType *promoted     = typesCompatible(ctx, left, right);
 
     if (!promoted) {
         zlog(ctx->state, curr->binary.op, Z3019, stype(left), stype(right));
-    }
-
-    if (op == TOK_EQ) {
-        /* Assignment yields the type of the left-hand side. */
-        if (!isLvalue(curr->binary.left)) {
-            zlog(ctx->state, curr->binary.left->tok, Z3018);
-        }
-        curr->binary.right = implicitCast(ctx, curr->binary.right, left);
-        return left;
     }
 
     curr->binary.left = implicitCast(ctx, curr->binary.left, promoted);
@@ -2217,7 +2227,7 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             // result->array.size = expr->array.size;
         }
 
-        if (!typesCompatible(ctx, result, expr)) {
+        if (!typesCompatible(ctx, expr, result)) {
             zlog(ctx->state, curr->tok, Z302B, stype(expr), stype(result));
         }
 
@@ -2536,7 +2546,7 @@ static void analyzeVar(ZThreadSem *ctx, ZNode *curr, bool isGlobal) {
 
     if (curr->resolved) {
         declaredType = resolveTypeRef(ctx, curr->resolved);
-        ZType *promoted = typesCompatible(ctx, declaredType, rvalueType);
+        ZType *promoted = typesCompatible(ctx, rvalueType, declaredType);
         if (rvalueType &&
             !promoted) {
 

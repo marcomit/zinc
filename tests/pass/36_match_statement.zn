@@ -3,7 +3,7 @@ c :: foreign {
 }
 
 Option :: enum {
-    Some(*char)
+    Some([]char)
     None
 }
 
@@ -21,20 +21,20 @@ doubleCond :: fn () (Option, Option) {
 
 printDoubleCond :: fn (cond: (Option, Option)) u0 {
     match cond {
-        (Option.Some(msg1), Option.Some(msg2))    -> c.printf("%s, %s\n", msg1, msg2),
-        (Option.Some(msg), Option.None())         -> c.printf("1:%s\n", msg),
-        (Option.None(), Option.Some(msg))         -> c.printf("2:%s\n", msg)
+        (Option.Some(msg1), Option.Some(msg2))    -> c.printf("%s, %s\n", msg1.ptr, msg2.ptr),
+        (Option.Some(msg), Option.None())         -> c.printf("1:%s\n", msg.ptr),
+        (Option.None(), Option.Some(msg))         -> c.printf("2:%s\n", msg.ptr)
     }
 }
 
 main :: fn () i32 {
     match fromFunc() {
-        Option.Some(msg)   -> c.printf("%s\n", msg),
+        Option.Some(msg)   -> c.printf("%s\n", msg.ptr),
         Option.None()      -> c.printf("none\n")
     }
 
     match nestedCond() {
-        (_, Option.Some(msg))  -> c.printf("%s\n", msg),
+        (_, Option.Some(msg))  -> c.printf("%s\n", msg.ptr),
         (val, Option.None())     -> c.printf("%d none\n", val)
     }
 
@@ -48,9 +48,8 @@ main :: fn () i32 {
 
     match nestedCond() {
         (1, Option.None()) -> c.printf("1 with none\n"),
-        (0, Option.Some(msg)) -> c.printf("0 with %s\n", msg),
-        (1, Option.Some("val")) -> c.printf("1 with val\n"),
-        (1, Option.Some(val)) -> c.printf("1 with %s\n", val)
+        (0, Option.Some(msg)) -> c.printf("0 with %s\n", msg.ptr),
+        (1, Option.Some(val)) -> c.printf("1 with %s\n", val.ptr)
     }
 
     return 0

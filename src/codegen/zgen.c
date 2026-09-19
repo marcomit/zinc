@@ -2515,6 +2515,20 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
         return genFacetConstruct(ctx, stack, to, node->castExpr.expr);
     }
 
+    if (from->kind == Z_TYPE_ARRAY && to->kind == Z_TYPE_POINTER) {
+        LLVMValueRef desc = genLValue(ctx, node->castExpr.expr);
+        if (!desc) {
+            zlog(ctx->state, node->tok, Z9028);
+            return NULL;
+        }
+        LLVMValueRef field = LLVMBuildStructGEP2(
+            ctx->builder, genType(ctx, from), desc, 1, label(ctx, "array.ptr")
+        );
+        return LLVMBuildLoad2(
+            ctx->builder, genType(ctx, to), field, label(ctx, "array.data")
+        );
+    }
+
     /* Array-literal cast: [n]T as []U - write each element directly into
      * the pre-allocated slot with per-element casting.
      * genArrayLit can't be used here because the stack slot is keyed on
@@ -3975,7 +3989,11 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         }
         break;
     case NODE_STRUCT_LIT:
+        buildFuncVar(ctx, node, node->resolved, false);
+        break;
     case NODE_ENUM_LIT:
+        buildFuncVar(ctx, node, node->resolved, false);
+        break;
     case NODE_ENUM_LIT_NO_PAYLOAD:
         buildFuncVar(ctx, node, node->resolved, false);
         break;

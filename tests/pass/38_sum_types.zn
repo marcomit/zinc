@@ -3,22 +3,22 @@ c :: foreign {
 }
 
 // Inline-if producing a sum type: branches have different types
-classify :: fn (flag: i32) (*char | i32) {
+classify :: fn (flag: i32) (i32 | []char) {
     return if flag != 0 do "str"
             else 42
 }
 
 // Direct return of a concrete variant
-pick_str :: fn () (*char | i32) {
+pick_str :: fn () (i32 | []char) {
     return "hello"
 }
 
-pick_int :: fn () (*char | i32) {
+pick_int :: fn () (i32 | []char) {
     return 99
 }
 
 // Sum type via conditional branches (statement if)
-describe :: fn (n: i32) (*char | i32) {
+describe :: fn (n: i32) (i32 | []char) {
     return if n > 0 do "positive" else 0
 }
 
