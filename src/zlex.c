@@ -181,10 +181,14 @@ bool tokeneq(ZToken *a, ZToken *b) {
     return true;
 }
 
-static void addToken(ZLexer *l, ZToken *token) {
-    token->row      = l->row;
-    token->col      = l->col;
-    token->filename = l->state->filename;
+static inline void setSourceLoc(ZLexer *l, ZToken *tok) {
+    tok->col = l->col;
+    tok->row = l->row;
+    tok->filename = l->state->filename;
+}
+
+static inline void addToken(ZLexer *l, ZToken *token) {
+    setSourceLoc(l, token);
     vecpush(l->tokens, token);
 }
 
@@ -312,6 +316,7 @@ static ZToken **parseInterpolatedString(ZLexer *l) {
     ZToken *curr = NULL;
     while (emitNextToken(l, &curr)) {
         if (!curr) break;
+        setSourceLoc(l, curr);
         if (curr->type == TOK_RBRACKET && l->depth == baseDepth) {
             curr->type = TOK_STR_END;
             vecpush(list, curr);
@@ -324,7 +329,6 @@ static ZToken **parseInterpolatedString(ZLexer *l) {
 
 static ZToken *parseString(ZLexer *l) {
     bool interpolated = *l->current == '#';
-    ZTokenType type = TOK_STR_LIT;
     if (interpolated) next(l);
     if (*l->current != '"') return NULL;
     next(l);
@@ -342,13 +346,13 @@ static ZToken *parseString(ZLexer *l) {
         } else if (interpolated && *src == '{') {
             vecpush(buff, '\0');
             ZToken *lit = makestring(strdup(buff), start, l->current);
+            setSourceLoc(l, lit);
             vecpush(list, lit);
             l->col += src - l->current;
             l->current = src;
             ZToken **stream = parseInterpolatedString(l);
             vecunion(list, stream, veclen(stream));
             src = l->current;
-            type = TOK_STREAM;
             vecsetlen(buff, 0);
             continue;
         } else {
@@ -371,7 +375,7 @@ static ZToken *parseString(ZLexer *l) {
     l->current = src;
 
     ZToken *lit = makestring(buff, start, l->current);
-    if (type == TOK_STREAM) {
+    if (interpolated) {
         // Push the last literal
         if (veclen(buff) > 1) vecpush(list, lit);
 

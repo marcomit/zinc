@@ -2263,12 +2263,19 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             ZInterpolation *interp = curr->interpolation[i];
             switch (interp->type) {
             case Z_INTERP_EXPR:
+                if (!interp->expr) {
+                    error(ctx->state, curr->tok, "Got an empty expression");
+                    continue;
+                }
                 interp->expr->resolved = resolveType(ctx, interp->expr, NULL);
+                if (!interp->expr->resolved) continue;
                 if (writable &&
                     satisfyFacet(ctx, interp->expr->resolved, writable->resolved)) {
                     interp->expr = implicitCast(
                         ctx, interp->expr, writable->resolved
                     );
+                } else {
+                    error(ctx->state, interp->expr->tok, "Must implement the writable facet");
                 }
                 break;
             case Z_INTERP_LIT: break;

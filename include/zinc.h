@@ -14,7 +14,7 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-#define ZINC_VERSION "0.0.2"
+#define ZINC_VERSION "0.0.3"
 
 static char sep = '/';
 

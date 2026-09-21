@@ -2,8 +2,51 @@ use <std.mem>
 use <std.core.rand>
 use <std.libc>
 
+#lang(writer)
+pub Writer :: facet {
+    write: fn (*u8, usize) u0
+}
+
+#lang(writable)
+pub Writable :: facet {
+    sink: fn (Writer) u0
+}
+
+Writer self :: impl {
+    pub fmt :: fn (items: []InterpolatedString) {
+        interpolate(self, items)
+    }
+}
+
+/*
+#lang(format_spec)
+pub FmtSpec :: enum {
+}*/
+
 #lang(interpolated_string)
 pub InterpolatedString :: enum {
-    Literal(*char)
-    Obj(*char)
+    Literal([]char)
+    Obj(Writable)
+}
+
+pub FDWriter :: struct {
+    fd: i32
+}
+
+*FDWriter self :: impl(Writer) {
+    pub write :: fn (buff: *u8, size: usize) {
+        sys.write(self.fd, buff, size)
+    }
+}
+
+#inline pub interpolate :: fn (w: Writer, items: []InterpolatedString) {
+    for item in items do match item {
+        .Literal(chars) -> w.write(chars, chars.len),
+        .Obj(obj)       -> obj.sink(w)
+    }
+}
+
+#inline pub print :: fn (items: []InterpolatedString) {
+    stdout := Writer(FDWriter{fd=1}.&)
+    interpolate(stdout, items)
 }
