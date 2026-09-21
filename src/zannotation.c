@@ -150,6 +150,11 @@ static void analyzeImplAnnotation(
     analyzeAnnotation(state, node, annotation, Annotations, Z_TRG_IMPL);
 }
 
+static void analyzeFacetAnnotation(
+    ZState *state, ZNode *node, ZAnnotation *annotation) {
+    analyzeAnnotation(state, node, annotation, Annotations, Z_TRG_FACET);
+}
+
 static bool isRepeatable(ZAnnotation *annotation) {
     for (ZAnnotationSpec *spec = Annotations; spec->spec; spec++) {
         if (!spec->name)                                        continue;
@@ -191,6 +196,10 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
         for (usize i = 0; i < veclen(node->impl.funcs); i++) {
             analyzeAnnotations(state, node->impl.funcs[i]);
         }
+        break;
+    case NODE_FACET:
+        annotations = node->facet.annotations;
+        func = analyzeFacetAnnotation;
         break;
     default:
         /* Not every declaration accepts annotations; that is not an error. */
@@ -273,6 +282,7 @@ ZLangItemType getLangItemType(ZNode *node) {
     case NODE_FUNC:     anns = node->funcDef.annotations;       break;
     case NODE_STRUCT:   anns = node->structDef.annotations;     break;
     case NODE_ENUM:     anns = node->enumDef.annotations;       break;
+    case NODE_FACET:    anns = node->facet.annotations;         break;
     case NODE_IDENTIFIER: return node->identNode.li;
     default: break;
     }

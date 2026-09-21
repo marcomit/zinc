@@ -14,3 +14,4 @@ LANG(Z_LANG_PTR_TO_INT,             "ptr_to_int",               FOREIGN,    genP
 LANG(Z_LANG_PTR_FROM_INT,           "ptr_from_int",             FOREIGN,    genPtrFromInt,      NULL)
 LANG(Z_LANG_INTERPOLATED_STRING,    "interpolated_string",      ENUM,       NULL,               NULL)
 LANG(Z_LANG_WRITABLE,               "writable",                 FACET,      NULL,               NULL)
+LANG(Z_LANG_WRITER,                 "writer",                   FACET,      NULL,               NULL)

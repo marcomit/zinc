@@ -70,6 +70,7 @@ extern ZType *u1Type;
 extern ZType *charType;
 extern ZType *u64Type;
 extern ZType *modType;
+extern ZType *strType;
 
 typedef enum {
     Z_ERROR,

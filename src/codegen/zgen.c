@@ -27,6 +27,7 @@ static LLVMValueRef genStructLitInto    (ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genFacetConstruct   (ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
 static LLVMValueRef genCond             (ZCodegen *, LLVMValueRef, ZType *, LLVMIntPredicate);
 static LLVMValueRef genStrLitGlobal     (ZCodegen *, ZToken *, ZType *);
+static LLVMValueRef genInterpolation    (ZCodegen *, ZNode *);
 static ZLLVMStack   *getStackValue      (ZCodegen *, ZNode *);
 static void         buildNestedFuncVar  (ZCodegen *, ZNode *, LLVMValueRef);
 
@@ -701,7 +702,8 @@ static LLVMTypeRef genFacetType(ZCodegen *ctx) {
 LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     if (!type) {
         zlog(ctx->state, NULL, Z900C);
-        return LLVMVoidTypeInContext(ctx->ctx);
+        return NULL;
+        // return LLVMVoidTypeInContext(ctx->ctx);
     }
 
     switch (type->kind) {
@@ -1863,18 +1865,19 @@ static LLVMValueRef genStrLitGlobal(ZCodegen *ctx, ZToken *tok, ZType *resolved)
 LLVMValueRef genLValue(ZCodegen *ctx, ZNode *node) {
     if (!node) return NULL;
     switch (node->type) {
-    case NODE_ARRAY_LIT:        return genArrayLitPtr       (ctx, node);
-    case NODE_SLICE:            return genSlicePtr          (ctx, node);
-    case NODE_ENUM_LIT:         return genEnumLitPtr        (ctx, node);
-    case NODE_ENUM_LIT_NO_PAYLOAD: return genEnumNoPayloadPtr(ctx, node);
-    case NODE_STRUCT_LIT:       return genStructLitPtr      (ctx, node);
-    case NODE_TUPLE_LIT:        return genTupleLitPtr       (ctx, node);
-    case NODE_MEMBER:           return genMemberAccessPtr   (ctx, node);
-    case NODE_SUBSCRIPT:        return genSubscriptPtr      (ctx, node);
+    case NODE_ARRAY_LIT:            return genArrayLitPtr       (ctx, node);
+    case NODE_SLICE:                return genSlicePtr          (ctx, node);
+    case NODE_ENUM_LIT:             return genEnumLitPtr        (ctx, node);
+    case NODE_ENUM_LIT_NO_PAYLOAD:  return genEnumNoPayloadPtr  (ctx, node);
+    case NODE_STRUCT_LIT:           return genStructLitPtr      (ctx, node);
+    case NODE_TUPLE_LIT:            return genTupleLitPtr       (ctx, node);
+    case NODE_MEMBER:               return genMemberAccessPtr   (ctx, node);
+    case NODE_SUBSCRIPT:            return genSubscriptPtr      (ctx, node);
+    case NODE_INTERPOLATION:        return genInterpolation     (ctx, node);
     case NODE_LITERAL:
         if (node->tok->type == TOK_STR_LIT)
             return genStrLitGlobal(ctx, node->tok, node->resolved);
-        break;
+        return NULL;
     case NODE_CALL: {
         genCall(ctx, node);
         ZLLVMStack *stack = getStackValue(ctx, node);
@@ -3035,30 +3038,52 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
-static void storeInterpolation(ZCodegen *ctx, LLVMValueRef slot, ZInterpolation *interp) {
-    // ZNode *writable = LangItems[Z_LANG_WRITABLE];
+static inline void storeInterpolation(ZCodegen *ctx, LLVMValueRef slot, ZInterpolation *interp) {
+    ZType *enumType         = LangItems[Z_LANG_INTERPOLATED_STRING]->resolved;
+    LLVMTypeRef typeRef     = genType(ctx, enumType);
+    LLVMValueRef value      = NULL;
 
     switch (interp->type) {
-    case Z_INTERP_EXPR:
-        break;
-    case Z_INTERP_LIT:
-        break;
+    case Z_INTERP_EXPR: value = genExpr(ctx, interp->expr);                 break;
+    case Z_INTERP_LIT:  value = genLitTok(ctx, interp->literal, strType);   break;
     }
+
+    if (!value) {
+        error(ctx->state,
+            interp->type == Z_INTERP_LIT ? interp->literal : interp->expr->tok,
+            "Invalid interpolation value"
+        );
+        return;
+    }
+
+    usize tag               = interp->type == Z_INTERP_EXPR ? 1 : 0;
+    ZType *variant          = enumType->enm.fields[tag]->resolved;
+    LLVMTypeRef variantRef  = genType(ctx, variant);
+
+    LLVMValueRef tagPtr     = LLVMBuildStructGEP2(
+        ctx->builder, typeRef, slot, 0, label(ctx, "interp.index"));
+    LLVMValueRef dataPtr    = LLVMBuildStructGEP2(
+        ctx->builder, variantRef, slot, 1, label(ctx, "interp.data"));
+
+    LLVMTypeRef enumTag     = enumType->enm.integer ?
+        genPrimitiveType(ctx, enumType->enm.integer) : i8Type;
+
+    LLVMBuildStore(ctx->builder, LLVMConstInt(enumTag, tag, false), tagPtr);
+    LLVMBuildStore(ctx->builder, value, dataPtr);
 }
 
 static LLVMValueRef genInterpolation(ZCodegen *ctx, ZNode *node) {
-    if (!LangItems[Z_LANG_INTERPOLATED_STRING]) {
+    ZNode *strInterp    = LangItems[Z_LANG_INTERPOLATED_STRING];
+    ZNode *writable     = LangItems[Z_LANG_WRITABLE];
+    if (!strInterp) {
         error(ctx->state, node->tok, "Unable to compile interpolation due to missing lang-item 'interpolated_string', please define it!");
         return NULL;
     }
 
-    ZNode *writable = LangItems[Z_LANG_WRITABLE];
     if (!writable) {
         error(ctx->state, node->tok, "Unable to compile interpolation due to missing lang-item 'writable'");
         return NULL;
     }
-
-
     ZLLVMStack *stack = getStackValue(ctx, node);
     if (!stack) {
         error(ctx->state, node->tok, "Missing stack value");
@@ -3068,7 +3093,7 @@ static LLVMValueRef genInterpolation(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef len = LLVMConstInt(i64Type, veclen(node->interpolation), false);
     storeArray(ctx, stack, len);
 
-    LLVMTypeRef type = genType(ctx, writable->resolved);
+    LLVMTypeRef type = genType(ctx, strInterp->resolved);
     for (usize i = 0; i < veclen(node->interpolation); i++) {
         LLVMValueRef index  = LLVMConstInt(i64Type, i, false);
         LLVMValueRef slot   = LLVMBuildGEP2(
@@ -3095,7 +3120,7 @@ LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
     case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
     case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
-    case NODE_INTERPOLATION:    res = genInterpolation  (ctx, node); break;
+    // case NODE_INTERPOLATION:    res = genInterpolation  (ctx, node); break;
 
     case NODE_MEMBER:
         if (node->memberAccess.object &&
@@ -3104,6 +3129,7 @@ LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
             res = genFacetMember(ctx, node);
             break;
         }
+    case NODE_INTERPOLATION:
     case NODE_SUBSCRIPT:
     case NODE_TUPLE_LIT:
     case NODE_STRUCT_LIT:
@@ -4088,6 +4114,15 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
             genFuncVars(ctx, node->match.arms[i]);
         }
         break;
+    case NODE_INTERPOLATION:
+        if (!getStackValue(ctx, node))
+            buildFuncVar(ctx, node, node->resolved, false);
+
+        for (usize i = 0; i < veclen(node->interpolation); i++) {
+            ZInterpolation *interp = node->interpolation[i];
+            if (interp->type == Z_INTERP_EXPR)
+                genFuncVars(ctx, interp->expr);
+        }
     default:
         break;
     }

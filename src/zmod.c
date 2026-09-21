@@ -1269,4 +1269,9 @@ void initPrimitiveTypes() {
     if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
     if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
+    if (!strType) {
+        strType             = maketype(Z_TYPE_ARRAY);
+        strType->array.base = charType;
+        strType->array.size = 0;
+    }
 }

@@ -372,6 +372,9 @@ static ZToken *parseString(ZLexer *l) {
 
     ZToken *lit = makestring(buff, start, l->current);
     if (type == TOK_STREAM) {
+        // Push the last literal
+        if (veclen(buff) > 1) vecpush(list, lit);
+
         ZToken *stream = maketoken(TOK_STREAM, start - 1, l->current);
         stream->stream = list;
         return stream;

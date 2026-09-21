@@ -33,6 +33,7 @@ ZType *charType = NULL;
 ZType *u1Type   = NULL;
 ZType *u64Type  = NULL;
 ZType *modType  = NULL;
+ZType *strType  = NULL;
 
 static void handler(int sig) {
     (void)sig;

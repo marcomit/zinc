@@ -2280,7 +2280,7 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             return NULL;
         }
         ZType *arr          = makeTypeThread(ctx, Z_TYPE_ARRAY);
-        arr->array.size     = 0;
+        arr->array.size     = veclen(curr->interpolation);
         arr->array.dynamic  = false;
         arr->array.base     = intstr->resolved;
         arr->tok            = curr->tok;
