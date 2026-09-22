@@ -44,19 +44,19 @@ pub FDWriter :: struct {
     }
 }
 
-sink_int :: fn (w: Writer, num: i64) {
+pub sink_int :: fn (w: Writer, num: i64) {
     buff: [32]char
     bytes := io.snprintf(buff.ptr, 31, "%d", num)
     w.write(buff.ptr, bytes)
 }
 
-sink_bool :: fn (w: Writer, b: u1) {
+pub sink_bool :: fn (w: Writer, b: u1) {
     buff: [32]char
-    bytes := io.snprintf(buff.ptr, 31, "%s", if b do "true" else "false")
+    bytes := io.snprintf(buff.ptr, 31, "%s", if b do "true".ptr else "false".ptr)
     w.write(buff.ptr, bytes)
 }
 
-sink_float :: fn (w: Writer, num: f64) {
+pub sink_float :: fn (w: Writer, num: f64) {
     buff: [32]char
     bytes := io.snprintf(buff.ptr, 31, "%f", num)
     w.write(buff.ptr, bytes)
