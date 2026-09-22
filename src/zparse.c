@@ -3055,11 +3055,26 @@ static void discoverMacros(ZParser *parser) {
     parser->source->current = saved;
 }
 
+/* Parses a module by default and insert it at the first element in every module. */
+static  ZNode *injectPrelude(ZParser *parser) {
+    static char src[] = "<prelude>"; // sane anchor for diagnostics.
+    ZToken **path = NULL;
+
+    #define X(seg) vecpush(path, makeident(seg, src, src + sizeof(src) + 1));
+    X("std")
+    #undef X
+
+    return getModuleByName(parser, path, true, false);
+}
+
 static ZNode *parseModule(ZParser *parser) {
     ZNode *root = makenode(NODE_MODULE);
 
     root->module.root = NULL;
     root->module.filename = parser->state->filename;
+
+    ZNode *prelude = injectPrelude(parser);
+    vecpush(root->module.root, prelude);
 
     while (canPeek(parser)) {
         ZNode *child = parse(parser);
