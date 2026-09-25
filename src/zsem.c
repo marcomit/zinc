@@ -2220,6 +2220,46 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 }
 
+static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
+    if (veclen(curr->interpolation) == 1 && typesEqual(inferred, strType)) {
+        return strType;
+    }
+    ZNode *writable = LangItems[Z_LANG_WRITABLE];
+    for (usize i = 0; i < veclen(curr->interpolation); i++) {
+        ZInterpolation *interp = curr->interpolation[i];
+        switch (interp->type) {
+        case Z_INTERP_EXPR:
+            if (!interp->expr) {
+                error(ctx->state, curr->tok, "Got an empty expression");
+                continue;
+            }
+            interp->expr->resolved = resolveType(ctx, interp->expr, NULL);
+            if (!interp->expr->resolved) continue;
+            if (writable &&
+                satisfyFacet(ctx, interp->expr->resolved, writable->resolved)) {
+                interp->expr = implicitCast(
+                    ctx, interp->expr, writable->resolved
+                );
+            } else {
+                error(ctx->state, interp->expr->tok, "Must implement the writable facet");
+            }
+            break;
+        case Z_INTERP_LIT: break;
+        }
+    }
+    ZNode *intstr = LangItems[Z_LANG_INTERPOLATED_STRING];
+    if (!intstr) {
+        zlog(ctx->state, curr->tok, Z00AA);
+        return NULL;
+    }
+    ZType *arr          = makeTypeThread(ctx, Z_TYPE_ARRAY);
+    arr->array.size     = veclen(curr->interpolation);
+    arr->array.dynamic  = false;
+    arr->array.base     = intstr->resolved;
+    arr->tok            = curr->tok;
+    return arr;
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -2235,21 +2275,22 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZType *result = NULL;
 
     switch (curr->type) {
-    case NODE_BLOCK:        result = resolveBlock       (ctx, curr, inferred);      break;
-    case NODE_CALL:         result = resolveFuncCall    (ctx, curr, inferred);      break;
-    case NODE_UNARY:        result = resolveUnary       (ctx, curr, inferred);      break;
-    case NODE_BINARY:       result = resolveBinary      (ctx, curr, inferred);      break;
-    case NODE_MEMBER:       result = resolveMemberAccess(ctx, curr, inferred);      break;
-    case NODE_LITERAL:      result = resolveLiteralType (ctx, curr->literalTok);    break;
-    case NODE_ARRAY_LIT:    result = resolveArrayLiteral(ctx, curr, inferred);      break;
-    case NODE_SUBSCRIPT:    result = resolveArrSubscript(ctx, curr, inferred);      break;
-    case NODE_ARRAY_INIT:   result = resolveArrayInit   (ctx, curr, inferred);      break;
-    case NODE_IDENTIFIER:   result = resolveIdent       (ctx, curr, inferred);      break;
-    case NODE_STRUCT_LIT:   result = resolveStructLit   (ctx, curr, inferred);      break;
-    case NODE_TUPLE_LIT:    result = resolveTupleLiteral(ctx, curr, inferred);      break;
-    case NODE_SLICE:        result = resolveSlice       (ctx, curr, inferred);      break;
-    case NODE_IF:           result = resolveIf          (ctx, curr, inferred);      break;
-    case NODE_UNWRAP:       result = resolveUnwrap      (ctx, curr, inferred);      break;
+    case NODE_BLOCK:        result = resolveBlock           (ctx, curr, inferred);      break;
+    case NODE_CALL:         result = resolveFuncCall        (ctx, curr, inferred);      break;
+    case NODE_UNARY:        result = resolveUnary           (ctx, curr, inferred);      break;
+    case NODE_BINARY:       result = resolveBinary          (ctx, curr, inferred);      break;
+    case NODE_MEMBER:       result = resolveMemberAccess    (ctx, curr, inferred);      break;
+    case NODE_LITERAL:      result = resolveLiteralType     (ctx, curr->literalTok);    break;
+    case NODE_ARRAY_LIT:    result = resolveArrayLiteral    (ctx, curr, inferred);      break;
+    case NODE_SUBSCRIPT:    result = resolveArrSubscript    (ctx, curr, inferred);      break;
+    case NODE_ARRAY_INIT:   result = resolveArrayInit       (ctx, curr, inferred);      break;
+    case NODE_IDENTIFIER:   result = resolveIdent           (ctx, curr, inferred);      break;
+    case NODE_STRUCT_LIT:   result = resolveStructLit       (ctx, curr, inferred);      break;
+    case NODE_TUPLE_LIT:    result = resolveTupleLiteral    (ctx, curr, inferred);      break;
+    case NODE_SLICE:        result = resolveSlice           (ctx, curr, inferred);      break;
+    case NODE_IF:           result = resolveIf              (ctx, curr, inferred);      break;
+    case NODE_UNWRAP:       result = resolveUnwrap          (ctx, curr, inferred);      break;
+    case NODE_INTERPOLATION:result = resolveInterpolation   (ctx, curr, inferred);      break;
     case NODE_RANGE: {
         ZType *left     = resolveType(ctx, curr->binary.left, inferred);
         ZType *right    = resolveType(ctx, curr->binary.right, inferred);
@@ -2321,45 +2362,6 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->tok, Z302D);
         }
         break;
-
-    case NODE_INTERPOLATION: {
-        ZNode *writable = LangItems[Z_LANG_WRITABLE];
-        for (usize i = 0; i < veclen(curr->interpolation); i++) {
-            ZInterpolation *interp = curr->interpolation[i];
-            switch (interp->type) {
-            case Z_INTERP_EXPR:
-                if (!interp->expr) {
-                    error(ctx->state, curr->tok, "Got an empty expression");
-                    continue;
-                }
-                interp->expr->resolved = resolveType(ctx, interp->expr, NULL);
-                if (!interp->expr->resolved) continue;
-                if (writable &&
-                    satisfyFacet(ctx, interp->expr->resolved, writable->resolved)) {
-                    interp->expr = implicitCast(
-                        ctx, interp->expr, writable->resolved
-                    );
-                } else {
-                    error(ctx->state, interp->expr->tok, "Must implement the writable facet");
-                }
-                break;
-            case Z_INTERP_LIT: break;
-            }
-        }
-        ZNode *intstr = LangItems[Z_LANG_INTERPOLATED_STRING];
-        if (!intstr) {
-            zlog(ctx->state, curr->tok, Z00AA);
-            return NULL;
-        }
-        ZType *arr          = makeTypeThread(ctx, Z_TYPE_ARRAY);
-        arr->array.size     = veclen(curr->interpolation);
-        arr->array.dynamic  = false;
-        arr->array.base     = intstr->resolved;
-        arr->tok            = curr->tok;
-        result = arr;
-
-        break;
-    }
 
     default:
         zlog(ctx->state, curr->tok, Z9007, curr->type);
