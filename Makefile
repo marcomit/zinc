@@ -42,6 +42,10 @@ ifeq ($(UNAME), Windows)
 else
   _LLVM_CFLAGS  := $(shell llvm-config --cflags 2>/dev/null)
   _LLVM_LDFLAGS := $(shell llvm-config --ldflags --libs core 2>/dev/null)
+  # libclang (the C API in clang-c/Index.h) is used by ctrans.c to read C headers.
+  # It's a separate dylib, not one of llvm-config's components.
+  _LLVM_LIBDIR  := $(shell llvm-config --libdir 2>/dev/null)
+  _LLVM_LDFLAGS += -lclang -Wl,-rpath,$(_LLVM_LIBDIR)
   _WIN_DEFS     :=
 endif
 
