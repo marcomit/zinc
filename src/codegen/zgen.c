@@ -39,6 +39,8 @@ _Thread_local LLVMTypeRef i8Type        = NULL;
 _Thread_local LLVMTypeRef i16Type       = NULL;
 _Thread_local LLVMTypeRef i32Type       = NULL;
 _Thread_local LLVMTypeRef i64Type       = NULL;
+_Thread_local LLVMTypeRef usizeType     = NULL;
+_Thread_local LLVMTypeRef ptrType       = NULL;
 _Thread_local LLVMTypeRef f32Type       = NULL;
 _Thread_local LLVMTypeRef f64Type       = NULL;
 _Thread_local LLVMTypeRef StringType    = NULL;
@@ -148,20 +150,25 @@ static LLVMValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
  */
 static void initNativeTypes(ZCodegen *ctx) {
     if (i0Type) return;
-    i0Type  = LLVMVoidTypeInContext(ctx->ctx);
-    i1Type  = LLVMInt1TypeInContext(ctx->ctx);
-    i8Type  = LLVMInt8TypeInContext(ctx->ctx);
-    i16Type = LLVMInt16TypeInContext(ctx->ctx);
-    i32Type = LLVMInt32TypeInContext(ctx->ctx);
-    i64Type = LLVMInt64TypeInContext(ctx->ctx);
+    i0Type      = LLVMVoidTypeInContext(ctx->ctx);
+    i1Type      = LLVMInt1TypeInContext(ctx->ctx);
+    i8Type      = LLVMInt8TypeInContext(ctx->ctx);
+    i16Type     = LLVMInt16TypeInContext(ctx->ctx);
+    i32Type     = LLVMInt32TypeInContext(ctx->ctx);
+    i64Type     = LLVMInt64TypeInContext(ctx->ctx);
 
-    f32Type = LLVMFloatTypeInContext(ctx->ctx);
-    f64Type = LLVMDoubleTypeInContext(ctx->ctx);
+    f32Type     = LLVMFloatTypeInContext(ctx->ctx);
+    f64Type     = LLVMDoubleTypeInContext(ctx->ctx);
 
-    StringType = LLVMStructTypeInContext(
+    if (!ctx->state->pointerSize) {
+        error(ctx->state, NULL, "Unable to load usize type");
+    }
+    usizeType   = LLVMIntTypeInContext(ctx->ctx, ctx->state->pointerSize * 8);
+    ptrType     = LLVMPointerTypeInContext(ctx->ctx, 0);
+    StringType  = LLVMStructTypeInContext(
         ctx->ctx,
         (LLVMTypeRef []){
-            i64Type, LLVMPointerTypeInContext(ctx->ctx, 0)
+            usizeType, ptrType
         }, 2, false
     );
 
@@ -683,6 +690,30 @@ static LLVMTypeRef genFacetType(ZCodegen *ctx) {
     return facet;
 }
 
+static LLVMTypeRef genArrayType(ZCodegen *ctx, ZType *type) {
+    LLVMTypeRef base = genType(ctx, type->array.base);
+    if (!base) return NULL;
+    if (type->array.dynamic) {
+        LLVMTypeRef descriptorFields[] = {
+            usizeType, usizeType, genFacetType(ctx),
+            ptrType
+        };
+        return LLVMStructTypeInContext(ctx->ctx, descriptorFields, 4, 0);
+    } else if (type->array.size != 0) {
+        return LLVMStructTypeInContext(
+            ctx->ctx, (LLVMTypeRef []) {
+                usizeType, ptrType//, LLVMArrayType(base, type->array.size)
+            }, 2, 0
+        );
+    } else {
+        return LLVMStructTypeInContext(
+            ctx->ctx, (LLVMTypeRef []) {
+                usizeType, ptrType
+            }, 2, 0
+        );
+    }
+}
+
 /**
  * @brief Translate a ZType to an LLVM type.
  *
@@ -714,6 +745,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     case Z_TYPE_STRUCT:     return genStructType(ctx, type);
     case Z_TYPE_FACET:      return genFacetType (ctx);
     case Z_TYPE_PRIMITIVE:  return genPrimitiveType(ctx, type->primitive.token);
+    case Z_TYPE_ARRAY:      return genArrayType(ctx, type);
 
     case Z_TYPE_GENERIC:
         if (veclen(type->generic.instantiations) == 0) {
@@ -735,14 +767,6 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         return LLVMPointerType(genType(ctx, base), 0);
     }
 
-    case Z_TYPE_ARRAY: {
-        LLVMTypeRef base = genType(ctx, type->array.base);
-        if (!base) return NULL;
-        LLVMTypeRef descriptorFields[] = {
-            i64Type, LLVMPointerType(base, 0)
-        };
-        return LLVMStructTypeInContext(ctx->ctx, descriptorFields, 2, 0);
-    }
 
     case Z_TYPE_TUPLE: {
         usize len = veclen(type->tuple);
@@ -1251,7 +1275,7 @@ static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
     }
 
     storeArray(
-        ctx, stack, LLVMConstInt(i64Type, node->resolved->array.size, false)
+        ctx, stack, LLVMConstInt(usizeType, node->resolved->array.size, false)
     );
 
     return stack->stack;
@@ -1280,7 +1304,7 @@ static LLVMValueRef genSlicePtr(ZCodegen *ctx, ZNode *node) {
 
     LLVMValueRef start = node->slice.start  ?
         genExpr(ctx, node->slice.start)     :
-        LLVMConstInt(i64Type, 0, false);
+        LLVMConstInt(usizeType, 0, false);
 
     LLVMValueRef end = NULL;
 
@@ -1292,7 +1316,7 @@ static LLVMValueRef genSlicePtr(ZCodegen *ctx, ZNode *node) {
             sliceType,
             ptr, 0, "len_ptr"
         );
-        end = LLVMBuildLoad2(ctx->builder, i64Type, end, "len");
+        end = LLVMBuildLoad2(ctx->builder, usizeType, end, "len");
     }
 
     LLVMValueRef length = LLVMBuildSub(
@@ -1839,7 +1863,7 @@ static LLVMValueRef genStrLitGlobal(ZCodegen *ctx, ZToken *tok, ZType *resolved)
 
     LLVMTypeRef descType = genType(ctx, resolved);
     LLVMValueRef fields[] = {
-        LLVMConstInt(i64Type, len, false),
+        LLVMConstInt(usizeType, len, false),
         dataGlobal
     };
 
@@ -3497,7 +3521,7 @@ static void genForInArray(ZCodegen *ctx, ZNode *node) {
 
     LLVMPositionBuilderAtEnd(ctx->builder, step);
     LLVMValueRef next = LLVMBuildAdd(
-        ctx->builder, curr, LLVMConstInt(i64Type, 1, false), label(ctx, "forin.next")
+        ctx->builder, curr, LLVMConstInt(usizeType, 1, false), label(ctx, "forin.next")
     );
 
     LLVMAddIncoming(curr, &next, &step, 1);

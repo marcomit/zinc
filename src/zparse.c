@@ -933,7 +933,7 @@ static ZType *parseTypeArray(ZParser *parser) {
     bool dynamic    = false;
     if (check(parser, TOK_INT_LIT)) {
         size    = consume(parser)->integer;
-    } else if (match(parser, TOK_DYNAMIC)) {
+    } else if (match(parser, TOK_DOUBLE_DOT)) {
         dynamic = true;
     }
 

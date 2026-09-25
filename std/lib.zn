@@ -5,3 +5,6 @@ pub use <std.mem>
 pub use <std.libc>
 pub use <std.mem>
 pub use <std.mem.gpa>
+
+pub void :: type u0
+pub bool :: type u1

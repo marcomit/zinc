@@ -1,106 +1,95 @@
-Io :: struct {
-    stdout: Writer
-    stdin: Reader
-    stderr: Writer
-}
+use <std.mem.gpa>
 
-#lang(writer)
-Writer :: facet {
-    write: fn (char *, usize) u0
-}
+cstring :: type *char
 
-#lang(writable)
-Writable :: facet {
-    sink: fn (*Writer)
-}
-
-User :: struct {
-    name: *char
-    age: i32
-}
-
-User self :: impl(Writable) {
-    sink :: fn (writer: *Writer) {
-        writer
-            .write_str("User{name=")
-            .write(self.name, strlen(self.name))
-            .write_str(", age=")
-            .write_int(self.age)
-            .write_byte('}')
-    }
-}
-
-StringBuilder :: struct {
-    allocator: Allocator
-    buffer: *char
+RawString :: struct {
     len: usize
-    capacity: usize
+    cap: usize
+    allocator: Allocator
+    buff: *u8
 }
 
-StringBuilder :: impl {
-    new :: fn () *StringBuilder with a: Allocator {
-        self: *StringBuilder = alloc(sizeof StirngBuilder)
-        self.allocator = a
-        self.buffer = none
-        self.len = 0
-        self.capacity = 0
+[..]char self :: impl {
+    #inline(always)
+    as_raw_string :: fn () RawString -> (self.& as *RawString).*
+
+    length :: fn () usize {
+        return self.as_raw_string().len
+    }
+    capacity :: fn () usize {
+        return self.as_raw_string().cap
+    }
+
+    to_string :: fn () cstring {
+        return self.as_raw_string().buff
+    }
+
+    append :: fn (items: []InterpolatedString) [..]char {
+        raw: *RawString = self.&
+        w := Writer(raw)
+        with _ := raw.allocator {
+            for item in items do match item {
+                .Literal(chars) -> append_slice(self.&, chars),
+                .Obj(obj)       -> obj.sink(w)
+            }
+        }
         return self
     }
 }
 
-*StringBuilder self :: impl {
-    append :: fn (buffer: *char, bytes: usize) {
-        if not buffer or bytes == 0 return
-
+*RawString self :: impl(Writer) {
+    write :: fn (buff: *u8, len: usize) u0 {
         with _ := self.allocator {
-            if not self.buffer {
-                self.capacity = 8
-                self.buffer = alloc(self.capacity)
-            } else if self.len >= self.capacity {
-                self.capacity *= 2
-                self.buffer = resize(self.buffer, self.capacity)
-            }
-
-            libc.memcpy()
+            self.copy(buff, len)
         }
     }
 }
 
-*StringBuilder self :: impl(Writer) {
-    write :: fn (buffer: *char, bytes: usize) {
-        self.append(buffer, bytes)
+*RawString self :: impl {
+    make_room :: fn (size: usize) void with Allocator {
+        if not self return
+        newcap := self.cap
+        if not self.cap { newcap = 8 }
+
+        for self.len + size >= newcap {
+            newcap *= 2
+        }
+
+        if self.cap != newcap {
+            self.cap = newcap
+            self.buff = resize(self.buff, self.cap)
+        }
     }
 
-    write_str :: fn (str: *char) {
-        self.append(str, libc.strlen(str))
-    }
-
-    write_byte :: fn (byte: char) {
-        self.append(&byte, 1)
+    copy :: fn (buff: *u8, size: usize) void with Allocator {
+        self.make_room(size)
+        mem.memcpy(self.buff[self.len - 1].&, buff, size)
+        self.len += size
     }
 }
 
-#lang(interpolated_string)
-InterpolatedString :: enum {
-    Lit(*char)
-    Obj(Writer)
+append :: fn (arr: *[..]char, c: char) void with Allocator {
+    raw: *RawString = arr
+    raw.copy(c.&, 1)
 }
 
-print :: fn (out: []InterpolatedString) u0 with Io {
+append_slice :: fn (arr: *[..]char, c: []char) void with Allocator {
+    raw: *RawString = arr
 
+    raw.copy(c.ptr, c.len)
 }
 
+printf :: foreign fn (*char, ..) void
 
 main :: fn () i32 {
-    name := "Some"
-    age := 99
+    str: [..]char
 
-    stdout := std.Writer.stdout()
-
-    with _ := GeneralPurposeAllocator.init().&.allocator() {
-        sb := StringBuilder.new()
+    with _ := GeneralPurposeAllocator.new() {
+        append(str.&, 'a')
+        append_slice(str.&, "ciao")
     }
-    stdout.write(#"Hello, {name}, i'm {age} years old")
 
+    printf("%s\n", str.to_string())
+    printf("%zu\n", str.capacity())
     return 0
 }
