@@ -192,12 +192,10 @@ static void _stype(ZType *type, char **buff) {
 
         if (type->array.dynamic) {
             vecunion(*buff, "dyn", 3);
-        } else {
-            usize len = type->array.size;
-            while (len > 0) {
-                vecpush(*buff, 48 + len % 10);
-                len /= 10;
-            }
+        } else if (type->array.size) {
+            char num[32];
+            usize len = snprintf(num, sizeof num, "%zu", type->array.size);
+            vecunion(*buff, num, len);
         }
 
         vecpush(*buff, ']');

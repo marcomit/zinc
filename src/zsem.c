@@ -295,6 +295,58 @@ static void putFunc(ZThreadSem *ctx, ZNode *node) {
     }
 }
 
+static void putImpl(ZThreadSem *ctx, ZNode *node) {
+    hashset_t seen = NULL;
+    char **facetNames = NULL;
+    hashset_t funcs = NULL;
+    usize funcLen = veclen(node->impl.funcs);
+    for (usize i = 0; i < funcLen; i++) {
+        ZNode *func = node->impl.funcs[i];
+        putFunc(ctx, func);
+        hashset_insert(&funcs, func->funcDef.name->str);
+    }
+
+    if (veclen(node->impl.facets) > 0 &&
+        node->impl.base->kind != Z_TYPE_POINTER) {
+        zlog(ctx->state, node->impl.base->tok, Z303C);
+        return;
+    }
+
+    for (usize i = 0; i < veclen(node->impl.facets); i++) {
+        ZToken *facetRef = node->impl.facets[i]->tok;
+        ZType *facet = resolveTypeRef(ctx, node->impl.facets[i]);
+
+        if (!facet) continue;
+        node->impl.facets[i] = facet;
+
+        if (facet->kind != Z_TYPE_FACET) {
+            zlog(ctx->state,
+                node->impl.facets[i]->tok,
+                Z304D, stype(facet)
+            );
+            continue;
+        }
+
+        usize facetFuncs = veclen(facet->facet.funcs);
+        for (usize j = 0; j < facetFuncs; j++) {
+            ZNode *func = facet->facet.funcs[j];
+            char *name  = func->field.identifier->str;
+            if (!hashset_insert(&seen, name)) {
+                zlog(ctx->state, node->tok, Z304E, name);
+                continue;
+            }
+
+            if (!hashset_has(funcs, name)) {
+                zlog(ctx->state, facetRef,
+                    Z304F,
+                    stype(facet), stype(node->impl.base), name
+                );
+            }
+            vecpush(facetNames, name);
+        }
+    }
+}
+
 ZNode *getStructField(ZThreadSem *ctx, ZType *strct, ZToken *field) {
     if (!strct) return NULL;
     strct = resolveTypeRef(ctx, strct);
@@ -731,6 +783,19 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
         return typesCompatible(ctx, from->optional, to);
     } else if (to->kind == Z_TYPE_OPTIONAL) {
         return typesCompatible(ctx, from, to->optional);
+    }
+
+    ZNode *interp = LangItems[Z_LANG_INTERPOLATED_STRING];
+    if (interp) {
+        if (typesEqual(from,    interp->resolved)) {
+            printf("from: %s\n", stype(from));
+        } else if (typesEqual(to, interp->resolved)) {
+            printf("to: %s\n", stype(to));
+        }
+        if (typesEqual(from,    interp->resolved)   &&
+            typesEqual(to,      strType)            ) {
+            return interp->resolved;
+        }
     }
 
     if (to->kind == Z_TYPE_SUM) {
@@ -3117,57 +3182,6 @@ static void analyzeBlock(ZThreadSem *ctx, ZNode *block, bool scoped) {
     }
 
     if (scoped) endScope(ctx);
-}
-
-static void putImpl(ZThreadSem *ctx, ZNode *node) {
-    hashset_t seen = NULL;
-    char **facetNames = NULL;
-    hashset_t funcs = NULL;
-    usize funcLen = veclen(node->impl.funcs);
-    for (usize i = 0; i < funcLen; i++) {
-        ZNode *func = node->impl.funcs[i];
-        putFunc(ctx, func);
-        hashset_insert(&funcs, func->funcDef.name->str);
-    }
-
-    if (veclen(node->impl.facets) > 0 &&
-        node->impl.base->kind != Z_TYPE_POINTER) {
-        zlog(ctx->state, node->impl.base->tok, Z303C);
-    } else {
-        for (usize i = 0; i < veclen(node->impl.facets); i++) {
-            ZToken *facetRef = node->impl.facets[i]->tok;
-            ZType *facet = resolveTypeRef(ctx, node->impl.facets[i]);
-
-            if (!facet) continue;
-            node->impl.facets[i] = facet;
-
-            if (facet->kind != Z_TYPE_FACET) {
-                zlog(ctx->state,
-                    node->impl.facets[i]->tok,
-                    Z304D, stype(facet)
-                );
-                continue;
-            }
-
-            usize facetFuncs = veclen(facet->facet.funcs);
-            for (usize j = 0; j < facetFuncs; j++) {
-                ZNode *func = facet->facet.funcs[j];
-                char *name  = func->field.identifier->str;
-                if (!hashset_insert(&seen, name)) {
-                    zlog(ctx->state, node->tok, Z304E, name);
-                    continue;
-                }
-
-                if (!hashset_has(funcs, name)) {
-                    zlog(ctx->state, facetRef,
-                        Z304F,
-                        stype(facet), stype(node->impl.base), name
-                    );
-                }
-                vecpush(facetNames, name);
-            }
-        }
-    }
 }
 
 static void addImportedFunc(ZThreadSem *parent, ZNode *func) {
