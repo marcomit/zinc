@@ -86,6 +86,9 @@ DEF(TOK_INT_LIT,    "int literal",      TOK_DYN_MASK | TOK_LITERAL)
 DEF(TOK_FLOAT_LIT,  "float literal",    TOK_DYN_MASK | TOK_LITERAL)
 DEF(TOK_IDENT,      "identifier",       TOK_DYN_MASK | TOK_EXPANDABLE)
 DEF(TOK_RUNE_LIT,   "rune literal",     TOK_DYN_MASK | TOK_LITERAL | TOK_EXPANDABLE)
+DEF(TOK_STREAM,     "Stream of tokens", TOK_DYN_MASK | TOK_LITERAL)
+DEF(TOK_STR_START,  "Interpolation",    TOK_DYN_MASK)
+DEF(TOK_STR_END,    "Interpolation",    TOK_DYN_MASK)
 #endif
 
 #ifdef TOK_SYMBOLS

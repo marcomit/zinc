@@ -1,0 +1,14 @@
+printf :: foreign fn (*char, ..) u0
+
+main :: fn () i32 {
+    val: ?i32 = none
+
+    if not val {
+        printf("invalid val\n")
+    }
+
+    val = 2
+
+    printf("val: %d\n", val)
+    return 0
+}

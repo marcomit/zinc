@@ -2,7 +2,6 @@
 // Copyright (c) 2025, Marco Menegazzi
 
 #include "zinc.h"
-#include "zmem.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -63,12 +62,13 @@ static ZNode *parseAnonFunc                 (ZParser *);
 static ZNode *parseArrayLit                 (ZParser *);
 static ZNode *parseContinue                 (ZParser *);
 static ZNode *parseTupleLit                 (ZParser *);
+static ZType *parseBaseType                 (ZParser *);
 static ZType *parseFuncType                 (ZParser *);
 static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
 static ZNode *parseVarInferred              (ZParser *);
 static ZNode *parseVarDefTyped              (ZParser *);
-static ZNode *parseBlockOrInline            (ZParser *);
+static ZNode *parseBlockOrInline            (ZParser *, bool);
 static ZNode *_parseStructLit               (ZParser *, ZToken **);
 
 /* File-level parsing functions */
@@ -327,6 +327,56 @@ static ZNode *parseArrayInit(ZParser *parser) {
     return node;
 }
 
+static ZInterpolation *makeinterpolation(ZInterpolationType type, void *ptr) {
+    ZInterpolation *self    = zalloc(ZInterpolation);
+    self->expr              = ptr;
+    self->type              = type;
+    return self;
+}
+
+static ZNode *parseLit(ZParser *parser) {
+    ZToken *start = peek(parser);
+    if (!start) return NULL;
+    if (start->type != TOK_STREAM) {
+        ZNode *node         = makenode(NODE_LITERAL);
+        node->literalTok    = consume(parser);
+        node->tok           = start;
+        return node;
+    }
+
+    consume(parser);
+    ZNode *node = makenode(NODE_INTERPOLATION);
+    node->tok = start;
+    ZTokenStream *prev = parser->source;
+    parser->source = maketokstream(start->stream, NULL);
+
+    while (canPeek(parser)) {
+        ZInterpolation *interp = NULL;
+        if (check(parser, TOK_STR_START)) {
+            consume(parser);
+            ZNode *expr = parseExpr(parser);
+            if (!match(parser, TOK_STR_END)) {
+                error(parser->state, peek(parser), "Expected the end of the interpolation");
+            }
+            interp = makeinterpolation(Z_INTERP_EXPR, expr);
+        } else if (check(parser, TOK_STR_LIT)) {
+            interp = makeinterpolation(Z_INTERP_LIT, consume(parser));
+        } else {
+            // error
+            consume(parser); // consume the token to avoid a loop.
+        }
+
+        if (!interp) {
+            // error
+        }
+
+        vecpush(node->interpolation, interp);
+    }
+
+    parser->source = prev;
+    return node;
+}
+
 static ZNode *parsePrimary(ZParser *parser) {
     ZToken *start = peek(parser);
     guard(start);
@@ -358,10 +408,7 @@ static ZNode *parsePrimary(ZParser *parser) {
         node->tok           = node->identNode.tok;
         return node;
     } else if (checkMask(parser, TOK_LITERAL)) {
-        ZNode *node         = makenode(NODE_LITERAL);
-        node->literalTok    = consume(parser);
-        node->tok           = node->literalTok;
-        return node;
+        return parseLit(parser);
     } else if (check(parser, TOK_SIZEOF)) {
         ZToken *tok         = consume(parser);
         ZType *type         = parseType(parser);
@@ -886,13 +933,13 @@ static ZType *parseTypeArray(ZParser *parser) {
     bool dynamic    = false;
     if (check(parser, TOK_INT_LIT)) {
         size    = consume(parser)->integer;
-    } else if (match(parser, TOK_DYNAMIC)) {
+    } else if (match(parser, TOK_DOUBLE_DOT)) {
         dynamic = true;
     }
 
     expect(parser, TOK_RSBRACKET);
 
-    ZType *type = parseType(parser);
+    ZType *type = parseBaseType(parser);
     ensure(type, "Expected a type after [] brackets");
 
     ZType *arr = maketype(Z_TYPE_ARRAY);
@@ -1134,7 +1181,7 @@ static ZNode *parseCapabilityBlock(ZParser *parser) {
              !check(parser, TOK_DO)         &&
               match(parser, TOK_SEMICOLON)  );
 
-    ZNode *block                                = parseBlockOrInline(parser);
+    ZNode *block                                = parseBlockOrInline(parser, false);
     ZNode *capabilityBlock                      = makenode(NODE_CAPABILITY);
     capabilityBlock->capability.capabilities    = capabilities;
     capabilityBlock->capability.block           = block;
@@ -1206,18 +1253,19 @@ ZNode *parseStmt(ZParser *parser) {
     }
 }
 
-static ZNode *parseBlockOrInline(ZParser *parser) {
+static ZNode *parseBlockOrInline(ZParser *parser, bool wrap) {
+    ZToken *start = peek(parser);
     if (match(parser, TOK_DO)) {
         ZNode *expr = parseExpr(parser);
         if (!expr) {
             zlog(parser->state, peek(parser), Z2013);
             return NULL;
         }
-        return expr;
-        // ZNode *body = makenode(NODE_BLOCK);
-        // body->tok = start;
-        // vecpush(body->block, expr);
-        // return body;
+        if (!wrap) return expr;
+        ZNode *body = makenode(NODE_BLOCK);
+        body->tok = start;
+        vecpush(body->block, expr);
+        return body;
     } else if (check(parser, TOK_LBRACKET)) {
         return parseBlock(parser);
     } else {
@@ -1624,7 +1672,7 @@ static ZNode *parseCondDestructVar(ZParser *parser) {
 
 static ZNode *parseIfBlock(ZParser *parser) {
     if (check(parser, TOK_DO) || check(parser, TOK_LBRACKET)) {
-        return parseBlockOrInline(parser);
+        return parseBlockOrInline(parser, false);
     }
 
     ZNode *node = NULL;
@@ -1718,7 +1766,7 @@ static ZNode *parseWhile(ZParser *parser) {
     if (!cond) {
         zlog(parser->state, peek(parser), Z201F);
     }
-    ZNode *body = tryParse(parser, parseBlockOrInline(parser));
+    ZNode *body = tryParse(parser, parseBlockOrInline(parser, true));
 
     ZNode *node = makenode(NODE_WHILE);
     node->whileStmt.branch  = body;
@@ -1733,7 +1781,7 @@ static ZNode *parseForIn(ZParser *parser) {
     ZVarDestructPattern *binding = parseMultiDestructVar(parser);
     expect(parser, TOK_IN);
     ZNode *iter = tryParse(parser, parseExpr(parser));
-    ZNode *block = tryParse(parser, parseBlockOrInline(parser));
+    ZNode *block = tryParse(parser, parseBlockOrInline(parser, true));
 
     guard(binding && iter && block);
 
@@ -1751,7 +1799,7 @@ static ZNode *parseForLet(ZParser *parser) {
     expect(parser, TOK_FOR);
 
     ZNode *cond = tryParse(parser, parseCondDestructVar(parser));
-    ZNode *body = tryParse(parser, parseBlockOrInline(parser));
+    ZNode *body = tryParse(parser, parseBlockOrInline(parser, true));
     guard(body);
 
     ZNode *node = makenode(NODE_WHILE);
@@ -2193,6 +2241,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
         bool isSumPattern =
             checkMask(parser, TOK_TYPES_MASK) ||
             check(parser, TOK_STAR) ||
+            check(parser, TOK_LSBRACKET) ||
             (check(parser, TOK_IDENT) && checkAhead(parser, TOK_LPAREN, 1));
 
         if (isSumPattern) {
@@ -2213,7 +2262,7 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
 
     ZToken *tok = consume(parser);
 
-    if (tokmask(tok, TOK_LITERAL)) {
+    if (tokmask(tok, TOK_LITERAL) && tok->type != TOK_STR_LIT) {
         cur = makeVarDestructPattern(Z_VAR_LIT);
         cur->ident = tok;
     } else if (tok->type == TOK_IDENT) {
@@ -2226,15 +2275,16 @@ static ZVarDestructPattern *parseDestructVar(ZParser *parser, bool conditional) 
             cur->prop = consume(parser);
             cur->args = NULL;
 
-            expect(parser, TOK_LPAREN);
-            if (!check(parser, TOK_RPAREN)) {
-                do {
-                    ZVarDestructPattern *item = parseDestructVar(parser, conditional);
-                    if (!item) break;
-                    vecpush(cur->args, item);
-                } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+            if (match(parser, TOK_LPAREN)) {
+                if (!check(parser, TOK_RPAREN)) {
+                    do {
+                        ZVarDestructPattern *item = parseDestructVar(parser, conditional);
+                        if (!item) break;
+                        vecpush(cur->args, item);
+                    } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+                }
+                expect(parser, TOK_RPAREN);
             }
-            expect(parser, TOK_RPAREN);
         } else {
             cur = makeVarDestructPattern(Z_VAR_IDENT);
             cur->ident = tok;
@@ -3005,11 +3055,26 @@ static void discoverMacros(ZParser *parser) {
     parser->source->current = saved;
 }
 
+/* Parses a module by default and insert it at the first element in every module. */
+static  ZNode *injectPrelude(ZParser *parser) {
+    static char src[] = "<prelude>"; // sane anchor for diagnostics.
+    ZToken **path = NULL;
+
+    #define X(seg) vecpush(path, makeident(seg, src, src + sizeof(src) + 1));
+    X("std")
+    #undef X
+
+    return getModuleByName(parser, path, true, false);
+}
+
 static ZNode *parseModule(ZParser *parser) {
     ZNode *root = makenode(NODE_MODULE);
 
     root->module.root = NULL;
     root->module.filename = parser->state->filename;
+
+    ZNode *prelude = injectPrelude(parser);
+    vecpush(root->module.root, prelude);
 
     while (canPeek(parser)) {
         ZNode *child = parse(parser);

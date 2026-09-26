@@ -22,7 +22,7 @@ Acceleration :: struct {
 
 Metadata :: struct {
     flags: u32
-    name: *char
+    name: []char
 }
 
 Stats :: struct {
@@ -51,7 +51,7 @@ Player self :: impl {
     }
 
     print :: fn () u0 {
-        c.printf("%s\n", self.name)
+        c.printf("%s\n", self.name.ptr)
         c.printf("Pos: %d %d %d\n", self.x, self.y, self.z)
         c.printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)
         c.printf("HP: %d\n", self.health)

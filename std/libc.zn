@@ -3,6 +3,7 @@ pub io :: foreign {
     putchar:    fn (i32)       i32
     perror:     fn (*char)      u0
     exit:       fn (i32)        u0
+    snprintf:   fn (*char, usize, *char, ..) i32
 }
 pub mem :: foreign {
     memset  : fn (*u8, i32, u64)        *u8
@@ -11,6 +12,13 @@ pub mem :: foreign {
     strcmp  : fn (*char, *char)         i32
     strncmp : fn (*char, *char, u64)    i32
     strstr  : fn (*char, *char)         *char
+}
+
+pub sys :: foreign {
+    open:   fn (*char, i32, ..) i32
+    close:  fn (i32) i32
+    write:  fn (i32, *u8, usize) isize
+    read:   fn (i32, *u8, usize) isize
 }
 
 pub math :: foreign {
@@ -27,10 +35,10 @@ pub math :: foreign {
     sinf:   fn (f32)      f32
     cosf:   fn (f32)      f32
     tanf:   fn (f32)      f32
-    atanf:  fn (f32)      f32 
-    atan2f: fn (f32, f32) f32 
-    sqrtf:  fn (f32)      f32 
-    fabsf:  fn (f32)      f32 
-    powf:   fn (f32, f32) f32 
-    expf:   fn (f32)      f32 
+    atanf:  fn (f32)      f32
+    atan2f: fn (f32, f32) f32
+    sqrtf:  fn (f32)      f32
+    fabsf:  fn (f32)      f32
+    powf:   fn (f32, f32) f32
+    expf:   fn (f32)      f32
 }

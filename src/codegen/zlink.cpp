@@ -29,7 +29,18 @@ static std::string runCmd(const char *cmd) {
 extern "C" int zinc_lld_link(bool nostdlib, const char *objfile, const char *outfile,
     const char **extra_args, int extra_args_count) {
 #if defined(__APPLE__)
-    std::string sdk = runCmd("xcrun --sdk macosx --show-sdk-path 2>/dev/null");
+    std::vector<std::string> sdks;
+    const char *cltSdk = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
+
+    if (const char *env = getenv("SDKROOT")) {
+        if (*env) sdks.push_back(env);
+    }
+    if (sdks.empty()) {
+        std::string found = runCmd("xcrun --sdk macosx --show-sdk-path 2>/dev/null");
+        if (!found.empty()) sdks.push_back(found);
+        if (sdks.empty() || sdks.front() != cltSdk) sdks.push_back(cltSdk);
+    }
+
     std::string ver = runCmd("sw_vers -productVersion 2>/dev/null");
 
     // Trim to major.minor
@@ -39,39 +50,60 @@ extern "C" int zinc_lld_link(bool nostdlib, const char *objfile, const char *out
         if (p2 != std::string::npos) ver = ver.substr(0, p2);
     }
     if (ver.empty()) ver = "13.0";
-    if (sdk.empty()) sdk = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
-
-    std::vector<const char *> args = {
-        "ld64.lld",
-        "-arch",
-#if defined(__aarch64__)
-        "arm64",
-#else
-        "x86_64",
-#endif
-        "-platform_version", "macos",
-        ver.c_str(), ver.c_str(),
-        "-syslibroot", sdk.c_str(),
-    };
-
-    if (!nostdlib) args.push_back("-lSystem");
-
-    args.push_back(objfile);
-
-    for (int i = 0; i < extra_args_count; i++) {
-        args.push_back(extra_args[i]);
-    }
-
-    args.push_back("-o");
-    args.push_back(outfile);
+    if (sdks.empty()) sdks.push_back(cltSdk);
 
     lld::DriverDef drivers[] = {{lld::Darwin, &lld::macho::link}};
-    auto res = lld::lldMain(
-        llvm::ArrayRef<const char *>(args.data(), args.size()),
-        llvm::outs(), llvm::errs(),
-        llvm::ArrayRef<lld::DriverDef>(drivers, 1)
-    );
-    return res.retCode;
+    std::string firstErr;
+    int retCode = 1;
+
+    for (size_t i = 0; i < sdks.size(); i++) {
+        std::vector<const char *> args = {
+            "ld64.lld",
+            "-arch",
+#if defined(__aarch64__)
+            "arm64",
+#else
+            "x86_64",
+#endif
+            "-platform_version", "macos",
+            ver.c_str(), ver.c_str(),
+            "-syslibroot", sdks[i].c_str(),
+        };
+
+        if (!nostdlib) args.push_back("-lSystem");
+
+        args.push_back(objfile);
+
+        for (int j = 0; j < extra_args_count; j++) {
+            args.push_back(extra_args[j]);
+        }
+
+        args.push_back("-o");
+        args.push_back(outfile);
+
+        /* Buffered: a failing candidate must stay quiet so its diagnostics are
+         * not mistaken for the real error when a later one links. */
+        std::string out, err;
+        llvm::raw_string_ostream os(out), es(err);
+
+        auto res = lld::lldMain(
+            llvm::ArrayRef<const char *>(args.data(), args.size()),
+            os, es,
+            llvm::ArrayRef<lld::DriverDef>(drivers, 1)
+        );
+        retCode = res.retCode;
+
+        if (retCode == 0) {
+            llvm::outs() << out;
+            llvm::errs() << err;
+            return 0;
+        }
+        if (i == 0) firstErr = err;
+    }
+
+    /* Every sysroot failed: report the preferred one, not the last fallback. */
+    llvm::errs() << firstErr;
+    return retCode;
 
 #elif defined(_WIN32) && defined(__MINGW32__)
     // On MSYS2/MinGW64, delegate linking to clang  -  it handles the sysroot,

@@ -1,9 +1,95 @@
-printf :: foreign fn (*char, ..) u0
+use <std.mem.gpa>
+
+cstring :: type *char
+
+RawString :: struct {
+    len: usize
+    cap: usize
+    allocator: Allocator
+    buff: *u8
+}
+
+[..]char self :: impl {
+    #inline(always)
+    as_raw_string :: fn () RawString -> (self.& as *RawString).*
+
+    length :: fn () usize {
+        return self.as_raw_string().len
+    }
+    capacity :: fn () usize {
+        return self.as_raw_string().cap
+    }
+
+    to_string :: fn () cstring {
+        return self.as_raw_string().buff
+    }
+
+    append :: fn (items: []InterpolatedString) [..]char {
+        raw: *RawString = self.&
+        w := Writer(raw)
+        with _ := raw.allocator {
+            for item in items do match item {
+                .Literal(chars) -> append_slice(self.&, chars),
+                .Obj(obj)       -> obj.sink(w)
+            }
+        }
+        return self
+    }
+}
+
+*RawString self :: impl(Writer) {
+    write :: fn (buff: *u8, len: usize) u0 {
+        with _ := self.allocator {
+            self.copy(buff, len)
+        }
+    }
+}
+
+*RawString self :: impl {
+    make_room :: fn (size: usize) void with Allocator {
+        if not self return
+        newcap := self.cap
+        if not self.cap { newcap = 8 }
+
+        for self.len + size >= newcap {
+            newcap *= 2
+        }
+
+        if self.cap != newcap {
+            self.cap = newcap
+            self.buff = resize(self.buff, self.cap)
+        }
+    }
+
+    copy :: fn (buff: *u8, size: usize) void with Allocator {
+        self.make_room(size)
+        mem.memcpy(self.buff[self.len - 1].&, buff, size)
+        self.len += size
+    }
+}
+
+append :: fn (arr: *[..]char, c: char) void with Allocator {
+    raw: *RawString = arr
+    raw.copy(c.&, 1)
+}
+
+append_slice :: fn (arr: *[..]char, c: []char) void with Allocator {
+    raw: *RawString = arr
+
+    raw.copy(c.ptr, c.len)
+}
+
+printf :: foreign fn (*char, ..) void
 
 main :: fn () i32 {
-    nums := [1, 2, 3, 4, 5, 6, 7]
-    for num in nums {
-        printf("Num: %d\n", num)
+    str: [..]char
+
+    with _ := GeneralPurposeAllocator.new() {
+        append(str.&, 'a')
+        append_slice(str.&, "ciao")
     }
+
+    printf("%s\n", str.to_string())
+    printf("%zu\n", str.capacity())
     return 0
 }

@@ -169,3 +169,48 @@ string self :: impl {
         destroy(self.header())
     }
 }
+
+STRING_INITIAL_CAPACITY :: 8
+pub StringBuilder :: struct {
+    allocator: Allocator
+    buff: *char
+    len: usize
+    cap: usize
+}
+
+StringBuilder :: impl {
+    pub new :: fn () *StringBuilder with a: Allocator {
+        self: *StringBuilder    = alloc(sizeof StringBuilder)
+        self.buff               = none
+        self.len                = 0
+        self.cap                = 0
+        self.allocator = a
+        return self
+    }
+}
+
+
+*StringBuilder self :: impl {
+    pub append_buff :: fn (buff: *u8, len: usize) {
+        with _ := self.allocator {
+            if not self.cap do self.cap = STRING_INITIAL_CAPACITY
+            newcap := self.cap
+            for self.len + len >= newcap {
+                newcap *= 2
+            }
+
+            if not self.buff {
+                self.buff = alloc(self.cap)
+            } else if self.cap != newcap {
+                self.cap = newcap
+                self.buff = resize(self.buff, self.cap)
+            }
+
+            mem.memcpy(self.buff[self.len].&, buff, len)
+            self.len += len
+        }
+    }
+    pub append :: fn (strlit: []char) {
+        self.append_buff(strlit, strlit.len)
+    }
+}

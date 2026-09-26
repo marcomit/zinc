@@ -27,10 +27,10 @@ main :: fn () u32 {
     c.printf("%d\n", 'z' - 'a')
 
     // \u in a string: U+0048 = H, produces "Hello"
-    c.printf("%s\n", "\u0048ello")
+    c.printf("%s\n", "\u0048ello".ptr)
 
     // \U in a string: U+0001F600 = 😀
-    c.printf("%s\n", "\U0001F600")
+    c.printf("%s\n", "\U0001F600".ptr)
 
     return 0
 }

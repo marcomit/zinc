@@ -43,8 +43,8 @@ Vec2 :: struct {
 
 Vec2 :: impl {
     rand :: fn (rand: *Random) Vec2 -> .{
-        x: rand.range(0, 19),
-        y: rand.range(0, 19)
+        x= rand.range(0, 19),
+        y= rand.range(0, 19)
     }
 }
 
@@ -54,10 +54,10 @@ Vec2 self :: impl {
     }
 
     draw :: fn (color: Color) u0 -> rl.DrawRectangleV(.{
-        x: self.x * BLOCK,
-        y: self.y * BLOCK,
-        width: BLOCK,
-        height: BLOCK
+        x= self.x * BLOCK,
+        y= self.y * BLOCK,
+        width= BLOCK,
+        height= BLOCK
     }, color)
 }
 
@@ -88,9 +88,9 @@ Snake :: impl {
         self.dir = .Right()
         self.head = alloc(sizeof Vec2 * self.len)
 
-        self.head[0] = .{x: 5, y: 10}
-        self.head[1] = .{x: 4, y: 10}
-        self.head[2] = .{x: 3, y: 10}
+        self.head[0] = .{x= 5, y= 10}
+        self.head[1] = .{x= 4, y= 10}
+        self.head[2] = .{x= 3, y= 10}
         return self
     }
 }
@@ -100,14 +100,11 @@ Snake :: impl {
         self.len = self.len + 1
         self.head = resize(self.head, sizeof Vec2 * self.len)
         self.head[self.len - 1] = self.head[self.len - 2]
-        io.printf("append(%d)\n", self.len)
     }
 
     draw :: fn () u0 {
-        i := 0
-        for i < self.len {
+        for i in 0..self.len {
             self.head[i].draw(Green)
-            i: + 1
         }
     }
 
@@ -125,21 +122,21 @@ Snake :: impl {
         i := self.len - 1
         for i > 0 {
             self.head[i] = self.head[i - 1]
-            i: - 1
+            i -= 1
         }
 
         match self.dir {
             .Left() {
-                self.head[0].x: - 1
+                self.head[0].x -= 1
             },
             .Right() {
-                self.head[0].x: + 1
+                self.head[0].x += 1
             },
             .Up() {
-                self.head[0].y: - 1
+                self.head[0].y -= 1
             },
             .Down() {
-                self.head[0].y: + 1
+                self.head[0].y += 1
             }
         }
 
@@ -152,10 +149,8 @@ Snake :: impl {
     }
 
     collide :: fn () u1 {
-        i := 1
-        for i < self.len {
+        for i in 1 .. self.len {
             if self.head[0].equals(self.head[i]) { return true }
-            i: + 1
         }
         return false
     }
@@ -179,13 +174,13 @@ main :: fn () i32 {
             rl.ClearBackground(Black)
 
             if rl.IsKeyPressed(KEY_LEFT) {
-                snake.change_dir(.Left())
+                snake.change_dir(.Left)
             } else if rl.IsKeyPressed(KEY_RIGHT) {
-                snake.change_dir(.Right())
+                snake.change_dir(.Right)
             } else if rl.IsKeyPressed(KEY_UP) {
-                snake.change_dir(.Up())
+                snake.change_dir(.Up)
             } else if rl.IsKeyPressed(KEY_DOWN) {
-                snake.change_dir(.Down())
+                snake.change_dir(.Down)
             }
 
             snake.move()
@@ -197,7 +192,7 @@ main :: fn () i32 {
             if snake.eat(apple) {
                 apple = Vec2.rand(rand)
                 snake.append()
-                score: + 1
+                score += 1
             }
 
             if snake.collide() { break }

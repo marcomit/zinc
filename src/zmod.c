@@ -87,6 +87,16 @@ static char *getHomePath() {
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
     switch(token->type) {
+    case TOK_STR_START: return "{";
+    case TOK_STR_END:   return "}";
+    case TOK_STREAM: {
+        char *buff = NULL;
+        for (usize i = 0; i < veclen(token->stream); i++) {
+            char *s = stoken(token->stream[i]);
+            vecunion(buff, s, strlen(s));
+        }
+        return buff;
+    }
     case TOK_STR_LIT:
     case TOK_IDENT:     return token->str;
     case TOK_INT_LIT:
@@ -182,12 +192,10 @@ static void _stype(ZType *type, char **buff) {
 
         if (type->array.dynamic) {
             vecunion(*buff, "dyn", 3);
-        } else {
-            usize len = type->array.size;
-            while (len > 0) {
-                vecpush(*buff, 48 + len % 10);
-                len /= 10;
-            }
+        } else if (type->array.size) {
+            char num[32];
+            usize len = snprintf(num, sizeof num, "%zu", type->array.size);
+            vecunion(*buff, num, len);
         }
 
         vecpush(*buff, ']');
@@ -262,7 +270,7 @@ char *stype(ZType *type) {
 }
 
 static const u64 KIND_PRIME[] = {
-    #define TYPE(name, masks, prime) [name] = prime,
+    #define TYPE(name, prime, masks) [name] = prime,
     #include "ztype.def"
     #undef TYPE
 };
@@ -270,7 +278,7 @@ _Static_assert(sizeof(KIND_PRIME) / sizeof(KIND_PRIME[0]) == Z_TYPE_COUNT,
                "KIND_PRIME must have exactly one entry per ZTypeKind");
 
 const u16 ZTypeMasks[Z_TYPE_COUNT] = {
-    #define TYPE(name, masks, prime) [name] = (masks),
+    #define TYPE(name, prime, masks) [name] = (masks),
     #include "ztype.def"
     #undef TYPE
 };
@@ -760,6 +768,21 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->unwrap.orExpr, depth);
         break;
 
+    case NODE_INTERPOLATION:
+        printf("\n");
+        for (usize i = 0; i < veclen(node->interpolation); i++) {
+            switch (node->interpolation[i]->type) {
+            case Z_INTERP_LIT:
+                indent(depth);
+                printf("%s\n", stoken(node->interpolation[i]->literal));
+                break;
+            case Z_INTERP_EXPR:
+                printNode(node->interpolation[i]->expr, depth);
+                break;
+            }
+        }
+        break;
+
     default:
             printf("(details not implemented in printer for node %d)",
                     node->type);
@@ -1244,4 +1267,9 @@ void initPrimitiveTypes() {
     if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
     if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
     if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
+    if (!strType) {
+        strType             = maketype(Z_TYPE_ARRAY);
+        strType->array.base = charType;
+        strType->array.size = 0;
+    }
 }

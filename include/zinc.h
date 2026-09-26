@@ -14,7 +14,7 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-#define ZINC_VERSION "0.0.2"
+#define ZINC_VERSION "0.0.3"
 
 static char sep = '/';
 
@@ -37,13 +37,15 @@ typedef enum {
 
 } ZTokenType;
 
-typedef struct ZToken {
+typedef struct ZToken ZToken;
+struct ZToken {
     ZTokenType  type;
     union {
         char    *str;
         i64     integer;
         f64     floating;
         bool    boolean;
+        ZToken  **stream;
     };
     char        *filename;
     char        *sourcePtr;
@@ -53,7 +55,7 @@ typedef struct ZToken {
     usize       row;
     usize       col;
     bool        newlineBefore;
-} ZToken;
+};
 
 typedef struct ZNode        ZNode;
 typedef struct ZType        ZType;
@@ -68,6 +70,8 @@ extern ZType *u1Type;
 extern ZType *charType;
 extern ZType *u64Type;
 extern ZType *modType;
+extern ZType *strType;
+extern ZType *interpType;
 
 typedef enum {
     Z_ERROR,
@@ -255,7 +259,7 @@ typedef enum {
 } ZNodeType;
 
 typedef enum ZTypeKind {
-    #define TYPE(name, masks, prime) name,
+    #define TYPE(name, prime, masks) name,
     #include "ztype.def"
     #undef TYPE
 
@@ -441,6 +445,24 @@ struct ZVarDestructPattern {
         } sum;
     };
 };
+
+typedef enum {
+    Z_INTERP_LIT,
+    Z_INTERP_EXPR
+} ZInterpolationType;
+
+typedef struct {
+    ZInterpolationType type;
+    union {
+        ZToken  *literal;
+        struct {
+            ZNode   *expr;
+
+            /* Reference to the implementation of the write method. */
+            ZNode   *writable;
+        };
+    };
+} ZInterpolation;
 
 typedef enum ZAnnotationKind {
     Z_ANN_IDENT     = 1 << 0,
@@ -708,6 +730,7 @@ struct ZNode {
             bool            pub;
         } macro;
 
+        ZInterpolation      **interpolation;
         ZToken              *literalTok;
         struct {
             ZToken          *tok;
@@ -967,7 +990,7 @@ u32 hashNode(ZNode *);
 u32 hashType(ZType *);
 u32 hashtoken(ZToken *);
 
-ZNode *convertHeaderToZNode(ZParser *, ZToken *);
+ZNode *convertHeaderToZNode(ZState *, ZToken *);
 
 /* Parser */
 ZNode *zparse(ZState *, ZToken **);
@@ -1060,13 +1083,14 @@ typedef struct ZAnnotationSpec ZAnnotationSpec;
 typedef struct ZAnnotationQuery ZAnnotationQuery;
 
 typedef enum {
-    Z_TRG_ANY       = 1 << 0,
-    Z_TRG_FUNC      = 1 << 1,
-    Z_TRG_STRUCT    = 1 << 2,
-    Z_TRG_ENUM      = 1 << 3,
-    Z_TRG_VAR       = 1 << 4,
-    Z_TRG_FOREIGN   = 1 << 5,
-    Z_TRG_IMPL      = 1 << 6
+    Z_TRG_ANY       = 1 << 0x00,
+    Z_TRG_FUNC      = 1 << 0x01,
+    Z_TRG_STRUCT    = 1 << 0x02,
+    Z_TRG_ENUM      = 1 << 0x03,
+    Z_TRG_VAR       = 1 << 0x04,
+    Z_TRG_FOREIGN   = 1 << 0x05,
+    Z_TRG_IMPL      = 1 << 0x06,
+    Z_TRG_FACET     = 1 << 0x07,
 } ZAnnotationTarget;
 
 ZAnnotation *query(ZAnnotation **, const char *);

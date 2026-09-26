@@ -25,18 +25,26 @@ LLVMValueRef        genLValue           (ZCodegen *, ZNode *);
 static LLVMValueRef genForeign          (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto    (ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genFacetConstruct   (ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
+static LLVMValueRef genCond             (ZCodegen *, LLVMValueRef, ZType *, LLVMIntPredicate);
+static LLVMValueRef genStrLitGlobal     (ZCodegen *, ZToken *, ZType *);
+static LLVMValueRef genInterpolation    (ZCodegen *, ZNode *);
+static ZLLVMStack   *getStackValue      (ZCodegen *, ZNode *);
 static void         buildNestedFuncVar  (ZCodegen *, ZNode *, LLVMValueRef);
+static void         storeInterpolation  (ZCodegen *, LLVMValueRef, ZInterpolation *);
 
 /* ========== Native types ==========*/
 
-_Thread_local LLVMTypeRef i0Type   = NULL;
-_Thread_local LLVMTypeRef i1Type   = NULL;
-_Thread_local LLVMTypeRef i8Type   = NULL;
-_Thread_local LLVMTypeRef i16Type  = NULL;
-_Thread_local LLVMTypeRef i32Type  = NULL;
-_Thread_local LLVMTypeRef i64Type  = NULL;
-_Thread_local LLVMTypeRef f32Type  = NULL;
-_Thread_local LLVMTypeRef f64Type  = NULL;
+_Thread_local LLVMTypeRef i0Type        = NULL;
+_Thread_local LLVMTypeRef i1Type        = NULL;
+_Thread_local LLVMTypeRef i8Type        = NULL;
+_Thread_local LLVMTypeRef i16Type       = NULL;
+_Thread_local LLVMTypeRef i32Type       = NULL;
+_Thread_local LLVMTypeRef i64Type       = NULL;
+_Thread_local LLVMTypeRef usizeType     = NULL;
+_Thread_local LLVMTypeRef ptrType       = NULL;
+_Thread_local LLVMTypeRef f32Type       = NULL;
+_Thread_local LLVMTypeRef f64Type       = NULL;
+_Thread_local LLVMTypeRef StringType    = NULL;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
@@ -143,15 +151,27 @@ static LLVMValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
  */
 static void initNativeTypes(ZCodegen *ctx) {
     if (i0Type) return;
-    i0Type  = LLVMVoidTypeInContext(ctx->ctx);
-    i1Type  = LLVMInt1TypeInContext(ctx->ctx);
-    i8Type  = LLVMInt8TypeInContext(ctx->ctx);
-    i16Type = LLVMInt16TypeInContext(ctx->ctx);
-    i32Type = LLVMInt32TypeInContext(ctx->ctx);
-    i64Type = LLVMInt64TypeInContext(ctx->ctx);
+    i0Type      = LLVMVoidTypeInContext(ctx->ctx);
+    i1Type      = LLVMInt1TypeInContext(ctx->ctx);
+    i8Type      = LLVMInt8TypeInContext(ctx->ctx);
+    i16Type     = LLVMInt16TypeInContext(ctx->ctx);
+    i32Type     = LLVMInt32TypeInContext(ctx->ctx);
+    i64Type     = LLVMInt64TypeInContext(ctx->ctx);
 
-    f32Type = LLVMFloatTypeInContext(ctx->ctx);
-    f64Type = LLVMDoubleTypeInContext(ctx->ctx);
+    f32Type     = LLVMFloatTypeInContext(ctx->ctx);
+    f64Type     = LLVMDoubleTypeInContext(ctx->ctx);
+
+    if (!ctx->state->pointerSize) {
+        error(ctx->state, NULL, "Unable to load usize type");
+    }
+    usizeType   = LLVMIntTypeInContext(ctx->ctx, ctx->state->pointerSize * 8);
+    ptrType     = LLVMPointerTypeInContext(ctx->ctx, 0);
+    StringType  = LLVMStructTypeInContext(
+        ctx->ctx,
+        (LLVMTypeRef []){
+            usizeType, ptrType
+        }, 2, false
+    );
 
     // LLVMSourceLocation = LLVMStructCreateNamed(
     //         ctx->ctx, "builtin.SourceLocation"
@@ -628,13 +648,9 @@ static LLVMTypeRef genEnumType(ZCodegen *ctx, ZType *type) {
     usize largest = typeSize(ctx->state, type);
     LLVMTypeRef flag = i8Type;
     if (type->enm.integer) flag = genPrimitiveType(ctx, type->enm.integer);
-    LLVMStructSetBody(enumType,
-            (LLVMTypeRef[]){
-        // Flag integer
-        flag,
-
-        // Buffer array with the largest field
-        LLVMArrayType(i8Type, largest - 1)
+    LLVMStructSetBody(enumType, (LLVMTypeRef[]){
+        flag, // Flag integer
+        LLVMArrayType(i8Type, largest - 1), // Buffer with the largest field
     }, largest == 0 ? 1 : 2, 0);
 
     return enumType;
@@ -671,6 +687,30 @@ static LLVMTypeRef genFacetType(ZCodegen *ctx) {
     return facet;
 }
 
+static LLVMTypeRef genArrayType(ZCodegen *ctx, ZType *type) {
+    LLVMTypeRef base = genType(ctx, type->array.base);
+    if (!base) return NULL;
+    if (type->array.dynamic) {
+        LLVMTypeRef descriptorFields[] = {
+            usizeType, usizeType, genFacetType(ctx),
+            ptrType
+        };
+        return LLVMStructTypeInContext(ctx->ctx, descriptorFields, 4, 0);
+    } else if (type->array.size != 0) {
+        return LLVMStructTypeInContext(
+            ctx->ctx, (LLVMTypeRef []) {
+                usizeType, ptrType//, LLVMArrayType(base, type->array.size)
+            }, 2, 0
+        );
+    } else {
+        return LLVMStructTypeInContext(
+            ctx->ctx, (LLVMTypeRef []) {
+                usizeType, ptrType
+            }, 2, 0
+        );
+    }
+}
+
 /**
  * @brief Translate a ZType to an LLVM type.
  *
@@ -690,7 +730,8 @@ static LLVMTypeRef genFacetType(ZCodegen *ctx) {
 LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     if (!type) {
         zlog(ctx->state, NULL, Z900C);
-        return LLVMVoidTypeInContext(ctx->ctx);
+        return NULL;
+        // return LLVMVoidTypeInContext(ctx->ctx);
     }
 
     switch (type->kind) {
@@ -701,6 +742,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
     case Z_TYPE_STRUCT:     return genStructType(ctx, type);
     case Z_TYPE_FACET:      return genFacetType (ctx);
     case Z_TYPE_PRIMITIVE:  return genPrimitiveType(ctx, type->primitive.token);
+    case Z_TYPE_ARRAY:      return genArrayType(ctx, type);
 
     case Z_TYPE_GENERIC:
         if (veclen(type->generic.instantiations) == 0) {
@@ -722,14 +764,6 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
         return LLVMPointerType(genType(ctx, base), 0);
     }
 
-    case Z_TYPE_ARRAY: {
-        LLVMTypeRef base = genType(ctx, type->array.base);
-        if (!base) return NULL;
-        LLVMTypeRef descriptorFields[] = {
-            i64Type, LLVMPointerType(base, 0)
-        };
-        return LLVMStructTypeInContext(ctx->ctx, descriptorFields, 2, 0);
-    }
 
     case Z_TYPE_TUPLE: {
         usize len = veclen(type->tuple);
@@ -815,10 +849,18 @@ static void genChainDefer(ZCodegen *ctx, ZLLVMScope *scope) {
     }
 }
 
+// TODO: compile string literals as an array chars.
 static LLVMValueRef genLitTok(ZCodegen *ctx, ZToken *tok, ZType *type) {
     switch (tok->type) {
-    case TOK_STR_LIT:
-        return LLVMBuildGlobalStringPtr(ctx->builder, tok->str, label(ctx, "string"));
+    case TOK_STREAM:
+        return NULL;
+    case TOK_STR_LIT: {
+        LLVMValueRef strPtr = genStrLitGlobal(ctx, tok, type);
+        return LLVMBuildLoad2(
+            ctx->builder,
+            genType(ctx, type), strPtr, label(ctx, "string.value")
+       );
+    }
     case TOK_INT_LIT:
     case TOK_RUNE_LIT:
         return LLVMConstInt(i32Type, tok->integer, true);
@@ -1230,7 +1272,7 @@ static LLVMValueRef genArrayLitPtr(ZCodegen *ctx, ZNode *node) {
     }
 
     storeArray(
-        ctx, stack, LLVMConstInt(i64Type, node->resolved->array.size, false)
+        ctx, stack, LLVMConstInt(usizeType, node->resolved->array.size, false)
     );
 
     return stack->stack;
@@ -1259,7 +1301,7 @@ static LLVMValueRef genSlicePtr(ZCodegen *ctx, ZNode *node) {
 
     LLVMValueRef start = node->slice.start  ?
         genExpr(ctx, node->slice.start)     :
-        LLVMConstInt(i64Type, 0, false);
+        LLVMConstInt(usizeType, 0, false);
 
     LLVMValueRef end = NULL;
 
@@ -1271,7 +1313,7 @@ static LLVMValueRef genSlicePtr(ZCodegen *ctx, ZNode *node) {
             sliceType,
             ptr, 0, "len_ptr"
         );
-        end = LLVMBuildLoad2(ctx->builder, i64Type, end, "len");
+        end = LLVMBuildLoad2(ctx->builder, usizeType, end, "len");
     }
 
     LLVMValueRef length = LLVMBuildSub(
@@ -1394,6 +1436,7 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
         );
     } else if (objType->kind == Z_TYPE_ARRAY) {
         LLVMValueRef ptr = genLValue(ctx, node->memberAccess.object);
+        if (!ptr) return NULL;
         i32 index = -1;
 
         if      (strcmp(tok->str, "len") == 0) index = 0;
@@ -1799,6 +1842,41 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     return call;
 }
 
+static LLVMValueRef genStrLitGlobal(ZCodegen *ctx, ZToken *tok, ZType *resolved) {
+
+    const char *s           = stoken(tok);
+    usize len               = strlen(s);
+
+    LLVMTypeRef dataType    = LLVMArrayType2(i8Type, len + 1);
+    LLVMValueRef dataGlobal = LLVMAddGlobal(ctx->mod, dataType, label(ctx, "str.data"));
+
+    LLVMSetInitializer(
+        dataGlobal,
+        LLVMConstStringInContext(ctx->ctx, s, len, false)
+    );
+    LLVMSetGlobalConstant(dataGlobal, true);
+    LLVMSetLinkage(dataGlobal, LLVMPrivateLinkage);
+    LLVMSetUnnamedAddr(dataGlobal, LLVMGlobalUnnamedAddr);
+
+    LLVMTypeRef descType = genType(ctx, resolved);
+    LLVMValueRef fields[] = {
+        LLVMConstInt(usizeType, len, false),
+        dataGlobal
+    };
+
+    LLVMValueRef globVal = LLVMAddGlobal(ctx->mod, descType, label(ctx, "str"));
+
+    LLVMSetInitializer(
+        globVal,
+        LLVMConstStructInContext(ctx->ctx, fields, 2, false)
+    );
+    LLVMSetGlobalConstant(globVal, true);
+    LLVMSetLinkage(globVal, LLVMPrivateLinkage);
+    LLVMSetUnnamedAddr(globVal, LLVMGlobalUnnamedAddr);
+
+    return globVal;
+}
+
 /**
  * @brief Loads the addresso of the expression.
  *
@@ -1808,14 +1886,19 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
 LLVMValueRef genLValue(ZCodegen *ctx, ZNode *node) {
     if (!node) return NULL;
     switch (node->type) {
-    case NODE_ARRAY_LIT:        return genArrayLitPtr       (ctx, node);
-    case NODE_SLICE:            return genSlicePtr          (ctx, node);
-    case NODE_ENUM_LIT:         return genEnumLitPtr        (ctx, node);
-    case NODE_ENUM_LIT_NO_PAYLOAD: return genEnumNoPayloadPtr(ctx, node);
-    case NODE_STRUCT_LIT:       return genStructLitPtr      (ctx, node);
-    case NODE_TUPLE_LIT:        return genTupleLitPtr       (ctx, node);
-    case NODE_MEMBER:           return genMemberAccessPtr   (ctx, node);
-    case NODE_SUBSCRIPT:        return genSubscriptPtr      (ctx, node);
+    case NODE_ARRAY_LIT:            return genArrayLitPtr       (ctx, node);
+    case NODE_SLICE:                return genSlicePtr          (ctx, node);
+    case NODE_ENUM_LIT:             return genEnumLitPtr        (ctx, node);
+    case NODE_ENUM_LIT_NO_PAYLOAD:  return genEnumNoPayloadPtr  (ctx, node);
+    case NODE_STRUCT_LIT:           return genStructLitPtr      (ctx, node);
+    case NODE_TUPLE_LIT:            return genTupleLitPtr       (ctx, node);
+    case NODE_MEMBER:               return genMemberAccessPtr   (ctx, node);
+    case NODE_SUBSCRIPT:            return genSubscriptPtr      (ctx, node);
+    case NODE_INTERPOLATION:        return genInterpolation     (ctx, node);
+    case NODE_LITERAL:
+        if (node->tok->type == TOK_STR_LIT)
+            return genStrLitGlobal(ctx, node->tok, node->resolved);
+        return NULL;
     case NODE_CALL: {
         genCall(ctx, node);
         ZLLVMStack *stack = getStackValue(ctx, node);
@@ -2210,6 +2293,10 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
     }
 }
 
+static inline LLVMValueRef genNot(ZCodegen *ctx, ZType *base, LLVMValueRef val) {
+    return genCond(ctx, val, base, LLVMIntEQ);
+}
+
 static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     if (node->unary.operat->type == TOK_REF)
         return genLValue(ctx, node->unary.operand);
@@ -2249,7 +2336,7 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
         }
         return loaded;
     }
-    case TOK_NOT:   return LLVMBuildNot(ctx->builder, arg, l);
+    case TOK_NOT:   return genNot(ctx, node->unary.operand->resolved, arg);
     case TOK_REF:   return genLValue(ctx, node->unary.operand);
     case TOK_BITNOT: {
         LLVMTypeRef ref         = LLVMTypeOf(arg);
@@ -2450,6 +2537,45 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
     if (to->kind == Z_TYPE_FACET && from->kind != Z_TYPE_FACET) {
         ZLLVMStack *stack = getStackValue(ctx, node);
         return genFacetConstruct(ctx, stack, to, node->castExpr.expr);
+    }
+
+    if (typesEqual(from, strType) && typesEqual(to, interpType)) {
+        ZLLVMStack *stack = getStackValue(ctx, node);
+        if (!stack) {
+            zlog(ctx->state, node->tok, Z901B);
+            return NULL;
+        }
+        printf("Store interpolation\n");
+        storeArray(ctx, stack, LLVMConstInt(i64Type, 1, false));
+
+        LLVMValueRef zero = LLVMConstInt(i64Type, 0, false);
+        LLVMValueRef slot = LLVMBuildGEP2(
+            ctx->builder,
+            genType(ctx, LangItems[Z_LANG_INTERPOLATED_STRING]->resolved),
+            stack->elem, &zero, 1, label(ctx, "interp.slot")
+        );
+        storeInterpolation(ctx, slot, &(ZInterpolation){
+            .type       = Z_INTERP_LIT,
+            .literal    = node->castExpr.expr->tok
+        });
+        return LLVMBuildLoad2(
+            ctx->builder,
+            genType(ctx, to), stack->stack, label(ctx, "interp.load")
+        );
+    }
+
+    if (from->kind == Z_TYPE_ARRAY && to->kind == Z_TYPE_POINTER) {
+        LLVMValueRef desc = genLValue(ctx, node->castExpr.expr);
+        if (!desc) {
+            zlog(ctx->state, node->tok, Z9028);
+            return NULL;
+        }
+        LLVMValueRef field = LLVMBuildStructGEP2(
+            ctx->builder, genType(ctx, from), desc, 1, label(ctx, "array.ptr")
+        );
+        return LLVMBuildLoad2(
+            ctx->builder, genType(ctx, to), field, label(ctx, "array.data")
+        );
     }
 
     /* Array-literal cast: [n]T as []U - write each element directly into
@@ -2870,24 +2996,13 @@ LLVMValueRef getFlagOptional(ZCodegen *ctx,
     return _getFlagOptional(ctx, type, value, LLVMIntEQ);
 }
 
-static LLVMValueRef genLeftCond(ZCodegen *ctx, LLVMValueRef val, ZType *type) {
-    if (!type) return NULL;
-    switch (type->kind) {
-    case Z_TYPE_PRIMITIVE: return val;
-    case Z_TYPE_OPTIONAL:
-        if (type->optional->kind == Z_TYPE_POINTER) return val;
-    case Z_TYPE_RESULT:
-        return LLVMBuildExtractValue(ctx->builder, val, 0, label(ctx, "extract"));
-    default: return NULL;
-    }
-    return NULL;
-}
-
-static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
-    if (!type || !left) return NULL;
+static LLVMValueRef genCond(ZCodegen *ctx,
+    LLVMValueRef left, ZType *type, LLVMIntPredicate predicate) {
+    if (!type || !left || !typeKindIs(type->kind, TYPE_COMPARABLE_MASK)) return NULL;
     LLVMValueRef right = NULL;
 
     switch (type->kind) {
+    case Z_TYPE_POINTER:
     case Z_TYPE_PRIMITIVE:
         right = LLVMConstNull(genType(ctx, type));
         break;
@@ -2903,11 +3018,12 @@ static LLVMValueRef genCond(ZCodegen *ctx, LLVMValueRef left, ZType *type) {
         right = LLVMConstNull(i8Type);
         left = LLVMBuildExtractValue(ctx->builder, left, 1, label(ctx, "cond"));
     default:
-        break;
+        error(ctx->state, type->tok, "Invalid type %s", stype(type));
+        return NULL;
     }
 
     return LLVMBuildICmp(
-        ctx->builder, LLVMIntNE, left, right, label(ctx, "cond")
+        ctx->builder, predicate, left, right, label(ctx, "cond")
     );
 }
 
@@ -2918,7 +3034,7 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     case UNWRAP_BREAK:
     case UNWRAP_CONTINUE:
     case UNWRAP_RETURN: {
-        LLVMValueRef cond = genCond(ctx, base, node->unwrap.base->resolved);
+        LLVMValueRef cond = genCond(ctx, base, node->unwrap.base->resolved, LLVMIntNE);
         LLVMBasicBlockRef success = makeblock(ctx, "unwrap.success");
         LLVMBasicBlockRef then = makeblock(ctx, "unwrap.failure");
 
@@ -2938,7 +3054,7 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
         );
 
         LLVMValueRef cond           = genCond(
-            ctx, base, node->unwrap.base->resolved
+            ctx, base, node->unwrap.base->resolved, LLVMIntNE
         );
 
         LLVMBasicBlockRef origin    = LLVMGetInsertBlock(ctx->builder);
@@ -2968,6 +3084,76 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+static inline LLVMValueRef buildInterpolationValue(
+    ZCodegen *ctx, ZInterpolation *interp) {
+    LLVMValueRef value = NULL;
+    switch (interp->type) {
+    case Z_INTERP_LIT:  return genLitTok(ctx, interp->literal, strType);
+    case Z_INTERP_EXPR: return genExpr(ctx, interp->expr);
+    }
+    ZToken *tok = interp->type == Z_INTERP_LIT ?
+        interp->literal : interp->expr->tok;
+
+    error(ctx->state, tok, "Invalid interpolation value");
+    return value;
+}
+
+static inline void storeInterpolation(ZCodegen *ctx, LLVMValueRef slot, ZInterpolation *interp) {
+    ZType *enumType         = LangItems[Z_LANG_INTERPOLATED_STRING]->resolved;
+    LLVMTypeRef typeRef     = genType(ctx, enumType);
+    LLVMValueRef value      = buildInterpolationValue(ctx, interp);
+
+    if (!value) return;
+
+    usize tag               = interp->type == Z_INTERP_EXPR ? 1 : 0;
+    ZType *variant          = enumType->enm.fields[tag]->resolved;
+    LLVMTypeRef variantRef  = genType(ctx, variant);
+
+    LLVMValueRef tagPtr     = LLVMBuildStructGEP2(
+        ctx->builder, typeRef, slot, 0, label(ctx, "interp.index"));
+    LLVMValueRef dataPtr    = LLVMBuildStructGEP2(
+        ctx->builder, variantRef, slot, 1, label(ctx, "interp.data"));
+
+    LLVMTypeRef enumTag     = enumType->enm.integer ?
+        genPrimitiveType(ctx, enumType->enm.integer) : i8Type;
+
+    LLVMBuildStore(ctx->builder, LLVMConstInt(enumTag, tag, false), tagPtr);
+    LLVMBuildStore(ctx->builder, value, dataPtr);
+}
+
+static LLVMValueRef genInterpolation(ZCodegen *ctx, ZNode *node) {
+    ZNode *strInterp    = LangItems[Z_LANG_INTERPOLATED_STRING];
+    ZNode *writable     = LangItems[Z_LANG_WRITABLE];
+    if (!strInterp) {
+        error(ctx->state, node->tok, "Unable to compile interpolation due to missing lang-item 'interpolated_string', please define it!");
+        return NULL;
+    }
+
+    if (!writable) {
+        error(ctx->state, node->tok, "Unable to compile interpolation due to missing lang-item 'writable'");
+        return NULL;
+    }
+    ZLLVMStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        error(ctx->state, node->tok, "Missing stack value");
+        return NULL;
+    }
+
+    LLVMValueRef len = LLVMConstInt(i64Type, veclen(node->interpolation), false);
+    storeArray(ctx, stack, len);
+
+    LLVMTypeRef type = genType(ctx, strInterp->resolved);
+    for (usize i = 0; i < veclen(node->interpolation); i++) {
+        LLVMValueRef index  = LLVMConstInt(i64Type, i, false);
+        LLVMValueRef slot   = LLVMBuildGEP2(
+            ctx->builder,   type,   stack->elem,
+            &index,         1,      label(ctx, "interpolation.index")
+        );
+        storeInterpolation(ctx, slot, node->interpolation[i]);
+    }
+    return stack->stack;
+}
+
 LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef res = NULL;
     switch (node->type) {
@@ -2983,6 +3169,7 @@ LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
     case NODE_BLOCK:            res = genBlockExpr      (ctx, node); break;
     case NODE_ARRAY_INIT:       res = genArrayInit      (ctx, node); break;
     case NODE_VAR_DECL:         res = genVarDestruct    (ctx, node); break;
+    // case NODE_INTERPOLATION:    res = genInterpolation  (ctx, node); break;
 
     case NODE_MEMBER:
         if (node->memberAccess.object &&
@@ -2991,6 +3178,7 @@ LLVMValueRef genExpr(ZCodegen *ctx, ZNode *node) {
             res = genFacetMember(ctx, node);
             break;
         }
+    case NODE_INTERPOLATION:
     case NODE_SUBSCRIPT:
     case NODE_TUPLE_LIT:
     case NODE_STRUCT_LIT:
@@ -3358,7 +3546,7 @@ static void genForInArray(ZCodegen *ctx, ZNode *node) {
 
     LLVMPositionBuilderAtEnd(ctx->builder, step);
     LLVMValueRef next = LLVMBuildAdd(
-        ctx->builder, curr, LLVMConstInt(i64Type, 1, false), label(ctx, "forin.next")
+        ctx->builder, curr, LLVMConstInt(usizeType, 1, false), label(ctx, "forin.next")
     );
 
     LLVMAddIncoming(curr, &next, &step, 1);
@@ -3799,7 +3987,21 @@ static void buildNestedFuncVar(
     }
 }
 
-/* @brief Generates the stack allocation.
+/*
+ * @brief Returns the length of element should be allocated in the stack.
+ * It's used only innside buildFuncVar.
+ * */
+static inline usize backingLen(ZNode *node) {
+    ZType *type = node->resolved;
+    if (!type || type->kind != Z_TYPE_ARRAY) return 0;
+    if (type->array.size > 0) return type->array.size;
+    if (node->type == NODE_CAST && interpType && typesEqual(type, interpType))
+        return 1;
+    return 0;
+}
+
+/*
+ * @brief Generates the stack allocation.
  *
  * Stores the node in a list of stack allocation such that in the second pass
  * the expression knows where it should be stored.
@@ -3828,16 +4030,12 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, b
     LLVMValueRef elem = NULL;
     LLVMTypeRef elemType = NULL;
 
-    if (node->resolved->kind == Z_TYPE_ARRAY && node->resolved->array.size > 0) {
+    usize count = backingLen(node);
+    if (count > 0) {
         LLVMTypeRef baseType = genType(ctx, node->resolved->array.base);
-        elemType = LLVMArrayType2(
-            baseType,
-            node->resolved->array.size
-        );
+        elemType = LLVMArrayType2(baseType, count);
         elem = LLVMBuildAlloca(ctx->builder, elemType, label(ctx, node->tok));
-
         initializeMemoryToZero(ctx, elem, node->resolved);
-
         stackPointer = elem;
     }
 
@@ -3876,14 +4074,19 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         }
         break;
     case NODE_STRUCT_LIT:
+        buildFuncVar(ctx, node, node->resolved, false);
+        break;
     case NODE_ENUM_LIT:
+        buildFuncVar(ctx, node, node->resolved, false);
+        break;
     case NODE_ENUM_LIT_NO_PAYLOAD:
         buildFuncVar(ctx, node, node->resolved, false);
         break;
     case NODE_CAST:
-        if (node->resolved &&
-                (node->resolved->kind == Z_TYPE_SUM ||
-                 node->resolved->kind == Z_TYPE_FACET))
+        if (!getStackValue(ctx, node) && (
+                node->resolved->kind == Z_TYPE_SUM      ||
+                node->resolved->kind == Z_TYPE_FACET    ||
+                backingLen(node) > 0))
             buildFuncVar(ctx, node, node->resolved, false);
         genFuncVars(ctx, node->castExpr.expr);
         break;
@@ -3971,6 +4174,15 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
             genFuncVars(ctx, node->match.arms[i]);
         }
         break;
+    case NODE_INTERPOLATION:
+        if (!getStackValue(ctx, node))
+            buildFuncVar(ctx, node, node->resolved, false);
+
+        for (usize i = 0; i < veclen(node->interpolation); i++) {
+            ZInterpolation *interp = node->interpolation[i];
+            if (interp->type == Z_INTERP_EXPR)
+                genFuncVars(ctx, interp->expr);
+        }
     default:
         break;
     }

@@ -3,6 +3,6 @@ use b
 
 main :: fn () i32 {
     a: A = A.new("ciao")
-    print(a)
+    printB(a)
     return 0
 }

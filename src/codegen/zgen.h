@@ -22,7 +22,6 @@
 #include <llvm-c/BitReader.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 #include <stdio.h>
-#include <unistd.h>
 
 #define LABEL_RESET(c) do {                                                     \
     memset(ctx->str, 0, veclen(ctx->str));                                      \
