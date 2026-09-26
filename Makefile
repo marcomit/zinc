@@ -8,17 +8,42 @@ else
   UNAME := $(shell uname)
 endif
 
+# Every machine (local and CI) builds against the same LLVM major, so the code
+# never has to care about old vs new C API. Bump it here and in
+# .github/actions/setup-llvm/action.yml together.
+LLVM_VERSION ?= 22
+
+# $(call llvm_major,cmd) - the major version printed by `cmd`, e.g. "22".
+llvm_major = $(firstword $(subst ., ,$(lastword $(shell $(1) 2>/dev/null | head -1))))
+
+ifneq ($(OS), Windows_NT)
+  # First llvm-config whose major is LLVM_VERSION: versioned installs before
+  # unversioned ones, so a newer default LLVM on the machine is skipped.
+  LLVM_CONFIG ?= $(firstword $(foreach c, \
+    /opt/homebrew/opt/llvm@$(LLVM_VERSION)/bin/llvm-config \
+    /usr/local/opt/llvm@$(LLVM_VERSION)/bin/llvm-config \
+    /usr/lib/llvm-$(LLVM_VERSION)/bin/llvm-config \
+    llvm-config-$(LLVM_VERSION) \
+    /opt/homebrew/opt/llvm/bin/llvm-config \
+    /usr/local/opt/llvm/bin/llvm-config \
+    llvm-config, \
+    $(if $(filter $(LLVM_VERSION),$(call llvm_major,$(c) --version)),$(c))))
+  ifeq ($(LLVM_CONFIG),)
+    $(error LLVM $(LLVM_VERSION) not found. macOS: brew install llvm@$(LLVM_VERSION) lld@$(LLVM_VERSION) - Linux: see .github/actions/setup-llvm/action.yml)
+  endif
+endif
+
 ifeq ($(UNAME), Darwin)
   # brew install llvm ships LLD tools+libs but NOT the embedding API headers.
   # Those come from the standalone lld formula (brew install lld).
-  LLD_PREFIX := $(firstword $(wildcard \
+  LLD_PREFIX := $(firstword $(foreach p, \
+    /opt/homebrew/opt/lld@$(LLVM_VERSION) \
+    /usr/local/opt/lld@$(LLVM_VERSION) \
     /opt/homebrew/opt/lld \
-    /opt/homebrew/opt/lld@20 \
-    /opt/homebrew/opt/lld@19 \
-    /opt/homebrew/opt/lld@18 \
-  ))
+    /usr/local/opt/lld, \
+    $(if $(filter $(LLVM_VERSION),$(call llvm_major,$(p)/bin/ld64.lld --version)),$(p))))
   ifeq ($(LLD_PREFIX),)
-    $(error LLD not found. Run: brew install lld)
+    $(error LLD $(LLVM_VERSION) not found. Run: brew install lld@$(LLVM_VERSION))
   endif
   LLD_INCLUDES := -I$(LLD_PREFIX)/include
   LLD_LIBS     := -L$(LLD_PREFIX)/lib -Wl,-rpath,$(LLD_PREFIX)/lib -llldMachO -llldCommon
@@ -40,11 +65,11 @@ ifeq ($(UNAME), Windows)
   # attribute still fires for zinc's internal APIs.
   _WIN_DEFS     := -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS
 else
-  _LLVM_CFLAGS  := $(shell llvm-config --cflags 2>/dev/null)
-  _LLVM_LDFLAGS := $(shell llvm-config --ldflags --libs core 2>/dev/null)
+  _LLVM_CFLAGS  := $(shell $(LLVM_CONFIG) --cflags 2>/dev/null)
+  _LLVM_LDFLAGS := $(shell $(LLVM_CONFIG) --ldflags --libs core 2>/dev/null)
   # libclang (the C API in clang-c/Index.h) is used by ctrans.c to read C headers.
   # It's a separate dylib, not one of llvm-config's components.
-  _LLVM_LIBDIR  := $(shell llvm-config --libdir 2>/dev/null)
+  _LLVM_LIBDIR  := $(shell $(LLVM_CONFIG) --libdir 2>/dev/null)
   _LLVM_LDFLAGS += -lclang -Wl,-rpath,$(_LLVM_LIBDIR)
   _WIN_DEFS     :=
 endif
