@@ -71,6 +71,7 @@ extern ZType *charType;
 extern ZType *u64Type;
 extern ZType *modType;
 extern ZType *strType;
+extern ZType *interpType;
 
 typedef enum {
     Z_ERROR,
@@ -989,7 +990,7 @@ u32 hashNode(ZNode *);
 u32 hashType(ZType *);
 u32 hashtoken(ZToken *);
 
-ZNode *convertHeaderToZNode(ZParser *, ZToken *);
+ZNode *convertHeaderToZNode(ZState *, ZToken *);
 
 /* Parser */
 ZNode *zparse(ZState *, ZToken **);

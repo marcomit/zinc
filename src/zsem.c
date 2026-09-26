@@ -39,9 +39,6 @@
 #include "zinc.h"
 #include "zvec.h"
 #include "zarena.h"
-#include <stdbool.h>
-#include <pthread.h>
-#include <stdatomic.h>
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
@@ -61,7 +58,7 @@ static ZFuncTable *resolveFuncTable (ZThreadSem *, ZType *);
 static ZType *resolveType           (ZThreadSem *, ZNode *, ZType *);
 static ZSymbol *resolve             (ZThreadSem *, ZToken *);
 static ZType *typesCompatible       (ZThreadSem *, ZType *, ZType *);
-static ZType *resolveLiteralType    (ZThreadSem *, ZToken *);
+static ZType *resolveLiteralType    (ZThreadSem *, ZToken *, ZType *);
 static ZType *resolveEnumLit        (ZThreadSem *, ZNode *, ZType *);
 static ZSymbol *resolveModuleChain (ZThreadSem *, ZToken **, usize *);
 /* ================== Scope / Symbol helpers ================== */
@@ -379,7 +376,7 @@ static void putVarPattern(
     }
     pattern->resolved = type;
     if (pattern->type == Z_VAR_LIT && condition) {
-        ZType *literalType = resolveLiteralType(ctx, pattern->ident);
+        ZType *literalType = resolveLiteralType(ctx, pattern->ident, NULL);
         if (!typesCompatible(ctx, literalType, type)) {
             zlog(ctx->state, pattern->tok,
                 Z0009, stype(type), stype(literalType)
@@ -785,16 +782,20 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
         return typesCompatible(ctx, from, to->optional);
     }
 
-    ZNode *interp = LangItems[Z_LANG_INTERPOLATED_STRING];
-    if (interp) {
-        if (typesEqual(from,    interp->resolved)) {
-            printf("from: %s\n", stype(from));
-        } else if (typesEqual(to, interp->resolved)) {
-            printf("to: %s\n", stype(to));
+    if (typesEqual(from, strType)) {
+        if (!interpType) {
+            ZNode *interp = LangItems[Z_LANG_INTERPOLATED_STRING];
+            if (interp) {
+                ZType *arr          = maketype(Z_TYPE_ARRAY);
+                arr->array.base     = interp->resolved;
+                arr->array.size     = 1;
+                arr->array.dynamic  = false;
+                interpType = arr;
+            }
         }
-        if (typesEqual(from,    interp->resolved)   &&
-            typesEqual(to,      strType)            ) {
-            return interp->resolved;
+
+        if (typesEqual(to, interpType)) {
+            return interpType;
         }
     }
 
@@ -1055,7 +1056,7 @@ static inline ZType *derefType(ZType *t) {
     return t;
 }
 
-static ZType *resolveLiteralType(ZThreadSem *ctx, ZToken *curr) {
+static ZType *resolveLiteralType(ZThreadSem *ctx, ZToken *curr, ZType *inferred) {
     if (curr->type == TOK_NONE) return none;
 
     ZType *t = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
@@ -2280,7 +2281,6 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_UNARY:        result = resolveUnary           (ctx, curr, inferred);      break;
     case NODE_BINARY:       result = resolveBinary          (ctx, curr, inferred);      break;
     case NODE_MEMBER:       result = resolveMemberAccess    (ctx, curr, inferred);      break;
-    case NODE_LITERAL:      result = resolveLiteralType     (ctx, curr->literalTok);    break;
     case NODE_ARRAY_LIT:    result = resolveArrayLiteral    (ctx, curr, inferred);      break;
     case NODE_SUBSCRIPT:    result = resolveArrSubscript    (ctx, curr, inferred);      break;
     case NODE_ARRAY_INIT:   result = resolveArrayInit       (ctx, curr, inferred);      break;
@@ -2291,6 +2291,7 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_IF:           result = resolveIf              (ctx, curr, inferred);      break;
     case NODE_UNWRAP:       result = resolveUnwrap          (ctx, curr, inferred);      break;
     case NODE_INTERPOLATION:result = resolveInterpolation   (ctx, curr, inferred);      break;
+    case NODE_LITERAL:      result = resolveLiteralType     (ctx, curr->literalTok, inferred);    break;
     case NODE_RANGE: {
         ZType *left     = resolveType(ctx, curr->binary.left, inferred);
         ZType *right    = resolveType(ctx, curr->binary.right, inferred);
