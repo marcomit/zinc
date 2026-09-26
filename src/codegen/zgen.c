@@ -2545,7 +2545,6 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
             zlog(ctx->state, node->tok, Z901B);
             return NULL;
         }
-        printf("Store interpolation\n");
         storeArray(ctx, stack, LLVMConstInt(i64Type, 1, false));
 
         LLVMValueRef zero = LLVMConstInt(i64Type, 0, false);
@@ -4137,7 +4136,8 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
     }
     case NODE_CALL:
         if (!node->resolved) {
-            zlog(ctx->state, node->tok, Z00A2);
+            ZLog *err = zlog(ctx->state, node->tok, Z00A2);
+            emitHint(err, "callee type: %s", stype(node->call.callee->resolved));
             break;
         }
         genFuncVars(ctx, node->call.callee);
@@ -4183,6 +4183,10 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
             if (interp->type == Z_INTERP_EXPR)
                 genFuncVars(ctx, interp->expr);
         }
+    case NODE_UNWRAP:
+        genFuncVars(ctx, node->unwrap.base);
+        genFuncVars(ctx, node->unwrap.orExpr);
+        break;
     default:
         break;
     }
