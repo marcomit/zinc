@@ -1852,7 +1852,7 @@ static LLVMValueRef genStrLitGlobal(ZCodegen *ctx, ZToken *tok, ZType *resolved)
 
     LLVMSetInitializer(
         dataGlobal,
-        LLVMConstStringInContext2(ctx->ctx, s, len, false)
+        LLVMConstStringInContext(ctx->ctx, s, len, false)
     );
     LLVMSetGlobalConstant(dataGlobal, true);
     LLVMSetLinkage(dataGlobal, LLVMPrivateLinkage);
