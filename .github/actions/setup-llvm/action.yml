@@ -1,0 +1,101 @@
+name: Setup LLVM
+description: >-
+  Installs the same LLVM major (llvm, clang, libclang, lld) on Linux, macOS
+  and Windows, so zinc is always built against one C API version.
+
+# Keep `version` in sync with LLVM_VERSION in the Makefile.
+inputs:
+  version:
+    description: LLVM major version
+    default: "22"
+  msys2-release:
+    description: >-
+      Exact MSYS2 package release for Windows. MSYS2 is rolling, so the
+      packages are installed from pinned files instead of the latest repo.
+    default: "22.1.8-3"
+
+runs:
+  using: composite
+  steps:
+    # Ubuntu's own repo lags behind (noble ships 18), apt.llvm.org carries
+    # every major. libclang-dev provides libclang.so + clang-c/Index.h, and
+    # libclang-rt-dev the sanitizer runtimes for the asan/ubsan jobs.
+    - name: Install LLVM (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        V: ${{ inputs.version }}
+      run: |
+        wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "$V"
+        sudo apt-get install -y \
+          llvm-$V-dev libclang-$V-dev liblld-$V-dev libclang-rt-$V-dev
+        echo "/usr/lib/llvm-$V/bin" >> "$GITHUB_PATH"
+
+    # Versioned formulae are keg-only, the Makefile finds them by path.
+    - name: Install LLVM (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      env:
+        V: ${{ inputs.version }}
+      run: |
+        brew install llvm@$V lld@$V
+        echo "$(brew --prefix llvm@$V)/bin" >> "$GITHUB_PATH"
+
+    # The choco LLVM package ships the compiler only - no headers, no llvm-config.
+    # MSYS2's mingw-w64-x86_64-llvm is a full dev distribution that includes all of
+    # those, and is the standard approach for LLVM development on Windows CI.
+    - name: Install MSYS2 (Windows)
+      if: runner.os == 'Windows'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: false
+        install: make
+
+    # Every LLVM package that depends on another one with `=<version>` is
+    # listed, so pacman never pulls a newer one from the repo. Their other
+    # dependencies (zlib, zstd, libffi, ...) come from the repo as usual.
+    - name: Install LLVM (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      env:
+        R: ${{ inputs.msys2-release }}
+      run: |
+        repo=https://repo.msys2.org/mingw/mingw64
+        pacman -U --noconfirm --needed \
+          $(for p in llvm llvm-libs llvm-tools clang clang-libs lld; do
+              echo "$repo/mingw-w64-x86_64-$p-$R-any.pkg.tar.zst"
+            done)
+
+    # $(shell llvm-config ...) doesn't work on Windows even with SHELL=bash because
+    # make's subshell doesn't inherit the runner PATH, so the Makefile reads these.
+    # llvm-config may return multi-line output; collapse to one line so
+    # GITHUB_ENV's key=value parser doesn't choke on bare "-lLLVM-XX" lines.
+    - name: Export LLVM flags (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      run: |
+        echo "LLVM_CFLAGS=$(llvm-config --cflags | tr '\n' ' ')"          >> "$GITHUB_ENV"
+        echo "LLVM_LDFLAGS=$(llvm-config --ldflags --libs all --system-libs | tr '\n' ' ')" >> "$GITHUB_ENV"
+
+    - name: Verify LLVM (Linux / macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        V: ${{ inputs.version }}
+      run: |
+        echo "llvm-config: $(llvm-config --version)"
+        echo "clang:       $(clang --version | head -1)"
+        [ "$(llvm-config --version | cut -d. -f1)" = "$V" ] || {
+          echo "::error::expected LLVM $V, got $(llvm-config --version)"; exit 1; }
+
+    - name: Verify LLVM (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      env:
+        V: ${{ inputs.version }}
+      run: |
+        echo "llvm-config: $(llvm-config --version)"
+        echo "clang:       $(clang --version | head -1)"
+        [ "$(llvm-config --version | cut -d. -f1)" = "$V" ] || {
+          echo "::error::expected LLVM $V, got $(llvm-config --version)"; exit 1; }
