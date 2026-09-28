@@ -1,95 +1,173 @@
 use <std.mem.gpa>
 
-cstring :: type *char
-
-RawString :: struct {
-    len: usize
-    cap: usize
-    allocator: Allocator
-    buff: *u8
+JsonMapEntry :: struct {
+    key:    string
+    value:  *Json
 }
 
-[..]char self :: impl {
+Json :: enum {
+    Num(f64)
+    Bool(u1)
+    Str(*char)
+    List([..]*Json)
+    Map([..]JsonMapEntry)
+    None
+}
+
+json_num :: fn (num: f64) *Json with Allocator {
+    self: *Json = alloc(sizeof Json)
+    self.* = .Num(num)
+    return self
+}
+
+json_bool :: fn (val: u1) *Json with Allocator {
+    self: *Json = alloc(sizeof Json)
+    self.* = .Bool(val)
+    return self
+}
+
+json_str :: fn (val: *char) *Json with Allocator {
+    self: *Json = alloc(sizeof Json)
+    self.* = .Str(val)
+    return self
+}
+
+json_list :: fn (values: **Json) *Json with Allocator {
+    self: *Json = alloc(sizeof Json)
+    self.* = .List(values)
+    return self
+}
+
+json_map :: fn (entries: *JsonMapEntry) *Json with Allocator {
+    self: *Json = alloc(sizeof Json)
+    self.* = .Map(entries)
+    return self
+}
+
+json_none :: fn () *Json with Allocator {
+    self: *Json = alloc(sizeof Json)
+    self.* = .None
+    return self
+}
+
+JsonDecoder :: struct {
+    cursor: *char
+}
+
+*JsonDecoder self :: impl {
     #inline(always)
-    as_raw_string :: fn () RawString -> (self.& as *RawString).*
+    peek :: fn () char -> self.cursor.*
 
-    length :: fn () usize {
-        return self.as_raw_string().len
-    }
-    capacity :: fn () usize {
-        return self.as_raw_string().cap
-    }
+    #inline
+    check :: fn (expected: char) bool -> expected == self.peek()
 
-    to_string :: fn () cstring {
-        return self.as_raw_string().buff
+    advance :: fn () bool with ctx: *JsonDecoder {
+        if ctx.cursor.* == 0 return false
+        ctx.cursor = ctx.cursor[1].&
+        return true
     }
 
-    append :: fn (items: []InterpolatedString) [..]char {
-        raw: *RawString = self.&
-        w := Writer(raw)
-        with _ := raw.allocator {
-            for item in items do match item {
-                .Literal(chars) -> append_slice(self.&, chars),
-                .Obj(obj)       -> obj.sink(w)
+    #inline
+    expect :: fn (expected: char) bool {
+        if self.check(expected) {
+            self.advance()
+            return true
+        }
+        return false
+    }
+
+    match_str :: fn (str: []char) bool {
+        saved := self.cursor)
+
+        for i in 0 .. str.len {
+            if not self.peek() break
+
+            if not self.expect(str[i]) return false
+        }
+        return true
+    }
+    skip_whitespaces :: fn () void with *JsonDecoder {
+        for true do match self.peek() {
+            ' '     -> self.advance(),
+            '\n'    -> self.advance(),
+            '\t'    -> self.advance(),
+            '\r'    -> self.advance(),
+            _       -> {
+                break
             }
         }
-        return self
     }
-}
 
-*RawString self :: impl(Writer) {
-    write :: fn (buff: *u8, len: usize) u0 {
-        with _ := self.allocator {
-            self.copy(buff, len)
+    decode_list :: fn () *Json with Allocator {
+        self.expect('[') or return none
+        list := json_list(none)
+        for {
+            item := self.decode()
+            if self.check(']') break
+            if not self.expect(',') {
+                return none
+            }
+
+            append(&list, item)
         }
+        expect(']') or return none
+        return list
     }
-}
 
-*RawString self :: impl {
-    make_room :: fn (size: usize) void with Allocator {
-        if not self return
-        newcap := self.cap
-        if not self.cap { newcap = 8 }
+    decode_map :: fn () *Json with Allocator {
+    }
 
-        for self.len + size >= newcap {
-            newcap *= 2
+    decode_string :: fn () *Json with Allocator {
+
+    }
+
+    decode_num :: fn () *Json with Allocator {
+
+    }
+
+    decode :: fn () *Json with Allocator {
+        self.skip_whitespaces()
+        tok := peek()
+        match tok {
+            '{' -> { return self.decode_map() },
+            '[' -> { return self.decode_list() },
+            '"' -> { return self.decode_string() },
+            _   -> {
+                res :=
+                     if match_str("true")           do json_bool(true)
+                else if match_str("false")          do json_bool(false)
+                else if match_str("null")           do json_none()
+                else if tok >= '0' and tok <= '9'   do self.decode_num()
+                else none
+            }
         }
-
-        if self.cap != newcap {
-            self.cap = newcap
-            self.buff = resize(self.buff, self.cap)
-        }
-    }
-
-    copy :: fn (buff: *u8, size: usize) void with Allocator {
-        self.make_room(size)
-        mem.memcpy(self.buff[self.len - 1].&, buff, size)
-        self.len += size
+        return none
     }
 }
 
-append :: fn (arr: *[..]char, c: char) void with Allocator {
-    raw: *RawString = arr
-    raw.copy(c.&, 1)
+JsonDecode :: fn (cursor: *char) *Json with Allocator {
+    decoder: *JsonDecoder = .{ cursor }.&
+    return decoder.decode()
 }
 
-append_slice :: fn (arr: *[..]char, c: []char) void with Allocator {
-    raw: *RawString = arr
-
-    raw.copy(c.ptr, c.len)
-}
-
-printf :: foreign fn (*char, ..) void
-
-main :: fn () i32 {
-    str: [..]char
+main :: fn (args: []*char) i32 {
+    if args.len < 2 return {
+        println("Expected at least one argument")
+        break 1
+    }
 
     with _ := GeneralPurposeAllocator.new() {
-        append(str.&, 'a')
-        append_slice(str.&, "ciao")
-    }
+        f := File.new(args[1], "r")
 
-    printf("%s\n", str.to_string())
-    printf("%zu\n", str.capacity())
+        if not f.open() {
+            println("Unable to open file")
+            return 1
+        }
+        defer f.close()
+
+        content := f.readAll()
+
+        json := JsonDecode(content)
+    }
     return 0
 }

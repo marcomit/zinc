@@ -2,7 +2,11 @@ use <std.libc>
 
 #lang(writer)
 pub Writer :: facet {
-    write: fn (*u8, usize) u0
+    write: fn (*u8, usize) isize
+}
+
+pub Reader :: facet {
+    read: fn (*u8, usize) u0
 }
 
 #lang(writable)
@@ -13,6 +17,14 @@ pub Writable :: facet {
 Writer self :: impl {
     pub fmt :: fn (items: []InterpolatedString) {
         interpolate(self, items)
+    }
+
+    pub write_all :: fn (buff: *u8, len: usize) {
+        wrote: isize = 0
+
+        for wrote = self.write(buff[wrote].&, len) #allow_empty {
+
+        }
     }
 }
 
@@ -32,8 +44,8 @@ pub FDWriter :: struct {
 }
 
 *FDWriter self :: impl(Writer) {
-    pub write :: fn (buff: *u8, size: usize) {
-        sys.write(self.fd, buff, size)
+    pub write :: fn (buff: *u8, size: usize) isize {
+        return sys.write(self.fd, buff, size)
     }
 }
 
@@ -62,6 +74,10 @@ pub sink_float :: fn (w: Writer, num: f64) {
     w.write(buff.ptr, bytes)
 }
 
+pub sink_str :: fn (w: Writer, str: []char) {
+    w.write(str.ptr, str.len)
+}
+
 #inline pub print :: fn (items: []InterpolatedString) {
     stdout := Writer(FDWriter{fd=1}.&)
     interpolate(stdout, items)
@@ -71,4 +87,10 @@ pub sink_float :: fn (w: Writer, num: f64) {
     stdout := Writer(FDWriter{fd=1}.&)
     interpolate(stdout, items)
     stdout.write("\n", 1)
+}
+
+*char self :: impl(Writable) {
+    sink :: fn (w: Writer) {
+        w.write(self, mem.strlen(self))
+    }
 }

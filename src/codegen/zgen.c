@@ -1503,9 +1503,11 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
 
         LLVMTypeRef elemType = genType(ctx, arrType->array.base);
         LLVMTypeRef ptrType = LLVMPointerType(elemType, 0);
+
+        int index = arrType->array.dynamic ? 3 : 1;
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
             ctx->builder, type, ptr,
-            1, label(ctx, node->subscript.arr->tok)
+            index, label(ctx, node->subscript.arr->tok)
         );
         LLVMValueRef basePtr = LLVMBuildLoad2(
             ctx->builder, ptrType, fieldPtr, name

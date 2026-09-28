@@ -16,7 +16,7 @@ pub File :: struct {
 }
 
 File :: impl {
-    new :: fn (path: *char, mode: *char) *File with Allocator {
+    pub new :: fn (path: *char, mode: []char) *File with Allocator {
         self: *File = alloc(sizeof File)
         if not self { return none }
 
