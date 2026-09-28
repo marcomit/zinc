@@ -2371,6 +2371,10 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     curr->resolved  = result;
     if (result && !result->hash) result->hash    = hashType(result);
+
+    if (query(curr->annotations, "print_ast")) {
+        printNode(curr, 1);
+    }
     return result;
 }
 
@@ -2576,8 +2580,10 @@ static ZType *resolveArrSubscript(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
 
     if (arrType->kind == Z_TYPE_ARRAY) {
         return arrType->array.base;
+    } else if (arrType->kind == Z_TYPE_POINTER) {
+        return arrType->base;
     }
-    return arrType->base;
+    return NULL;
 }
 
 static bool satisfyFacet(ZThreadSem *ctx, ZType *type, ZType *facet) {
@@ -3168,8 +3174,14 @@ static void analyzeStmt(ZThreadSem *ctx, ZNode *curr) {
 static void analyzeBlock(ZThreadSem *ctx, ZNode *block, bool scoped) {
     if (scoped) beginScope(ctx, block);
 
-    ZNode **stmts = block->block;
-    usize len = veclen(stmts);
+    ZNode **stmts       = block->block;
+    usize len           = veclen(stmts);
+    ZAnnotation **anns  = block->annotations;
+
+    if (len == 0 && !query(anns, "allow_empty")) {
+        warning(ctx->state, block->tok, "Block cannot be empty");
+    }
+
     for (usize i = 0; i < len; i++) {
         if (i + 1 < len &&
             (stmts[i]->type == NODE_BREAK ||

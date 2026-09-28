@@ -493,6 +493,7 @@ struct ZNode {
     ZNodeType       type;
     ZType           *resolved;
     ZToken          *tok;
+    ZAnnotation     **annotations;
     union {
         // Can be used for both if and ternary operator
         struct {
@@ -562,7 +563,6 @@ struct ZNode {
             struct {
                 bool        pub;
                 ZNode       **block;
-                ZAnnotation **annotations;
                 ZType       **capabilities;
             };
         };

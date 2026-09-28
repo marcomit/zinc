@@ -373,7 +373,24 @@ usize typeSize(ZState *state, ZType *type) {
     case Z_TYPE_PRIMITIVE:  return typePrimitiveSize(state, type->primitive.token);
     case Z_TYPE_POINTER:    return state->pointerSize;
     case Z_TYPE_FUNCTION:   return state->pointerSize; /* function pointer */
-    case Z_TYPE_ARRAY:      return 8 + state->pointerSize;/* {length: u64, ptr: *u8}*/
+    case Z_TYPE_ARRAY: {
+        /* 3 different layouts:
+         * slice: {len: usize, ptr: *u8}
+         * array: {len: usize, ptr: *u8, buffer: [len * base size]}
+         * dynamic array: {len: usize, cap: usize, allocator: facet, buffer: *u8}
+         * */
+
+        if (type->array.dynamic) {
+            return state->pointerSize * 5;
+        } else {
+            usize base = state->pointerSize * 2;
+            usize buffer = 0;
+            if (type->array.size > 0) {
+                buffer = typeSize(state, type->array.base);
+            }
+            return base + buffer;
+        }
+    }
     case Z_TYPE_FACET:      return state->pointerSize * 2;/* {obj: *u8, vtable: *u8}, see genFacetType */
     case Z_TYPE_ENUM: {
         usize flag = 1;

@@ -90,6 +90,7 @@ static ZVarDestructPattern  *parseMultiDestructVar  (ZParser *);
 static ZVarDestructPattern  *parseDestructVar       (ZParser *, bool);
 static ZType                *parseAnonStruct        (ZParser *, ZAnnotation **);
 static ZType                *parseAnonEnum          (ZParser *, ZAnnotation **);
+static ZAnnotation          **parseAnnotations      (ZParser *);
 
 static ZParseFunc exprFunc[] = {
     parseBinary,
@@ -1266,7 +1267,7 @@ static ZNode *parseBlockOrInline(ZParser *parser, bool wrap) {
         body->tok = start;
         vecpush(body->block, expr);
         return body;
-    } else if (check(parser, TOK_LBRACKET)) {
+    } else if (check(parser, TOK_LBRACKET) || check(parser, TOK_HASHTAG)) {
         return parseBlock(parser);
     } else {
         zlog(parser->state, peek(parser), Z2015);
@@ -1276,10 +1277,16 @@ static ZNode *parseBlockOrInline(ZParser *parser, bool wrap) {
 
 static ZNode *parseBlock(ZParser *parser) {
     ZToken *start   = peek(parser);
+
+    ZAnnotation **annotations = NULL;
+    if (check(parser, TOK_HASHTAG)) {
+        annotations = parseAnnotations(parser);
+    }
     expect(parser, TOK_LBRACKET);
-    ZNode *block    = makenode(NODE_BLOCK);
-    block->tok      = start;
-    ZNode *stmt     = NULL;
+    ZNode *block        = makenode(NODE_BLOCK);
+    block->tok          = start;
+    block->annotations  = annotations;
+    ZNode *stmt         = NULL;
     do {
         stmt = parseStmt(parser);
         if (stmt) vecpush(block->block, stmt);
@@ -1293,6 +1300,7 @@ static ZNode *parseBlock(ZParser *parser) {
     }
 
     expect(parser, TOK_RBRACKET);
+
 
     return block;
 }
@@ -1552,10 +1560,16 @@ ZNode *parseExpr(ZParser *parser) {
     if (!curr) return NULL;
 
     switch (curr->type) {
-    case TOK_IF:    return parseIf(parser);
-    case TOK_MATCH: return parseMatch(parser, true);
-    case TOK_WITH:  return parseCapabilityBlock(parser);
-    default:        return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
+    case TOK_IF:        return parseIf(parser);
+    case TOK_MATCH:     return parseMatch(parser, true);
+    case TOK_WITH:      return parseCapabilityBlock(parser);
+    case TOK_HASHTAG: {
+        ZAnnotation **annotations = parseAnnotations(parser);
+        ZNode *expr = parseExpr(parser);
+        expr->annotations = annotations;
+        return expr;
+    }
+    default:            return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
     }
 }
 
@@ -1671,7 +1685,9 @@ static ZNode *parseCondDestructVar(ZParser *parser) {
 }
 
 static ZNode *parseIfBlock(ZParser *parser) {
-    if (check(parser, TOK_DO) || check(parser, TOK_LBRACKET)) {
+    if (check(parser, TOK_DO)       ||
+        check(parser, TOK_LBRACKET) ||
+        check(parser, TOK_HASHTAG)  ) {
         return parseBlockOrInline(parser, false);
     }
 
@@ -2154,6 +2170,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
         }
     } else if (check(parser, TOK_LBRACKET)) {
         body = tryParse(parser, parseBlock(parser));
+        if (body) body->annotations = annotations;
     } else {
         zlog(parser->state, peek(parser), Z2015);
     }

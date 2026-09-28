@@ -76,8 +76,17 @@ TcpStream :: impl {
     pub fromFd :: fn (fd: i32) TcpStream -> . { fd }
 }
 
+*TcpStream self :: impl(Writer) {
+    write :: fn (buff: *u8, size: usize) {
+        self.*.send(buff, size)
+    }
+}
+
+*TcpStream self :: impl {
+    pub into_writer :: fn () Writer -> Writer(self)
+}
+
 TcpStream self :: impl {
-    pub valid  :: fn () u1               -> self.fd != -1
     pub send   :: fn (buf: *u8, n: u64) i64 -> c.send(self.fd, buf, n, 0)
     pub recv   :: fn (buf: *u8, n: u64) i64 -> c.recv(self.fd, buf, n, 0)
 
@@ -126,8 +135,6 @@ TcpListener :: impl {
 }
 
 TcpListener self :: impl {
-    pub valid :: fn () u1 -> self.fd != -1
-
     pub accept :: fn () ?TcpStream {
         addr := SockAddrIn {
             sin_len= 0,
@@ -137,12 +144,12 @@ TcpListener self :: impl {
             sin_zero= 0
         }
         addrlen: u32 = 16
-        client_fd := c.accept(self.fd, &addr, &addrlen)
+        fd := c.accept(self.fd, &addr, &addrlen)
 
-        if client_fd == -1 {
+        if fd == -1 {
             return none
         }
-        return .{ fd= client_fd }
+        return .{ fd }
     }
 
     pub close :: fn () u0 {
@@ -185,8 +192,6 @@ UdpSocket :: impl {
 }
 
 UdpSocket self :: impl {
-    pub valid :: fn () u1 -> self.fd != -1
-
     pub sendTo :: fn (buf: *u8, n: u64, host: *char, port: u16) i64 {
         addr := SockAddrIn {
             sin_len=    16,
@@ -195,7 +200,7 @@ UdpSocket self :: impl {
             sin_addr=   0,
             sin_zero=   0
         }
-        c.inet_pton(2, host, &addr.sin_addr)
+        c.inet_pton(2, host, addr.sin_addr.&)
         return c.sendto(self.fd, buf, n, 0, &addr, 16)
     }
 
