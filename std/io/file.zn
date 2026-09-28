@@ -16,7 +16,7 @@ pub File :: struct {
 }
 
 File :: impl {
-    new :: fn (path: *char, mode: *char) *File [Allocator] {
+    new :: fn (path: *char, mode: *char) *File with Allocator {
         self: *File = alloc(sizeof File)
         if not self { return none }
 
@@ -29,31 +29,31 @@ File :: impl {
 
 *File self :: impl {
     pub open :: fn () u1 {
-        self.file = c::fopen(self.path, self.mode)
+        self.file = c.fopen(self.path, self.mode)
         if self.file { return true }
         return false
     }
 
     pub close :: fn () u0 {
         if self.file {
-            c::fclose(self.file)
+            c.fclose(self.file)
             self.file = none
         }
     }
 
-    pub readAll :: fn () *char [Allocator] {
+    pub readAll :: fn () *char with Allocator {
         if not self.file { return none }
 
-        c::fseek(self.file, 0, 2)
-        size: i64 = c::ftell(self.file)
-        c::rewind(self.file)
+        c.fseek(self.file, 0, 2)
+        size: i64 = c.ftell(self.file)
+        c.rewind(self.file)
 
         if size <= 0 { return none }
 
         buffer: *char = alloc(size + 1)
         if not buffer { return none }
 
-        bytesRead: i64 = c::fread(buffer, 1, size, self.file)
+        bytesRead: i64 = c.fread(buffer, 1, size, self.file)
 
         buffer[bytesRead] = 0
 

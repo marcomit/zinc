@@ -41,20 +41,22 @@ static ZAnnotationSpec InlineArgs[] = {
 };
 
 static ZAnnotationSpec Annotations[] = {
-    { "lang",   Z_ANN_NESTED,               0,              Z_TRG_ANY,  1, 1, false, LangItemsSpec  },
-    { "here",   Z_ANN_IDENT,                Z_LANG_HERE,    Z_TRG_VAR,  0, 0, false, NULL           },
-    { "export", Z_ANN_IDENT | Z_ANN_ASSIGN, 0,              Z_TRG_FUNC, 0, 0, true,
+    { "lang",   Z_ANN_NESTED,               0,              Z_TRG_ANY,      1, 1, false, LangItemsSpec  },
+    { "here",   Z_ANN_IDENT,                Z_LANG_HERE,    Z_TRG_VAR,      0, 0, false, NULL           },
+    { "export", Z_ANN_IDENT | Z_ANN_ASSIGN, 0,              Z_TRG_FUNC,     0, 0, true,
         (ZAnnotationSpec[]){ Literal, None }
     },
 
-    { "inline", Z_ANN_IDENT | Z_ANN_NESTED, 0,              Z_TRG_FUNC, 1, 1, true, InlineArgs      },
+    { "inline", Z_ANN_IDENT | Z_ANN_NESTED, 0,              Z_TRG_FUNC,     1, 1, true, InlineArgs      },
 
-    { "packed", Z_ANN_IDENT,                0,              Z_TRG_STRUCT,   0, 0, false, NULL       },
-    { "cold",   Z_ANN_IDENT,                0,              Z_TRG_FUNC,     0, 0, false, NULL       },
+    { "packed", Z_ANN_IDENT,                0,              Z_TRG_STRUCT,   0, 0, false, NULL           },
+    { "cold",   Z_ANN_IDENT,                0,              Z_TRG_FUNC,     0, 0, false, NULL           },
 
     { "overload", Z_ANN_NESTED,             0,              Z_TRG_FUNC,     1, 1, true,
         (ZAnnotationSpec[]){ Literal, None }
     },
+
+    { "allow_empty", Z_ANN_IDENT,           0,              Z_TRG_FUNC,     0, 0, true, NULL            },
 
     None
 };
