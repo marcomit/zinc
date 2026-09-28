@@ -192,6 +192,7 @@ typedef struct {
     bool            dumpAst;
 
     bool            nostdlib;
+    bool            noInject;
 
     char            optimizationLevel;
     ZLTOMode        ltoMode;

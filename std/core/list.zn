@@ -1,0 +1,50 @@
+DEFAULT_DYNAMIC_ARRAY_CAPACITY :: 16
+
+RawDynamicArray :: struct {
+    len: usize
+    cap: usize
+    allocator: Allocator
+    buff: *u8
+}
+
+*RawDynamicArray self :: impl {
+    make_room :: fn (size: usize) with Allocator {
+        if not self return
+
+        newcap := self.cap
+        if not newcap do newcap = DEFAULT_DYNAMIC_ARRAY_CAPACITY
+
+        for self.len + size >= newcap {
+            newcap *= 2
+        }
+
+        if newcap != self.cap {
+            self.buff = resize(self.buff, newcap)
+            self.cap = newcap
+        }
+    }
+}
+
+pub make_room :: fn (list: *[..]char, size: usize) with Allocator {
+    items: *RawDynamicArray = list
+    items.make_room(size)
+}
+
+User :: struct {
+    name: []char
+    age: i32
+}
+
+append_user :: fn (users: *[..]User, user: User) with Allocator {
+    make_room(users.&, sizeof User)
+
+    users.*[users.len-1] = user
+}
+
+main :: fn () i32 {
+    with _ := GeneralPurposeAllocator.new() {
+        users: [..]User
+        make_room(users.& as *[..]char, sizeof User)
+    }
+    return 0
+}

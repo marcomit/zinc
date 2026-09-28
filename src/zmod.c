@@ -191,7 +191,7 @@ static void _stype(ZType *type, char **buff) {
         vecpush(*buff, '[');
 
         if (type->array.dynamic) {
-            vecunion(*buff, "dyn", 3);
+            vecunion(*buff, "..", 2);
         } else if (type->array.size) {
             char num[32];
             usize len = snprintf(num, sizeof num, "%zu", type->array.size);
