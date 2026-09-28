@@ -2167,9 +2167,11 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     bool isOptional = base->kind == Z_TYPE_OPTIONAL;
     bool isResult   = base->kind == Z_TYPE_RESULT;
+    bool isBool     = base->kind == Z_TYPE_PRIMITIVE &&
+            base->primitive.token->type == TOK_BOOL;
 
     if (!typeKindIs(base->kind, TYPE_WRAPPER_MASK) &&
-        base->kind != Z_TYPE_NONE) {
+        base->kind != Z_TYPE_NONE && !isBool) {
         zlog(ctx->state, curr->tok, Z3025, stype(base));
         return NULL;
     }

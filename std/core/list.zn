@@ -35,6 +35,13 @@ User :: struct {
     age: i32
 }
 
+*User self :: impl(Writable) {
+    sink :: fn (w: Writer) {
+        sink_str(w, self.name)
+        sink_int(w, self.age)
+    }
+}
+
 append_user :: fn (users: *[..]User, user: User) with Allocator {
     make_room(users.&, sizeof User)
 
@@ -44,7 +51,15 @@ append_user :: fn (users: *[..]User, user: User) with Allocator {
 main :: fn () i32 {
     with _ := GeneralPurposeAllocator.new() {
         users: [..]User
-        make_room(users.& as *[..]char, sizeof User)
+
+        append_user(&users, .{name="marco", age=21 })
+        append_user(&users, .{name="carlo", age=21 })
+        append_user(&users, .{name="lucia", age=21 })
+        append_user(&users, .{name="prrr", age=25 })
+
+        for user in users {
+            println(#"User: {&user}")
+        }
     }
     return 0
 }

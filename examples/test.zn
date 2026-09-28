@@ -32,13 +32,13 @@ json_str :: fn (val: *char) *Json with Allocator {
     return self
 }
 
-json_list :: fn (values: **Json) *Json with Allocator {
+json_list :: fn (values: [..]*Json) *Json with Allocator {
     self: *Json = alloc(sizeof Json)
     self.* = .List(values)
     return self
 }
 
-json_map :: fn (entries: *JsonMapEntry) *Json with Allocator {
+json_map :: fn (entries: [..]JsonMapEntry) *Json with Allocator {
     self: *Json = alloc(sizeof Json)
     self.* = .Map(entries)
     return self
@@ -48,6 +48,12 @@ json_none :: fn () *Json with Allocator {
     self: *Json = alloc(sizeof Json)
     self.* = .None
     return self
+}
+
+json_list_append :: fn (list: *[..]*Json, item: *Json) with Allocator {
+    make_room(list, sizeof *Json)
+    list.*[list.len - 1] = item
+    list.len += 1
 }
 
 JsonDecoder :: struct {
@@ -61,9 +67,9 @@ JsonDecoder :: struct {
     #inline
     check :: fn (expected: char) bool -> expected == self.peek()
 
-    advance :: fn () bool with ctx: *JsonDecoder {
-        if ctx.cursor.* == 0 return false
-        ctx.cursor = ctx.cursor[1].&
+    advance :: fn () bool {
+        if self.cursor.* == 0 return false
+        self.cursor = self.cursor[1].&
         return true
     }
 
@@ -77,16 +83,19 @@ JsonDecoder :: struct {
     }
 
     match_str :: fn (str: []char) bool {
-        saved := self.cursor)
+        saved := self.cursor
 
         for i in 0 .. str.len {
             if not self.peek() break
 
-            if not self.expect(str[i]) return false
+            if not self.expect(str[i]) {
+                self.cursor = saved
+                return false
+            }
         }
         return true
     }
-    skip_whitespaces :: fn () void with *JsonDecoder {
+    skip_whitespaces :: fn () void {
         for true do match self.peek() {
             ' '     -> self.advance(),
             '\n'    -> self.advance(),
@@ -108,35 +117,35 @@ JsonDecoder :: struct {
                 return none
             }
 
-            append(&list, item)
         }
-        expect(']') or return none
+        self.expect(']') or return none
         return list
     }
 
     decode_map :: fn () *Json with Allocator {
+        return none
     }
 
     decode_string :: fn () *Json with Allocator {
-
+        return none
     }
 
     decode_num :: fn () *Json with Allocator {
-
+        return none
     }
 
     decode :: fn () *Json with Allocator {
         self.skip_whitespaces()
-        tok := peek()
+        tok := self.peek()
         match tok {
             '{' -> { return self.decode_map() },
             '[' -> { return self.decode_list() },
             '"' -> { return self.decode_string() },
             _   -> {
                 res :=
-                     if match_str("true")           do json_bool(true)
-                else if match_str("false")          do json_bool(false)
-                else if match_str("null")           do json_none()
+                     if self.match_str("true")           do json_bool(true)
+                else if self.match_str("false")          do json_bool(false)
+                else if self.match_str("null")           do json_none()
                 else if tok >= '0' and tok <= '9'   do self.decode_num()
                 else none
             }
