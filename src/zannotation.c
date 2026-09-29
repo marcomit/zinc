@@ -41,22 +41,24 @@ static ZAnnotationSpec InlineArgs[] = {
 };
 
 static ZAnnotationSpec Annotations[] = {
-    { "lang",   Z_ANN_NESTED,               0,              Z_TRG_ANY,      1, 1, false, LangItemsSpec  },
-    { "here",   Z_ANN_IDENT,                Z_LANG_HERE,    Z_TRG_VAR,      0, 0, false, NULL           },
-    { "export", Z_ANN_IDENT | Z_ANN_ASSIGN, 0,              Z_TRG_FUNC,     0, 0, true,
+    { "lang",           Z_ANN_NESTED,               0,              Z_TRG_ANY,      1, 1, false, LangItemsSpec  },
+    { "here",           Z_ANN_IDENT,                Z_LANG_HERE,    Z_TRG_VAR,      0, 0, false, NULL           },
+    { "export",         Z_ANN_IDENT | Z_ANN_ASSIGN, 0,              Z_TRG_FUNC,     0, 0, true,
         (ZAnnotationSpec[]){ Literal, None }
     },
 
-    { "inline", Z_ANN_IDENT | Z_ANN_NESTED, 0,              Z_TRG_FUNC,     1, 1, true, InlineArgs      },
+    { "inline",         Z_ANN_IDENT | Z_ANN_NESTED, 0,              Z_TRG_FUNC,     1, 1, true, InlineArgs      },
 
-    { "packed", Z_ANN_IDENT,                0,              Z_TRG_STRUCT,   0, 0, false, NULL           },
-    { "cold",   Z_ANN_IDENT,                0,              Z_TRG_FUNC,     0, 0, false, NULL           },
+    { "packed",         Z_ANN_IDENT,                0,              Z_TRG_STRUCT,   0, 0, false, NULL           },
+    { "cold",           Z_ANN_IDENT,                0,              Z_TRG_FUNC,     0, 0, false, NULL           },
 
-    { "overload", Z_ANN_NESTED,             0,              Z_TRG_FUNC,     1, 1, true,
+    { "overload",       Z_ANN_NESTED,               0,              Z_TRG_FUNC,     1, 1, true,
         (ZAnnotationSpec[]){ Literal, None }
     },
 
-    { "allow_empty", Z_ANN_IDENT,           0,              Z_TRG_FUNC,     0, 0, true, NULL            },
+    { "allow_empty",    Z_ANN_IDENT,                0,              Z_TRG_FUNC,     0, 0, true, NULL            },
+    { "print_ast",      Z_ANN_IDENT,                0,              Z_TRG_ANY,      0, 0, true, NULL            },
+
 
     None
 };
@@ -127,36 +129,6 @@ static void analyzeAnnotation(
     }
 }
 
-static void analyzeFuncAnnotation(
-    ZState *state, ZNode *node, ZAnnotation *annotation) {
-    analyzeAnnotation(state, node, annotation, Annotations, Z_TRG_FUNC);
-}
-
-static void analyzeStructAnnotation(
-    ZState *state, ZNode *node, ZAnnotation *annotation) {
-    analyzeAnnotation(state, node, annotation, Annotations, Z_TRG_STRUCT);
-}
-
-static void analyzeEnumAnnotation(
-    ZState *state, ZNode *node, ZAnnotation *annotation) {
-    analyzeAnnotation(state, node, annotation, Annotations, Z_TRG_ENUM);
-}
-
-static void analyzeForeignAnnotation(
-    ZState *state, ZNode *node, ZAnnotation *annotation) {
-    analyzeAnnotation(state, node, annotation, Annotations, Z_TRG_FOREIGN);
-}
-
-static void analyzeImplAnnotation(
-    ZState *state, ZNode *node, ZAnnotation *annotation) {
-    analyzeAnnotation(state, node, annotation, Annotations, Z_TRG_IMPL);
-}
-
-static void analyzeFacetAnnotation(
-    ZState *state, ZNode *node, ZAnnotation *annotation) {
-    analyzeAnnotation(state, node, annotation, Annotations, Z_TRG_FACET);
-}
-
 static bool isRepeatable(ZAnnotation *annotation) {
     for (ZAnnotationSpec *spec = Annotations; spec->spec; spec++) {
         if (!spec->name)                                        continue;
@@ -170,28 +142,28 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
     if (!node) return;
 
     ZAnnotation **annotations   = NULL;
-    AnnotationFunc func         = NULL;
+    u16 targetMask              = 0;
 
     switch (node->type) {
     case NODE_ENUM:
         annotations = node->enumDef.annotations;
-        func = analyzeEnumAnnotation;
+        targetMask  = Z_TRG_ENUM;
         break;
     case NODE_FUNC:
         annotations = node->funcDef.annotations;
-        func = analyzeFuncAnnotation;
+        targetMask  = Z_TRG_FUNC;
         break;
     case NODE_STRUCT:
         annotations = node->structDef.annotations;
-        func = analyzeStructAnnotation;
+        targetMask  = Z_TRG_STRUCT;
         break;
     case NODE_FOREIGN:
         annotations = node->foreignDecl.annotations;
-        func = analyzeForeignAnnotation;
+        targetMask  = Z_TRG_FOREIGN;
         break;
     case NODE_IMPL:
         annotations = node->impl.annotations;
-        func = analyzeImplAnnotation;
+        targetMask  = Z_TRG_IMPL;
 
         /* Methods carry their own annotations and are never visited by the
          * top-level walk in discoverGlobalScope. */
@@ -201,7 +173,7 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
         break;
     case NODE_FACET:
         annotations = node->facet.annotations;
-        func = analyzeFacetAnnotation;
+        targetMask  = Z_TRG_FACET;
         break;
     default:
         /* Not every declaration accepts annotations; that is not an error. */
@@ -219,7 +191,7 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
             );
             continue;
         }
-        func(state, node, annotations[i]);
+        analyzeAnnotation(state, node, annotations[i], Annotations, targetMask);
     }
 
     hashset_free(&seen);

@@ -213,4 +213,8 @@ StringBuilder :: impl {
     pub append :: fn (strlit: []char) {
         self.append_buff(strlit, strlit.len)
     }
+
+    pub append_char :: fn (c: char) {
+        self.append_buff(&c, 1)
+    }
 }

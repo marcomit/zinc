@@ -755,6 +755,12 @@ static bool isComparable(ZThreadSem *ctx, ZType *type) {
 static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
     if (!from || !to) return NULL;
 
+    if (to->kind == Z_TYPE_NONE && from->kind != Z_TYPE_NONE) {
+        return from;
+    } else if (to->kind != Z_TYPE_NONE && from->kind == Z_TYPE_NONE) {
+        return to;
+    }
+
     if (to->kind == Z_TYPE_FACET        &&
         from->kind == Z_TYPE_POINTER    &&
         satisfyFacet(ctx, from, to)     ) {
@@ -1031,12 +1037,16 @@ static ZNode *coerceToSum(ZThreadSem *ctx, ZNode *node, ZType *sum) {
 
 static inline ZSymbol *resolveByScope(ZScope *scope, ZToken *ident) {
     while (scope) {
-        for (usize i = 0; i < veclen(scope->symbols); i++) {
+        int len = veclen(scope->symbols);
+        if (len == 0) goto next;
+        for (int i = len-1; i >= 0; i--) {
+        // for (usize i = 0; i < len; i++) {
             if (tokeneq(scope->symbols[i]->name, ident)) {
                 scope->symbols[i]->useCount++;
                 return scope->symbols[i];
             }
         }
+        next:
         scope = scope->parent;
     }
     return NULL;
@@ -2167,9 +2177,11 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     bool isOptional = base->kind == Z_TYPE_OPTIONAL;
     bool isResult   = base->kind == Z_TYPE_RESULT;
+    bool isBool     = base->kind == Z_TYPE_PRIMITIVE &&
+            base->primitive.token->type == TOK_BOOL;
 
     if (!typeKindIs(base->kind, TYPE_WRAPPER_MASK) &&
-        base->kind != Z_TYPE_NONE) {
+        base->kind != Z_TYPE_NONE && !isBool) {
         zlog(ctx->state, curr->tok, Z3025, stype(base));
         return NULL;
     }
@@ -2207,6 +2219,8 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
                     stype(base->result.error)
                 );
             }
+        } else if (base->kind == Z_TYPE_POINTER) {
+            return base;
         }
         return success;
 
@@ -2372,7 +2386,8 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     curr->resolved  = result;
     if (result && !result->hash) result->hash    = hashType(result);
 
-    if (query(curr->annotations, "print_ast")) {
+    ZAnnotation *print_ast = NULL;
+    if (( print_ast = query(curr->annotations, "print_ast"))) {
         printNode(curr, 1);
     }
     return result;

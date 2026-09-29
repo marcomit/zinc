@@ -1211,47 +1211,57 @@ static ZNode *parseCompoundOperator(ZParser *parser) {
 ZNode *parseStmt(ZParser *parser) {
     guard(canPeek(parser));
 
-    ZTokenType t = peek(parser)->type;
+    ZTokenType t                = peek(parser)->type;
+    ZAnnotation **annotations   = NULL;
+    ZNode *res                  = NULL;
+
+    if (check(parser, TOK_HASHTAG)) {
+        annotations = parseAnnotations(parser);
+    }
 
     if (check(parser, TOK_IDENT) &&
         checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
         ZToken *next = peekAhead(parser, 2);
         if (!next) return NULL;
         switch (next->type) {
-        case TOK_STRUCT:    return parseStructDecl  (parser, NULL, false);
-        case TOK_ENUM:      return parseEnumDecl    (parser, NULL, false);
-        case TOK_TYPEDEF:   return parseTypedef     (parser, NULL, false);
-        case TOK_FOREIGN:   return parseForeign     (parser, NULL, false);
+        case TOK_STRUCT:    res = parseStructDecl  (parser, NULL, false);   break;
+        case TOK_ENUM:      res = parseEnumDecl    (parser, NULL, false);   break;
+        case TOK_TYPEDEF:   res = parseTypedef     (parser, NULL, false);   break;
+        case TOK_FOREIGN:   res = parseForeign     (parser, NULL, false);   break;
         default: break;
+        }
+    } else {
+        switch (t) {
+        case TOK_IF:        res = parseIf              (parser);        break;
+        case TOK_FOR:       res = parseLoops           (parser);        break;
+        case TOK_MATCH:     res = parseMatch           (parser, false); break;
+        case TOK_DEFER:     res = parseDefer           (parser);        break;
+        case TOK_BREAK:     res = parseBreak           (parser);        break;
+        case TOK_CONTINUE:  res = parseContinue        (parser);        break;
+        case TOK_WITH:      res = parseCapabilityBlock (parser);        break;
+        case TOK_RETURN:
+            if (parser->noReturnStmt) {
+                zlog(parser->state, peek(parser), Z2014);
+                return NULL;
+            }
+            return parseReturn          (parser);
+        default: {
+            ZParseFunc funcs[] = {
+                parseVarInferred,
+                parseVarDefTyped,
+                parseBlock,
+                parseUpdate,
+                parseCompoundOperator,
+                parseExpr
+            };
+            res = parseOrGrammar(parser, funcs, arrlen(funcs));
+            break;
+        }
         }
     }
 
-    switch (t) {
-    case TOK_IF:        return parseIf              (parser);
-    case TOK_FOR:       return parseLoops           (parser);
-    case TOK_MATCH:     return parseMatch           (parser, false);
-    case TOK_DEFER:     return parseDefer           (parser);
-    case TOK_BREAK:     return parseBreak           (parser);
-    case TOK_CONTINUE:  return parseContinue        (parser);
-    case TOK_WITH:      return parseCapabilityBlock (parser);
-    case TOK_RETURN:
-        if (parser->noReturnStmt) {
-            zlog(parser->state, peek(parser), Z2014);
-            return NULL;
-        }
-        return parseReturn          (parser);
-    default: {
-        ZParseFunc funcs[] = {
-            parseVarInferred,
-            parseVarDefTyped,
-            parseBlock,
-            parseUpdate,
-            parseCompoundOperator,
-            parseExpr
-        };
-        return parseOrGrammar(parser, funcs, arrlen(funcs));
-    }
-    }
+    if (res) res->annotations = annotations;
+    return res;
 }
 
 static ZNode *parseBlockOrInline(ZParser *parser, bool wrap) {
@@ -1698,6 +1708,8 @@ static ZNode *parseIfBlock(ZParser *parser) {
         node = parseContinue(parser);
     } else if (check(parser, TOK_RETURN)) {
         node = parseReturn(parser);
+    } else if (check(parser, TOK_MATCH)) {
+        node = parseMatch(parser, false);
     } else {
         zlog(parser->state, peek(parser), Z201E, stoken(peek(parser)));
     }
@@ -3090,8 +3102,10 @@ static ZNode *parseModule(ZParser *parser) {
     root->module.root = NULL;
     root->module.filename = parser->state->filename;
 
-    ZNode *prelude = injectPrelude(parser);
-    vecpush(root->module.root, prelude);
+    if (!parser->state->noInject) {
+        ZNode *prelude = injectPrelude(parser);
+        vecpush(root->module.root, prelude);
+    }
 
     while (canPeek(parser)) {
         ZNode *child = parse(parser);

@@ -32,7 +32,8 @@ enum {
     OPT_MFEATURES,
     OPT_NOSTDLIB,
     OPT_XLINKER,
-    OPT_DUMP_AST
+    OPT_DUMP_AST,
+    OPT_NOINJECT
 };
 
 #define EMPTY_COMMAND (ZCliCommand){ NULL, NULL, NULL, 0, 0, NULL, NULL, 0 }
@@ -56,6 +57,7 @@ static struct option long_options[] = {
     {"nostdlib",                no_argument,        NULL,   OPT_NOSTDLIB            },
     {"Xlinker",                 required_argument,  NULL,   OPT_XLINKER             },
     {"dump-ast",                no_argument,        NULL,   OPT_DUMP_AST            },
+    {"noinject",                no_argument,        NULL,   OPT_NOINJECT            },
     {NULL,                      0,                  NULL,   0                       }
 };
 
@@ -102,8 +104,8 @@ void usage(char *program) {
 static void printAllocation(ZState *state) {
     if (!state->verbose) return;
 
-    usize used = arenaLength(allocator.ctx);
-    usize allocated = arenaSize(allocator.ctx);
+    double used = arenaLength(allocator.ctx);
+    double allocated = arenaSize(allocator.ctx);
     for (usize i = 0; i < veclen(state->modules); i++) {
         used += arenaLength(state->modules[i]->allocator);
         allocated += arenaSize(state->modules[i]->allocator);
@@ -116,14 +118,16 @@ static void printAllocation(ZState *state) {
         "Gb",
     };
 
+    static const int labelsize = sizeof(labels) / sizeof(labels[0]);
+
     int label = 0;
-    while (allocated > 1024 && label < 3) {
-        used >>= 10;
-        allocated >>= 10;
+    while (allocated > 1024 && label < labelsize) {
+        used = used / 1024;
+        allocated = allocated / 1024;
         label++;
     }
 
-    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %zu/%zu %s\n",
+    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %.1f/%.1f %s\n",
         used, allocated, labels[label]
     );
 }
@@ -304,6 +308,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         case OPT_SKIP_LLVM_VALIDATION:  SET_FLAG(state->skipLLVMValidation, "Skip llvm validation");    break;
         case OPT_NOSTDLIB:              SET_FLAG(state->nostdlib,           "No libc");                 break;
         case OPT_DUMP_AST:              SET_FLAG(state->dumpAst,            "Dump ast");                break;
+        case OPT_NOINJECT:              SET_FLAG(state->noInject,           "No Inject");               break;
         case OPT_XLINKER:               vecpush(state->extraArgs, strdup(optarg));                      break;
         case OPT_RELEASE:               state->optimizationLevel = '2';                                 break;
         case OPT_RELEASE_FAST:          state->optimizationLevel = '3';                                 break;

@@ -1451,20 +1451,24 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
             tok->integer,
             label(ctx, tok)
         );
-    } else if (objType->kind == Z_TYPE_ARRAY) {
-        LLVMValueRef ptr = genLValue(ctx, node->memberAccess.object);
+    } else if (baseType->kind == Z_TYPE_ARRAY) {
+        LLVMValueRef ptr = objType->kind == Z_TYPE_POINTER
+            ? genExpr  (ctx, node->memberAccess.object)
+            : genLValue(ctx, node->memberAccess.object);
         if (!ptr) return NULL;
         i32 index = -1;
 
+        /* See typeSize: the buffer is the last field of either layout. */
         if      (strcmp(tok->str, "len") == 0) index = 0;
-        else if (strcmp(tok->str, "ptr") == 0) index = 1;
+        else if (strcmp(tok->str, "ptr") == 0)
+            index = baseType->array.dynamic ? 3 : 1;
         else {
             zlog(ctx->state, tok, Z9023);
             return NULL;
         }
 
         return LLVMBuildStructGEP2(
-            ctx->builder, genType(ctx, objType),
+            ctx->builder, genType(ctx, baseType),
             ptr, (unsigned)index, label(ctx, tok)
         );
     }
@@ -1503,9 +1507,11 @@ static LLVMValueRef genSubscriptPtr(ZCodegen *ctx, ZNode *node) {
 
         LLVMTypeRef elemType = genType(ctx, arrType->array.base);
         LLVMTypeRef ptrType = LLVMPointerType(elemType, 0);
+
+        int index = arrType->array.dynamic ? 3 : 1;
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
             ctx->builder, type, ptr,
-            1, label(ctx, node->subscript.arr->tok)
+            index, label(ctx, node->subscript.arr->tok)
         );
         LLVMValueRef basePtr = LLVMBuildLoad2(
             ctx->builder, ptrType, fieldPtr, name
@@ -3511,20 +3517,24 @@ static void genForInRange(ZCodegen *ctx, ZNode *node) {
 }
 
 static void genForInArray(ZCodegen *ctx, ZNode *node) {
-    ZType *base             = node->forin.iter->resolved->array.base;
+    ZType *arrType          = node->forin.iter->resolved;
+    ZType *base             = arrType->array.base;
     ZNode *iter             = node->forin.iter;
     LLVMValueRef arr        = genExpr(ctx, iter);
     LLVMTypeRef typeRef     = genType(ctx, base);
     ZVarDestructPattern *b  = node->forin.binding;
+    usize arrayPtrIndex     = arrType->array.dynamic ? 3 : 1;
 
     LLVMBasicBlockRef org   = LLVMGetInsertBlock(ctx->builder);
     LLVMBasicBlockRef entry = makeblock(ctx, "forin.entry");
     LLVMBasicBlockRef body  = makeblock(ctx, "forin.body");
     LLVMBasicBlockRef step  = makeblock(ctx, "forin.step");
     LLVMBasicBlockRef end   = makeblock(ctx, "forin.end");
-    LLVMValueRef startIdx   = LLVMConstNull(i64Type);
-    LLVMValueRef arrayLen   = LLVMBuildExtractValue(ctx->builder, arr, 0, label(ctx, "arr.len"));
-    LLVMValueRef arrayPtr   = LLVMBuildExtractValue(ctx->builder, arr, 1, label(ctx, "arr.ptr"));
+    LLVMValueRef startIdx   = LLVMConstNull(usizeType);
+    LLVMValueRef arrayLen   = LLVMBuildExtractValue(
+        ctx->builder, arr, 0, label(ctx, "arr.len"));
+    LLVMValueRef arrayPtr   = LLVMBuildExtractValue(
+        ctx->builder, arr, arrayPtrIndex, label(ctx, "arr.ptr"));
 
     makebr(ctx->builder, entry);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
@@ -4051,14 +4061,14 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, b
         LLVMTypeRef baseType = genType(ctx, node->resolved->array.base);
         elemType = LLVMArrayType2(baseType, count);
         elem = LLVMBuildAlloca(ctx->builder, elemType, label(ctx, node->tok));
-        initializeMemoryToZero(ctx, elem, node->resolved);
+        initializeMemoryToZero(ctx, elem, elemType);
         stackPointer = elem;
     }
 
     LLVMTypeRef type = genType(ctx, overrided);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
 
-    initializeMemoryToZero(ctx, val, overrided);
+    initializeMemoryToZero(ctx, val, type);
 
     addFuncVar(ctx, val, elem, type, elemType, node);
 
@@ -4274,8 +4284,6 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
 
     if (strcmp(f->funcDef.mangled, "main") == 0 || export) {
         LLVMSetLinkage(func, LLVMExternalLinkage);
-    } else if (f->funcDef.pub) {
-        LLVMSetLinkage(func, LLVMWeakODRLinkage);
     } else {
         LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
     }

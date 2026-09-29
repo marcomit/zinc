@@ -110,13 +110,13 @@ void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
  *
  * The memory will be zeroed only in debug mode.
  * */
-void initializeMemoryToZero(ZCodegen *ctx, LLVMValueRef value, ZType *type) {
+void initializeMemoryToZero(ZCodegen *ctx, LLVMValueRef value, LLVMTypeRef type) {
     if (ctx->state->mode != Z_MODE_DEBUG) return;
     LLVMBuildMemSet(
         ctx->builder, value,
         LLVMConstInt(i8Type, 0, 0),
-        LLVMConstInt(i64Type, typeSize(ctx->state, type), 0),
-        8
+        LLVMSizeOf(type),
+        LLVMGetAlignment(value)
     );
 }
 

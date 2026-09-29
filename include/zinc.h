@@ -192,6 +192,7 @@ typedef struct {
     bool            dumpAst;
 
     bool            nostdlib;
+    bool            noInject;
 
     char            optimizationLevel;
     ZLTOMode        ltoMode;
@@ -1091,6 +1092,8 @@ typedef enum {
     Z_TRG_FOREIGN   = 1 << 0x05,
     Z_TRG_IMPL      = 1 << 0x06,
     Z_TRG_FACET     = 1 << 0x07,
+    Z_TRG_EXPR      = 1 << 0x08,
+    Z_TRG_STMT      = 1 << 0x09
 } ZAnnotationTarget;
 
 ZAnnotation *query(ZAnnotation **, const char *);

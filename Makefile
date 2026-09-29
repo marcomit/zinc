@@ -184,8 +184,12 @@ else
 	  echo "installed stdlib -> $$registry"
 endif
 
+# Count lines of code (zinc.cloc teaches cloc about .zn files)
+loc:
+	@cloc --read-lang-def=zinc.cloc --include-ext=c,h,zn,def .
+
 clean:
 	rm -f $(TARGET) $(TARGET)-asan $(TARGET)-ubsan $(TARGET)-ubsan-int
 	rm -rf build
 
-.PHONY: all link debug asan ubsan ubsan-int clean install test
+.PHONY: all link debug asan ubsan ubsan-int clean install test loc
