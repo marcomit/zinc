@@ -2,8 +2,3 @@ pub use file
 pub use net
 pub use thread
 pub use mutex
-
-pub Io :: struct {
-    stdout: Writer
-    stderr: Writer
-}

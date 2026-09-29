@@ -67,6 +67,7 @@ JsonDecoder :: struct {
     cursor: *char
 }
 
+printf :: foreign fn (*char, ..) u0
 *JsonDecoder self :: impl {
     #inline(always)
     peek :: fn () char -> self.cursor.*
@@ -136,12 +137,14 @@ JsonDecoder :: struct {
 
         for true {
             key := self._decode_string() or return none
-            if self.check(',') continue
             if not self.expect(':') return none
 
             value := self.decode() or return none
 
             json_map_append(&map, .{ key, value })
+
+            if self.check('}') break
+            if not self.expect(',') return none
         }
 
         self.expect('}') or return none
@@ -150,13 +153,15 @@ JsonDecoder :: struct {
 
     _decode_string :: fn () *char with Allocator {
         self.expect('"') or return none
-        buff := string.empty()
+        buff := StringBuilder.new()
         for not self.check('"') {
             buff.append_char(self.peek())
             self.advance() or break
         }
         self.expect('"') or return none
-        return buff
+        buff.append_char(0)
+
+        return buff.buff
     }
 
     decode_string :: fn () *Json with Allocator {
@@ -200,14 +205,14 @@ JsonDecode :: fn (cursor: *char) *Json with Allocator {
 
 *Json self :: impl(Writable) {
     sink :: fn (w: Writer) {
-        if not self {
-            sink_str(w, "Invalid json")
-            return
-        }
-        match self.* {
+        if self match self.* {
             .Num(val) -> { sink_int(w, val) },
             .Bool(val) -> { sink_bool(w, val) },
-            .Str(val) -> { sink_cstr(w, val) },
+            .Str(val) -> {
+                sink_char(w, '"')
+                sink_cstr(w, val)
+                sink_char(w, '"')
+            },
             .List(val) -> {
                 sink_char(w, '[')
                 for item, i in val {
@@ -217,20 +222,22 @@ JsonDecode :: fn (cursor: *char) *Json with Allocator {
                 sink_char(w, ']')
             },
             .Map(val) -> {
+                sink_char(w, '{')
                 for entry, i in val {
+                    sink_char(w, '"')
                     sink_cstr(w, entry.key)
+                    sink_char(w, '"')
                     sink_char(w, ':')
                     entry.value.sink(w)
 
-                    if i <= val.len - 1 do sink_char(w, ',')
+                    if i < val.len - 1 do sink_char(w, ',')
                 }
+                sink_char(w, '}')
             },
-            .None -> { sink_str(w, "none") }
+            .None -> { sink_str(w, "null") }
         }
     }
 }
-
-printf :: foreign fn (*char, ..) u0
 
 main :: fn (args: []*char) i32 {
     #print_ast if args.len < 2 return {

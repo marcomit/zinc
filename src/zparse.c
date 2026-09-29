@@ -1230,34 +1230,34 @@ ZNode *parseStmt(ZParser *parser) {
         case TOK_FOREIGN:   res = parseForeign     (parser, NULL, false);   break;
         default: break;
         }
-    }
-
-    switch (t) {
-    case TOK_IF:        res = parseIf              (parser);        break;
-    case TOK_FOR:       res = parseLoops           (parser);        break;
-    case TOK_MATCH:     res = parseMatch           (parser, false); break;
-    case TOK_DEFER:     res = parseDefer           (parser);        break;
-    case TOK_BREAK:     res = parseBreak           (parser);        break;
-    case TOK_CONTINUE:  res = parseContinue        (parser);        break;
-    case TOK_WITH:      res = parseCapabilityBlock (parser);        break;
-    case TOK_RETURN:
-        if (parser->noReturnStmt) {
-            zlog(parser->state, peek(parser), Z2014);
-            return NULL;
+    } else {
+        switch (t) {
+        case TOK_IF:        res = parseIf              (parser);        break;
+        case TOK_FOR:       res = parseLoops           (parser);        break;
+        case TOK_MATCH:     res = parseMatch           (parser, false); break;
+        case TOK_DEFER:     res = parseDefer           (parser);        break;
+        case TOK_BREAK:     res = parseBreak           (parser);        break;
+        case TOK_CONTINUE:  res = parseContinue        (parser);        break;
+        case TOK_WITH:      res = parseCapabilityBlock (parser);        break;
+        case TOK_RETURN:
+            if (parser->noReturnStmt) {
+                zlog(parser->state, peek(parser), Z2014);
+                return NULL;
+            }
+            return parseReturn          (parser);
+        default: {
+            ZParseFunc funcs[] = {
+                parseVarInferred,
+                parseVarDefTyped,
+                parseBlock,
+                parseUpdate,
+                parseCompoundOperator,
+                parseExpr
+            };
+            res = parseOrGrammar(parser, funcs, arrlen(funcs));
+            break;
         }
-        return parseReturn          (parser);
-    default: {
-        ZParseFunc funcs[] = {
-            parseVarInferred,
-            parseVarDefTyped,
-            parseBlock,
-            parseUpdate,
-            parseCompoundOperator,
-            parseExpr
-        };
-        res = parseOrGrammar(parser, funcs, arrlen(funcs));
-        break;
-    }
+        }
     }
 
     if (res) res->annotations = annotations;
@@ -1708,6 +1708,8 @@ static ZNode *parseIfBlock(ZParser *parser) {
         node = parseContinue(parser);
     } else if (check(parser, TOK_RETURN)) {
         node = parseReturn(parser);
+    } else if (check(parser, TOK_MATCH)) {
+        node = parseMatch(parser, false);
     } else {
         zlog(parser->state, peek(parser), Z201E, stoken(peek(parser)));
     }
