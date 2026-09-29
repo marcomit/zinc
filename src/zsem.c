@@ -1037,12 +1037,16 @@ static ZNode *coerceToSum(ZThreadSem *ctx, ZNode *node, ZType *sum) {
 
 static inline ZSymbol *resolveByScope(ZScope *scope, ZToken *ident) {
     while (scope) {
-        for (usize i = 0; i < veclen(scope->symbols); i++) {
+        int len = veclen(scope->symbols);
+        if (len == 0) goto next;
+        for (int i = len-1; i >= 0; i--) {
+        // for (usize i = 0; i < len; i++) {
             if (tokeneq(scope->symbols[i]->name, ident)) {
                 scope->symbols[i]->useCount++;
                 return scope->symbols[i];
             }
         }
+        next:
         scope = scope->parent;
     }
     return NULL;

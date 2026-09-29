@@ -4284,8 +4284,6 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
 
     if (strcmp(f->funcDef.mangled, "main") == 0 || export) {
         LLVMSetLinkage(func, LLVMExternalLinkage);
-    } else if (f->funcDef.pub) {
-        LLVMSetLinkage(func, LLVMWeakODRLinkage);
     } else {
         LLVMSetLinkage(func, LLVMLinkOnceODRLinkage);
     }

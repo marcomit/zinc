@@ -117,6 +117,12 @@ extern "C" int zinc_lld_link(bool nostdlib, const char *objfile, const char *out
                      nostdlib ? "-nostdlib " : "", outfile, objfile);
     for (int i = 0; i < extra_args_count && n < (int)sizeof(cmd) - 256; i++)
         n += snprintf(cmd + n, sizeof(cmd) - n, " \"%s\"", extra_args[i]);
+    // The BSD socket API (socket/bind/connect/inet_pton/...) that the std
+    // declares is not in the MinGW C runtime on Windows - it lives in Winsock.
+    // Link it after the object so those references resolve. Freestanding
+    // builds get nothing but what the caller asked for.
+    if (!nostdlib && n < (int)sizeof(cmd) - 32)
+        n += snprintf(cmd + n, sizeof(cmd) - n, " -lws2_32");
     int ret = system(cmd);
     return (ret == 0) ? 0 : 1;
 
@@ -134,6 +140,8 @@ extern "C" int zinc_lld_link(bool nostdlib, const char *objfile, const char *out
     if (!nostdlib) {
         args.push_back("/defaultlib:libcmt");
         args.push_back("/defaultlib:oldnames");
+        // std.io.net's socket calls come from Winsock, not the C runtime.
+        args.push_back("/defaultlib:ws2_32");
     } else {
         args.push_back("/nodefaultlib");
         args.push_back("/entry:_start");
