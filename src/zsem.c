@@ -755,6 +755,12 @@ static bool isComparable(ZThreadSem *ctx, ZType *type) {
 static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
     if (!from || !to) return NULL;
 
+    if (to->kind == Z_TYPE_NONE && from->kind != Z_TYPE_NONE) {
+        return from;
+    } else if (to->kind != Z_TYPE_NONE && from->kind == Z_TYPE_NONE) {
+        return to;
+    }
+
     if (to->kind == Z_TYPE_FACET        &&
         from->kind == Z_TYPE_POINTER    &&
         satisfyFacet(ctx, from, to)     ) {
@@ -2209,6 +2215,8 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
                     stype(base->result.error)
                 );
             }
+        } else if (base->kind == Z_TYPE_POINTER) {
+            return base;
         }
         return success;
 
@@ -2374,7 +2382,8 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     curr->resolved  = result;
     if (result && !result->hash) result->hash    = hashType(result);
 
-    if (query(curr->annotations, "print_ast")) {
+    ZAnnotation *print_ast = NULL;
+    if (( print_ast = query(curr->annotations, "print_ast"))) {
         printNode(curr, 1);
     }
     return result;

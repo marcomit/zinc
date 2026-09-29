@@ -150,7 +150,7 @@ void emitRuntimeError(ZCodegen *, ZToken *, const char *);
 void emitRuntimeDebugPrint(ZCodegen *, ZToken *, const char *);
 void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
 void emitNullCheck(ZCodegen *, LLVMValueRef, ZToken *);
-void initializeMemoryToZero(ZCodegen *, LLVMValueRef, ZType *);
+void initializeMemoryToZero(ZCodegen *, LLVMValueRef, LLVMTypeRef);
 void checkUnsafeUnwrap(ZCodegen *, LLVMValueRef, ZType *, ZToken *);
 void LLVMBuildTrap(ZCodegen *);
 bool genBuiltin(ZCodegen *, ZNode *, LLVMValueRef *out);

@@ -8,58 +8,30 @@ RawDynamicArray :: struct {
 }
 
 *RawDynamicArray self :: impl {
-    make_room :: fn (size: usize) with Allocator {
+    make_room :: fn (n: usize, elem_size: usize) with Allocator {
         if not self return
 
         newcap := self.cap
         if not newcap do newcap = DEFAULT_DYNAMIC_ARRAY_CAPACITY
 
-        for self.len + size >= newcap {
+        for self.len + n > newcap {
             newcap *= 2
         }
 
         if newcap != self.cap {
-            self.buff = resize(self.buff, newcap)
+            self.buff = resize(self.buff, newcap * elem_size)
             self.cap = newcap
         }
     }
 }
 
-pub make_room :: fn (list: *[..]char, size: usize) with Allocator {
+pub make_room :: fn (list: *[..]char, n: usize, elem_size: usize) with Allocator {
     items: *RawDynamicArray = list
-    items.make_room(size)
+    items.make_room(n, elem_size)
 }
 
-User :: struct {
-    name: []char
-    age: i32
-}
-
-*User self :: impl(Writable) {
-    sink :: fn (w: Writer) {
-        sink_str(w, self.name)
-        sink_int(w, self.age)
-    }
-}
-
-append_user :: fn (users: *[..]User, user: User) with Allocator {
-    make_room(users.&, sizeof User)
-
-    users.*[users.len-1] = user
-}
-
-main :: fn () i32 {
-    with _ := GeneralPurposeAllocator.new() {
-        users: [..]User
-
-        append_user(&users, .{name="marco", age=21 })
-        append_user(&users, .{name="carlo", age=21 })
-        append_user(&users, .{name="lucia", age=21 })
-        append_user(&users, .{name="prrr", age=25 })
-
-        for user in users {
-            println(#"User: {&user}")
-        }
-    }
-    return 0
-}
+// append_user :: fn (users: *[..]User, user: User) with Allocator {
+//     make_room(users, 1, sizeof User)
+//     users.len += 1
+//     users.*[users.len-1] = user
+// }

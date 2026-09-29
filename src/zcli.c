@@ -104,8 +104,8 @@ void usage(char *program) {
 static void printAllocation(ZState *state) {
     if (!state->verbose) return;
 
-    usize used = arenaLength(allocator.ctx);
-    usize allocated = arenaSize(allocator.ctx);
+    double used = arenaLength(allocator.ctx);
+    double allocated = arenaSize(allocator.ctx);
     for (usize i = 0; i < veclen(state->modules); i++) {
         used += arenaLength(state->modules[i]->allocator);
         allocated += arenaSize(state->modules[i]->allocator);
@@ -118,14 +118,16 @@ static void printAllocation(ZState *state) {
         "Gb",
     };
 
+    static const int labelsize = sizeof(labels) / sizeof(labels[0]);
+
     int label = 0;
-    while (allocated > 1024 && label < 3) {
-        used >>= 10;
-        allocated >>= 10;
+    while (allocated > 1024 && label < labelsize) {
+        used = used / 1024;
+        allocated = allocated / 1024;
         label++;
     }
 
-    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %zu/%zu %s\n",
+    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %.1f/%.1f %s\n",
         used, allocated, labels[label]
     );
 }

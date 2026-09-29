@@ -1,7 +1,8 @@
 use <std.mem.gpa>
+use <std.core.list>
 
 JsonMapEntry :: struct {
-    key:    string
+    key:    *char
     value:  *Json
 }
 
@@ -21,7 +22,7 @@ json_num :: fn (num: f64) *Json with Allocator {
 }
 
 json_bool :: fn (val: u1) *Json with Allocator {
-    self: *Json = alloc(sizeof Json)
+    self := alloc(sizeof Json) as *Json
     self.* = .Bool(val)
     return self
 }
@@ -51,9 +52,15 @@ json_none :: fn () *Json with Allocator {
 }
 
 json_list_append :: fn (list: *[..]*Json, item: *Json) with Allocator {
-    make_room(list, sizeof *Json)
-    list.*[list.len - 1] = item
+    make_room(list, 1, sizeof *Json)
     list.len += 1
+    list.*[list.len - 1] = item
+}
+
+json_map_append :: fn (entries: *[..]JsonMapEntry, entry: JsonMapEntry) with Allocator {
+    make_room(entries, 1, sizeof JsonMapEntry)
+    entries.len += 1
+    entries.*[entries.len - 1] = entry
 }
 
 JsonDecoder :: struct {
@@ -96,38 +103,65 @@ JsonDecoder :: struct {
         return true
     }
     skip_whitespaces :: fn () void {
-        for true do match self.peek() {
-            ' '     -> self.advance(),
-            '\n'    -> self.advance(),
-            '\t'    -> self.advance(),
-            '\r'    -> self.advance(),
-            _       -> {
-                break
-            }
+        tok := self.peek()
+        for tok == ' ' or tok == '\n' or tok == '\t' or tok == '\r' {
+            if not self.advance() break
+            tok = self.peek()
         }
     }
 
     decode_list :: fn () *Json with Allocator {
         self.expect('[') or return none
-        list := json_list(none)
-        for {
-            item := self.decode()
-            if self.check(']') break
-            if not self.expect(',') {
-                return none
-            }
 
+        l: [..]*Json
+        self.skip_whitespaces()
+        if not self.check(']') {
+            for {
+                item := self.decode()
+                if item == none return none
+
+                json_list_append(&l, item)
+                self.skip_whitespaces()
+                if self.check(']') break
+                self.expect(',') or return none
+            }
         }
         self.expect(']') or return none
-        return list
+        return json_list(l)
     }
 
     decode_map :: fn () *Json with Allocator {
-        return none
+        map: [..]JsonMapEntry
+        self.expect('{') or return none
+
+        for true {
+            key := self._decode_string() or return none
+            if self.check(',') continue
+            if not self.expect(':') return none
+
+            value := self.decode() or return none
+
+            json_map_append(&map, .{ key, value })
+        }
+
+        self.expect('}') or return none
+        return json_map(map)
+    }
+
+    _decode_string :: fn () *char with Allocator {
+        self.expect('"') or return none
+        buff := string.empty()
+        for not self.check('"') {
+            buff.append_char(self.peek())
+            self.advance() or break
+        }
+        self.expect('"') or return none
+        return buff
     }
 
     decode_string :: fn () *Json with Allocator {
-        return none
+        buff := self._decode_string() or return none
+        return json_str(buff)
     }
 
     decode_num :: fn () *Json with Allocator {
@@ -142,12 +176,17 @@ JsonDecoder :: struct {
             '[' -> { return self.decode_list() },
             '"' -> { return self.decode_string() },
             _   -> {
-                res :=
-                     if self.match_str("true")           do json_bool(true)
-                else if self.match_str("false")          do json_bool(false)
-                else if self.match_str("null")           do json_none()
-                else if tok >= '0' and tok <= '9'   do self.decode_num()
-                else none
+                if self.match_str("true") {
+                    return json_bool(true)
+                } else if self.match_str("false") {
+                    return json_bool(false)
+                } else if self.match_str("null") {
+                    return json_none()
+                } else if tok >= '0' and tok <= '9' {
+                    return self.decode_num()
+                } else {
+                    return none
+                }
             }
         }
         return none
@@ -159,8 +198,42 @@ JsonDecode :: fn (cursor: *char) *Json with Allocator {
     return decoder.decode()
 }
 
+*Json self :: impl(Writable) {
+    sink :: fn (w: Writer) {
+        if not self {
+            sink_str(w, "Invalid json")
+            return
+        }
+        match self.* {
+            .Num(val) -> { sink_int(w, val) },
+            .Bool(val) -> { sink_bool(w, val) },
+            .Str(val) -> { sink_cstr(w, val) },
+            .List(val) -> {
+                sink_char(w, '[')
+                for item, i in val {
+                    item.sink(w)
+                    if i < val.len - 1 { sink_char(w, ',') }
+                }
+                sink_char(w, ']')
+            },
+            .Map(val) -> {
+                for entry, i in val {
+                    sink_cstr(w, entry.key)
+                    sink_char(w, ':')
+                    entry.value.sink(w)
+
+                    if i <= val.len - 1 do sink_char(w, ',')
+                }
+            },
+            .None -> { sink_str(w, "none") }
+        }
+    }
+}
+
+printf :: foreign fn (*char, ..) u0
+
 main :: fn (args: []*char) i32 {
-    if args.len < 2 return {
+    #print_ast if args.len < 2 return {
         println("Expected at least one argument")
         break 1
     }
@@ -172,11 +245,10 @@ main :: fn (args: []*char) i32 {
             println("Unable to open file")
             return 1
         }
-        defer f.close()
-
         content := f.readAll()
 
         json := JsonDecode(content)
+        println(#"{json}")
     }
     return 0
 }

@@ -4061,14 +4061,14 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, b
         LLVMTypeRef baseType = genType(ctx, node->resolved->array.base);
         elemType = LLVMArrayType2(baseType, count);
         elem = LLVMBuildAlloca(ctx->builder, elemType, label(ctx, node->tok));
-        initializeMemoryToZero(ctx, elem, node->resolved);
+        initializeMemoryToZero(ctx, elem, elemType);
         stackPointer = elem;
     }
 
     LLVMTypeRef type = genType(ctx, overrided);
     LLVMValueRef val = LLVMBuildAlloca(ctx->builder, type, label(ctx, node->tok));
 
-    initializeMemoryToZero(ctx, val, overrided);
+    initializeMemoryToZero(ctx, val, type);
 
     addFuncVar(ctx, val, elem, type, elemType, node);
 

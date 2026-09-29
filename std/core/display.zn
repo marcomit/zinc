@@ -56,6 +56,11 @@ pub FDWriter :: struct {
     }
 }
 
+#inline
+pub sink_char :: fn (w: Writer, c: char) {
+    w.write(&c, 1)
+}
+
 pub sink_int :: fn (w: Writer, num: i64) {
     buff: [32]char
     bytes := io.snprintf(buff.ptr, 31, "%d", num)
@@ -76,6 +81,10 @@ pub sink_float :: fn (w: Writer, num: f64) {
 
 pub sink_str :: fn (w: Writer, str: []char) {
     w.write(str.ptr, str.len)
+}
+
+pub sink_cstr :: fn (w: Writer, str: *char) {
+    w.write(str, mem.strlen(str))
 }
 
 #inline pub print :: fn (items: []InterpolatedString) {
