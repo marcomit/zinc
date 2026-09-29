@@ -186,7 +186,7 @@ endif
 
 # Count lines of code (zinc.cloc teaches cloc about .zn files)
 loc:
-	@cloc --read-lang-def=zinc.cloc --exclude-dir=build .
+	@cloc --read-lang-def=zinc.cloc --include-ext=c,h,zn,def .
 
 clean:
 	rm -f $(TARGET) $(TARGET)-asan $(TARGET)-ubsan $(TARGET)-ubsan-int
