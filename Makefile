@@ -93,15 +93,35 @@ BUILD_DIR ?= build
 # so src/codegen/*.c and anything added later is picked up without listing it.
 rwildcard = $(foreach d,$(wildcard $(1)/*),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
 
+# The language server is a separate binary with its own main(): its sources
+# (and the JSON library only it uses) are kept out of the compiler build.
+LSP_TARGET = zinc-lsp
+LSP_DIR    = $(SRC_DIR)/lsp
+JSON_DIR   = $(LIB_DIR)/json.c
+LSP_EXCL   = $(LSP_DIR)/% $(JSON_DIR) $(JSON_DIR)/%
+
 # Object files mirror the source tree: src/codegen/zgen.c -> build/codegen/zgen.o
-C_SRC   = $(call rwildcard,$(SRC_DIR),*.c) $(call rwildcard,$(LIB_DIR),*.c)
+C_SRC   = $(filter-out $(LSP_EXCL),$(call rwildcard,$(SRC_DIR),*.c) $(call rwildcard,$(LIB_DIR),*.c))
 CXX_SRC = $(call rwildcard,$(SRC_DIR),*.cpp)
-C_OBJ   = $(patsubst $(SRC_DIR)/%.c,  $(BUILD_DIR)/%.o, $(call rwildcard,$(SRC_DIR),*.c)) \
-          $(patsubst $(LIB_DIR)/%.c,  $(BUILD_DIR)/%.o, $(call rwildcard,$(LIB_DIR),*.c))
+C_OBJ   = $(patsubst $(SRC_DIR)/%.c,  $(BUILD_DIR)/%.o, $(filter $(SRC_DIR)/%,$(C_SRC))) \
+          $(patsubst $(LIB_DIR)/%.c,  $(BUILD_DIR)/%.o, $(filter $(LIB_DIR)/%,$(C_SRC)))
 CXX_OBJ = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o, $(CXX_SRC))
 OBJ     = $(C_OBJ) $(CXX_OBJ)
 
+LSP_SRC = $(wildcard $(LSP_DIR)/*.c) $(JSON_DIR)/json.c
+LSP_OBJ = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(SRC_DIR)/%,$(LSP_SRC))) \
+          $(patsubst $(LIB_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(LIB_DIR)/%,$(LSP_SRC)))
+
 all: $(TARGET)
+
+# Build the language server. It links the compiler's objects (for zinc.h's
+# API) minus zinc.o, which holds the compiler's main().
+LSP_DEPS = $(filter-out $(BUILD_DIR)/zinc.o,$(OBJ))
+
+lsp: $(LSP_TARGET)
+
+$(LSP_TARGET): $(LSP_OBJ) $(LSP_DEPS)
+	$(CXX) -o $@ $(LSP_OBJ) $(LSP_DEPS) $(LDFLAGS)
 
 # --- Sanitizer builds ---------------------------------------------------
 # Several sanitizers are mutually exclusive (ASan/TSan/MSan cannot be combined)
@@ -189,7 +209,7 @@ loc:
 	@cloc --read-lang-def=zinc.cloc --include-ext=c,h,zn,def .
 
 clean:
-	rm -f $(TARGET) $(TARGET)-asan $(TARGET)-ubsan $(TARGET)-ubsan-int
+	rm -f $(TARGET) $(LSP_TARGET) $(TARGET)-asan $(TARGET)-ubsan $(TARGET)-ubsan-int
 	rm -rf build
 
-.PHONY: all link debug asan ubsan ubsan-int clean install test loc
+.PHONY: all lsp link debug asan ubsan ubsan-int clean install test loc
