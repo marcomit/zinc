@@ -11,14 +11,23 @@
 #include "zinc.h"
 #include "json.c/json.h"
 
-typedef struct {
-    Json *root;
-} LspContext;
+typedef struct LspContext LspContext;
+typedef struct LspResponse LspResponse;
+typedef LspResponse *(*LspMethod)(LspContext *);
 
 typedef struct {
+    const char *name;
+    LspMethod callback;
+} LspHandler;
+
+struct LspContext {
+    Json *root;
+};
+
+struct LspResponse {
     Json *response;
     int id;
-} LspResponse;
+};
 
 LspResponse *handle_message(LspContext *);
 
@@ -55,4 +64,28 @@ typedef struct {
     LspCompletionKind   kind;
 } LspCompletionItem;
 
+typedef struct {
+    int line;
+    int character;
+} LspPosition;
+
+typedef struct {
+    int         triggerKind;
+    LspPosition position;
+    char        *uri;
+} LspCompletion;
+
+typedef struct {
+    char *text;
+    LspPosition start;
+    LspPosition end;
+} LspContentChange;
+
+typedef struct {
+    LspContentChange *changes;
+    int version;
+    char *uri;
+} LspDocumentChange;
+
+LspResponse *lsp_reply(LspContext *, Json *);
 #endif //!LSP_H

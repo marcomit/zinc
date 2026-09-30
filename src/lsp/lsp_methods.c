@@ -2,12 +2,6 @@
 #include "lsp.h"
 #include "zmem.h"
 
-typedef LspResponse *(*LspMethod)(LspContext *);
-
-typedef struct {
-    const char *name;
-    LspMethod callback;
-} LspHandler;
 
 static LspResponse *lsp_response(int id, Json *response) {
     LspResponse *self   = zalloc(LspResponse);
@@ -16,7 +10,7 @@ static LspResponse *lsp_response(int id, Json *response) {
     return self;
 }
 
-static LspResponse *lsp_reply(LspContext *ctx, Json *result) {
+LspResponse *lsp_reply(LspContext *ctx, Json *result) {
     Json *reqId     = JsonGet(ctx->root, "id");
     Json *response  = JsonMap(NULL);
     Json *id        = JsonType(reqId) == JSON_STRING
@@ -34,17 +28,26 @@ static LspResponse *lsp_initialize(LspContext *ctx) {
     Json *result        = JsonMap(NULL);
     Json *capabilities  = JsonMap(NULL);
     Json *serverInfo    = JsonMap(NULL);
+    Json *workspace     = JsonMap(NULL);
+    Json *workspaceRT   = JsonMap(NULL);
 
-    JsonSet(result,         "capabilities", capabilities);
-    JsonSet(result,         "serverInfo",   serverInfo);
+    JsonSet(result,         "capabilities",             capabilities);
+    JsonSet(result,         "serverInfo",               serverInfo);
 
-    JsonSet(capabilities,   "textDocumentSync",     JsonNumber(1));
-    JsonSet(capabilities,   "hoverProvider",        JsonBool(true));
-    JsonSet(capabilities,   "definitionProvider",   JsonBool(true));
-    JsonSet(capabilities,   "completionProvider",   JsonMap(NULL));
+    JsonSet(capabilities,   "textDocumentSync",         JsonNumber(2));
+    JsonSet(capabilities,   "hoverProvider",            JsonBool(true));
+    JsonSet(capabilities,   "definitionProvider",       JsonBool(true));
+    JsonSet(capabilities,   "completionProvider",       JsonMap(NULL));
+    JsonSet(capabilities,   "workspace",                workspace);
 
-    JsonSet(serverInfo,     "name",     JsonString("zinc-lsp"));
-    JsonSet(serverInfo,     "version",  JsonString("0.2.0"));
+    JsonSet(serverInfo,     "name",                     JsonString("zinc-lsp"));
+    JsonSet(serverInfo,     "version",                  JsonString("0.2.0"));
+
+    JsonSet(workspace,      "workspaceFolders",         JsonBool(true));
+    JsonSet(workspace,      "configuration",            JsonBool(true));
+    JsonSet(workspace,      "didChangeWatchedFiles",    workspaceRT);
+
+    JsonSet(workspaceRT,    "dynamicRegistration",      JsonBool(true));
 
     return lsp_reply(ctx, result);
 }
@@ -75,17 +78,21 @@ static LspResponse *lsp_completion(LspContext *ctx) {
     return lsp_reply(ctx, get_completions(items));
 }
 
-static LspResponse *lsp_change(LspContext *ctx) {
+static LspResponse *lsp_open_document(LspContext *ctx) {
     return NULL;
 }
 
+static LspResponse *lsp_change_document(LspContext *ctx) {
+    return lsp_reply(ctx, JsonNull());
+}
+
 static LspHandler Handlers[] = {
-    { "initialize",                 lsp_initialize  },
-    { "shutdown",                   lsp_shutdown    },
-    { "textDocument/didOpen",       lsp_change      },
-    { "textDocument/didChange",     lsp_change      },
-    { "textDocument/completion",    lsp_completion  },
-    { NULL,                         NULL}
+    { "initialize",                 lsp_initialize      },
+    { "shutdown",                   lsp_shutdown        },
+    { "textDocument/didOpen",       lsp_open_document   },
+    { "textDocument/didChange",     lsp_change_document },
+    { "textDocument/completion",    lsp_completion      },
+    { NULL,                         NULL                }
 };
 
 static bool format_id(Json *id, char *buf, size_t buf_size) {
