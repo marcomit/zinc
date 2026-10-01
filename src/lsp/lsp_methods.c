@@ -24,6 +24,10 @@ LspResponse *lsp_reply(LspContext *ctx, Json *result) {
     return lsp_response((int)JsonAsNum(reqId), response);
 }
 
+static void lsp_notify(LspContext *ctx, LspNotification *notification) {
+
+}
+
 static LspResponse *lsp_initialize(LspContext *ctx) {
     Json *result        = JsonMap(NULL);
     Json *capabilities  = JsonMap(NULL);
@@ -86,13 +90,18 @@ static LspResponse *lsp_change_document(LspContext *ctx) {
     return lsp_reply(ctx, JsonNull());
 }
 
+static LspResponse *lsp_workspace_configure(LspContext *ctx) {
+    return lsp_reply(ctx, JsonNull());
+}
+
 static LspHandler Handlers[] = {
-    { "initialize",                 lsp_initialize      },
-    { "shutdown",                   lsp_shutdown        },
-    { "textDocument/didOpen",       lsp_open_document   },
-    { "textDocument/didChange",     lsp_change_document },
-    { "textDocument/completion",    lsp_completion      },
-    { NULL,                         NULL                }
+    { "initialize",                 lsp_initialize          },
+    { "shutdown",                   lsp_shutdown            },
+    { "textDocument/didOpen",       lsp_open_document       },
+    { "textDocument/didChange",     lsp_change_document     },
+    { "textDocument/completion",    lsp_completion          },
+    { "workspace/configure",        lsp_workspace_configure },
+    { NULL,                         NULL                    }
 };
 
 static bool format_id(Json *id, char *buf, size_t buf_size) {
