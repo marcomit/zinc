@@ -788,18 +788,26 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
         return typesCompatible(ctx, from, to->optional);
     }
 
-    if (typesEqual(from, strType)) {
-        if (!interpType) {
-            ZNode *interp = LangItems[Z_LANG_INTERPOLATED_STRING];
-            if (interp) {
-                ZType *arr          = maketype(Z_TYPE_ARRAY);
-                arr->array.base     = interp->resolved;
-                arr->array.size     = 1;
-                arr->array.dynamic  = false;
-                interpType = arr;
-            }
+    if (!interpType) {
+        ZNode *interp = LangItems[Z_LANG_INTERPOLATED_STRING];
+        if (interp) {
+            ZType *arr          = maketype(Z_TYPE_ARRAY);
+            arr->array.base     = interp->resolved;
+            arr->array.size     = 1;
+            arr->array.dynamic  = false;
+            interpType = arr;
         }
+    }
 
+    if (typesEqual(to, interpType)) {
+        ZNode *writable = LangItems[Z_LANG_WRITABLE];
+        if (typesEqual(from, strType)) {
+            return interpType;
+        } else if (writable && satisfyFacet(ctx, from, writable->resolved)) {
+            return interpType;
+        }
+    }
+    if (typesEqual(from, strType)) {
         if (typesEqual(to, interpType)) {
             return interpType;
         }
@@ -2239,10 +2247,13 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 }
 
 static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    if (veclen(curr->interpolation) == 1 && typesEqual(inferred, strType)) {
-        return strType;
-    }
     ZNode *writable = LangItems[Z_LANG_WRITABLE];
+    if (veclen(curr->interpolation) == 1 && typesEqual(inferred, strType)) {
+        if (typesEqual(inferred, strType))
+            return strType;
+        if (satisfyFacet(ctx, inferred, writable->resolved))
+            return writable->resolved;
+    }
     for (usize i = 0; i < veclen(curr->interpolation); i++) {
         ZInterpolation *interp = curr->interpolation[i];
         switch (interp->type) {
