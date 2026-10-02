@@ -1,5 +1,6 @@
 #include "json.c/json.h"
 #include "lsp.h"
+#include "zinc.h"
 #include "zmem.h"
 
 
@@ -27,8 +28,8 @@ LspResponse *lsp_reply(LspContext *ctx, Json *result) {
 void lsp_send(Json *message) {
     const char *json = JsonEncode(message);
     size_t len = strlen(json);
-    printf("Content-Length: %zu\r\n\r\n%s", len, json);
-    fflush(stdout);
+    fprintf(g_out, "Content-Length: %zu\r\n\r\n%s", len, json);
+    fflush(g_out);
     log_msg("SENT", json, len);
 }
 
@@ -112,6 +113,9 @@ static Json *range_from_token(ZToken *tok) {
     JsonSet(end,    "line",         JsonNumber(line));
     JsonSet(end,    "character",    JsonNumber(col + row));
 
+    JsonSet(range,  "start",        start);
+    JsonSet(range,  "end",          end);
+
     return range;
 }
 
@@ -124,7 +128,7 @@ static void publish_diagnostics(const char *uri, int version, ZState *state) {
 
         Json *d = JsonMap(NULL);
         JsonSet(d, "range", range_from_token(log->token));
-        JsonSet(d, "severity", JsonNumber((int)log->level));
+        JsonSet(d, "severity", JsonNumber(1 + (int)log->level));
         JsonSet(d, "source", JsonString("zinc"));
         JsonSet(d, "message", JsonString(log->message));
 
@@ -140,6 +144,23 @@ static void publish_diagnostics(const char *uri, int version, ZState *state) {
 }
 
 static LspResponse *lsp_open_document(LspContext *ctx) {
+    Json *doc   = JsonGetFmt(ctx->root, "params.textDocument");
+    char *uri   = JsonAsString(JsonGet(doc, "uri"));
+    char *src   = JsonAsString(JsonGet(doc, "text"));
+    int version = (int)JsonAsNum(JsonGet(doc, "version"));
+
+    char *path = strncmp(uri, "file://", 7) == 0 ? uri + 7 : uri;
+
+    if (!src) return NULL;
+
+    ZState *state   = makestate();
+    visit(state, &path, false);
+    initPrimitiveTypes();
+    ZToken **tokens = ztokenizeSource(state, src);
+
+    ZNode *root     = zparse(state, tokens);
+
+    publish_diagnostics(uri, version, state);
     return NULL;
 }
 

@@ -985,6 +985,7 @@ struct ZThreadSem {
 
 /* Lexer */
 ZToken **ztokenize(ZState *);
+ZToken **ztokenizeSource(ZState *, char *);
 ZToken *maketoken(ZTokenType, char *, char *);
 ZToken *makeident(char *, char *, char *);
 ZTokenStream *maketokstream(ZToken **, ZTokenStream *);

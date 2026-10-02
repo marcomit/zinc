@@ -1,6 +1,8 @@
 #include "lsp.h"
+#include <unistd.h>
 
 static FILE *g_log = NULL;
+FILE *g_out = NULL;
 
 static void log_open(void) {
     const char *path = getenv("EMPTY_LSP_LOG");
@@ -73,6 +75,10 @@ static char *read_message(size_t *out_len) {
 
 int main(void) {
     allocator.open();
+
+    g_out = fdopen(dup(STDOUT_FILENO), "w");
+    dup2(STDERR_FILENO, STDOUT_FILENO);
+
     log_open();
     log_fmt("START", "zinc-lsp started");
 
