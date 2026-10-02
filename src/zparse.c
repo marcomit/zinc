@@ -3102,7 +3102,7 @@ static ZNode *parseModule(ZParser *parser) {
     root->module.root = NULL;
     root->module.filename = parser->state->filename;
 
-    if (!parser->state->noInject) {
+    if (!parser->state->cli.noInject) {
         ZNode *prelude = injectPrelude(parser);
         vecpush(root->module.root, prelude);
     }

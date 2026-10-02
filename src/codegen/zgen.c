@@ -243,7 +243,7 @@ void labelCnt(ZCodegen *ctx) {
  */
 char *labelTok(ZCodegen *ctx, ZToken *tok) {
     LABEL_RESET(ctx);
-    if (ctx->state->debug && tok) {
+    if (ctx->state->cli.debug && tok) {
         char *str = stoken(tok);
         vecunion(ctx->str, str, strlen(str));
         vecpush(ctx->str, 0);
@@ -255,7 +255,7 @@ char *labelTok(ZCodegen *ctx, ZToken *tok) {
 
 char *labelStr(ZCodegen *ctx, char *msg) {
     LABEL_RESET(ctx);
-    if (ctx->state->debug && msg) {
+    if (ctx->state->cli.debug && msg) {
         return msg;
     }
     labelCnt(ctx);
@@ -4643,9 +4643,9 @@ bool initTargetMachine(ZState *state) {
     LLVMInitializeAllAsmParsers();
     LLVMInitializeAllAsmPrinters();
 
-    bool hostTriple = (state->targetTriple == NULL);
+    bool hostTriple = (state->cli.targetTriple == NULL);
     char *triple = hostTriple ? LLVMGetDefaultTargetTriple()
-                              : strdup(state->targetTriple);
+                              : strdup(state->cli.targetTriple);
 
     LLVMTargetRef target;
     char *errmsg = NULL;
@@ -4656,11 +4656,11 @@ bool initTargetMachine(ZState *state) {
         return false;
     }
 
-    const char *cpu         = state->targetCPU      ? state->targetCPU      : "generic";
-    const char *features    = state->targetFeatures ? state->targetFeatures : "";
-    LLVMRelocMode reloc     = hostTriple            ? LLVMRelocPIC          : LLVMRelocStatic;
+    const char *cpu         = state->cli.targetCPU      ? state->cli.targetCPU      : "generic";
+    const char *features    = state->cli.targetFeatures ? state->cli.targetFeatures : "";
+    LLVMRelocMode reloc     = hostTriple                ? LLVMRelocPIC          : LLVMRelocStatic;
 
-    char optlvl = state->optimizationLevel ? state->optimizationLevel : '2';
+    char optlvl = state->cli.optimizationLevel ? state->cli.optimizationLevel : '2';
     LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
         target, triple, cpu, features,
         toCodeGenLevel(optlvl),
@@ -4685,9 +4685,9 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     LLVMInitializeAllAsmParsers();
     LLVMInitializeAllAsmPrinters();
 
-    bool hostTriple = (ctx->state->targetTriple == NULL);
+    bool hostTriple = (ctx->state->cli.targetTriple == NULL);
     char *triple = hostTriple ? LLVMGetDefaultTargetTriple()
-                              : strdup(ctx->state->targetTriple);
+                              : strdup(ctx->state->cli.targetTriple);
     LLVMSetTarget(ctx->mod, triple);
 
     LLVMTargetRef target;
@@ -4699,12 +4699,12 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
         return false;
     }
 
-    const char *cpu      = ctx->state->targetCPU      ? ctx->state->targetCPU      : "generic";
-    const char *features = ctx->state->targetFeatures ? ctx->state->targetFeatures : "";
+    const char *cpu      = ctx->state->cli.targetCPU      ? ctx->state->cli.targetCPU      : "generic";
+    const char *features = ctx->state->cli.targetFeatures ? ctx->state->cli.targetFeatures : "";
 
     LLVMRelocMode reloc = hostTriple ? LLVMRelocPIC : LLVMRelocStatic;
 
-    char optlvl = ctx->state->optimizationLevel ? ctx->state->optimizationLevel : '2';
+    char optlvl = ctx->state->cli.optimizationLevel ? ctx->state->cli.optimizationLevel : '2';
     LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
         target, triple, cpu, features,
         toCodeGenLevel(optlvl),
@@ -4737,7 +4737,7 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     }
 
     bool ok;
-    if (ctx->state->ltoMode != Z_LTO_OFF) {
+    if (ctx->state->cli.ltoMode != Z_LTO_OFF) {
         ok = (LLVMWriteBitcodeToFile(ctx->mod, filename) == 0);
         if (!ok) zlog(ctx->state, NULL, Z4016, filename);
     } else {
@@ -4778,7 +4778,7 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
         usize namelen;
         const char *name = LLVMGetModuleIdentifier(gens[i]->mod, &namelen);
 
-        if (!state->skipLLVMValidation) {
+        if (!state->cli.skipLLVMValidation) {
             char *verifyErr = NULL;
             if (LLVMVerifyModule(gens[i]->mod, LLVMReturnStatusAction, &verifyErr)) {
                 zlog(state, NULL, Z4018, name, verifyErr);
@@ -4825,13 +4825,13 @@ static ZCodegen *compileModules(ZState *state) {
 
     for (usize i = 0; i < len; i++) pthread_join(threads[i], NULL);
 
-    return mergeModules(state, gens, state->output);
+    return mergeModules(state, gens, state->cli.output);
 }
 
 void zcompile(ZState *state, ZNode *root, const char *output) {
     (void)root;
 
-    if (state->verbose) timer_start(&state->phaseTime);
+    if (state->cli.verbose) timer_start(&state->phaseTime);
 
     ZCodegen *ctx = compileModules(state);
 
@@ -4839,7 +4839,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     const char *format;
     double elapsed;
 
-    if (state->verbose) {
+    if (state->cli.verbose) {
         elapsed = timer_elapsed(state->phaseTime, &format);
         printf(COLOR_BOLD COLOR_CYAN "  LLVM IR:    " COLOR_RESET "%.2f%s\n", elapsed, format);
     }
@@ -4849,7 +4849,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
         return;
     }
 
-    if (state->emit == Z_EMIT_EXE && !state->nostdlib &&
+    if (state->cli.emit == Z_EMIT_EXE && !state->cli.nostdlib &&
         !LLVMGetNamedFunction(ctx->mod, "main")) {
         zlog(state, NULL, Z401B);
     }
@@ -4857,7 +4857,7 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     char *errmsg = NULL;
 
 
-    if (!state->skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
+    if (!state->cli.skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
         zlog(state, NULL, Z401C, errmsg);
         LLVMDisposeMessage(errmsg);
         freeCodegen(ctx);
@@ -4865,7 +4865,8 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     }
     LLVMDisposeMessage(errmsg);
 
-    if (state->emit == Z_EMIT_IR) {
+    switch (state->cli.emit) {
+    case Z_EMIT_IR:
         if (!output) output = "output.ll";
         if (LLVMPrintModuleToFile(ctx->mod, output, &errmsg)) {
             zlog(state, NULL, Z401D, errmsg);
@@ -4873,22 +4874,19 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
             goto end;
         }
         goto success;
-    }
-
-    if (state->emit == Z_EMIT_ASM) {
+    case Z_EMIT_ASM:
         if (!output) output = "output.s";
         if (emitObjectFile(ctx, output, LLVMAssemblyFile)) goto success;
         goto end;
-    }
-
-    if (state->emit == Z_EMIT_OBJ) {
+    case Z_EMIT_OBJ:
         if (!output) output = "output.o";
         if (emitObjectFile(ctx, output, LLVMObjectFile)) goto success;
         goto end;
+    default: break;
     }
 
     if (!output) output = "a.out";
-    const char *objext = (state->ltoMode != Z_LTO_OFF) ? ".tmp.bc" : ".tmp.o";
+    const char *objext = (state->cli.ltoMode != Z_LTO_OFF) ? ".tmp.bc" : ".tmp.o";
     size_t objnameLen = strlen(output) + strlen(objext) + 1;
     char *objfileBuf = malloc(objnameLen);
     if (!objfileBuf) {
@@ -4919,14 +4917,14 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     }
 #endif
 
-    if (state->verbose) {
+    if (state->cli.verbose) {
         timer_start(&state->phaseTime);
     }
 
-    int ret = zinc_lld_link(state->nostdlib, objfile, output,
-            (const char**)state->extraArgs, veclen(state->extraArgs));
+    int ret = zinc_lld_link(state->cli.nostdlib, objfile, output,
+            (const char**)state->cli.extraArgs, veclen(state->cli.extraArgs));
 
-    if (state->verbose) {
+    if (state->cli.verbose) {
         elapsed = timer_elapsed(state->phaseTime, &format);
         printf(COLOR_BOLD COLOR_CYAN "  LLD Linker: " COLOR_RESET "%.2f%s\n", elapsed, format);
     }

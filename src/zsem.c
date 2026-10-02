@@ -649,15 +649,15 @@ static ZThreadSem *registerModule(ZSemantic *ctx, ZNode *module) {
 static void warnUnused(ZThreadSem *ctx, ZSymbol *symbol) {
     switch (symbol->kind) {
     case Z_SYM_FUNC:
-        if (ctx->state->unusedFunc) break;
+        if (ctx->state->cli.unusedFunc) break;
         zlog(ctx->state, symbol->name, Z3004, symbol->name->str);
         break;
     case Z_SYM_STRUCT:
-        if (ctx->state->unusedStruct) break;
+        if (ctx->state->cli.unusedStruct) break;
         zlog(ctx->state, symbol->name, Z3005, symbol->name->str);
         break;
     case Z_SYM_VAR:
-        if (ctx->state->unusedVar) break;
+        if (ctx->state->cli.unusedVar) break;
         zlog(ctx->state, symbol->name, Z3006, symbol->name->str);
         break;
     default:

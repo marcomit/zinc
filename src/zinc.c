@@ -36,7 +36,7 @@ static void handler(int sig) {
     write(STDERR_FILENO, "Error: signal received\n", 23);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
-    if (state && state->debug) printLogs(state);
+    if (state && state->cli.debug) printLogs(state);
     allocator.close();
     _exit(1);
 }

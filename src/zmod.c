@@ -937,10 +937,10 @@ ZState *makestate() {
     self->homePath              = getHomePath();
     self->canAdvance            = true;
 
-    self->emit                  = Z_EMIT_EXE;
-    self->optimizationLevel     = '2';
-    self->ltoMode               = Z_LTO_OFF;
-    self->mode                  = Z_MODE_RELEASE;
+    self->cli.emit              = Z_EMIT_EXE;
+    self->cli.optimizationLevel = '2';
+    self->cli.ltoMode           = Z_LTO_OFF;
+    self->cli.mode              = Z_MODE_RELEASE;
 
     return self;
 }
@@ -1221,7 +1221,7 @@ static void printLineHighlight(ZToken *tok, const char *color) {
 
 static void printLog(ZState *state, ZLog *log) {
     if (log->filename) printf("  %s", log->filename);
-    if (state->debug) {
+    if (state->cli.debug) {
         printf("[%s:%d]", log->src_file, log->src_line);
     }
     printf(":");

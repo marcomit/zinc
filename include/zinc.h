@@ -170,17 +170,7 @@ typedef enum {
 
 typedef struct {
     char            *output;
-    ZLog            **logs;
-    ZPhase          currentPhase;
-    char            *currentPath;
-    char            *filename;
-    char            *homePath;
     char            **argv;
-
-    char            **pathFiles;
-    char            **visitedFiles;
-    bool            canAdvance;
-
     bool            debug;
 
     bool            unusedVar;
@@ -190,12 +180,35 @@ typedef struct {
     bool            skipLLVMValidation;
     bool            verbose;
     bool            dumpAst;
+    bool            dumpTokens;
 
     bool            nostdlib;
     bool            noInject;
 
     char            optimizationLevel;
     ZLTOMode        ltoMode;
+
+    char            *targetTriple;
+    char            *targetCPU;
+    char            *targetFeatures;
+    ZEmitMode       emit;
+    ZMode           mode;
+
+    /* Extra arguments should be passed in the linker. */
+    char            **extraArgs;
+} ZCliOptions;
+
+typedef struct {
+    ZCliOptions     cli;
+    ZLog            **logs;
+    ZPhase          currentPhase;
+    char            *currentPath;
+    char            *filename;
+    char            *homePath;
+
+    char            **pathFiles;
+    char            **visitedFiles;
+    bool            canAdvance;
 
     /* Size of the pointer in bytes (used for usize/isize).
      * Initialized inside the code generator after creating the target.
@@ -212,15 +225,7 @@ typedef struct {
     /* Triple used for codegen. */
     char            *resolvedTriple;
 
-    char            *targetTriple;
-    char            *targetCPU;
-    char            *targetFeatures;
-    ZEmitMode       emit;
-    ZMode           mode;
     ZNode           *root;
-
-    /* Extra arguments should be passed in the linker. */
-    char            **extraArgs;
 
     /* Allocator used for shared allocations. */
     arena_t         *globalAllocator;
