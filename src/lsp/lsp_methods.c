@@ -24,8 +24,23 @@ LspResponse *lsp_reply(LspContext *ctx, Json *result) {
     return lsp_response((int)JsonAsNum(reqId), response);
 }
 
-static void lsp_notify(LspContext *ctx, LspNotification *notification) {
+void lsp_send(Json *message) {
+    const char *json = JsonEncode(message);
+    size_t len = strlen(json);
+    printf("Content-Length: %zu\r\n\r\n%s", len, json);
+    fflush(stdout);
+    log_msg("SENT", json, len);
+}
 
+void lsp_notify(const char *method, Json *params) {
+    Json *msg = JsonMap(NULL);
+
+    JsonSet(msg, "jsonrpc", JsonString("2.0"));
+    JsonSet(msg, "method", JsonString((char *)method));
+    JsonSet(msg, "params", params);
+
+    lsp_send(msg);
+    JsonFree(msg);
 }
 
 static LspResponse *lsp_initialize(LspContext *ctx) {
@@ -80,6 +95,48 @@ static LspResponse *lsp_completion(LspContext *ctx) {
     vecpush(items, ((LspCompletionItem){"PRRR", Z_LSP_REFERENCE}));
 
     return lsp_reply(ctx, get_completions(items));
+}
+
+static Json *range_from_token(ZToken *tok) {
+    Json *start = JsonMap(NULL);
+    Json *end   = JsonMap(NULL);
+    Json *range = JsonMap(NULL);
+
+    int line    = tok ? (int)tok->row - 1 : 0;
+    int col     = tok ? (int)(tok->start - tok->sourceLinePtr) : 0;
+    int row     = tok ? (int)(tok->end - tok->start) : 0;
+
+    JsonSet(start,  "line",         JsonNumber(line));
+    JsonSet(start,  "character",    JsonNumber(col));
+
+    JsonSet(end,    "line",         JsonNumber(line));
+    JsonSet(end,    "character",    JsonNumber(col + row));
+
+    return range;
+}
+
+static void publish_diagnostics(const char *uri, int version, ZState *state) {
+    Json *diags = JsonList(NULL);
+
+    for (usize i = 0; i < veclen(state->logs); i++) {
+        ZLog *log = state->logs[i];
+        if (log->level != Z_ERROR && log->level != Z_WARNING) continue;
+
+        Json *d = JsonMap(NULL);
+        JsonSet(d, "range", range_from_token(log->token));
+        JsonSet(d, "severity", JsonNumber((int)log->level));
+        JsonSet(d, "source", JsonString("zinc"));
+        JsonSet(d, "message", JsonString(log->message));
+
+        JsonPush(diags, d);
+    }
+
+    Json *params = JsonMap(NULL);
+    JsonSet(params, "uri", JsonString((char *)uri));
+    JsonSet(params, "version", JsonNumber(version));
+    JsonSet(params, "diagnostics", diags);
+
+    lsp_notify("textDocument/publishDiagnostics", params);
 }
 
 static LspResponse *lsp_open_document(LspContext *ctx) {

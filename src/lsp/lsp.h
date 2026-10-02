@@ -88,4 +88,7 @@ typedef struct {
 } LspDocumentChange;
 
 LspResponse *lsp_reply(LspContext *, Json *);
+void log_msg(const char *, const char *, size_t);
+void lsp_send(Json *);
+void lsp_notify(const char *, Json *);
 #endif //!LSP_H

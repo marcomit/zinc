@@ -13,7 +13,7 @@ static void log_open(void) {
     setvbuf(g_log, NULL, _IONBF, 0);
 }
 
-static void log_msg(const char *tag, const char *body, size_t len) {
+void log_msg(const char *tag, const char *body, size_t len) {
     time_t t = time(NULL);
     struct tm tm;
     char ts[32];
@@ -71,13 +71,6 @@ static char *read_message(size_t *out_len) {
     return body;
 }
 
-static void send_message(const char *json) {
-    size_t len = strlen(json);
-    printf("Content-Length: %zu\r\n\r\n%s", len, json);
-    fflush(stdout);
-    log_msg("SENT", json, len);
-}
-
 int main(void) {
     allocator.open();
     log_open();
@@ -94,11 +87,7 @@ int main(void) {
         ctx.root = JsonDecode(body);
         LspResponse *result = handle_message(&ctx);
 
-        if (result) {
-            const char *encoded = JsonEncode(result->response);
-            log_msg("RESP", encoded, strlen(encoded));
-            send_message(encoded);
-        }
+        if (result) lsp_send(result->response);
         JsonFree(ctx.root);
     }
 
