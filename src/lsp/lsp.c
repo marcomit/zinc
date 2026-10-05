@@ -74,7 +74,7 @@ static char *read_message(size_t *out_len) {
 }
 
 int main(void) {
-    allocator.open();
+    init_allocators();
 
     g_out = fdopen(dup(STDOUT_FILENO), "w");
     dup2(STDERR_FILENO, STDOUT_FILENO);

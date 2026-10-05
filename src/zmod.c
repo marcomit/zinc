@@ -946,14 +946,19 @@ void printScope(ZScope *scope) {
     printScope(scope->parent);
 }
 
+/* Everything a compilation allocates lives in its own arena (plus one arena per
+ * module, see ZModuleAllocator), so freestate releases it all at once. */
 ZState *makestate() {
+    Allocator *allocator        = getArenaAllocator();
+    if (!allocator) return NULL;
+
     ZState *self                = zalloc(heapAllocator, ZState);
     *self                       = (ZState){ 0 };
 
     self->currentPhase          = Z_PHASE_LEXICAL;
-    self->homePath              = getHomePath(arenaAllocator);
+    self->homePath              = getHomePath(allocator);
     self->canAdvance            = true;
-    self->allocator             = arenaAllocator;
+    self->allocator             = allocator;
 
 #if Z_COMPILER
     self->cli.emit              = Z_EMIT_EXE;
@@ -963,6 +968,20 @@ ZState *makestate() {
 #endif
 
     return self;
+}
+
+void freestate(ZState *state) {
+    if (!state) return;
+
+    /* Don't leave this thread's default pointing at an arena about to be freed. */
+    if (vecDefaultAllocator == state->allocator) useAllocator(NULL);
+
+    /* state->modules lives in the state arena, so the modules go first. */
+    for (usize i = 0; i < veclen(state->modules); i++) {
+        adestroy(state->modules[i]->allocator);
+    }
+    adestroy(state->allocator);
+    afree(heapAllocator, state);
 }
 
 char *readfile(Allocator *a, char *filename) {
@@ -1290,7 +1309,10 @@ ZType *strType      = NULL;
 ZType *interpType   = NULL;
 
 void initPrimitiveTypes(ZState *state) {
-    Allocator *allocator = state->allocator;
+    (void)state;
+    /* Cached in globals and reused by every later state (the LSP makes one per
+     * request), so they must outlive any single state's arena. */
+    Allocator *allocator = arenaAllocator;
     if (!none)      none    = maketype          (allocator, Z_TYPE_NONE);
     if (!u0Type)    u0Type  = makePrimitiveType (allocator, TOK_VOID);
     if (!charType)  charType= makePrimitiveType (allocator, TOK_CHAR);

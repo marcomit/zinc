@@ -185,10 +185,6 @@ static ZErrorCode pipeline(ZState *state) {
 
     if (state->cli.verbose) printAllocation(state);
 
-    for (usize i = 0; i < veclen(state->modules); i++) {
-        aclose(state->modules[i]->allocator);
-    }
-
     return Z_OK;
 }
 
@@ -203,8 +199,6 @@ static ZErrorCode compile(ZState *state) {
     ZErrorCode res = pipeline(state);
 
     printLogs(state);
-
-    aclose(state->allocator);
 
     if (!res) {
         const char *format;

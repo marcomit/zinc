@@ -8,8 +8,8 @@
 
 Allocator *heapAllocator           = NULL;
 Allocator *arenaAllocator          = NULL;
-Allocator *vecDefaultAllocator     = NULL;
-Allocator *hashsetDefaultAllocator = NULL;
+_Thread_local Allocator *vecDefaultAllocator     = NULL;
+_Thread_local Allocator *hashsetDefaultAllocator = NULL;
 
 inline void *aalloc(Allocator *allocator, usize size) {
     return allocator->alloc(allocator->ctx, size);
@@ -29,6 +29,23 @@ inline void aopen(Allocator *allocator) {
 
 inline void aclose(Allocator *allocator) {
     if (allocator->close) allocator->close(allocator->ctx);
+}
+
+/* Close an allocator made by getHeapAllocator / getArenaAllocator and free the
+ * Allocator itself. */
+void adestroy(Allocator *allocator) {
+    if (!allocator) return;
+    aclose(allocator);
+    free(allocator);
+}
+
+/* Make `allocator` the calling thread's default for new containers. Returns the
+ * previous default so callers can restore it. */
+Allocator *useAllocator(Allocator *allocator) {
+    Allocator *prev         = vecDefaultAllocator;
+    vecDefaultAllocator     = allocator;
+    hashsetDefaultAllocator = allocator;
+    return prev;
 }
 
 void *heap_alloc(void *allocator, usize size) {

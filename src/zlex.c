@@ -549,7 +549,7 @@ static ZToken *parseLiteral(ZLexer *l) {
     ZTokenType type = findKeyword(start, len);
 
     if (type == TOK_IDENT) {
-        return makeident(l->state->allocator, zstrndup(arenaAllocator, start, len), start, l->current);
+        return makeident(l->state->allocator, zstrndup(l->state->allocator, start, len), start, l->current);
     }
 
     // Also set str field for keywords so getMacroByName can compare them

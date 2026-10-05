@@ -4760,6 +4760,7 @@ static void freeCodegen(ZCodegen *ctx) {
 
 static void *compileModule(void *arg) {
     ZCodegen *ctx = (ZCodegen *)arg;
+    useAllocator(ctx->module->allocator);
     initNativeTypes(ctx);
     compile(ctx, ctx->module->module);
     return NULL;

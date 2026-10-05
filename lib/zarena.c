@@ -25,6 +25,7 @@ arena_t *createArena() {
     self->head = createArenaBucket(ARENA_MIN_BUCKET);
     self->tail = self->head;
     self->scopes = NULL;
+    atomic_flag_clear(&self->lock);
     return self;
 }
 
@@ -60,7 +61,15 @@ static void freeArenaBucket(ArenaBucket *arena, bool recursive) {
     free(arena);
 }
 
-void *arenaAlloc(arena_t *arena, usize size) {
+static inline void arenaLock(arena_t *arena) {
+    while (atomic_flag_test_and_set_explicit(&arena->lock, memory_order_acquire));
+}
+
+static inline void arenaUnlock(arena_t *arena) {
+    atomic_flag_clear_explicit(&arena->lock, memory_order_release);
+}
+
+static void *_arenaAlloc(arena_t *arena, usize size) {
     size = ARENA_ALIGN(size);
 
     if (arena->tail->len + size <= arena->tail->size) {
@@ -78,6 +87,13 @@ void *arenaAlloc(arena_t *arena, usize size) {
     arena->tail = next;
     arena->tail->len = size;
     return arena->tail + 1;
+}
+
+void *arenaAlloc(arena_t *arena, usize size) {
+    arenaLock(arena);
+    void *ptr = _arenaAlloc(arena, size);
+    arenaUnlock(arena);
+    return ptr;
 }
 
 void arenaFree(arena_t *arena) {

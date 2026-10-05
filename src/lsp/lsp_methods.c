@@ -5,7 +5,7 @@
 
 
 static LspResponse *lsp_response(int id, Json *response) {
-    LspResponse *self   = zalloc(LspResponse);
+    LspResponse *self   = zalloc(heapAllocator, LspResponse);
     self->response      = response;
     self->id            = id;
     return self;
@@ -154,6 +154,9 @@ LspResponse *lsp_open_document(LspContext *ctx) {
     if (!src) return NULL;
 
     ZState *state   = makestate();
+    if (!state) return NULL;
+    useAllocator(state->allocator);
+
     visit(state, &path, false);
     initPrimitiveTypes(state);
     ZToken **tokens = ztokenizeSource(state, src);
@@ -161,6 +164,7 @@ LspResponse *lsp_open_document(LspContext *ctx) {
     ZNode *root     = zparse(state, tokens);
 
     publish_diagnostics(uri, version, state);
+    freestate(state);
     return NULL;
 }
 

@@ -3545,6 +3545,7 @@ static void analyze(ZThreadSem *ctx, ZNode *root) {
 
 static inline void *worker(void *arg) {
     ZThreadSem *ctx = (ZThreadSem *)arg;
+    useAllocator(ctx->allocator);
     analyze(ctx, ctx->root);
     return NULL;
 }

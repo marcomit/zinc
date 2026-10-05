@@ -64,7 +64,6 @@
 #include "zmem.h"
 #include <string.h>
 
-extern Allocator *hashsetDefaultAllocator;
 
 /* ============================================================================
  * Configuration
@@ -224,7 +223,7 @@ static inline bool hashset_insertwith(hashset_t *set, const char *key, Allocator
 
 /** @brief Insert a string, creating the set with hashsetDefaultAllocator if needed */
 static inline bool hashset_insert(hashset_t *set, const char *key) {
-	return hashset_insertwith(set, key, hashsetDefaultAllocator);
+	return hashset_insertwith(set, key, hashsetDefaultAllocator ? hashsetDefaultAllocator : heapAllocator);
 }
 
 /**

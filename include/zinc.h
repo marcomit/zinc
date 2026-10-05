@@ -1063,6 +1063,7 @@ bool typesPrimitive(ZType *);
 
 /* ================== Zinc state ================== */
 ZState *makestate();
+void freestate(ZState *);
 
 char *readfile(Allocator *, char *);
 

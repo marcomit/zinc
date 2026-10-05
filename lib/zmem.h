@@ -30,11 +30,20 @@ typedef struct Allocator {
 extern Allocator *heapAllocator;
 extern Allocator *arenaAllocator;
 
+/* Allocators vecpush / hashset_insert use when they have to create a container.
+ * Per thread, so each thread puts new containers in the arena it is working on;
+ * NULL falls back to heapAllocator. */
+extern _Thread_local Allocator *vecDefaultAllocator;
+extern _Thread_local Allocator *hashsetDefaultAllocator;
+
 void *aalloc(Allocator *, usize);
 void *arealloc(Allocator *, void *, usize);
 void afree(Allocator *, void *);
 void aopen(Allocator *);
 void aclose(Allocator *);
+void adestroy(Allocator *);
+
+Allocator *useAllocator(Allocator *);
 
 Allocator *getHeapAllocator();
 Allocator *getArenaAllocator();

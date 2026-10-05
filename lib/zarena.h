@@ -7,6 +7,8 @@
 #include "base.h"
 #include "zmem.h"
 
+#include <stdatomic.h>
+
 typedef struct ArenaBucket {
     usize len;
     usize size;
@@ -23,6 +25,10 @@ typedef struct arena_t {
     ArenaBucket *tail;
 
     ArenaScope **scopes;
+
+    /* Containers allocate lazily from whichever thread first touches them, so an
+     * arena can be hit by several threads at once (sem workers, codegen threads). */
+    atomic_flag lock;
 } arena_t;
 
 arena_t     *createArena();

@@ -80,7 +80,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern Allocator *vecDefaultAllocator;
 
 /* ============================================================================
  * Configuration Macros
@@ -173,7 +172,7 @@ extern Allocator *vecDefaultAllocator;
  * vecpush(vec, 100);
  * @endcode
  */
-#define vecpush(v, i) vecpushwith(v, i, vecDefaultAllocator)
+#define vecpush(v, i) vecpushwith(v, i, vecDefaultAllocator ? vecDefaultAllocator : heapAllocator)
 
 #define vecpushwith(v, i, a)                                                    \
 do {                                                                            \
@@ -267,7 +266,7 @@ do {                                                                            
  * vecreserve(vec, 1000);  // Pre-allocate space for 1000 integers
  * @endcode
  */
-#define vecreserve(v, n) vecreservewith(v, n, vecDefaultAllocator)
+#define vecreserve(v, n) vecreservewith(v, n, vecDefaultAllocator ? vecDefaultAllocator : heapAllocator)
 
 #define vecreservewith(v, n, a)                                                 \
 do {                                                                            \

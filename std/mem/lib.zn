@@ -22,4 +22,4 @@ pub destroy :: fn (ptr: *u8) u0 with a: Allocator {
     a.destroy(ptr)
 }
 
-pub use gpa
+pub use <std.mem.gpa>
