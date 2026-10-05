@@ -3,53 +3,53 @@
 
 #include "zinc.h"
 
-static ZType *copytype(ZType *type);
+static ZType *copytype(Allocator *, ZType *type);
 
-static ZType **copytypevec(ZType **types) {
+static ZType **copytypevec(Allocator *allocator, ZType **types) {
     if (!types) return NULL;
     ZType **copy = NULL;
     for (usize i = 0; i < veclen(types); i++) {
-        vecpush(copy, copytype(types[i]));
+        vecpush(copy, copytype(allocator, types[i]));
     }
     return copy;
 }
 
-ZType *makePrimitiveType(ZTokenType type) {
-    ZType *self = maketype(Z_TYPE_PRIMITIVE);
-    self->primitive.token = maketoken(type, NULL, NULL);
+ZType *makePrimitiveType(Allocator *allocator, ZTokenType type) {
+    ZType *self = maketype(allocator, Z_TYPE_PRIMITIVE);
+    self->primitive.token = maketoken(allocator, type, NULL, NULL);
     return self;
 }
 
-static ZType *copytype(ZType *type) {
+static ZType *copytype(Allocator *allocator, ZType *type) {
     if (!type) return NULL;
-    ZType *copy = maketype(type->kind);
+    ZType *copy = maketype(allocator, type->kind);
     copy->constant = type->constant;
 
     switch (type->kind) {
         case Z_TYPE_PRIMITIVE:
             copy->primitive.token = type->primitive.token;
-            copy->primitive.base = copytype(type->primitive.base);
-            copy->primitive.generics = copytypevec(type->primitive.generics);
+            copy->primitive.base = copytype(allocator, type->primitive.base);
+            copy->primitive.generics = copytypevec(allocator, type->primitive.generics);
             break;
         case Z_TYPE_POINTER:
-            copy->base = copytype(type->base);
+            copy->base = copytype(allocator, type->base);
             break;
         case Z_TYPE_STRUCT:
             copy->strct.name = type->strct.name;
             copy->strct.fields = NULL; // Fields are ZNode**, handled separately if needed
-            copy->strct.generics = copytypevec(type->strct.generics);
+            copy->strct.generics = copytypevec(allocator, type->strct.generics);
             break;
         case Z_TYPE_FUNCTION:
-            copy->func.ret = copytype(type->func.ret);
-            copy->func.args = copytypevec(type->func.args);
-            copy->func.generics = copytypevec(type->func.generics);
+            copy->func.ret = copytype(allocator, type->func.ret);
+            copy->func.args = copytypevec(allocator, type->func.args);
+            copy->func.generics = copytypevec(allocator, type->func.generics);
             break;
         case Z_TYPE_ARRAY:
-            copy->array.base = copytype(type->array.base);
+            copy->array.base = copytype(allocator, type->array.base);
             copy->array.size = type->array.size;
             break;
         case Z_TYPE_TUPLE:
-            copy->tuple = copytypevec(type->tuple);
+            copy->tuple = copytypevec(allocator, type->tuple);
             break;
         default: break;
     }
@@ -127,7 +127,7 @@ static bool matchMacroPattern(ZParser *parser,
         case Z_MACRO_IDENT:
             if (!check(parser, TOK_IDENT)) return false;
             startIdx = parser->source->current;
-            node = makenode(NODE_IDENTIFIER);
+            node = makenode(parser->allocator, NODE_IDENTIFIER);
             node->identNode.tok = consume(parser);
             macrovar = findCapturedVar(macro, pattern->ident);
             if (macrovar) {
@@ -145,7 +145,7 @@ static bool matchMacroPattern(ZParser *parser,
             if (macrovar) {
                 macrovar->startIndex = startIdx;
                 macrovar->endIndex = parser->source->current;
-                node = makenode(NODE_TYPE);
+                node = makenode(parser->allocator, NODE_TYPE);
                 node->resolved = type;
                 macrovar->captured = node;
             }
@@ -225,7 +225,7 @@ ZNode *expandMacro(ZParser *parser) {
         if (!bodyTokens) return NULL;
 
         // Create an isolated token stream for body parsing
-        ZTokenStream *bodyStream = maketokstream(bodyTokens, NULL);
+        ZTokenStream *bodyStream = maketokstream(parser->state->allocator, bodyTokens, NULL);
 
         // Save parser state
         ZTokenStream *savedSource = parser->source;
@@ -236,7 +236,7 @@ ZNode *expandMacro(ZParser *parser) {
         parser->macroParser.currentMacro = macro;
 
         // Parse the body as a sequence of statements
-        ZNode *block = makenode(NODE_BLOCK);
+        ZNode *block = makenode(parser->allocator, NODE_BLOCK);
         block->block = NULL;
         ZNode *stmt = NULL;
         while (parser->source->current < parser->source->end) {

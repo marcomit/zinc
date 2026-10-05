@@ -9,26 +9,45 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define zalloc(t) (t *)allocator.alloc(sizeof(t))
-#define znalloc(t, n) (t *)allocator.alloc(sizeof(t) * (n))
-
 #define KiB(n) ((n) << 10)
 #define MiB(n) ((n) << 20)
 #define GiB(n) ((n) << 30)
 
-typedef struct Allocator {
-	void *(*alloc)(usize);
-	void *(*realloc)(void *, usize);
-	void (*free)(void *);
-	void (*open)();
-	void (*close)();
+#define zalloc(a, T) ((T *)(a)->alloc((a)->ctx, sizeof(T)))
+#define znalloc(a, T, n) ((T *)(a)->alloc((a)->ctx, (n) * sizeof(T)))
 
-	void (*startScope)();
-	void (*endScope)();
+
+typedef struct Allocator {
+	void *(*alloc)(void *, usize);
+	void *(*realloc)(void *, void *, usize);
+	void (*free)(void *, void *);
+	void (*open)(void *);
+	void (*close)(void *);
 
 	void *ctx;
 } Allocator;
 
-extern Allocator allocator;
+extern Allocator *heapAllocator;
+extern Allocator *arenaAllocator;
+
+/* Allocators vecpush / hashset_insert use when they have to create a container.
+ * Per thread, so each thread puts new containers in the arena it is working on;
+ * NULL falls back to heapAllocator. */
+extern _Thread_local Allocator *vecDefaultAllocator;
+extern _Thread_local Allocator *hashsetDefaultAllocator;
+
+void *aalloc(Allocator *, usize);
+void *arealloc(Allocator *, void *, usize);
+void afree(Allocator *, void *);
+void aopen(Allocator *);
+void aclose(Allocator *);
+void adestroy(Allocator *);
+
+Allocator *useAllocator(Allocator *);
+
+Allocator *getHeapAllocator();
+Allocator *getArenaAllocator();
+
+void init_allocators();
 
 #endif

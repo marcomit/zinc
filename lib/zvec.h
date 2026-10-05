@@ -52,8 +52,9 @@
  * @section notes Important Notes
  *
  * - Always initialize vectors to NULL
- * - vecpush may reallocate, so always use: vec = vecpush(vec, item)
- *   or use the result in the same expression
+ * - vecpush updates the vector pointer in place (it must be an lvalue)
+ * - A vector keeps the allocator it was created with; vecpush uses
+ *   vecDefaultAllocator only when it has to create the vector
  * - After vecfree, the pointer is set to NULL
  * - Capacity is measured in number of elements, not bytes
  * - Default initial capacity is 16 elements
@@ -64,7 +65,7 @@
  * - Not thread-safe
  * - No bounds checking in release builds
  * - Reallocation may invalidate existing pointers to elements
- * - vecpop returns void; check vecempty before accessing last element
+ * - vecpop returns the removed element; check vecempty first
  *
  * @author Marco Menegazzi
  * @date 2026
@@ -79,24 +80,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 /* ============================================================================
  * Configuration Macros
  * ============================================================================ */
-
-/**
- * @brief Memory allocator function (signature: void* alloc(size_t size))
- */
-#define VEC_ALLOC malloc
-
-/**
- * @brief Memory reallocation function (signature: void* realloc(void* ptr, size_t size))
- */
-#define VEC_REALLOC realloc
-
-/**
- * @brief Memory deallocation function (signature: void free(void* ptr))
- */
-#define VEC_FREE free
 
 /**
  * @brief Initial capacity (number of elements) for new vectors
@@ -122,13 +109,15 @@
  * @param new_capacity_bytes New total capacity in bytes
  * @return New vector pointer or NULL on failure
  */
-#define VEC_REALLOC_IMPL(v, new_capacity_bytes) ({                              \
-    vec_metadata *old_meta = VEC_METADATA(v);                                   \
-    vec_metadata *new_meta = (vec_metadata *)VEC_REALLOC(                       \
-        old_meta,                                                               \
-        sizeof(vec_metadata) + (new_capacity_bytes)                             \
-    );                                                                          \
-    (new_meta ? (void *)(new_meta + 1) : NULL);                                 \
+#define VEC_REALLOC_IMPL(v, new_capacity_bytes) ({                                                      \
+    vec_metadata *old_meta = VEC_METADATA(v);                                                           \
+    usize used_bytes = sizeof(vec_metadata) + old_meta->length * sizeof(*(v));                          \
+    vec_metadata *new_meta = aalloc(old_meta->allocator, sizeof(vec_metadata) + (new_capacity_bytes));  \
+    if (new_meta) {                                                                                     \
+        memcpy(new_meta, old_meta, used_bytes);                                                         \
+        afree(old_meta->allocator, old_meta);                                                           \
+    }                                                                                                   \
+    (new_meta ? (void *)(new_meta + 1) : NULL);                                                         \
 })
 
 /* ============================================================================
@@ -166,6 +155,8 @@
  */
 #define vecsetcap(v, c) (VEC_METADATA(v)->capacity = (c))
 
+#define vecnew(a, T) ((T *)veccreatewith((a), sizeof(T)))
+
 /**
  * @brief Push an element to the end of a vector
  * @param v Vector pointer (may be NULL for first push)
@@ -181,10 +172,12 @@
  * vecpush(vec, 100);
  * @endcode
  */
-#define vecpush(v, i)                                                           \
+#define vecpush(v, i) vecpushwith(v, i, vecDefaultAllocator ? vecDefaultAllocator : heapAllocator)
+
+#define vecpushwith(v, i, a)                                                    \
 do {                                                                            \
     if (!(v)) {                                                                 \
-        (v) = veccreate(sizeof(*(v)));                                          \
+        (v) = veccreatewith((a), sizeof(*(v)));                                 \
     }                                                                           \
     if (!(v)) break;                                                            \
     if (veclen(v) >= veccap(v)) {                                               \
@@ -218,27 +211,25 @@ do {                                                                            
 #define vecfree(v)                                                              \
 do {                                                                            \
     if ((v)) {                                                                  \
-        VEC_FREE(VEC_METADATA(v));                                              \
+        afree(VEC_METADATA(v)->allocator, VEC_METADATA(v));                     \
         (v) = NULL;                                                             \
     }                                                                           \
 } while (0)
 
 /**
- * @brief Remove the last element from a vector
+ * @brief Remove and return the last element of a vector
  * @param v Vector pointer
- * @note Does not return the element; access it before calling vecpop if needed
- * @note Does nothing if vector is empty
+ * @warning Undefined behavior if the vector is NULL or empty; check vecempty first
  *
  * @code
- * int last = vec[veclen(vec) - 1];  // Get last element
- * vecpop(vec);                       // Remove it
+ * int last = vecpop(vec);
  * @endcode
  */
 #define vecpop(v) ({                                                            \
     if ((v) && veclen(v) > 0) {                                                 \
             vecsetlen((v), veclen(v) - 1);                                      \
     }                                                                           \
-    (v)[veclen(v)];                                                                                                                            \
+    (v)[veclen(v)];                                                             \
 })
 
 /**
@@ -275,10 +266,12 @@ do {                                                                            
  * vecreserve(vec, 1000);  // Pre-allocate space for 1000 integers
  * @endcode
  */
-#define vecreserve(v, n)                                                        \
+#define vecreserve(v, n) vecreservewith(v, n, vecDefaultAllocator ? vecDefaultAllocator : heapAllocator)
+
+#define vecreservewith(v, n, a)                                                 \
 do {                                                                            \
     if (!(v)) {                                                                 \
-        (v) = veccreate(sizeof(*(v)));                                          \
+        (v) = veccreatecap((a), sizeof(*(v)), (n));                             \
     }                                                                           \
     if ((v) && veccap(v) < (n)) {                                               \
         void *new_v = VEC_REALLOC_IMPL((v), (n) * sizeof(*(v)));                \
@@ -289,11 +282,11 @@ do {                                                                            
     }                                                                           \
 } while (0)
 
-#define vecunion(v, r, n)                                                                                                               \
+#define vecunion(v, r, n)                                                       \
 do {                                                                            \
     for (usize vecunionIndex = 0; vecunionIndex < (n); vecunionIndex++) {       \
         vecpush(v, r[vecunionIndex]);                                           \
-    }                                                                                                                                                            \
+    }                                                                           \
 } while(0)
 
 /* ============================================================================
@@ -307,8 +300,9 @@ do {                                                                            
  * It stores the vector's capacity and current length.
  */
 typedef struct vec_metadata {
-    usize capacity;  /**< Maximum number of elements before reallocation */
-    usize length;    /**< Current number of elements in the vector */
+    usize       capacity;   /**< Maximum number of elements before reallocation */
+    usize       length;     /**< Current number of elements in the vector */
+    Allocator   *allocator; /**< Allocator the vector was created with, used for every growth and free */
 } vec_metadata;
 
 /* ============================================================================
@@ -316,29 +310,40 @@ typedef struct vec_metadata {
  * ============================================================================ */
 
 /**
+ * @brief Create a new vector with room for at least `capacity` elements
+ * @param allocator Allocator that owns the vector (NULL fails)
+ * @param element_size Size of each element in bytes (use sizeof(type))
+ * @param capacity Minimum capacity; never less than VEC_DEFAULT_SIZE
+ * @return Pointer to the vector data, or NULL on allocation failure
+ */
+static inline void *veccreatecap(Allocator *allocator, usize element_size, usize capacity) {
+    if (!allocator) return NULL;
+    if (capacity < VEC_DEFAULT_SIZE) capacity = VEC_DEFAULT_SIZE;
+    usize total_bytes = sizeof(vec_metadata) + (capacity * element_size);
+    vec_metadata *metadata = (vec_metadata *)aalloc(allocator, total_bytes);
+
+    if (!metadata) return NULL;
+    metadata->capacity  = capacity;
+    metadata->length    = 0;
+    metadata->allocator = allocator;
+
+    return (void *)(metadata + 1);
+}
+
+/**
  * @brief Create a new vector with default capacity
+ * @param allocator Allocator that owns the vector (NULL fails)
  * @param element_size Size of each element in bytes (use sizeof(type))
  * @return Pointer to the vector data, or NULL on allocation failure
  *
  * @note Users typically don't call this directly; vecpush handles creation
- * @note Initial capacity is VEC_DEFAULT_SIZE elements
  *
  * @code
- * int *vec = veccreate(sizeof(int));
+ * int *vec = veccreatewith(heapAllocator, sizeof(int));
  * @endcode
  */
-static inline void *veccreate(usize element_size) {
-    usize total_bytes = sizeof(vec_metadata) + (VEC_DEFAULT_SIZE * element_size);
-    vec_metadata *metadata = (vec_metadata *)VEC_ALLOC(total_bytes);
-
-    if (!metadata) {
-            return NULL;
-    }
-
-    metadata->capacity = VEC_DEFAULT_SIZE;
-    metadata->length = 0;
-
-    return (void *)(metadata + 1);
+static inline void *veccreatewith(Allocator *allocator, usize element_size) {
+    return veccreatecap(allocator, element_size, VEC_DEFAULT_SIZE);
 }
 
 #endif /* ZVEC_H */

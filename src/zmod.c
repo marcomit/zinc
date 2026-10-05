@@ -51,38 +51,49 @@ static char *colors[] = {
 
 static void printLog(ZState *, ZLog *);
 
-static char *getHomePath();
+static char *getHomePath(Allocator *);
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
 #include <libgen.h>
 #include <pwd.h>
 
-static char *getHomePath() {
+static char *getHomePath(Allocator *allocator) {
     const char *home = getenv("HOME");
     if (!home || !*home) {
         struct passwd *pw = getpwuid(getuid());
         if (pw) home = pw->pw_dir;
     }
     if (!home) return NULL;
-    return strdup(home);
+    return zstrdup(allocator, (char *)home);
 }
 
 #elif _WIN32
 #include <windows.h>
 
-static char *getHomePath() {
+static char *getHomePath(Allocator *allocator) {
     const char *home = getenv("USERPROFILE");
     if (!home || !*home) home = getenv("HOME");
     if (!home) return NULL;
 
-    char *out = strdup(home);
+    char *out = zstrdup(allocator, home);
     // Normalize to forward slashes to match the rest of the path handling.
     for (char *p = out; *p; p++) if (*p == '\\') *p = '/';
     return out;
 }
 
 #endif
+
+inline char *zstrndup(Allocator *allocator, char *str, usize len) {
+    char *copy = aalloc(allocator, len + 1);
+    memcpy(copy, str, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+char *zstrdup(Allocator *allocator, char *str) {
+    return zstrndup(allocator, str, strlen(str));
+}
 
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
@@ -101,7 +112,7 @@ char *stoken(ZToken *token) {
     case TOK_IDENT:     return token->str;
     case TOK_INT_LIT:
     case TOK_RUNE_LIT:
-    case TOK_FLOAT_LIT: return strndup(token->start, token->end - token->start);
+    case TOK_FLOAT_LIT: return zstrndup(arenaAllocator, token->start, token->end - token->start);
     #define DEF(id, str, _) case id: return str;
 
     #define TOK_FLOWS
@@ -935,13 +946,19 @@ void printScope(ZScope *scope) {
     printScope(scope->parent);
 }
 
+/* Everything a compilation allocates lives in its own arena (plus one arena per
+ * module, see ZModuleAllocator), so freestate releases it all at once. */
 ZState *makestate() {
-    ZState *self                = zalloc(ZState);
+    Allocator *allocator        = getArenaAllocator();
+    if (!allocator) return NULL;
+
+    ZState *self                = zalloc(heapAllocator, ZState);
     *self                       = (ZState){ 0 };
 
     self->currentPhase          = Z_PHASE_LEXICAL;
-    self->homePath              = getHomePath();
+    self->homePath              = getHomePath(allocator);
     self->canAdvance            = true;
+    self->allocator             = allocator;
 
 #if Z_COMPILER
     self->cli.emit              = Z_EMIT_EXE;
@@ -953,7 +970,25 @@ ZState *makestate() {
     return self;
 }
 
-char *readfile(char *filename) {
+void freestate(ZState *state) {
+    if (!state) return;
+
+    /* Don't leave this thread's default pointing at an arena about to be freed. */
+    if (vecDefaultAllocator == state->allocator) useAllocator(NULL);
+
+#if Z_COMPILER
+    disposeTargetMachine(state);
+#endif
+
+    /* state->modules lives in the state arena, so the modules go first. */
+    for (usize i = 0; i < veclen(state->modules); i++) {
+        adestroy(state->modules[i]->allocator);
+    }
+    adestroy(state->allocator);
+    afree(heapAllocator, state);
+}
+
+char *readfile(Allocator *a, char *filename) {
     FILE *fd = fopen(filename, "rb");
 
     if (!fd) return NULL;
@@ -961,7 +996,7 @@ char *readfile(char *filename) {
     fseek(fd, 0, SEEK_END);
     i64 flen = ftell(fd);
     fseek(fd, 0, SEEK_SET);
-    char *buff = allocator.alloc(flen + 1);
+    char *buff = aalloc(a, flen + 1);
     fread(buff, flen, 1, fd);
 
     buff[flen] = 0;
@@ -971,14 +1006,14 @@ char *readfile(char *filename) {
 
 /* Format a printf-style message into a freshly allocated, NUL-terminated
  * string. Does not consume `args` destructively beyond a single pass. */
-static char *vformat(const char *fmt, va_list args) {
+static char *vformat(Allocator *a, const char *fmt, va_list args) {
     va_list copy;
     va_copy(copy, args);
     int len = vsnprintf(NULL, 0, fmt, copy);
     va_end(copy);
     if (len < 0) return NULL;
 
-    char *out = allocator.alloc((size_t)len + 1);
+    char *out = aalloc(a, (size_t)len + 1);
     if (out) vsnprintf(out, (size_t)len + 1, fmt, args);
     return out;
 }
@@ -991,7 +1026,7 @@ ZLog *vmakelog( ZState *state,
                 int src_line,
                 const char *fmt,
                 va_list args) {
-    ZLog *log = zalloc(ZLog);
+    ZLog *log = zalloc(state->allocator, ZLog);
 
     log->filename = filename;
     log->level = level;
@@ -1003,7 +1038,7 @@ ZLog *vmakelog( ZState *state,
     log->hint = NULL;
     log->notes = NULL;
 
-    log->message = vformat(fmt, args);
+    log->message = vformat(state->allocator, fmt, args);
     log->phase = state->currentPhase;
     vecpush(state->logs, log);
 
@@ -1075,7 +1110,7 @@ ZLog *emitHint(ZLog *log, const char *fmt, ...) {
 
     va_list args;
     va_start(args, fmt);
-    log->hint = vformat(fmt, args);
+    log->hint = vformat(heapAllocator, fmt, args);
     va_end(args);
 
     pthread_mutex_unlock(&logLock);
@@ -1088,10 +1123,10 @@ ZLog *emitNote(ZLog *log, ZToken *tok, const char *fmt, ...) {
 
     va_list args;
     va_start(args, fmt);
-    char *message = vformat(fmt, args);
+    char *message = vformat(heapAllocator, fmt, args);
     va_end(args);
 
-    ZLogNote *note = zalloc(ZLogNote);
+    ZLogNote *note = zalloc(heapAllocator, ZLogNote);
     note->token = tok;
     note->message = message;
     vecpush(log->notes, note);
@@ -1108,7 +1143,7 @@ static char *resolvePath(ZState *state, char *filename) {
 
 
     usize len = strlen(state->filename);
-    char *path = znalloc(char, len+1);
+    char *path = znalloc(state->allocator, char, len+1);
     strncpy(path, state->filename, len);
     path[len] = '\0';
 
@@ -1139,19 +1174,18 @@ static bool fileExists(const char *path) {
 
 #define ENTRY_MODULE "/lib.zn"
 
-static char *resolveModuleFile(char *filename) {
+static char *resolveModuleFile(ZState *state, char *filename) {
     if (fileExists(filename)) return filename;
 
     usize n = strlen(filename);
     if (n < 3 || strcmp(filename + n - 3, ".zn") != 0) return filename;
 
     usize baseLen = n - 3;
-    char *alt = malloc(baseLen + sizeof(ENTRY_MODULE));
+    char *alt = aalloc(state->allocator, baseLen + sizeof(ENTRY_MODULE));
     memcpy(alt, filename, baseLen);
     memcpy(alt + baseLen, ENTRY_MODULE, sizeof(ENTRY_MODULE));
 
     if (fileExists(alt)) return alt;
-    free(alt);
     return filename;
 }
 
@@ -1161,7 +1195,7 @@ static char *resolveModuleFile(char *filename) {
  * */
 bool visit(ZState *state, char **filename, bool external) {
     *filename = resolvePath(state, *filename);
-    *filename = resolveModuleFile(*filename);
+    *filename = resolveModuleFile(state, *filename);
     for (usize i = 0; i < veclen(state->visitedFiles); i++) {
         if (strcmp(state->visitedFiles[i], *filename) == 0) return false;
     }
@@ -1277,15 +1311,19 @@ ZType *modType      = NULL;
 ZType *strType      = NULL;
 ZType *interpType   = NULL;
 
-void initPrimitiveTypes() {
-    if (!none)      none    = maketype          (Z_TYPE_NONE);
-    if (!u0Type)    u0Type  = makePrimitiveType (TOK_VOID);
-    if (!charType)  charType= makePrimitiveType (TOK_CHAR);
-    if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
-    if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
-    if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
+void initPrimitiveTypes(ZState *state) {
+    (void)state;
+    /* Cached in globals and reused by every later state (the LSP makes one per
+     * request), so they must outlive any single state's arena. */
+    Allocator *allocator = arenaAllocator;
+    if (!none)      none    = maketype          (allocator, Z_TYPE_NONE);
+    if (!u0Type)    u0Type  = makePrimitiveType (allocator, TOK_VOID);
+    if (!charType)  charType= makePrimitiveType (allocator, TOK_CHAR);
+    if (!u1Type)    u1Type  = makePrimitiveType (allocator, TOK_BOOL);
+    if (!u64Type)   u64Type = makePrimitiveType (allocator, TOK_U64);
+    if (!modType)   modType = maketype          (allocator, Z_TYPE_NAMESPACE);
     if (!strType) {
-        strType             = maketype(Z_TYPE_ARRAY);
+        strType             = maketype(allocator, Z_TYPE_ARRAY);
         strType->array.base = charType;
         strType->array.size = 0;
     }

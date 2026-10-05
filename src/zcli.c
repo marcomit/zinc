@@ -109,11 +109,11 @@ void usage(char *program) {
 static void printAllocation(ZState *state) {
     if (!state->cli.verbose) return;
 
-    double used = arenaLength(allocator.ctx);
-    double allocated = arenaSize(allocator.ctx);
+    double used = arenaLength(state->allocator->ctx);
+    double allocated = arenaSize(state->allocator->ctx);
     for (usize i = 0; i < veclen(state->modules); i++) {
-        used += arenaLength(state->modules[i]->allocator);
-        allocated += arenaSize(state->modules[i]->allocator);
+        used += arenaLength(state->modules[i]->allocator->ctx);
+        allocated += arenaSize(state->modules[i]->allocator->ctx);
     }
 
     static const char *labels[] = {
@@ -140,7 +140,7 @@ static void printAllocation(ZState *state) {
 static void initState(ZState *state) {
     char *filename = state->cli.argv[0];
     if (!state->cli.output) {
-        char *copy = strdup(filename);
+        char *copy = zstrdup(state->allocator, filename);
 
         char *base = basename(copy);
         char *dot = strrchr(base, '.');
@@ -160,7 +160,7 @@ static ZErrorCode pipeline(ZState *state) {
     if (state->cli.dumpTokens) printTokens(tokens);
 
     if (!initTargetMachine(state)) return Z_CODEGEN_ERROR;
-    initPrimitiveTypes();
+    initPrimitiveTypes(state);
 
     if (!canAdvance(state)) return Z_LEXICAL_ERROR;
 
@@ -185,10 +185,6 @@ static ZErrorCode pipeline(ZState *state) {
 
     if (state->cli.verbose) printAllocation(state);
 
-    for (usize i = 0; i < veclen(state->modules); i++) {
-        arenaFree(state->modules[i]->allocator);
-    }
-
     return Z_OK;
 }
 
@@ -203,8 +199,6 @@ static ZErrorCode compile(ZState *state) {
     ZErrorCode res = pipeline(state);
 
     printLogs(state);
-
-    allocator.close();
 
     if (!res) {
         const char *format;
@@ -271,7 +265,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         switch (opt) {
         case 'L': {
             usize len = 3 + strlen(optarg);
-            char *lib = znalloc(char, len);
+            char *lib = znalloc(state->allocator, char, len);
             snprintf(lib, len, "-L%s", optarg);
             lib[len-1] = '\0';
             vecpush(state->cli.extraArgs, lib);
@@ -279,7 +273,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         }
         case 'l': {
             usize len = 3 + strlen(optarg);
-            char *lib = znalloc(char, len);
+            char *lib = znalloc(state->allocator, char, len);
             snprintf(lib, len, "-l%s", optarg);
             lib[len-1] = '\0';
             vecpush(state->cli.extraArgs, lib);
@@ -316,7 +310,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         case OPT_DUMP_AST:              SET_FLAG(state->cli.dumpAst,            "Dump ast");                break;
         case OPT_DUMP_TOKENS:           SET_FLAG(state->cli.dumpTokens,         "Dump tokens");             break;
         case OPT_NOINJECT:              SET_FLAG(state->cli.noInject,           "No Inject");               break;
-        case OPT_XLINKER:               vecpush(state->cli.extraArgs, strdup(optarg));                      break;
+        case OPT_XLINKER:               vecpush(state->cli.extraArgs, zstrdup(state->allocator, optarg));   break;
         case OPT_RELEASE:               state->cli.optimizationLevel = '2';                                 break;
         case OPT_RELEASE_FAST:          state->cli.optimizationLevel = '3';                                 break;
         case OPT_RELEASE_SMALL:         state->cli.optimizationLevel = 's';                                 break;

@@ -10,21 +10,6 @@
 #include <signal.h>
 #include <time.h>
 
-// #ifdef VEC_ALLOC
-// #undef VEC_ALLOC
-// #define VEC_ALLOC allocator.alloc
-// #endif
-//
-// #ifdef VEC_REALLOC
-// #undef VEC_REALLOC
-// #define VEC_REALLOC allocator.realloc
-// #endif
-//
-// #ifdef VEC_FREE
-// #undef VEC_FREE
-// #define VEC_FREE allocator.free
-// #endif
-
 static ZState *state    = NULL;
 
 static void handler(int sig) {
@@ -37,12 +22,13 @@ static void handler(int sig) {
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
     if (state && state->cli.debug) printLogs(state);
-    allocator.close();
     _exit(1);
 }
 
 int main(int argc, char **argv) {
 #define err(code, ...) { fprintf(stderr, __VA_ARGS__); usage(program); return code; }
+
+    init_allocators();
 
     char *program = *argv;
 
@@ -50,11 +36,12 @@ int main(int argc, char **argv) {
 
     signal(SIGSEGV, handler);
     signal(SIGTRAP, handler);
-    allocator.open();
 
     state = makestate();
 
     if (!state) err(Z_INVALID_STATE, "Invalid state\n");
+
+    useAllocator(state->allocator);
 
     const ZCliCommand *cmd = getCmd(&argc, &argv);
 
@@ -64,5 +51,11 @@ int main(int argc, char **argv) {
         return Z_INVALID_COMMAND;
     }
 
-    return cmd->callback(state);
+    ZErrorCode res = cmd->callback(state);
+
+    ZState *done = state;
+    state = NULL;
+    freestate(done);
+
+    return res;
 }

@@ -15,20 +15,6 @@
 #include <io.h>
 #include <signal.h>
 
-/* ---- strdup / strndup -------------------------------------------- */
-#define strdup _strdup
-
-#ifndef __MINGW32__
-static inline char *strndup(const char *s, size_t n) {
-    size_t len = strnlen(s, n);
-    char  *p   = (char *)malloc(len + 1);
-    if (!p) return NULL;
-    memcpy(p, s, len);
-    p[len] = '\0';
-    return p;
-}
-#endif
-
 /* ---- clock_gettime / CLOCK_MONOTONIC ----------------------------- */
 #ifndef CLOCK_MONOTONIC
 #define CLOCK_MONOTONIC 1

@@ -176,8 +176,8 @@ typedef struct {
 } ZLangItem;
 
 typedef struct {
-    ZNode   *module;
-    arena_t *allocator;
+    ZNode       *module;
+    Allocator   *allocator;
 } ZModuleAllocator;
 
 typedef enum {
@@ -221,6 +221,7 @@ typedef struct {
 } ZCliOptions;
 
 typedef struct {
+    Allocator       *allocator;
     ZCliOptions     cli;
     ZLog            **logs;
     ZPhase          currentPhase;
@@ -250,9 +251,6 @@ typedef struct {
 #endif
 
     ZNode           *root;
-
-    /* Allocator used for shared allocations. */
-    arena_t         *globalAllocator;
 
     /* Each module carries its own arena allocator for thread-safety. */
     ZModuleAllocator **modules;
@@ -855,6 +853,7 @@ typedef struct ZParserModule {
 } ZParserModule;
 
 typedef struct ZParser {
+    Allocator       *allocator;
     ZState          *state;
     ZTokenStream    *source;
     usize           tokenIndex;
@@ -988,7 +987,7 @@ struct ZThreadSem {
     ZScope      *global;
     ZScope      *local;
     ZNode       *root;
-    arena_t     *arena;
+    Allocator   *allocator;
     ZType       *currentFuncRet;
     ZNode       *currentFunc;
 
@@ -1012,9 +1011,9 @@ struct ZThreadSem {
 /* Lexer */
 ZToken **ztokenize(ZState *);
 ZToken **ztokenizeSource(ZState *, char *);
-ZToken *maketoken(ZTokenType, char *, char *);
-ZToken *makeident(char *, char *, char *);
-ZTokenStream *maketokstream(ZToken **, ZTokenStream *);
+ZToken *maketoken(Allocator *, ZTokenType, char *, char *);
+ZToken *makeident(Allocator *, char *, char *, char *);
+ZTokenStream *maketokstream(Allocator *, ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
 bool tokmask(ZToken *, u16);
 
@@ -1044,9 +1043,9 @@ ZNode *copynode(ZNode *);
 bool macroeq(ZNode *, ZNode *);
 bool macropatterneq(ZMacroPattern *, ZMacroPattern *);
 
-ZNode *makenode(ZNodeType);
-ZType *maketype(ZTypeKind);
-ZType *makePrimitiveType(ZTokenType);
+ZNode *makenode(Allocator *, ZNodeType);
+ZType *maketype(Allocator *, ZTypeKind);
+ZType *makePrimitiveType(Allocator *, ZTokenType);
 
 /* Semantic  -  public entry points. The per-traversal helpers (resolveType,
  * resolve, typesCompatible) now take the internal ZThreadSem and stay private
@@ -1064,8 +1063,9 @@ bool typesPrimitive(ZType *);
 
 /* ================== Zinc state ================== */
 ZState *makestate();
+void freestate(ZState *);
 
-char *readfile(char *);
+char *readfile(Allocator *, char *);
 
 void encodeType(ZType *, char **);
 char *mangler(char *[]);
@@ -1089,8 +1089,10 @@ ZLog *emitNote  (ZLog *, ZToken *, const char *, ...);
 #define zlog(state, tok, code, ...) \
     _log(state, tok, code, __FILE__, __LINE__, ##__VA_ARGS__)
 
+char *zstrdup(Allocator *, char *);
+char *zstrndup(Allocator *, char *, usize);
 void printLogs(ZState *);
-void initPrimitiveTypes();
+void initPrimitiveTypes(ZState *);
 bool canAdvance(ZState *);
 
 bool visit(ZState *, char **, bool);
@@ -1137,5 +1139,6 @@ ZLangItemType getLangItemType(ZNode *);
 void analyzeAnnotations(ZState *, ZNode *);
 void validate(ZState *, ZNode *);
 bool initTargetMachine(ZState *);
+void disposeTargetMachine(ZState *);
 
 #endif

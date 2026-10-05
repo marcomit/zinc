@@ -2,6 +2,7 @@
 // Copyright (c) 2025, Marco Menegazzi
 
 #include "zinc.h"
+#include "zmem.h"
 #include <ctype.h>
 #include <string.h>
 
@@ -71,8 +72,8 @@ inline bool tokmask(ZToken *tok, u16 mask) {
     return ZTokenMask[tok->type] & mask;
 }
 
-ZTokenStream *maketokstream(ZToken **tokens, ZTokenStream *prev) {
-    ZTokenStream *self = zalloc(ZTokenStream);
+ZTokenStream *maketokstream(Allocator *allocator, ZToken **tokens, ZTokenStream *prev) {
+    ZTokenStream *self = zalloc(allocator, ZTokenStream);
     self->list = tokens;
     self->current = 0;
     self->prev = prev;
@@ -137,8 +138,8 @@ ZTokenType findKeyword(const char *ident, size_t len) {
     return TOK_IDENT;
 }
 
-ZToken *maketoken(ZTokenType type, char *start, char *end) {
-    ZToken *self    = zalloc(ZToken);
+ZToken *maketoken(Allocator *allocator, ZTokenType type, char *start, char *end) {
+    ZToken *self    = zalloc(allocator, ZToken);
     *self           = (ZToken){ 0 };
     self->type      = type;
     self->start     = start;
@@ -146,26 +147,26 @@ ZToken *maketoken(ZTokenType type, char *start, char *end) {
     return self;
 }
 
-ZToken *makeident(char *name, char *start, char *end) {
-    ZToken *self = maketoken(TOK_IDENT, start, end);
+ZToken *makeident(Allocator *allocator, char *name, char *start, char *end) {
+    ZToken *self = maketoken(allocator, TOK_IDENT, start, end);
     self->str = name;
     return self;
 }
 
-static ZToken *makeinteger(i64 value, char *start, char *end) {
-    ZToken *self = maketoken(TOK_INT_LIT, start, end);
+static ZToken *makeinteger(Allocator *allocator, i64 value, char *start, char *end) {
+    ZToken *self = maketoken(allocator, TOK_INT_LIT, start, end);
     self->integer = value;
     return self;
 }
 
-static ZToken *makefloat(double value, char *start, char *end) {
-    ZToken *self = maketoken(TOK_FLOAT_LIT, start, end);
+static ZToken *makefloat(Allocator *allocator, double value, char *start, char *end) {
+    ZToken *self = maketoken(allocator, TOK_FLOAT_LIT, start, end);
     self->floating = value;
     return self;
 }
 
-static ZToken *makestring(char *str, char *start, char *end) {
-    ZToken *self = maketoken(TOK_STR_LIT, start, end);
+static ZToken *makestring(Allocator *allocator, char *str, char *start, char *end) {
+    ZToken *self = maketoken(allocator, TOK_STR_LIT, start, end);
     self->str = str;
     return self;
 }
@@ -308,7 +309,9 @@ static ZToken **parseInterpolatedString(ZLexer *l) {
     ZToken **list = NULL;
     i64 baseDepth = l->depth;
 
-    ZToken *startInterp = maketoken(TOK_STR_START, l->current, l->current+1);
+    ZToken *startInterp = maketoken(
+        l->state->allocator, TOK_STR_START, l->current, l->current+1
+    );
     next(l);
     l->depth++;
     vecpush(list, startInterp);
@@ -328,6 +331,7 @@ static ZToken **parseInterpolatedString(ZLexer *l) {
 }
 
 static ZToken *parseString(ZLexer *l) {
+    Allocator *a = l->state->allocator;
     bool interpolated = *l->current == '#';
     if (interpolated) next(l);
     if (*l->current != '"') return NULL;
@@ -345,7 +349,7 @@ static ZToken *parseString(ZLexer *l) {
             cp = parseEscapeChar(l, &src);
         } else if (interpolated && *src == '{') {
             vecpush(buff, '\0');
-            ZToken *lit = makestring(strdup(buff), start, l->current);
+            ZToken *lit = makestring(a, zstrdup(a, buff), start, l->current);
             setSourceLoc(l, lit);
             vecpush(list, lit);
             l->col += src - l->current;
@@ -363,7 +367,7 @@ static ZToken *parseString(ZLexer *l) {
 
     if (*src == '"') src++;
     else {
-        ZToken *tok = maketoken(TOK_STR_LIT, start - 1, l->current);
+        ZToken *tok = maketoken(a, TOK_STR_LIT, start - 1, l->current);
         tok->row    = l->row;
         tok->col    = l->col;
         tok->sourcePtr = start - 1;
@@ -374,19 +378,19 @@ static ZToken *parseString(ZLexer *l) {
     vecpush(buff, '\0');
     l->current = src;
 
-    ZToken *lit = makestring(buff, start, l->current);
+    ZToken *lit = makestring(a, buff, start, l->current);
     if (interpolated) {
         // Push the last literal
         if (veclen(buff) > 1) vecpush(list, lit);
 
-        ZToken *stream = maketoken(TOK_STREAM, start - 1, l->current);
+        ZToken *stream = maketoken(a, TOK_STREAM, start - 1, l->current);
         stream->stream = list;
         return stream;
     } else return lit;
 }
 
-static ZToken *makeRune(u32 codepoint, char *start, char *end) {
-    ZToken *self = maketoken(TOK_RUNE_LIT, start, end);
+static ZToken *makeRune(Allocator *a, u32 codepoint, char *start, char *end) {
+    ZToken *self = maketoken(a, TOK_RUNE_LIT, start, end);
     self->integer = (i64)codepoint;
     return self;
 }
@@ -410,15 +414,16 @@ static ZToken *parseRune(ZLexer *l) {
     src++;
 
     l->current = src;
-    return makeRune(cp, start, src);
+    return makeRune(l->state->allocator, cp, start, src);
 }
 
 /*TODO: Replace the else-if chain with the trie. */
 static ZToken *parseSymbol(ZLexer *l) {
+    Allocator *a = l->state->allocator;
     ZToken *sym = NULL;
     if (false) { /* Empty if statement only for macro definition. */ }
     #define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) {         \
-        ZToken *tok = maketoken(id, l->current, l->current + strlen(s));        \
+        ZToken *tok = maketoken(a, id, l->current, l->current + strlen(s));     \
         skip(l, strlen(s));                                                     \
         tok->str = s;                                                           \
         sym = tok;                                                              \
@@ -437,7 +442,7 @@ static ZToken *parseSymbol(ZLexer *l) {
 
     if (!sym) {
         zlog(l->state, veclast(l->tokens), Z1004);
-        ZToken *tok = maketoken(0, l->current, l->current);
+        ZToken *tok = maketoken(a, 0, l->current, l->current);
         tok->str = "";
         return NULL;
     }
@@ -459,7 +464,7 @@ static ZToken *parseHexNumber(ZLexer *l) {
     unsigned long long value = strtoull(start, NULL, 16);
     if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
 
-    return makeinteger((i64)value, start, l->current);
+    return makeinteger(l->state->allocator, (i64)value, start, l->current);
 }
 
 static ZToken *parseBinNumber(ZLexer *l) {
@@ -467,9 +472,10 @@ static ZToken *parseBinNumber(ZLexer *l) {
     next(l); next(l);
     char *start = l->current;
 
+    Allocator *a = l->state->allocator;
     while (*l->current == '0' || *l->current == '1') next(l);
     if (start == l->current) {
-        ZToken *tok = maketoken(TOK_INT_LIT, start, l->current);
+        ZToken *tok = maketoken(a, TOK_INT_LIT, start, l->current);
         tok->filename = l->state->filename;
         tok->row = l->row;
         tok->col = l->col;
@@ -485,7 +491,7 @@ static ZToken *parseBinNumber(ZLexer *l) {
     unsigned long long value = strtoull(start, NULL, 2);
     if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
 
-    return makeinteger((i64)value, start, l->current);
+    return makeinteger(a, (i64)value, start, l->current);
 }
 
 static ZToken *parseNumber(ZLexer *l) {
@@ -523,14 +529,14 @@ static ZToken *parseNumber(ZLexer *l) {
         errno = 0;
         double value = strtod(start, NULL);
         if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1007, start);
-        return makefloat(value, start, l->current);
+        return makefloat(l->state->allocator, value, start, l->current);
     }
 
     errno = 0;
     long long value = strtoll(start, NULL, 10);
     if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
 
-    return makeinteger(value, start, l->current);
+    return makeinteger(l->state->allocator, value, start, l->current);
 }
 
 static ZToken *parseLiteral(ZLexer *l) {
@@ -543,12 +549,12 @@ static ZToken *parseLiteral(ZLexer *l) {
     ZTokenType type = findKeyword(start, len);
 
     if (type == TOK_IDENT) {
-        return makeident(strndup(start, len), start, l->current);
+        return makeident(l->state->allocator, zstrndup(l->state->allocator, start, len), start, l->current);
     }
 
     // Also set str field for keywords so getMacroByName can compare them
-    ZToken *tok = maketoken(type, start, l->current);
-    tok->str = strndup(start, len);
+    ZToken *tok = maketoken(l->state->allocator, type, start, l->current);
+    tok->str = zstrndup(l->state->allocator, start, len);
     return tok;
 }
 
@@ -582,7 +588,7 @@ static void skipMultilineComments(ZLexer *l) {
 }
 
 ZLexer *makelexer(ZState *state, char *program) {
-    ZLexer *self = zalloc(ZLexer);
+    ZLexer *self = zalloc(state->allocator, ZLexer);
     self->row           = 1;
     self->col           = 0;
     self->tokens        = NULL;
@@ -654,7 +660,7 @@ ZToken **ztokenizeSource(ZState *state, char *source) {
 }
 
 ZToken **ztokenize(ZState *state) {
-    char *program = readfile(state->filename);
+    char *program = readfile(state->allocator, state->filename);
 
     if (!program) {
         zlog(state, NULL, Z1009, state->filename, strerror(errno));

@@ -39,12 +39,18 @@
  * printf("count: %zu\n", hashset_len(set));   // 1
  *
  * hashset_free(&set);  // set is now NULL
+ *
+ * // Or pick the allocator explicitly when the set is created:
+ * hashset_t local = NULL;
+ * hashset_insertwith(&local, "foo", arena);
  * @endcode
  *
  * @section notes Important Notes
  *
  * - Always initialize to NULL
  * - The set does NOT copy strings; the caller must keep them alive
+ * - A set keeps the allocator it was created with; hashset_insert uses
+ *   hashsetDefaultAllocator only when it has to create the set
  * - Capacity is always a power of two
  * - Grows at 70% load factor
  * - Uses FNV-1a hashing
@@ -55,15 +61,14 @@
 #define ZHASHSET_H
 
 #include "base.h"
-#include <stdlib.h>
+#include "zmem.h"
 #include <string.h>
+
 
 /* ============================================================================
  * Configuration
  * ============================================================================ */
 
-#define HASHSET_ALLOC       malloc
-#define HASHSET_FREE        free
 #define HASHSET_DEFAULT_CAP 64
 #define HASHSET_MAX_LOAD    70 /* percent */
 
@@ -76,8 +81,9 @@
 
 /** @brief Metadata stored before the bucket array */
 typedef struct hashset_metadata {
-	usize capacity; /**< Number of buckets (always power of two) */
-	usize length;   /**< Number of live entries */
+	usize     capacity;  /**< Number of buckets (always power of two) */
+	usize     length;    /**< Number of live entries */
+	Allocator *allocator; /**< Allocator the set was created with, used for every growth and free */
 } hashset_metadata;
 
 /** @brief The user-facing type: pointer to bucket array */
@@ -101,12 +107,14 @@ static inline u32 hashset__fnv1a(const char *s) {
  * Core helpers
  * ============================================================================ */
 
-static inline hashset_t hashset__create(usize cap) {
+static inline hashset_t hashset__create(Allocator *allocator, usize cap) {
+	if (!allocator) return NULL;
 	usize total = sizeof(hashset_metadata) + cap * sizeof(const char *);
-	hashset_metadata *meta = (hashset_metadata *)HASHSET_ALLOC(total);
+	hashset_metadata *meta = (hashset_metadata *)aalloc(allocator, total);
 	if (!meta) return NULL;
 	meta->capacity = cap;
 	meta->length = 0;
+	meta->allocator = allocator;
 	const char **buckets = (const char **)(meta + 1);
 	memset(buckets, 0, cap * sizeof(const char *));
 	return buckets;
@@ -152,7 +160,7 @@ static inline void hashset__grow(hashset_t *set) {
 	usize old_cap = old_meta->capacity;
 	usize new_cap = old_cap << 1;
 
-	hashset_t new_set = hashset__create(new_cap);
+	hashset_t new_set = hashset__create(old_meta->allocator, new_cap);
 	if (!new_set) return;
 
 	const char **old_buckets = *set;
@@ -166,7 +174,7 @@ static inline void hashset__grow(hashset_t *set) {
 	}
 
 	HASHSET_META(new_set)->length = old_meta->length;
-	HASHSET_FREE(old_meta);
+	afree(old_meta->allocator, old_meta);
 	*set = new_set;
 }
 
@@ -186,13 +194,14 @@ static inline usize hashset_cap(hashset_t set) {
 
 /**
  * @brief Insert a string into the set
- * @param set  Pointer to hashset (may be NULL; will be created)
- * @param key  String to insert (not copied - caller owns the memory)
+ * @param set        Pointer to hashset (may be NULL; will be created)
+ * @param key        String to insert (not copied - caller owns the memory)
+ * @param allocator  Allocator used only if the set has to be created
  * @return true if inserted, false if already present or OOM
  */
-static inline bool hashset_insert(hashset_t *set, const char *key) {
+static inline bool hashset_insertwith(hashset_t *set, const char *key, Allocator *allocator) {
 	if (!*set) {
-		*set = hashset__create(HASHSET_DEFAULT_CAP);
+		*set = hashset__create(allocator, HASHSET_DEFAULT_CAP);
 		if (!*set) return false;
 	}
 
@@ -210,6 +219,11 @@ static inline bool hashset_insert(hashset_t *set, const char *key) {
 	(*set)[idx] = key;
 	meta->length++;
 	return true;
+}
+
+/** @brief Insert a string, creating the set with hashsetDefaultAllocator if needed */
+static inline bool hashset_insert(hashset_t *set, const char *key) {
+	return hashset_insertwith(set, key, hashsetDefaultAllocator ? hashsetDefaultAllocator : heapAllocator);
 }
 
 /**
@@ -240,7 +254,8 @@ static inline bool hashset_remove(hashset_t *set, const char *key) {
 /** @brief Free the set and set pointer to NULL */
 static inline void hashset_free(hashset_t *set) {
 	if (*set) {
-		HASHSET_FREE(HASHSET_META(*set));
+		hashset_metadata *meta = HASHSET_META(*set);
+		afree(meta->allocator, meta);
 		*set = NULL;
 	}
 }
