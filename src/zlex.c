@@ -581,14 +581,7 @@ static void skipMultilineComments(ZLexer *l) {
     next(l); next(l);
 }
 
-ZLexer *makelexer(ZState *state) {
-    char *program = readfile(state->filename);
-
-    if (!program) {
-        zlog(state, NULL, Z1009, state->filename, strerror(errno));
-        return NULL;
-    }
-
+ZLexer *makelexer(ZState *state, char *program) {
     ZLexer *self = zalloc(ZLexer);
     self->row           = 1;
     self->col           = 0;
@@ -638,9 +631,9 @@ static bool emitNextToken(ZLexer *l, ZToken **curr) {
     return true;
 }
 
-ZToken **ztokenize(ZState *state) {
+ZToken **ztokenizeSource(ZState *state, char *source) {
     state->currentPhase = Z_PHASE_LEXICAL;
-    ZLexer *l = makelexer(state);
+    ZLexer *l = makelexer(state, source);
 
     if (!l) return NULL;
 
@@ -658,4 +651,14 @@ ZToken **ztokenize(ZState *state) {
 
     }
     return l->tokens;
+}
+
+ZToken **ztokenize(ZState *state) {
+    char *program = readfile(state->filename);
+
+    if (!program) {
+        zlog(state, NULL, Z1009, state->filename, strerror(errno));
+        return NULL;
+    }
+    return ztokenizeSource(state, program);
 }

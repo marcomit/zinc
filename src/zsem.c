@@ -649,15 +649,15 @@ static ZThreadSem *registerModule(ZSemantic *ctx, ZNode *module) {
 static void warnUnused(ZThreadSem *ctx, ZSymbol *symbol) {
     switch (symbol->kind) {
     case Z_SYM_FUNC:
-        if (ctx->state->unusedFunc) break;
+        if (ctx->state->cli.unusedFunc) break;
         zlog(ctx->state, symbol->name, Z3004, symbol->name->str);
         break;
     case Z_SYM_STRUCT:
-        if (ctx->state->unusedStruct) break;
+        if (ctx->state->cli.unusedStruct) break;
         zlog(ctx->state, symbol->name, Z3005, symbol->name->str);
         break;
     case Z_SYM_VAR:
-        if (ctx->state->unusedVar) break;
+        if (ctx->state->cli.unusedVar) break;
         zlog(ctx->state, symbol->name, Z3006, symbol->name->str);
         break;
     default:
@@ -788,18 +788,26 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
         return typesCompatible(ctx, from, to->optional);
     }
 
-    if (typesEqual(from, strType)) {
-        if (!interpType) {
-            ZNode *interp = LangItems[Z_LANG_INTERPOLATED_STRING];
-            if (interp) {
-                ZType *arr          = maketype(Z_TYPE_ARRAY);
-                arr->array.base     = interp->resolved;
-                arr->array.size     = 1;
-                arr->array.dynamic  = false;
-                interpType = arr;
-            }
+    if (!interpType) {
+        ZNode *interp = LangItems[Z_LANG_INTERPOLATED_STRING];
+        if (interp) {
+            ZType *arr          = maketype(Z_TYPE_ARRAY);
+            arr->array.base     = interp->resolved;
+            arr->array.size     = 1;
+            arr->array.dynamic  = false;
+            interpType = arr;
         }
+    }
 
+    if (typesEqual(to, interpType)) {
+        ZNode *writable = LangItems[Z_LANG_WRITABLE];
+        if (typesEqual(from, strType)) {
+            return interpType;
+        } else if (writable && satisfyFacet(ctx, from, writable->resolved)) {
+            return interpType;
+        }
+    }
+    if (typesEqual(from, strType)) {
         if (typesEqual(to, interpType)) {
             return interpType;
         }
@@ -994,6 +1002,14 @@ bool typesEqual(ZType *a, ZType *b) {
     }
 }
 
+i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
+    for (usize i = 0; i < veclen(sum->sumType); i++) {
+        if (typesEqual(sum->sumType[i], concrete))
+            return (i32)i;
+    }
+    return -1;
+}
+
 static ZNode *implicitCast(ZThreadSem *ctx, ZNode *node, ZType *type) {
     (void)ctx;
     if (!node) return node;
@@ -1180,7 +1196,10 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
     case Z_TYPE_PRIMITIVE: {
         if (type->primitive.token->type != TOK_IDENT) return type;
         ZSymbol *sym = resolve(ctx, type->primitive.token);
-        if (!sym) return NULL;
+        if (!sym) {
+            zlog(ctx->state, type->primitive.token, Z00AB, stype(type));
+            return NULL;
+        }
         if (sym->kind == Z_SYM_STRUCT) {
             // for (usize i = 0; i < veclen(sym->type->strct.fields); i++) {
             //     ZNode *field = sym->type->strct.fields[i];
@@ -1448,9 +1467,11 @@ static void resolveFuncArgs(
 
 
     for (usize i = 0; i < expectedArgsLen; i++) {
-        ZType *expected = expectedArgs[i];
+        ZType *expected     = expectedArgs[i];
+        expected            = resolveTypeRef(ctx, expected);
 
-        args[i]->resolved = resolveType(ctx, args[i], expected);
+        args[i]->resolved   = resolveType(ctx, args[i], expected);
+        args[i]->resolved   = resolveTypeRef(ctx, args[i]->resolved);
         checkFunctionUsedAsValue(ctx, args[i]);
 
         /* If the argument is a generic skip the validation*/
@@ -1766,6 +1787,8 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     if (op == TOK_EQ || tokmask(tok, TOK_SELF_OPERATOR)) inferred = left;
     ZType     *right    = resolveType(ctx, curr->binary.right, inferred);
+    right               = resolveTypeRef(ctx, right);
+    left                = resolveTypeRef(ctx, left);
 
     if (tokmask(tok, TOK_BITOPERATOR_MASK) &&
             (!isNumeric(left) ||
@@ -2186,9 +2209,13 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return NULL;
     }
 
-    ZType *success = isOptional ?
-        base->optional :
-        base->result.success;
+    ZType *success = NULL;
+    switch (base->kind) {
+    case Z_TYPE_RESULT:     success = base->result.success;     break;
+    case Z_TYPE_POINTER:    success = base;                     break;
+    case Z_TYPE_OPTIONAL:   success = base->optional;           break;
+    default: break;
+    }
 
     switch (curr->unwrap.kind) {
     case UNWRAP_DO: {
@@ -2219,8 +2246,6 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
                     stype(base->result.error)
                 );
             }
-        } else if (base->kind == Z_TYPE_POINTER) {
-            return base;
         }
         return success;
 
@@ -2231,15 +2256,19 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->tok, Z3028);
         }
         return success;
-    default:            return success;
+    default:
+        return success;
     }
 }
 
 static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
-    if (veclen(curr->interpolation) == 1 && typesEqual(inferred, strType)) {
-        return strType;
-    }
     ZNode *writable = LangItems[Z_LANG_WRITABLE];
+    if (veclen(curr->interpolation) == 1 && typesEqual(inferred, strType)) {
+        if (typesEqual(inferred, strType))
+            return strType;
+        if (satisfyFacet(ctx, inferred, writable->resolved))
+            return writable->resolved;
+    }
     for (usize i = 0; i < veclen(curr->interpolation); i++) {
         ZInterpolation *interp = curr->interpolation[i];
         switch (interp->type) {
@@ -2256,7 +2285,10 @@ static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred
                     ctx, interp->expr, writable->resolved
                 );
             } else {
-                error(ctx->state, interp->expr->tok, "Must implement the writable facet");
+                error(ctx->state, interp->expr->tok,
+                      "'%s' must implement the writable facet",
+                      stype(interp->expr->resolved)
+                );
             }
             break;
         case Z_INTERP_LIT: break;

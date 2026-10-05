@@ -16,6 +16,23 @@
 
 #define ZINC_VERSION "0.0.3"
 
+/* The same frontend sources are compiled into two binaries:
+ *   ZMODE_COMPILER - the `zinc` CLI (default): full pipeline down to codegen/link.
+ *   ZMODE_LSP      - the `zinc-lsp` server: lex/parse/sem only, so everything
+ *                    that only the CLI or the code generator needs is compiled out.
+ * The layout of ZState differs between the two, so objects built in one mode
+ * must never be linked with objects built in the other (the Makefile keeps them
+ * in separate build dirs). */
+#define ZMODE_COMPILER 1
+#define ZMODE_LSP      2
+
+#ifndef ZMODE
+#define ZMODE ZMODE_COMPILER
+#endif
+
+#define Z_COMPILER (ZMODE == ZMODE_COMPILER)
+#define Z_LSP      (ZMODE == ZMODE_LSP)
+
 static char sep = '/';
 
 typedef enum {
@@ -169,34 +186,53 @@ typedef enum {
 } ZMode;
 
 typedef struct {
-    char            *output;
-    ZLog            **logs;
-    ZPhase          currentPhase;
-    char            *currentPath;
-    char            *filename;
-    char            *homePath;
-    char            **argv;
-
-    char            **pathFiles;
-    char            **visitedFiles;
-    bool            canAdvance;
-
+    /* Options the frontend (lexer/parser/sem) reads: shared by every mode. */
     bool            debug;
 
     bool            unusedVar;
     bool            unusedFunc;
     bool            unusedStruct;
 
+    bool            noInject;
+
+#if Z_COMPILER
+    char            *output;
+    char            **argv;
+
     bool            skipLLVMValidation;
     bool            verbose;
     bool            dumpAst;
+    bool            dumpTokens;
 
     bool            nostdlib;
-    bool            noInject;
 
     char            optimizationLevel;
     ZLTOMode        ltoMode;
 
+    char            *targetTriple;
+    char            *targetCPU;
+    char            *targetFeatures;
+    ZEmitMode       emit;
+    ZMode           mode;
+
+    /* Extra arguments should be passed in the linker. */
+    char            **extraArgs;
+#endif
+} ZCliOptions;
+
+typedef struct {
+    ZCliOptions     cli;
+    ZLog            **logs;
+    ZPhase          currentPhase;
+    char            *currentPath;
+    char            *filename;
+    char            *homePath;
+
+    char            **pathFiles;
+    char            **visitedFiles;
+    bool            canAdvance;
+
+#if Z_COMPILER
     /* Size of the pointer in bytes (used for usize/isize).
      * Initialized inside the code generator after creating the target.
      * */
@@ -211,16 +247,9 @@ typedef struct {
 
     /* Triple used for codegen. */
     char            *resolvedTriple;
+#endif
 
-    char            *targetTriple;
-    char            *targetCPU;
-    char            *targetFeatures;
-    ZEmitMode       emit;
-    ZMode           mode;
     ZNode           *root;
-
-    /* Extra arguments should be passed in the linker. */
-    char            **extraArgs;
 
     /* Allocator used for shared allocations. */
     arena_t         *globalAllocator;
@@ -234,8 +263,10 @@ typedef struct {
      * body regardless of which file first parsed it. */
     struct ZParserModule **cachedModules;
 
+#if Z_COMPILER
     /* Indicates the start time of the current phase to calculate the diagnostics. */
     struct timespec phaseTime;
+#endif
 
     /* Save every 'here' call token such that the code generator build a
      * 'SourceLocation' struct and zinc can use the location to show diagnostics.
@@ -980,6 +1011,7 @@ struct ZThreadSem {
 
 /* Lexer */
 ZToken **ztokenize(ZState *);
+ZToken **ztokenizeSource(ZState *, char *);
 ZToken *maketoken(ZTokenType, char *, char *);
 ZToken *makeident(char *, char *, char *);
 ZTokenStream *maketokstream(ZToken **, ZTokenStream *);

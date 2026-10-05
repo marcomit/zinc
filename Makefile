@@ -83,7 +83,10 @@ INCLUDES = -I include -I lib
 # plain object files never end up in the same build dir.
 SANITIZE ?=
 
-CFLAGS   = -g -Wall -Wextra -Wdeprecated-declarations -O2 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS)
+# Set to -DZMODE=ZMODE_LSP by the `lsp` target; empty means the compiler (zinc.h).
+ZMODE_FLAGS ?=
+
+CFLAGS   = -g -Wall -Wextra -Wdeprecated-declarations -O2 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS) $(ZMODE_FLAGS)
 CXXFLAGS = -g -O2 -std=c++17 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS) $(LLD_INCLUDES)
 LDFLAGS  = $(SANITIZE) $(LLD_LIBS) $(_LLVM_LDFLAGS)
 TARGET    = zinc
@@ -93,15 +96,43 @@ BUILD_DIR ?= build
 # so src/codegen/*.c and anything added later is picked up without listing it.
 rwildcard = $(foreach d,$(wildcard $(1)/*),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
 
+# The language server is a separate binary with its own main(): its sources
+# (and the JSON library only it uses) are kept out of the compiler build.
+LSP_TARGET = zinc-lsp
+LSP_DIR    = $(SRC_DIR)/lsp
+JSON_DIR   = $(LIB_DIR)/json.c
+LSP_EXCL   = $(LSP_DIR)/% $(JSON_DIR) $(JSON_DIR)/%
+
 # Object files mirror the source tree: src/codegen/zgen.c -> build/codegen/zgen.o
-C_SRC   = $(call rwildcard,$(SRC_DIR),*.c) $(call rwildcard,$(LIB_DIR),*.c)
+C_SRC   = $(filter-out $(LSP_EXCL),$(call rwildcard,$(SRC_DIR),*.c) $(call rwildcard,$(LIB_DIR),*.c))
 CXX_SRC = $(call rwildcard,$(SRC_DIR),*.cpp)
-C_OBJ   = $(patsubst $(SRC_DIR)/%.c,  $(BUILD_DIR)/%.o, $(call rwildcard,$(SRC_DIR),*.c)) \
-          $(patsubst $(LIB_DIR)/%.c,  $(BUILD_DIR)/%.o, $(call rwildcard,$(LIB_DIR),*.c))
+C_OBJ   = $(patsubst $(SRC_DIR)/%.c,  $(BUILD_DIR)/%.o, $(filter $(SRC_DIR)/%,$(C_SRC))) \
+          $(patsubst $(LIB_DIR)/%.c,  $(BUILD_DIR)/%.o, $(filter $(LIB_DIR)/%,$(C_SRC)))
 CXX_OBJ = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o, $(CXX_SRC))
 OBJ     = $(C_OBJ) $(CXX_OBJ)
 
+LSP_SRC = $(wildcard $(LSP_DIR)/*.c) $(JSON_DIR)/json.c
+LSP_OBJ = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(SRC_DIR)/%,$(LSP_SRC))) \
+          $(patsubst $(LIB_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(LIB_DIR)/%,$(LSP_SRC)))
+
 all: $(TARGET)
+
+# Build the language server. It is compiled with ZMODE=ZMODE_LSP (see zinc.h),
+# which strips the CLI/codegen-only state, so it can't reuse the compiler's
+# objects: the recursive make rebuilds the frontend into its own dir. The CLI
+# (zcli.c, zinc.c with its main()) and the code generator are left out.
+LSP_BUILD_DIR = build/lsp
+LSP_FRONTEND  = $(filter-out $(SRC_DIR)/zinc.c $(SRC_DIR)/zcli.c $(SRC_DIR)/codegen/%,$(C_SRC))
+LSP_DEPS      = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(SRC_DIR)/%,$(LSP_FRONTEND))) \
+                $(patsubst $(LIB_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(LIB_DIR)/%,$(LSP_FRONTEND)))
+# No LLD and no LLVM core: only libclang, which ctrans.c uses to read C headers.
+LSP_LDFLAGS   = $(SANITIZE) -L$(_LLVM_LIBDIR) -lclang -Wl,-rpath,$(_LLVM_LIBDIR)
+
+lsp:
+	+$(MAKE) $(LSP_TARGET) BUILD_DIR=$(LSP_BUILD_DIR) ZMODE_FLAGS=-DZMODE=ZMODE_LSP
+
+$(LSP_TARGET): $(LSP_OBJ) $(LSP_DEPS)
+	$(CC) -o $@ $(LSP_OBJ) $(LSP_DEPS) $(LSP_LDFLAGS)
 
 # --- Sanitizer builds ---------------------------------------------------
 # Several sanitizers are mutually exclusive (ASan/TSan/MSan cannot be combined)
@@ -189,7 +220,7 @@ loc:
 	@cloc --read-lang-def=zinc.cloc --include-ext=c,h,zn,def .
 
 clean:
-	rm -f $(TARGET) $(TARGET)-asan $(TARGET)-ubsan $(TARGET)-ubsan-int
+	rm -f $(TARGET) $(LSP_TARGET) $(TARGET)-asan $(TARGET)-ubsan $(TARGET)-ubsan-int
 	rm -rf build
 
-.PHONY: all link debug asan ubsan ubsan-int clean install test loc
+.PHONY: all lsp link debug asan ubsan ubsan-int clean install test loc

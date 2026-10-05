@@ -33,6 +33,7 @@ enum {
     OPT_NOSTDLIB,
     OPT_XLINKER,
     OPT_DUMP_AST,
+    OPT_DUMP_TOKENS,
     OPT_NOINJECT
 };
 
@@ -57,6 +58,7 @@ static struct option long_options[] = {
     {"nostdlib",                no_argument,        NULL,   OPT_NOSTDLIB            },
     {"Xlinker",                 required_argument,  NULL,   OPT_XLINKER             },
     {"dump-ast",                no_argument,        NULL,   OPT_DUMP_AST            },
+    {"dump-tokens",             no_argument,        NULL,   OPT_DUMP_TOKENS         },
     {"noinject",                no_argument,        NULL,   OPT_NOINJECT            },
     {NULL,                      0,                  NULL,   0                       }
 };
@@ -92,17 +94,20 @@ void usage(char *program) {
         "\t --release-fast            Alias for -O3\n"
         "\t --release-small           Alias for -Os\n"
         "\nLink-time optimization:\n"
-        "\t --lto=off|thin|full      Set LTO mode (default: off)\n"
-        "\t --target                 Target triple used by LLVM\n"
-        "\t --mcpu                   CPU Target\n"
-        "\t --mfeatures              LLVM Features\n"
-        "\t --nostdlib               Link freestanding: no libc, CRT, or dynamic linker\n"
-        "\t --Xlinker <arg>          Pass <arg> straight through to the linker\n"
+        "\t --lto=off|thin|full     Set LTO mode (default: off)\n"
+        "\t --target                Target triple used by LLVM\n"
+        "\t --mcpu                  CPU Target\n"
+        "\t --mfeatures             LLVM Features\n"
+        "\t --nostdlib              Link freestanding: no libc, CRT, or dynamic linker\n"
+        "\t --Xlinker <arg>         Pass <arg> straight through to the linker\n"
+        "\t --dump-ast              Prints the AST\n"
+        "\t --dump-tokens           Prints the list of tokens\n"
+        "\t --noinject              Do not inject the zinc's pre-import\n"
     );
 }
 
 static void printAllocation(ZState *state) {
-    if (!state->verbose) return;
+    if (!state->cli.verbose) return;
 
     double used = arenaLength(allocator.ctx);
     double allocated = arenaSize(allocator.ctx);
@@ -133,14 +138,14 @@ static void printAllocation(ZState *state) {
 }
 
 static void initState(ZState *state) {
-    char *filename = state->argv[0];
-    if (!state->output) {
+    char *filename = state->cli.argv[0];
+    if (!state->cli.output) {
         char *copy = strdup(filename);
 
         char *base = basename(copy);
         char *dot = strrchr(base, '.');
         if (dot) *dot = '\0';
-        state->output = base;
+        state->cli.output = base;
     }
 
     visit(state, &filename, false);
@@ -148,10 +153,11 @@ static void initState(ZState *state) {
 
 static ZErrorCode pipeline(ZState *state) {
     initState(state);
-    if (state->verbose) timer_start(&state->phaseTime);
+    if (state->cli.verbose) timer_start(&state->phaseTime);
 
     ZToken **tokens = ztokenize(state);
     if (!tokens) return Z_LEXICAL_ERROR;
+    if (state->cli.dumpTokens) printTokens(tokens);
 
     if (!initTargetMachine(state)) return Z_CODEGEN_ERROR;
     initPrimitiveTypes();
@@ -163,21 +169,21 @@ static ZErrorCode pipeline(ZState *state) {
     if (!canAdvance(state)) return Z_SYNTAX_ERROR;
     zanalyze(state, root);
 
-    if (state->dumpAst) printNode(root, 0);
+    if (state->cli.dumpAst) printNode(root, 0);
 
     if (!canAdvance(state)) return Z_SEMANTIC_ERROR;
 
-    if (state->verbose) {
+    if (state->cli.verbose) {
         const char *format;
         double elapsed = timer_elapsed(state->phaseTime, &format);
         printf(COLOR_BOLD COLOR_CYAN "  Frontend:   " COLOR_RESET "%.2f%s\n", elapsed, format);
     }
 
-    zcompile(state, root, state->output);
+    zcompile(state, root, state->cli.output);
 
     if (!canAdvance(state)) return Z_CODEGEN_ERROR;
 
-    if (state->verbose) printAllocation(state);
+    if (state->cli.verbose) printAllocation(state);
 
     for (usize i = 0; i < veclen(state->modules); i++) {
         arenaFree(state->modules[i]->allocator);
@@ -256,8 +262,8 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         opt = getopt_long(argc, argv, "+dvo:l:L:O:", cmd->options, NULL);
         if (opt == -1) {
             if (optind < argc) {
-                if ((int)veclen(state->argv) < cmd->maxArgs)
-                    vecpush(state->argv, argv[optind]);
+                if ((int)veclen(state->cli.argv) < cmd->maxArgs)
+                    vecpush(state->cli.argv, argv[optind]);
                 optind++;
             }
             continue;
@@ -268,7 +274,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
             char *lib = znalloc(char, len);
             snprintf(lib, len, "-L%s", optarg);
             lib[len-1] = '\0';
-            vecpush(state->extraArgs, lib);
+            vecpush(state->cli.extraArgs, lib);
             break;
         }
         case 'l': {
@@ -276,14 +282,14 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
             char *lib = znalloc(char, len);
             snprintf(lib, len, "-l%s", optarg);
             lib[len-1] = '\0';
-            vecpush(state->extraArgs, lib);
+            vecpush(state->cli.extraArgs, lib);
             break;
         }
-        case 'o':   SET_ARG(state->output, "Output file");  break;
+        case 'o':   SET_ARG(state->cli.output, "Output file");  break;
         case 'd':
-            SET_FLAG(state->debug, "Debug mode");
-            state->optimizationLevel = '0';
-            state->mode = Z_MODE_DEBUG;
+            SET_FLAG(state->cli.debug, "Debug mode");
+            state->cli.optimizationLevel = '0';
+            state->cli.mode = Z_MODE_DEBUG;
             break;
         case 'O': {
             char lvl = optarg[0];
@@ -292,34 +298,35 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
                 usage(argv[0]);
                 return NULL;
             }
-            state->optimizationLevel = lvl;
+            state->cli.optimizationLevel = lvl;
             break;
         }
         case OPT_EMIT:
-            if      (strcmp(optarg, "ir")   == 0) state->emit = Z_EMIT_IR;
-            else if (strcmp(optarg, "obj")  == 0) state->emit = Z_EMIT_OBJ;
-            else if (strcmp(optarg, "asm")  == 0) state->emit = Z_EMIT_ASM;
-            else if (strcmp(optarg, "exe")  == 0) state->emit = Z_EMIT_EXE;
+            if      (strcmp(optarg, "ir")   == 0) state->cli.emit = Z_EMIT_IR;
+            else if (strcmp(optarg, "obj")  == 0) state->cli.emit = Z_EMIT_OBJ;
+            else if (strcmp(optarg, "asm")  == 0) state->cli.emit = Z_EMIT_ASM;
+            else if (strcmp(optarg, "exe")  == 0) state->cli.emit = Z_EMIT_EXE;
             break;
-        case 'v':                       SET_FLAG(state->verbose,            "Verbose");                 break;
-        case OPT_UNUSED_FUNC:           SET_FLAG(state->unusedFunc,         "Unused function flag");    break;
-        case OPT_UNUSED_VAR:            SET_FLAG(state->unusedVar,          "Unused variable flag");    break;
-        case OPT_UNUSED_STRUCT:         SET_FLAG(state->unusedStruct,       "Unused struct flag");      break;
-        case OPT_SKIP_LLVM_VALIDATION:  SET_FLAG(state->skipLLVMValidation, "Skip llvm validation");    break;
-        case OPT_NOSTDLIB:              SET_FLAG(state->nostdlib,           "No libc");                 break;
-        case OPT_DUMP_AST:              SET_FLAG(state->dumpAst,            "Dump ast");                break;
-        case OPT_NOINJECT:              SET_FLAG(state->noInject,           "No Inject");               break;
-        case OPT_XLINKER:               vecpush(state->extraArgs, strdup(optarg));                      break;
-        case OPT_RELEASE:               state->optimizationLevel = '2';                                 break;
-        case OPT_RELEASE_FAST:          state->optimizationLevel = '3';                                 break;
-        case OPT_RELEASE_SMALL:         state->optimizationLevel = 's';                                 break;
-        case OPT_TARGET:                state->targetTriple = optarg;                                   break;
-        case OPT_MCPU:                  state->targetCPU = optarg;                                      break;
-        case OPT_MFEATURES:             state->targetFeatures = optarg;                                 break;
+        case 'v':                       SET_FLAG(state->cli.verbose,            "Verbose");                 break;
+        case OPT_UNUSED_FUNC:           SET_FLAG(state->cli.unusedFunc,         "Unused function flag");    break;
+        case OPT_UNUSED_VAR:            SET_FLAG(state->cli.unusedVar,          "Unused variable flag");    break;
+        case OPT_UNUSED_STRUCT:         SET_FLAG(state->cli.unusedStruct,       "Unused struct flag");      break;
+        case OPT_SKIP_LLVM_VALIDATION:  SET_FLAG(state->cli.skipLLVMValidation, "Skip llvm validation");    break;
+        case OPT_NOSTDLIB:              SET_FLAG(state->cli.nostdlib,           "No libc");                 break;
+        case OPT_DUMP_AST:              SET_FLAG(state->cli.dumpAst,            "Dump ast");                break;
+        case OPT_DUMP_TOKENS:           SET_FLAG(state->cli.dumpTokens,         "Dump tokens");             break;
+        case OPT_NOINJECT:              SET_FLAG(state->cli.noInject,           "No Inject");               break;
+        case OPT_XLINKER:               vecpush(state->cli.extraArgs, strdup(optarg));                      break;
+        case OPT_RELEASE:               state->cli.optimizationLevel = '2';                                 break;
+        case OPT_RELEASE_FAST:          state->cli.optimizationLevel = '3';                                 break;
+        case OPT_RELEASE_SMALL:         state->cli.optimizationLevel = 's';                                 break;
+        case OPT_TARGET:                state->cli.targetTriple = optarg;                                   break;
+        case OPT_MCPU:                  state->cli.targetCPU = optarg;                                      break;
+        case OPT_MFEATURES:             state->cli.targetFeatures = optarg;                                 break;
         case OPT_LTO:
-            if      (strcmp(optarg, "off")  == 0) state->ltoMode = Z_LTO_OFF;
-            else if (strcmp(optarg, "thin") == 0) state->ltoMode = Z_LTO_THIN;
-            else if (strcmp(optarg, "full") == 0) state->ltoMode = Z_LTO_FULL;
+            if      (strcmp(optarg, "off")  == 0) state->cli.ltoMode = Z_LTO_OFF;
+            else if (strcmp(optarg, "thin") == 0) state->cli.ltoMode = Z_LTO_THIN;
+            else if (strcmp(optarg, "full") == 0) state->cli.ltoMode = Z_LTO_FULL;
             else {
                 printf("Error: invalid lto mode '%s' (expected: off, thin, full)\n", optarg);
                 usage(argv[0]);
@@ -330,11 +337,11 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         }
     }
 
-    if ((int)veclen(state->argv) < cmd->minArgs) {
+    if ((int)veclen(state->cli.argv) < cmd->minArgs) {
         fprintf(
             stderr,
             "Expected at least %d argument(s), got %d\n",
-            cmd->minArgs, (int)veclen(state->argv)
+            cmd->minArgs, (int)veclen(state->cli.argv)
         );
         return false;
     }

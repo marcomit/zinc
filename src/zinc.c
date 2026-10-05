@@ -27,15 +27,6 @@
 
 static ZState *state    = NULL;
 
-ZType *none         = NULL;
-ZType *u0Type       = NULL;
-ZType *charType     = NULL;
-ZType *u1Type       = NULL;
-ZType *u64Type      = NULL;
-ZType *modType      = NULL;
-ZType *strType      = NULL;
-ZType *interpType   = NULL;
-
 static void handler(int sig) {
     (void)sig;
     void *array[20];
@@ -45,7 +36,7 @@ static void handler(int sig) {
     write(STDERR_FILENO, "Error: signal received\n", 23);
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
-    if (state && state->debug) printLogs(state);
+    if (state && state->cli.debug) printLogs(state);
     allocator.close();
     _exit(1);
 }
