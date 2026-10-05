@@ -6,7 +6,7 @@ pub Writer :: facet {
 }
 
 pub Reader :: facet {
-    read: fn (*u8, usize) u0
+    read: fn (*u8, usize) isize
 }
 
 #lang(writable)

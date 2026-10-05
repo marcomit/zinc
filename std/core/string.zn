@@ -189,8 +189,9 @@ StringBuilder :: impl {
     }
 }
 
-
 *StringBuilder self :: impl {
+    pub to_writer :: fn () Writer -> self
+
     pub append_buff :: fn (buff: *u8, len: usize) {
         with _ := self.allocator {
             if not self.cap do self.cap = STRING_INITIAL_CAPACITY
@@ -216,5 +217,13 @@ StringBuilder :: impl {
 
     pub append_char :: fn (c: char) {
         self.append_buff(&c, 1)
+    }
+}
+
+*StringBuilder self :: impl(Writer) {
+    write :: fn (buff: *u8, len: usize) {
+        with _ := self.allocator {
+            self.append_buff(buff, len)
+        }
     }
 }

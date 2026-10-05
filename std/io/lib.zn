@@ -1,4 +1,4 @@
-pub use file
-pub use net
-pub use thread
-pub use mutex
+pub use <std.io.file>
+pub use <std.io.net>
+pub use <std.io.thread>
+pub use <std.io.mutex>
