@@ -4673,10 +4673,20 @@ bool initTargetMachine(ZState *state) {
     state->pointerSize          = LLVMPointerSize(layout);
     state->targetMachine        = machine;
     state->resolvedTriple       = triple;
-    state->dataLayout           = LLVMCopyStringRepOfTargetData(layout);
+
+    /* Copied into the state arena, like the triple, so only the machine needs disposing. */
+    char *dataLayout            = LLVMCopyStringRepOfTargetData(layout);
+    state->dataLayout           = zstrdup(state->allocator, dataLayout);
+    LLVMDisposeMessage(dataLayout);
 
     LLVMDisposeTargetData(layout);
     return true;
+}
+
+void disposeTargetMachine(ZState *state) {
+    if (!state->targetMachine) return;
+    LLVMDisposeTargetMachine((LLVMTargetMachineRef)state->targetMachine);
+    state->targetMachine = NULL;
 }
 
 static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileType fileType) {
@@ -4766,40 +4776,46 @@ static void *compileModule(void *arg) {
     return NULL;
 }
 
+/* Verify one module's IR and link it into `module`. The caller frees `gen`. */
+static void linkModule(ZState *state, LLVMModuleRef module, LLVMContextRef ctx, ZCodegen *gen) {
+    if (!gen->mod) return;
+
+    usize namelen;
+    const char *name = LLVMGetModuleIdentifier(gen->mod, &namelen);
+
+    if (!state->cli.skipLLVMValidation) {
+        char *verifyErr = NULL;
+        if (LLVMVerifyModule(gen->mod, LLVMReturnStatusAction, &verifyErr)) {
+            zlog(state, NULL, Z4018, name, verifyErr);
+            LLVMDisposeMessage(verifyErr);
+            return;
+        }
+        LLVMDisposeMessage(verifyErr);
+    }
+
+    LLVMMemoryBufferRef buf = LLVMWriteBitcodeToMemoryBuffer(gen->mod);
+    LLVMModuleRef imported  = NULL;
+
+    bool parseFailed = LLVMParseBitcodeInContext2(ctx, buf, &imported);
+    LLVMDisposeMemoryBuffer(buf);
+    if (parseFailed) {
+        zlog(state, NULL, Z4019, name);
+        return;
+    }
+
+    if (LLVMLinkModules2(module, imported)) {
+        zlog(state, NULL, Z401A, name);
+    }
+}
+
 static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output) {
     LLVMContextRef ctx      = LLVMContextCreate();
     LLVMModuleRef module    = LLVMModuleCreateWithNameInContext(
         output ? output : "a.out", ctx);
 
+    /* Every module's codegen is freed, including the ones skipped on error. */
     for (usize i = 0; i < veclen(state->modules); i++) {
-        if (!gens[i]->mod) continue;
-
-        usize namelen;
-        const char *name = LLVMGetModuleIdentifier(gens[i]->mod, &namelen);
-
-        if (!state->cli.skipLLVMValidation) {
-            char *verifyErr = NULL;
-            if (LLVMVerifyModule(gens[i]->mod, LLVMReturnStatusAction, &verifyErr)) {
-                zlog(state, NULL, Z4018, name, verifyErr);
-                LLVMDisposeMessage(verifyErr);
-                continue;
-            }
-            LLVMDisposeMessage(verifyErr);
-        }
-
-        LLVMMemoryBufferRef buf = LLVMWriteBitcodeToMemoryBuffer(gens[i]->mod);
-        LLVMModuleRef imported  = NULL;
-
-        bool parseFailed = LLVMParseBitcodeInContext2(ctx, buf, &imported);
-        LLVMDisposeMemoryBuffer(buf);
-        if (parseFailed) {
-            zlog(state, NULL, Z4019, name);
-            continue;
-        }
-
-        if (LLVMLinkModules2(module, imported)) {
-            zlog(state, NULL, Z401A, name);
-        }
+        linkModule(state, module, ctx, gens[i]);
         freeCodegen(gens[i]);
     }
 

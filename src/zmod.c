@@ -976,6 +976,10 @@ void freestate(ZState *state) {
     /* Don't leave this thread's default pointing at an arena about to be freed. */
     if (vecDefaultAllocator == state->allocator) useAllocator(NULL);
 
+#if Z_COMPILER
+    disposeTargetMachine(state);
+#endif
+
     /* state->modules lives in the state arena, so the modules go first. */
     for (usize i = 0; i < veclen(state->modules); i++) {
         adestroy(state->modules[i]->allocator);
@@ -1170,19 +1174,18 @@ static bool fileExists(const char *path) {
 
 #define ENTRY_MODULE "/lib.zn"
 
-static char *resolveModuleFile(char *filename) {
+static char *resolveModuleFile(ZState *state, char *filename) {
     if (fileExists(filename)) return filename;
 
     usize n = strlen(filename);
     if (n < 3 || strcmp(filename + n - 3, ".zn") != 0) return filename;
 
     usize baseLen = n - 3;
-    char *alt = malloc(baseLen + sizeof(ENTRY_MODULE));
+    char *alt = aalloc(state->allocator, baseLen + sizeof(ENTRY_MODULE));
     memcpy(alt, filename, baseLen);
     memcpy(alt + baseLen, ENTRY_MODULE, sizeof(ENTRY_MODULE));
 
     if (fileExists(alt)) return alt;
-    free(alt);
     return filename;
 }
 
@@ -1192,7 +1195,7 @@ static char *resolveModuleFile(char *filename) {
  * */
 bool visit(ZState *state, char **filename, bool external) {
     *filename = resolvePath(state, *filename);
-    *filename = resolveModuleFile(*filename);
+    *filename = resolveModuleFile(state, *filename);
     for (usize i = 0; i < veclen(state->visitedFiles); i++) {
         if (strcmp(state->visitedFiles[i], *filename) == 0) return false;
     }

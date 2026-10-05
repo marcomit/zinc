@@ -1139,5 +1139,6 @@ ZLangItemType getLangItemType(ZNode *);
 void analyzeAnnotations(ZState *, ZNode *);
 void validate(ZState *, ZNode *);
 bool initTargetMachine(ZState *);
+void disposeTargetMachine(ZState *);
 
 #endif
