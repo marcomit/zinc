@@ -20,8 +20,16 @@ typedef struct {
     LspMethod callback;
 } LspHandler;
 
+typedef struct {
+    const char  *uri;
+    const char  *src;
+    ZNode       *root;
+    arena_t     *arena;
+} LspModule;
+
 struct LspContext {
-    Json *root;
+    Json        *root;
+    LspModule   **modules;
 };
 
 struct LspResponse {
@@ -92,4 +100,10 @@ void log_msg(const char *, const char *, size_t);
 extern FILE *g_out;
 void lsp_send(Json *);
 void lsp_notify(const char *, Json *);
+
+LspResponse *lsp_open_document(LspContext *);
+LspResponse *lsp_change_document(LspContext *);
+LspResponse *lsp_close_document(LspContext *);
+LspResponse *lsp_completion(LspContext *);
+
 #endif //!LSP_H

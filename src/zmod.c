@@ -239,12 +239,18 @@ static void _stype(ZType *type, char **buff) {
         vecunion(*buff, "none", 4);
         break;
 
+    case Z_TYPE_NAMESPACE:
+        vecunion(*buff, "namespace", 9);
+        break;
+
     case Z_TYPE_RESULT:
         _stype(type->result.success, buff);
         vecpush(*buff, '?');
         vecpush(*buff, '?');
         _stype(type->result.error, buff);
         break;
+    case Z_TYPE_GENERIC:
+        vecunion(*buff, "Generic", 7);
     // case Z_TYPE_GENERIC:
     //     vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
     //     vecpush(*buff, '[');
@@ -937,10 +943,12 @@ ZState *makestate() {
     self->homePath              = getHomePath();
     self->canAdvance            = true;
 
+#if Z_COMPILER
     self->cli.emit              = Z_EMIT_EXE;
     self->cli.optimizationLevel = '2';
     self->cli.ltoMode           = Z_LTO_OFF;
     self->cli.mode              = Z_MODE_RELEASE;
+#endif
 
     return self;
 }

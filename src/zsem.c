@@ -1002,6 +1002,14 @@ bool typesEqual(ZType *a, ZType *b) {
     }
 }
 
+i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
+    for (usize i = 0; i < veclen(sum->sumType); i++) {
+        if (typesEqual(sum->sumType[i], concrete))
+            return (i32)i;
+    }
+    return -1;
+}
+
 static ZNode *implicitCast(ZThreadSem *ctx, ZNode *node, ZType *type) {
     (void)ctx;
     if (!node) return node;
@@ -1188,7 +1196,10 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
     case Z_TYPE_PRIMITIVE: {
         if (type->primitive.token->type != TOK_IDENT) return type;
         ZSymbol *sym = resolve(ctx, type->primitive.token);
-        if (!sym) return NULL;
+        if (!sym) {
+            zlog(ctx->state, type->primitive.token, Z00AB, stype(type));
+            return NULL;
+        }
         if (sym->kind == Z_SYM_STRUCT) {
             // for (usize i = 0; i < veclen(sym->type->strct.fields); i++) {
             //     ZNode *field = sym->type->strct.fields[i];
@@ -1456,9 +1467,11 @@ static void resolveFuncArgs(
 
 
     for (usize i = 0; i < expectedArgsLen; i++) {
-        ZType *expected = expectedArgs[i];
+        ZType *expected     = expectedArgs[i];
+        expected            = resolveTypeRef(ctx, expected);
 
-        args[i]->resolved = resolveType(ctx, args[i], expected);
+        args[i]->resolved   = resolveType(ctx, args[i], expected);
+        args[i]->resolved   = resolveTypeRef(ctx, args[i]->resolved);
         checkFunctionUsedAsValue(ctx, args[i]);
 
         /* If the argument is a generic skip the validation*/
@@ -1774,6 +1787,8 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
     if (op == TOK_EQ || tokmask(tok, TOK_SELF_OPERATOR)) inferred = left;
     ZType     *right    = resolveType(ctx, curr->binary.right, inferred);
+    right               = resolveTypeRef(ctx, right);
+    left                = resolveTypeRef(ctx, left);
 
     if (tokmask(tok, TOK_BITOPERATOR_MASK) &&
             (!isNumeric(left) ||

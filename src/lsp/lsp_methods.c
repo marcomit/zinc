@@ -54,7 +54,7 @@ static LspResponse *lsp_initialize(LspContext *ctx) {
     JsonSet(result,         "capabilities",             capabilities);
     JsonSet(result,         "serverInfo",               serverInfo);
 
-    JsonSet(capabilities,   "textDocumentSync",         JsonNumber(2));
+    JsonSet(capabilities,   "textDocumentSync",         JsonNumber(1));
     JsonSet(capabilities,   "hoverProvider",            JsonBool(true));
     JsonSet(capabilities,   "definitionProvider",       JsonBool(true));
     JsonSet(capabilities,   "completionProvider",       JsonMap(NULL));
@@ -87,7 +87,7 @@ static Json *get_completions(LspCompletionItem *list) {
     return items;
 }
 
-static LspResponse *lsp_completion(LspContext *ctx) {
+LspResponse *lsp_completion(LspContext *ctx) {
     LspCompletionItem *items = NULL;
 
     vecpush(items, ((LspCompletionItem){"PRRR", Z_LSP_CLASS}));
@@ -143,7 +143,7 @@ static void publish_diagnostics(const char *uri, int version, ZState *state) {
     lsp_notify("textDocument/publishDiagnostics", params);
 }
 
-static LspResponse *lsp_open_document(LspContext *ctx) {
+LspResponse *lsp_open_document(LspContext *ctx) {
     Json *doc   = JsonGetFmt(ctx->root, "params.textDocument");
     char *uri   = JsonAsString(JsonGet(doc, "uri"));
     char *src   = JsonAsString(JsonGet(doc, "text"));
@@ -164,23 +164,9 @@ static LspResponse *lsp_open_document(LspContext *ctx) {
     return NULL;
 }
 
-static LspResponse *lsp_change_document(LspContext *ctx) {
-    return lsp_reply(ctx, JsonNull());
+LspResponse *lsp_change_document(LspContext *ctx) {
+    return NULL;
 }
-
-static LspResponse *lsp_workspace_configure(LspContext *ctx) {
-    return lsp_reply(ctx, JsonNull());
-}
-
-static LspHandler Handlers[] = {
-    { "initialize",                 lsp_initialize          },
-    { "shutdown",                   lsp_shutdown            },
-    { "textDocument/didOpen",       lsp_open_document       },
-    { "textDocument/didChange",     lsp_change_document     },
-    { "textDocument/completion",    lsp_completion          },
-    { "workspace/configure",        lsp_workspace_configure },
-    { NULL,                         NULL                    }
-};
 
 static bool format_id(Json *id, char *buf, size_t buf_size) {
     if (JsonType(id) == JSON_NUMBER) {
@@ -193,22 +179,4 @@ static bool format_id(Json *id, char *buf, size_t buf_size) {
         return true;
     }
     return false;
-}
-
-LspResponse *handle_message(LspContext *ctx) {
-    const char *method = JsonAsString(JsonGet(ctx->root, "method"));
-    if (!method) return NULL;
-
-    LspHandler *handler = Handlers;
-    char buf[256] = "";
-    bool has_id = format_id(JsonGet(ctx->root, "id"), buf, sizeof buf);
-
-    while (handler->name) {
-        if (strcmp(method, handler->name) == 0) {
-            return handler->callback(ctx);
-        }
-        handler++;
-    }
-
-    return NULL;
 }

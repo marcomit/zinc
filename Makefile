@@ -83,7 +83,10 @@ INCLUDES = -I include -I lib
 # plain object files never end up in the same build dir.
 SANITIZE ?=
 
-CFLAGS   = -g -Wall -Wextra -Wdeprecated-declarations -O2 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS)
+# Set to -DZMODE=ZMODE_LSP by the `lsp` target; empty means the compiler (zinc.h).
+ZMODE_FLAGS ?=
+
+CFLAGS   = -g -Wall -Wextra -Wdeprecated-declarations -O2 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS) $(ZMODE_FLAGS)
 CXXFLAGS = -g -O2 -std=c++17 $(SANITIZE) $(_WIN_DEFS) $(INCLUDES) $(_LLVM_CFLAGS) $(LLD_INCLUDES)
 LDFLAGS  = $(SANITIZE) $(LLD_LIBS) $(_LLVM_LDFLAGS)
 TARGET    = zinc
@@ -114,14 +117,22 @@ LSP_OBJ = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(SRC_DIR)/%,$(LS
 
 all: $(TARGET)
 
-# Build the language server. It links the compiler's objects (for zinc.h's
-# API) minus zinc.o, which holds the compiler's main().
-LSP_DEPS = $(filter-out $(BUILD_DIR)/zinc.o,$(OBJ))
+# Build the language server. It is compiled with ZMODE=ZMODE_LSP (see zinc.h),
+# which strips the CLI/codegen-only state, so it can't reuse the compiler's
+# objects: the recursive make rebuilds the frontend into its own dir. The CLI
+# (zcli.c, zinc.c with its main()) and the code generator are left out.
+LSP_BUILD_DIR = build/lsp
+LSP_FRONTEND  = $(filter-out $(SRC_DIR)/zinc.c $(SRC_DIR)/zcli.c $(SRC_DIR)/codegen/%,$(C_SRC))
+LSP_DEPS      = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(SRC_DIR)/%,$(LSP_FRONTEND))) \
+                $(patsubst $(LIB_DIR)/%.c,$(BUILD_DIR)/%.o, $(filter $(LIB_DIR)/%,$(LSP_FRONTEND)))
+# No LLD and no LLVM core: only libclang, which ctrans.c uses to read C headers.
+LSP_LDFLAGS   = $(SANITIZE) -L$(_LLVM_LIBDIR) -lclang -Wl,-rpath,$(_LLVM_LIBDIR)
 
-lsp: $(LSP_TARGET)
+lsp:
+	+$(MAKE) $(LSP_TARGET) BUILD_DIR=$(LSP_BUILD_DIR) ZMODE_FLAGS=-DZMODE=ZMODE_LSP
 
 $(LSP_TARGET): $(LSP_OBJ) $(LSP_DEPS)
-	$(CXX) -o $@ $(LSP_OBJ) $(LSP_DEPS) $(LDFLAGS)
+	$(CC) -o $@ $(LSP_OBJ) $(LSP_DEPS) $(LSP_LDFLAGS)
 
 # --- Sanitizer builds ---------------------------------------------------
 # Several sanitizers are mutually exclusive (ASan/TSan/MSan cannot be combined)

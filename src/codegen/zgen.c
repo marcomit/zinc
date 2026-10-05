@@ -1962,14 +1962,6 @@ static bool typeIsUnsigned(ZType *type) {
     return tokmask(type->primitive.token, TOK_UNSIGNED);
 }
 
-i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
-    for (usize i = 0; i < veclen(sum->sumType); i++) {
-        if (typesEqual(sum->sumType[i], concrete))
-            return (i32)i;
-    }
-    return -1;
-}
-
 static void storeSumVariant(ZCodegen *ctx, LLVMValueRef alloca, LLVMTypeRef sumLLVMType,
                             i32 tag, LLVMValueRef val, ZType *valType) {
     if (tag < 0) {
