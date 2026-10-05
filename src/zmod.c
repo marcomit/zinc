@@ -936,12 +936,13 @@ void printScope(ZScope *scope) {
 }
 
 ZState *makestate() {
-    ZState *self                = zalloc(ZState);
+    ZState *self                = zalloc(heapAllocator, ZState);
     *self                       = (ZState){ 0 };
 
     self->currentPhase          = Z_PHASE_LEXICAL;
     self->homePath              = getHomePath();
     self->canAdvance            = true;
+    self->allocator             = arenaAllocator;
 
 #if Z_COMPILER
     self->cli.emit              = Z_EMIT_EXE;
@@ -953,7 +954,7 @@ ZState *makestate() {
     return self;
 }
 
-char *readfile(char *filename) {
+char *readfile(Allocator *a, char *filename) {
     FILE *fd = fopen(filename, "rb");
 
     if (!fd) return NULL;
@@ -961,7 +962,7 @@ char *readfile(char *filename) {
     fseek(fd, 0, SEEK_END);
     i64 flen = ftell(fd);
     fseek(fd, 0, SEEK_SET);
-    char *buff = allocator.alloc(flen + 1);
+    char *buff = aalloc(a, flen + 1);
     fread(buff, flen, 1, fd);
 
     buff[flen] = 0;
@@ -971,14 +972,14 @@ char *readfile(char *filename) {
 
 /* Format a printf-style message into a freshly allocated, NUL-terminated
  * string. Does not consume `args` destructively beyond a single pass. */
-static char *vformat(const char *fmt, va_list args) {
+static char *vformat(Allocator *a, const char *fmt, va_list args) {
     va_list copy;
     va_copy(copy, args);
     int len = vsnprintf(NULL, 0, fmt, copy);
     va_end(copy);
     if (len < 0) return NULL;
 
-    char *out = allocator.alloc((size_t)len + 1);
+    char *out = aalloc(a, (size_t)len + 1);
     if (out) vsnprintf(out, (size_t)len + 1, fmt, args);
     return out;
 }
@@ -991,7 +992,7 @@ ZLog *vmakelog( ZState *state,
                 int src_line,
                 const char *fmt,
                 va_list args) {
-    ZLog *log = zalloc(ZLog);
+    ZLog *log = zalloc(state->allocator, ZLog);
 
     log->filename = filename;
     log->level = level;
@@ -1003,7 +1004,7 @@ ZLog *vmakelog( ZState *state,
     log->hint = NULL;
     log->notes = NULL;
 
-    log->message = vformat(fmt, args);
+    log->message = vformat(state->allocator, fmt, args);
     log->phase = state->currentPhase;
     vecpush(state->logs, log);
 
@@ -1075,7 +1076,7 @@ ZLog *emitHint(ZLog *log, const char *fmt, ...) {
 
     va_list args;
     va_start(args, fmt);
-    log->hint = vformat(fmt, args);
+    log->hint = vformat(heapAllocator, fmt, args);
     va_end(args);
 
     pthread_mutex_unlock(&logLock);
@@ -1088,10 +1089,10 @@ ZLog *emitNote(ZLog *log, ZToken *tok, const char *fmt, ...) {
 
     va_list args;
     va_start(args, fmt);
-    char *message = vformat(fmt, args);
+    char *message = vformat(heapAllocator, fmt, args);
     va_end(args);
 
-    ZLogNote *note = zalloc(ZLogNote);
+    ZLogNote *note = zalloc(heapAllocator, ZLogNote);
     note->token = tok;
     note->message = message;
     vecpush(log->notes, note);
@@ -1108,7 +1109,7 @@ static char *resolvePath(ZState *state, char *filename) {
 
 
     usize len = strlen(state->filename);
-    char *path = znalloc(char, len+1);
+    char *path = znalloc(state->allocator, char, len+1);
     strncpy(path, state->filename, len);
     path[len] = '\0';
 
@@ -1277,15 +1278,16 @@ ZType *modType      = NULL;
 ZType *strType      = NULL;
 ZType *interpType   = NULL;
 
-void initPrimitiveTypes() {
-    if (!none)      none    = maketype          (Z_TYPE_NONE);
-    if (!u0Type)    u0Type  = makePrimitiveType (TOK_VOID);
-    if (!charType)  charType= makePrimitiveType (TOK_CHAR);
-    if (!u1Type)    u1Type  = makePrimitiveType (TOK_BOOL);
-    if (!u64Type)   u64Type = makePrimitiveType (TOK_U64);
-    if (!modType)   modType = maketype          (Z_TYPE_NAMESPACE);
+void initPrimitiveTypes(ZState *state) {
+    Allocator *allocator = state->allocator;
+    if (!none)      none    = maketype          (allocator, Z_TYPE_NONE);
+    if (!u0Type)    u0Type  = makePrimitiveType (allocator, TOK_VOID);
+    if (!charType)  charType= makePrimitiveType (allocator, TOK_CHAR);
+    if (!u1Type)    u1Type  = makePrimitiveType (allocator, TOK_BOOL);
+    if (!u64Type)   u64Type = makePrimitiveType (allocator, TOK_U64);
+    if (!modType)   modType = maketype          (allocator, Z_TYPE_NAMESPACE);
     if (!strType) {
-        strType             = maketype(Z_TYPE_ARRAY);
+        strType             = maketype(allocator, Z_TYPE_ARRAY);
         strType->array.base = charType;
         strType->array.size = 0;
     }

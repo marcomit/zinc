@@ -155,7 +155,7 @@ LspResponse *lsp_open_document(LspContext *ctx) {
 
     ZState *state   = makestate();
     visit(state, &path, false);
-    initPrimitiveTypes();
+    initPrimitiveTypes(state);
     ZToken **tokens = ztokenizeSource(state, src);
 
     ZNode *root     = zparse(state, tokens);

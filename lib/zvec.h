@@ -79,24 +79,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern Allocator *vecDefaultAllocator;
+
 /* ============================================================================
  * Configuration Macros
  * ============================================================================ */
-
-/**
- * @brief Memory allocator function (signature: void* alloc(size_t size))
- */
-#define VEC_ALLOC malloc
-
-/**
- * @brief Memory reallocation function (signature: void* realloc(void* ptr, size_t size))
- */
-#define VEC_REALLOC realloc
-
-/**
- * @brief Memory deallocation function (signature: void free(void* ptr))
- */
-#define VEC_FREE free
 
 /**
  * @brief Initial capacity (number of elements) for new vectors
@@ -122,13 +109,12 @@
  * @param new_capacity_bytes New total capacity in bytes
  * @return New vector pointer or NULL on failure
  */
-#define VEC_REALLOC_IMPL(v, new_capacity_bytes) ({                              \
-    vec_metadata *old_meta = VEC_METADATA(v);                                   \
-    vec_metadata *new_meta = (vec_metadata *)VEC_REALLOC(                       \
-        old_meta,                                                               \
-        sizeof(vec_metadata) + (new_capacity_bytes)                             \
-    );                                                                          \
-    (new_meta ? (void *)(new_meta + 1) : NULL);                                 \
+#define VEC_REALLOC_IMPL(v, new_capacity_bytes) ({                                                      \
+    vec_metadata *old_meta = VEC_METADATA(v);                                                           \
+    usize old_bytes = sizeof(vec_metadata) + old_meta->capacity * sizeof(*(v));                         \
+    vec_metadata *new_meta = aalloc(old_meta->allocator, sizeof(vec_metadata) + (new_capacity_bytes));   \
+    if (new_meta) memcpy(new_meta, old_meta, old_bytes);                                                \
+    (new_meta ? (void *)(new_meta + 1) : NULL);                                                         \
 })
 
 /* ============================================================================
@@ -166,6 +152,8 @@
  */
 #define vecsetcap(v, c) (VEC_METADATA(v)->capacity = (c))
 
+#define vecnew(a, T) ((T *)veccreatewith((a), sizeof(T)))
+
 /**
  * @brief Push an element to the end of a vector
  * @param v Vector pointer (may be NULL for first push)
@@ -181,10 +169,12 @@
  * vecpush(vec, 100);
  * @endcode
  */
-#define vecpush(v, i)                                                           \
+#define vecpush(v, i) vecpushwith(v, i, vecDefaultAllocator)
+
+#define vecpushwith(v, i, a)                                                    \
 do {                                                                            \
     if (!(v)) {                                                                 \
-        (v) = veccreate(sizeof(*(v)));                                          \
+        (v) = veccreatewith((a), sizeof(*(v)));                                 \
     }                                                                           \
     if (!(v)) break;                                                            \
     if (veclen(v) >= veccap(v)) {                                               \
@@ -222,6 +212,11 @@ do {                                                                            
         (v) = NULL;                                                             \
     }                                                                           \
 } while (0)
+
+#define VEC_ALLOCATOR(v) ({                                                     \
+    Allocator *a = VEC_METADATA(v)->allocator;                                  \
+    (a ? a : vecDefaultAllocator);                                              \
+})
 
 /**
  * @brief Remove the last element from a vector
@@ -307,8 +302,9 @@ do {                                                                            
  * It stores the vector's capacity and current length.
  */
 typedef struct vec_metadata {
-    usize capacity;  /**< Maximum number of elements before reallocation */
-    usize length;    /**< Current number of elements in the vector */
+    usize       capacity;   /**< Maximum number of elements before reallocation */
+    usize       length;     /**< Current number of elements in the vector */
+    Allocator   *allocator; /**< Allocator stored in vecnew, if null it takes the default allocator. */
 } vec_metadata;
 
 /* ============================================================================
@@ -324,19 +320,18 @@ typedef struct vec_metadata {
  * @note Initial capacity is VEC_DEFAULT_SIZE elements
  *
  * @code
- * int *vec = veccreate(sizeof(int));
+ * int *vec = veccreatewith(NULL, sizeof(int));
  * @endcode
  */
-static inline void *veccreate(usize element_size) {
+static inline void *veccreatewith(Allocator *allocator, usize element_size) {
+    if (!allocator) return NULL;
     usize total_bytes = sizeof(vec_metadata) + (VEC_DEFAULT_SIZE * element_size);
-    vec_metadata *metadata = (vec_metadata *)VEC_ALLOC(total_bytes);
+    vec_metadata *metadata = (vec_metadata *)aalloc(allocator, total_bytes);
 
-    if (!metadata) {
-            return NULL;
-    }
-
-    metadata->capacity = VEC_DEFAULT_SIZE;
-    metadata->length = 0;
+    if (!metadata) return NULL;
+    metadata->capacity  = VEC_DEFAULT_SIZE;
+    metadata->length    = 0;
+    metadata->allocator = allocator;
 
     return (void *)(metadata + 1);
 }

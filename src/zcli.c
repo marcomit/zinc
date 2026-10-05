@@ -109,11 +109,11 @@ void usage(char *program) {
 static void printAllocation(ZState *state) {
     if (!state->cli.verbose) return;
 
-    double used = arenaLength(allocator.ctx);
-    double allocated = arenaSize(allocator.ctx);
+    double used = arenaLength(state->allocator->ctx);
+    double allocated = arenaSize(state->allocator->ctx);
     for (usize i = 0; i < veclen(state->modules); i++) {
-        used += arenaLength(state->modules[i]->allocator);
-        allocated += arenaSize(state->modules[i]->allocator);
+        used += arenaLength(state->modules[i]->allocator->ctx);
+        allocated += arenaSize(state->modules[i]->allocator->ctx);
     }
 
     static const char *labels[] = {
@@ -160,7 +160,7 @@ static ZErrorCode pipeline(ZState *state) {
     if (state->cli.dumpTokens) printTokens(tokens);
 
     if (!initTargetMachine(state)) return Z_CODEGEN_ERROR;
-    initPrimitiveTypes();
+    initPrimitiveTypes(state);
 
     if (!canAdvance(state)) return Z_LEXICAL_ERROR;
 
@@ -186,7 +186,7 @@ static ZErrorCode pipeline(ZState *state) {
     if (state->cli.verbose) printAllocation(state);
 
     for (usize i = 0; i < veclen(state->modules); i++) {
-        arenaFree(state->modules[i]->allocator);
+        aclose(state->modules[i]->allocator);
     }
 
     return Z_OK;
@@ -204,7 +204,7 @@ static ZErrorCode compile(ZState *state) {
 
     printLogs(state);
 
-    allocator.close();
+    aclose(state->allocator);
 
     if (!res) {
         const char *format;
@@ -271,7 +271,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         switch (opt) {
         case 'L': {
             usize len = 3 + strlen(optarg);
-            char *lib = znalloc(char, len);
+            char *lib = znalloc(state->allocator, char, len);
             snprintf(lib, len, "-L%s", optarg);
             lib[len-1] = '\0';
             vecpush(state->cli.extraArgs, lib);
@@ -279,7 +279,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         }
         case 'l': {
             usize len = 3 + strlen(optarg);
-            char *lib = znalloc(char, len);
+            char *lib = znalloc(state->allocator, char, len);
             snprintf(lib, len, "-l%s", optarg);
             lib[len-1] = '\0';
             vecpush(state->cli.extraArgs, lib);

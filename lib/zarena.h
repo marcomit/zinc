@@ -5,6 +5,7 @@
 #define Z_ARENA_H
 
 #include "base.h"
+#include "zmem.h"
 
 typedef struct ArenaBucket {
     usize len;
@@ -24,12 +25,14 @@ typedef struct arena_t {
     ArenaScope **scopes;
 } arena_t;
 
-arena_t *createArena();
-void    *arenaAlloc(arena_t *, usize);
-void    arenaFree(arena_t *);
-void    arenaScope(arena_t *);
-void    arenaEndScope(arena_t *);
-usize   arenaSize(arena_t *);
-usize   arenaLength(arena_t *);
+arena_t     *createArena();
+void        *arenaAlloc(arena_t *, usize);
+void        arenaFree(arena_t *);
+ArenaScope  arenaScope(arena_t *);
+void        arenaEndScope(arena_t *, ArenaScope);
+usize       arenaSize(arena_t *);
+usize       arenaLength(arena_t *);
+
+Allocator   arena2Allocator(arena_t *);
 
 #endif //Z_ARENA_H

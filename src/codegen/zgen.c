@@ -12,6 +12,7 @@
 
 #include "zgen.h"
 #include "zinc.h"
+#include "zmem.h"
 
 static void         genStmt             (ZCodegen *, ZNode *);
 static void         genBlock            (ZCodegen *, ZNode *);
@@ -49,12 +50,12 @@ _Thread_local LLVMTypeRef StringType    = NULL;
 extern ZNode *LangItems[Z_LANG_COUNT];
 
 static ZLLVMSymbol *makesymbol(ZCodegen *ctx) {
-    ZLLVMSymbol *self = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMSymbol));
+    ZLLVMSymbol *self = aalloc(ctx->module->allocator, sizeof(ZLLVMSymbol));
     return self;
 }
 
 static ZLLVMScope *makescope(ZCodegen *ctx, int type, ZLLVMScope *parent) {
-    ZLLVMScope *self    = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMScope));
+    ZLLVMScope *self    = aalloc(ctx->module->allocator, sizeof(ZLLVMScope));
     *self               = (ZLLVMScope){ 0 };
     self->parent        = parent;
     self->startLoop     = parent ? parent->startLoop : NULL;
@@ -209,7 +210,7 @@ static void endModule(ZCodegen *ctx) {
 }
 
 ZCodegen *makecodegen(ZState *state, ZModuleAllocator *module) {
-    ZCodegen *self      = zalloc(ZCodegen);
+    ZCodegen *self      = zalloc(state->allocator, ZCodegen);
     self->ctx           = LLVMContextCreate();
     self->builder       = LLVMCreateBuilderInContext(self->ctx);
 
@@ -617,7 +618,7 @@ static LLVMTypeRef genStructType(ZCodegen *ctx, ZType *type) {
     putStructInCache(ctx, (char *)name, structType);
 
     usize nfields           = veclen(type->strct.fields);
-    LLVMTypeRef *ftypes     = arenaAlloc(
+    LLVMTypeRef *ftypes     = aalloc(
         ctx->module->allocator,
         sizeof(LLVMTypeRef) * nfields
     );
@@ -682,7 +683,7 @@ static LLVMTypeRef genFacetDecl(ZCodegen *ctx, ZType *type) {
     putStructInCache(ctx, name, facet);
 
     usize len = veclen(type->facet.funcs);
-    LLVMTypeRef *funcs = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * len);
+    LLVMTypeRef *funcs = aalloc(ctx->module->allocator, sizeof(LLVMTypeRef) * len);
 
     for (usize i = 0; i < len; i++) {
         funcs[i] = genType(ctx, type->facet.funcs[i]->resolved);
@@ -784,7 +785,7 @@ LLVMTypeRef genType(ZCodegen *ctx, ZType *type) {
 
     case Z_TYPE_TUPLE: {
         usize len = veclen(type->tuple);
-        LLVMTypeRef *elems = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (len ? len : 1));
+        LLVMTypeRef *elems = aalloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (len ? len : 1));
         for (usize i = 0; i < len; i++) {
             elems[i] = genType(ctx, type->tuple[i]);
             if (!elems[i]) return NULL;
@@ -1580,7 +1581,7 @@ static LLVMValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
 static LLVMTypeRef buildFuncType(ZCodegen *ctx, ZType *type) {
     usize args = veclen(type->func.args);
     usize argc = veclen(type->func.capabilities);
-    LLVMTypeRef *params = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * ((argc + args) ? (argc + args) : 1));
+    LLVMTypeRef *params = aalloc(ctx->module->allocator, sizeof(LLVMTypeRef) * ((argc + args) ? (argc + args) : 1));
     usize len = 0;
     for (usize i = 0; i < argc; i++) {
         if (!isRuntimeParam(ctx->state, type->func.capabilities[i])) continue;
@@ -1599,7 +1600,7 @@ static LLVMTypeRef buildFuncType(ZCodegen *ctx, ZType *type) {
  * matching the impl function whose first parameter is the receiver. */
 static LLVMTypeRef buildFacetFuncType(ZCodegen *ctx, ZType *type) {
     usize argc = veclen(type->func.args);
-    LLVMTypeRef *params = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc + 1));
+    LLVMTypeRef *params = aalloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc + 1));
 
     params[0] = LLVMPointerType(i8Type, 0);
 
@@ -1766,7 +1767,7 @@ static LLVMValueRef genCall(ZCodegen *ctx, ZNode *node) {
     usize fixedParamCount = LLVMCountParamTypes(funcType);
     LLVMTypeRef *fixedParamTypes = NULL;
     if (fixedParamCount > 0) {
-        fixedParamTypes = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * fixedParamCount);
+        fixedParamTypes = aalloc(ctx->module->allocator, sizeof(LLVMTypeRef) * fixedParamCount);
         LLVMGetParamTypes(funcType, fixedParamTypes);
     }
 
@@ -2909,7 +2910,7 @@ static LLVMValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
     usize argLen = veclen(node->resolved->func.args);
     usize capLen = veclen(node->resolved->func.capabilities);
 
-    LLVMTypeRef *arguments      = arenaAlloc(
+    LLVMTypeRef *arguments      = aalloc(
         ctx->module->allocator, sizeof(LLVMTypeRef) * ((argLen + capLen) ? (argLen + capLen) : 1)
     );
 
@@ -3259,7 +3260,7 @@ static LLVMValueRef genForeign(ZCodegen *ctx, ZNode *node) {
     LLVMTypeRef ret = genType(ctx, node->resolved->func.ret);
     usize argc = veclen(node->resolved->func.args);
 
-    LLVMTypeRef *paramTypes = arenaAlloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc ? argc : 1));
+    LLVMTypeRef *paramTypes = aalloc(ctx->module->allocator, sizeof(LLVMTypeRef) * (argc ? argc : 1));
     usize len = 0;
     for (usize i = 0; i < argc; i++) {
         ZType *at = node->resolved->func.args[i];
@@ -3743,7 +3744,7 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
     LLVMValueRef cond = genLValue(ctx, node->match.cond);
     ZType *condType = node->match.cond->resolved;
     usize armLen = veclen(node->match.arms);
-    LLVMBasicBlockRef *blocks = arenaAlloc(ctx->module->allocator, sizeof(LLVMBasicBlockRef) * (armLen+1));
+    LLVMBasicBlockRef *blocks = aalloc(ctx->module->allocator, sizeof(LLVMBasicBlockRef) * (armLen+1));
 
     blocks[0] = LLVMGetInsertBlock(ctx->builder);
     for (usize i = 1; i <= armLen; i++) blocks[i] = makeblock(ctx, "matcharm");
@@ -3790,7 +3791,7 @@ static void genCapability(ZCodegen *ctx, ZNode *node) {
 
         if (decl->type == NODE_VAR_DECL &&
             decl->varDecl.pattern->type == Z_VAR_IDENT) {
-            ZLLVMCapability *capability = arenaAlloc(
+            ZLLVMCapability *capability = aalloc(
                 ctx->module->allocator, sizeof(ZLLVMCapability)
             );
             capability->capability  = decl->resolved;
@@ -3857,7 +3858,7 @@ static void addFuncVar(ZCodegen *ctx,
     for (usize i = len; i > 0; i--)
         if (allocations[i - 1]->node == node) return;
 
-    ZLLVMStack *item    = arenaAlloc(ctx->module->allocator, sizeof(ZLLVMStack));
+    ZLLVMStack *item    = aalloc(ctx->module->allocator, sizeof(ZLLVMStack));
     *item = (ZLLVMStack){
         .stack          = stack,
         .elem           = elem,
@@ -4242,7 +4243,7 @@ static usize addFuncArgs(ZCodegen *ctx,
         putLLVMValueRef(ctx, name, slot);
 
         if (capabilityParams) {
-            ZLLVMCapability *capability = arenaAlloc(
+            ZLLVMCapability *capability = aalloc(
                 ctx->module->allocator, sizeof(ZLLVMCapability)
             );
             capability->capability  = argType;
@@ -4415,7 +4416,7 @@ static void genNamespace(ZCodegen *ctx, ZNode *node) {
 
 static void genImpl(ZCodegen *ctx, ZNode *root) {
     usize len = veclen(root->impl.funcs);
-    LLVMValueRef *ptrs = arenaAlloc(
+    LLVMValueRef *ptrs = aalloc(
         ctx->module->allocator, sizeof(LLVMValueRef) * len
     );
     for (usize i = 0; i < len; i++) {
@@ -4532,7 +4533,7 @@ static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
     }
     case NODE_IMPL: {
         ZNode **funcs = node->impl.funcs;
-        LLVMValueRef *ptrs = arenaAlloc(
+        LLVMValueRef *ptrs = aalloc(
             ctx->module->allocator,
             sizeof(LLVMValueRef) * veclen(funcs)
         );
@@ -4794,7 +4795,7 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
         freeCodegen(gens[i]);
     }
 
-    ZCodegen *merged    = zalloc(ZCodegen);
+    ZCodegen *merged    = zalloc(state->allocator, ZCodegen);
     merged->state       = state;
     merged->ctx         = ctx;
     merged->mod         = module;
@@ -4807,7 +4808,7 @@ static ZCodegen *compileModules(ZState *state) {
     usize len           = veclen(state->modules);
 
     ZCodegen **gens     = NULL;
-    pthread_t *threads  = znalloc(pthread_t, len);
+    pthread_t *threads  = znalloc(state->allocator, pthread_t, len);
 
     for (usize i = 0; i < len; i++) {
         ZCodegen *gen = makecodegen(state, state->modules[i]);

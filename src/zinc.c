@@ -37,12 +37,13 @@ static void handler(int sig) {
     backtrace_symbols_fd(array, size, STDERR_FILENO);
 
     if (state && state->cli.debug) printLogs(state);
-    allocator.close();
     _exit(1);
 }
 
 int main(int argc, char **argv) {
 #define err(code, ...) { fprintf(stderr, __VA_ARGS__); usage(program); return code; }
+
+    init_allocators();
 
     char *program = *argv;
 
@@ -50,7 +51,6 @@ int main(int argc, char **argv) {
 
     signal(SIGSEGV, handler);
     signal(SIGTRAP, handler);
-    allocator.open();
 
     state = makestate();
 
