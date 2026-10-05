@@ -140,7 +140,7 @@ static void printAllocation(ZState *state) {
 static void initState(ZState *state) {
     char *filename = state->cli.argv[0];
     if (!state->cli.output) {
-        char *copy = strdup(filename);
+        char *copy = zstrdup(state->allocator, filename);
 
         char *base = basename(copy);
         char *dot = strrchr(base, '.');
@@ -316,7 +316,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         case OPT_DUMP_AST:              SET_FLAG(state->cli.dumpAst,            "Dump ast");                break;
         case OPT_DUMP_TOKENS:           SET_FLAG(state->cli.dumpTokens,         "Dump tokens");             break;
         case OPT_NOINJECT:              SET_FLAG(state->cli.noInject,           "No Inject");               break;
-        case OPT_XLINKER:               vecpush(state->cli.extraArgs, strdup(optarg));                      break;
+        case OPT_XLINKER:               vecpush(state->cli.extraArgs, zstrdup(state->allocator, optarg));   break;
         case OPT_RELEASE:               state->cli.optimizationLevel = '2';                                 break;
         case OPT_RELEASE_FAST:          state->cli.optimizationLevel = '3';                                 break;
         case OPT_RELEASE_SMALL:         state->cli.optimizationLevel = 's';                                 break;

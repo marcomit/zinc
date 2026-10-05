@@ -4,10 +4,12 @@
 #include "zmem.h"
 #include "zarena.h"
 #include "zvec.h"
+#include "zhset.h"
 
-Allocator *heapAllocator       = NULL;
-Allocator *arenaAllocator      = NULL;
-Allocator *vecDefaultAllocator = NULL;
+Allocator *heapAllocator           = NULL;
+Allocator *arenaAllocator          = NULL;
+Allocator *vecDefaultAllocator     = NULL;
+Allocator *hashsetDefaultAllocator = NULL;
 
 inline void *aalloc(Allocator *allocator, usize size) {
     return allocator->alloc(allocator->ctx, size);
@@ -74,4 +76,6 @@ void init_allocators() {
         arenaAllocator = getArenaAllocator();
     if (!vecDefaultAllocator)
         vecDefaultAllocator = heapAllocator;
+    if (!hashsetDefaultAllocator)
+        hashsetDefaultAllocator = heapAllocator;
 }

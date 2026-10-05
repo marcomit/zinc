@@ -349,7 +349,7 @@ static ZToken *parseString(ZLexer *l) {
             cp = parseEscapeChar(l, &src);
         } else if (interpolated && *src == '{') {
             vecpush(buff, '\0');
-            ZToken *lit = makestring(a, strdup(buff), start, l->current);
+            ZToken *lit = makestring(a, zstrdup(a, buff), start, l->current);
             setSourceLoc(l, lit);
             vecpush(list, lit);
             l->col += src - l->current;
@@ -549,12 +549,12 @@ static ZToken *parseLiteral(ZLexer *l) {
     ZTokenType type = findKeyword(start, len);
 
     if (type == TOK_IDENT) {
-        return makeident(l->state->allocator, strndup(start, len), start, l->current);
+        return makeident(l->state->allocator, zstrndup(arenaAllocator, start, len), start, l->current);
     }
 
     // Also set str field for keywords so getMacroByName can compare them
     ZToken *tok = maketoken(l->state->allocator, type, start, l->current);
-    tok->str = strndup(start, len);
+    tok->str = zstrndup(l->state->allocator, start, len);
     return tok;
 }
 

@@ -4629,6 +4629,16 @@ static void buildOptPipeline(char level, char *buf, usize bufsize) {
     else                 snprintf(buf, bufsize, "default<O%c>", lvl);
 }
 
+/* The target triple, always copied into the state arena so callers never free it. */
+static char *targetTriple(ZState *state) {
+    if (state->cli.targetTriple) return zstrdup(state->allocator, state->cli.targetTriple);
+
+    char *host   = LLVMGetDefaultTargetTriple();
+    char *triple = zstrdup(state->allocator, host);
+    LLVMDisposeMessage(host);
+    return triple;
+}
+
 bool initTargetMachine(ZState *state) {
     LLVMInitializeAllTargetInfos();
     LLVMInitializeAllTargets();
@@ -4637,15 +4647,13 @@ bool initTargetMachine(ZState *state) {
     LLVMInitializeAllAsmPrinters();
 
     bool hostTriple = (state->cli.targetTriple == NULL);
-    char *triple = hostTriple ? LLVMGetDefaultTargetTriple()
-                              : strdup(state->cli.targetTriple);
+    char *triple    = targetTriple(state);
 
     LLVMTargetRef target;
     char *errmsg = NULL;
     if (LLVMGetTargetFromTriple(triple, &target, &errmsg)) {
         zlog(state, NULL, Z4014, errmsg);
         LLVMDisposeMessage(errmsg);
-        LLVMDisposeMessage(triple);
         return false;
     }
 
@@ -4679,8 +4687,7 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     LLVMInitializeAllAsmPrinters();
 
     bool hostTriple = (ctx->state->cli.targetTriple == NULL);
-    char *triple = hostTriple ? LLVMGetDefaultTargetTriple()
-                              : strdup(ctx->state->cli.targetTriple);
+    char *triple    = targetTriple(ctx->state);
     LLVMSetTarget(ctx->mod, triple);
 
     LLVMTargetRef target;
@@ -4688,7 +4695,6 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     if (LLVMGetTargetFromTriple(triple, &target, &errmsg)) {
         zlog(ctx->state, NULL, Z4014, errmsg);
         LLVMDisposeMessage(errmsg);
-        free(triple);
         return false;
     }
 
@@ -4743,7 +4749,6 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
     }
 
     LLVMDisposeTargetMachine(machine);
-    free(triple);
     return ok;
 }
 
@@ -4784,7 +4789,9 @@ static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output
         LLVMMemoryBufferRef buf = LLVMWriteBitcodeToMemoryBuffer(gens[i]->mod);
         LLVMModuleRef imported  = NULL;
 
-        if (LLVMParseBitcodeInContext2(ctx, buf, &imported)) {
+        bool parseFailed = LLVMParseBitcodeInContext2(ctx, buf, &imported);
+        LLVMDisposeMemoryBuffer(buf);
+        if (parseFailed) {
             zlog(state, NULL, Z4019, name);
             continue;
         }

@@ -1088,6 +1088,8 @@ ZLog *emitNote  (ZLog *, ZToken *, const char *, ...);
 #define zlog(state, tok, code, ...) \
     _log(state, tok, code, __FILE__, __LINE__, ##__VA_ARGS__)
 
+char *zstrdup(Allocator *, char *);
+char *zstrndup(Allocator *, char *, usize);
 void printLogs(ZState *);
 void initPrimitiveTypes(ZState *);
 bool canAdvance(ZState *);

@@ -39,7 +39,6 @@
 #include "zinc.h"
 #include "zmem.h"
 #include "zvec.h"
-#include "zarena.h"
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
@@ -201,7 +200,7 @@ static ZFuncTable *putOrInsertFuncTable(ZThreadSem *ctx, ZType *type) {
     ZFuncTable *table = resolveFuncTable(ctx, type);
     if (table) return table;
 
-    table = makefunctable(ctx->state->allocator, type);
+    table = makefunctable(ctx->allocator, type);
     vecpush(ctx->funcs, table);
 
     return table;
@@ -307,6 +306,7 @@ static void putImpl(ZThreadSem *ctx, ZNode *node) {
     if (veclen(node->impl.facets) > 0 &&
         node->impl.base->kind != Z_TYPE_POINTER) {
         zlog(ctx->state, node->impl.base->tok, Z303C);
+        hashset_free(&funcs);
         return;
     }
 
@@ -343,6 +343,8 @@ static void putImpl(ZThreadSem *ctx, ZNode *node) {
             vecpush(facetNames, name);
         }
     }
+    hashset_free(&seen);
+    hashset_free(&funcs);
 }
 
 ZNode *getStructField(ZThreadSem *ctx, ZType *strct, ZToken *field) {
@@ -3370,6 +3372,8 @@ static void checkEmbedFieldConflicts(ZThreadSem *ctx, ZType *strct, ZToken *embe
     hashset_t structSeen    = NULL;
     hashset_t fieldSeen     = NULL;
     _checkEmbedFieldConflicts(ctx, strct, &fieldSeen, &structSeen, embedTok);
+    hashset_free(&structSeen);
+    hashset_free(&fieldSeen);
 }
 
 static void analyzeStruct(ZThreadSem *ctx, ZNode *structDef) {
@@ -3413,6 +3417,7 @@ static void analyzeStruct(ZThreadSem *ctx, ZNode *structDef) {
             }
         }
     }
+    hashset_free(&fieldSeen);
     for (usize i = 0; i < len; i++) {
         ZNode *field = fields[i];
         if (field->type != NODE_EMBED_FIELD) continue;
@@ -3466,6 +3471,7 @@ static void analyzeEnum(ZThreadSem *ctx, ZNode *enumDef) {
             }
         }
     }
+    hashset_free(&seen);
 }
 
 static void analyzeNamespace(ZThreadSem *ctx, ZNode *node) {

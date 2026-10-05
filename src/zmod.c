@@ -51,38 +51,49 @@ static char *colors[] = {
 
 static void printLog(ZState *, ZLog *);
 
-static char *getHomePath();
+static char *getHomePath(Allocator *);
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
 #include <libgen.h>
 #include <pwd.h>
 
-static char *getHomePath() {
+static char *getHomePath(Allocator *allocator) {
     const char *home = getenv("HOME");
     if (!home || !*home) {
         struct passwd *pw = getpwuid(getuid());
         if (pw) home = pw->pw_dir;
     }
     if (!home) return NULL;
-    return strdup(home);
+    return zstrdup(allocator, (char *)home);
 }
 
 #elif _WIN32
 #include <windows.h>
 
-static char *getHomePath() {
+static char *getHomePath(Allocator *allocator) {
     const char *home = getenv("USERPROFILE");
     if (!home || !*home) home = getenv("HOME");
     if (!home) return NULL;
 
-    char *out = strdup(home);
+    char *out = zstrdup(allocator, home);
     // Normalize to forward slashes to match the rest of the path handling.
     for (char *p = out; *p; p++) if (*p == '\\') *p = '/';
     return out;
 }
 
 #endif
+
+inline char *zstrndup(Allocator *allocator, char *str, usize len) {
+    char *copy = aalloc(allocator, len + 1);
+    memcpy(copy, str, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+char *zstrdup(Allocator *allocator, char *str) {
+    return zstrndup(allocator, str, strlen(str));
+}
 
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
@@ -101,7 +112,7 @@ char *stoken(ZToken *token) {
     case TOK_IDENT:     return token->str;
     case TOK_INT_LIT:
     case TOK_RUNE_LIT:
-    case TOK_FLOAT_LIT: return strndup(token->start, token->end - token->start);
+    case TOK_FLOAT_LIT: return zstrndup(arenaAllocator, token->start, token->end - token->start);
     #define DEF(id, str, _) case id: return str;
 
     #define TOK_FLOWS
@@ -940,7 +951,7 @@ ZState *makestate() {
     *self                       = (ZState){ 0 };
 
     self->currentPhase          = Z_PHASE_LEXICAL;
-    self->homePath              = getHomePath();
+    self->homePath              = getHomePath(arenaAllocator);
     self->canAdvance            = true;
     self->allocator             = arenaAllocator;
 
