@@ -524,6 +524,13 @@ struct ZNode {
     ZType           *resolved;
     ZToken          *tok;
     ZAnnotation     **annotations;
+#if Z_LSP
+    /* Source range: the first and the last token of the node (both inclusive).
+     * NULL for nodes that don't come from this file's source (synthesized nodes,
+     * the injected prelude). Set by setspan / setspanfrom in the parser. */
+    ZToken          *start;
+    ZToken          *end;
+#endif
     union {
         // Can be used for both if and ternary operator
         struct {
@@ -880,6 +887,9 @@ typedef struct ZParser {
      * anonymous structs. But anonymous structs can be parsed only inside a struct/enum
      * declaration and not everywhere (e.g. inside a function or as a return type). */
     bool            declAsType;
+
+    /* Last consumed token: where the node being parsed ends (see setspan). */
+    ZToken          *last;
 } ZParser;
 
 /* ================== Semantic analysis    ================== */
@@ -935,6 +945,10 @@ struct ZScope {
     ZCapability     **capabilities;
     u32             depth;
     hashset_t       seen;
+
+#if Z_LSP
+    ZScope          **children;
+#endif
 };
 
 /* Contains a type with a list of functions that accept
@@ -1044,6 +1058,8 @@ bool macroeq(ZNode *, ZNode *);
 bool macropatterneq(ZMacroPattern *, ZMacroPattern *);
 
 ZNode *makenode(Allocator *, ZNodeType);
+ZNode *setspan(ZParser *, ZNode *, ZToken *);
+ZNode *setspanfrom(ZParser *, ZNode *, ZNode *);
 ZType *maketype(Allocator *, ZTypeKind);
 ZType *makePrimitiveType(Allocator *, ZTokenType);
 

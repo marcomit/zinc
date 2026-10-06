@@ -682,6 +682,11 @@ static void checkUnusedSymbols(ZThreadSem *ctx) {
 
 static void beginScope(ZThreadSem *ctx, ZNode *curr) {
     ZScope *scope       = makescope(ctx->allocator, ctx->current, curr);
+#if Z_LSP
+    if (ctx->current) {
+        vecpushwith(ctx->current->children, scope, ctx->allocator);
+    }
+#endif
     ctx->current = scope;
 }
 
