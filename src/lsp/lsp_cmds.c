@@ -2,7 +2,6 @@
 #include "zinc.h"
 
 LspResponse *lsp_initialize(LspContext *ctx) {
-    ctx->state = makestate();
     if (!ctx) return NULL;
     Allocator *a = ctx->allocator;
     Json *result        = JsonMap(a, NULL);
@@ -76,12 +75,7 @@ LspResponse *lsp_change_document(LspContext *ctx) {
     char *uri   = JsonAsString(JsonGet(textDoc, "uri"));
     int version = (int)JsonAsNum(JsonGet(textDoc, "version"));
 
-    vecsetlen(ctx->state->logs, 0);
-    ZToken **tokens = ztokenizeSource(ctx->state, text);
-    ZNode *root     = zparse(ctx->state, tokens);
-    zanalyze(ctx->state, root);
-
-    publish_diagnostics(ctx, uri, version);
+    lsp_analyze(ctx, uri, text, version);
 
     return NULL;
 }

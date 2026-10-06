@@ -934,10 +934,13 @@ void printScope(ZScope *scope) {
     printf("\n==== End scope ====\n");
     printScope(scope->parent);
 }
+extern ZNode *LangItems[Z_LANG_COUNT];
 
 /* Everything a compilation allocates lives in its own arena (plus one arena per
  * module, see ZModuleAllocator), so freestate releases it all at once. */
 ZState *makestate() {
+     memset(LangItems, 0, sizeof(LangItems));
+    interpType = NULL;
     Allocator *allocator        = getArenaAllocator();
     if (!allocator) return NULL;
 

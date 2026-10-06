@@ -106,6 +106,7 @@ void log_json(const char *, Json *);
 void lsp_send(Json *);
 void lsp_notify(Allocator *, const char *, Json *);
 
+void lsp_analyze(LspContext *, const char *, char *, int);
 LspResponse *lsp_open_document(LspContext *);
 LspResponse *lsp_change_document(LspContext *);
 LspResponse *lsp_close_document(LspContext *);

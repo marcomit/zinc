@@ -101,7 +101,7 @@ static void analyzeAnnotation(
     }
     if (item->langItem) {
         if (LangItems[item->langItem]) {
-            zlog(state, annotation->tok, Z5004);
+            zlog(state, annotation->tok, Z5004, stoken(LangItems[item->langItem]->tok));
             return;
         }
         annotation->ident.li = item->langItem;

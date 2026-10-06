@@ -266,6 +266,10 @@ typedef struct {
     struct timespec phaseTime;
 #endif
 
+#if Z_LSP
+    ZScope *rootScope;
+#endif
+
     /* Save every 'here' call token such that the code generator build a
      * 'SourceLocation' struct and zinc can use the location to show diagnostics.
      * */

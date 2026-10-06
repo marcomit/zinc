@@ -106,15 +106,9 @@ LspResponse *lsp_open_document(LspContext *ctx) {
 
     if (!src) return NULL;
     if (!ctx || !ctx->state) return NULL;
-    useAllocator(ctx->state->allocator);
 
-    visit(ctx->state, &path, false);
-    initPrimitiveTypes(ctx->state);
-    ZToken **tokens = ztokenizeSource(ctx->state, src);
+    lsp_analyze(ctx, uri, src, version);
 
-    ZNode *root     = zparse(ctx->state, tokens);
-
-    publish_diagnostics(ctx, uri, version);
     return NULL;
 }
 

@@ -3365,6 +3365,7 @@ static ZNode *parseFacet(ZParser *parser, ZAnnotation **annotations, bool public
     type->facet.name    = start;
     type->facet.funcs   = facet->facet.funcs;
     facet->resolved     = type;
+    facet->tok          = start;
 
     return setspan(parser, facet, start);
 }

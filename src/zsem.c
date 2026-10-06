@@ -2851,7 +2851,9 @@ static void analyzeFunc(ZThreadSem *ctx, ZNode *curr) {
     }
 
     beginScope(ctx, curr);
-    curr->funcDef.body->scope = ctx->current;
+    if (curr->funcDef.body) {
+        curr->funcDef.body->scope = ctx->current;
+    }
     if (curr->funcDef.base) {
         ZType *res = resolveTypeRef(ctx, curr->funcDef.base);
         if (!res) {
@@ -3560,6 +3562,11 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     ZSemantic *ctx = makesemantic(state, root);
 
     ZScope *globalScope     = makescope(state->allocator, NULL, root);
+
+#if Z_LSP
+    state->rootScope = globalScope;
+#endif
+
     ZThreadSem *first       = makethreadsem(
         ctx, globalScope, root, state->allocator
     );
