@@ -11,6 +11,9 @@
 #include "zinc.h"
 #include "json.c/json.h"
 
+extern Allocator *tempAllocator;
+extern FILE *g_out;
+
 typedef struct LspContext LspContext;
 typedef struct LspResponse LspResponse;
 typedef LspResponse *(*LspMethod)(LspContext *);
@@ -24,12 +27,14 @@ typedef struct {
     const char  *uri;
     const char  *src;
     ZNode       *root;
-    arena_t     *arena;
+    Allocator   *allocator;
 } LspModule;
 
 struct LspContext {
     Json        *root;
     LspModule   **modules;
+    Allocator   *allocator;
+    ZState      *state;
 };
 
 struct LspResponse {
@@ -97,13 +102,14 @@ typedef struct {
 
 LspResponse *lsp_reply(LspContext *, Json *);
 void log_msg(const char *, const char *, size_t);
-extern FILE *g_out;
+void log_json(const char *, Json *);
 void lsp_send(Json *);
-void lsp_notify(const char *, Json *);
+void lsp_notify(Allocator *, const char *, Json *);
 
 LspResponse *lsp_open_document(LspContext *);
 LspResponse *lsp_change_document(LspContext *);
 LspResponse *lsp_close_document(LspContext *);
 LspResponse *lsp_completion(LspContext *);
+void publish_diagnostics(LspContext *, const char *, int);
 
 #endif //!LSP_H

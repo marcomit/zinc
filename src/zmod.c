@@ -84,17 +84,6 @@ static char *getHomePath(Allocator *allocator) {
 
 #endif
 
-inline char *zstrndup(Allocator *allocator, char *str, usize len) {
-    char *copy = aalloc(allocator, len + 1);
-    memcpy(copy, str, len);
-    copy[len] = '\0';
-    return copy;
-}
-
-char *zstrdup(Allocator *allocator, char *str) {
-    return zstrndup(allocator, str, strlen(str));
-}
-
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
     switch(token->type) {

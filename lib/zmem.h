@@ -47,7 +47,11 @@ Allocator *useAllocator(Allocator *);
 
 Allocator *getHeapAllocator();
 Allocator *getArenaAllocator();
+Allocator *getTempAllocator();
 
 void init_allocators();
+
+char *zstrndup(Allocator *, char *, usize);
+char *zstrdup(Allocator *, char *);
 
 #endif
