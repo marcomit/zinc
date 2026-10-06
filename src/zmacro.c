@@ -107,6 +107,7 @@ static bool matchMacroPattern(ZParser *parser,
     ZNode *node = NULL;
     ZType *type = NULL;
     ZMacroVar *macrovar = NULL;
+    ZToken *start = NULL;
     usize startIdx;
 
     switch (pattern->kind) {
@@ -129,6 +130,7 @@ static bool matchMacroPattern(ZParser *parser,
             startIdx = parser->source->current;
             node = makenode(parser->allocator, NODE_IDENTIFIER);
             node->identNode.tok = consume(parser);
+            setspan(parser, node, node->identNode.tok);
             macrovar = findCapturedVar(macro, pattern->ident);
             if (macrovar) {
                 macrovar->startIndex = startIdx;
@@ -139,6 +141,7 @@ static bool matchMacroPattern(ZParser *parser,
 
         case Z_MACRO_TYPE:
             startIdx = parser->source->current;
+            start = peek(parser);
             type = parseType(parser);
             if (!type) return false;
             macrovar = findCapturedVar(macro, pattern->ident);
@@ -147,6 +150,7 @@ static bool matchMacroPattern(ZParser *parser,
                 macrovar->endIndex = parser->source->current;
                 node = makenode(parser->allocator, NODE_TYPE);
                 node->resolved = type;
+                setspan(parser, node, start);
                 macrovar->captured = node;
             }
             return true;
@@ -201,6 +205,8 @@ ZNode *expandMacro(ZParser *parser) {
 
         usize saved = parser->source->current;
         ZTokenStream *savedStream = parser->source;
+        ZToken *savedLast = parser->last;
+        ZToken *start = peek(parser);
 
         // Reset captured vars for fresh matching
         for (usize j = 0; j < veclen(macros[i]->macro.captured); j++) {
@@ -213,6 +219,7 @@ ZNode *expandMacro(ZParser *parser) {
         if (!valid) {
             parser->source = savedStream;
             parser->source->current = saved;
+            parser->last = savedLast;
             continue;
         }
         ZNode *macro = macros[i];
@@ -229,6 +236,7 @@ ZNode *expandMacro(ZParser *parser) {
 
         // Save parser state
         ZTokenStream *savedSource = parser->source;
+        ZToken *invocationEnd = parser->last;
         ZNode *savedCurrentMacro = parser->macroParser.currentMacro;
 
         // Switch to body token stream
@@ -248,6 +256,10 @@ ZNode *expandMacro(ZParser *parser) {
         // Restore parser state
         parser->source = savedSource;
         parser->macroParser.currentMacro = savedCurrentMacro;
+
+        /* The body was parsed from the macro definition: the expansion spans the invocation. */
+        parser->last = invocationEnd;
+        setspan(parser, block, start);
 
         let vars = macro->macro.captured;
         for (usize i = 0; i < veclen(vars); i++) {

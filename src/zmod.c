@@ -84,17 +84,6 @@ static char *getHomePath(Allocator *allocator) {
 
 #endif
 
-inline char *zstrndup(Allocator *allocator, char *str, usize len) {
-    char *copy = aalloc(allocator, len + 1);
-    memcpy(copy, str, len);
-    copy[len] = '\0';
-    return copy;
-}
-
-char *zstrdup(Allocator *allocator, char *str) {
-    return zstrndup(allocator, str, strlen(str));
-}
-
 char *stoken(ZToken *token) {
     if (!token) return "(null)";
     switch(token->type) {
@@ -945,10 +934,13 @@ void printScope(ZScope *scope) {
     printf("\n==== End scope ====\n");
     printScope(scope->parent);
 }
+extern ZNode *LangItems[Z_LANG_COUNT];
 
 /* Everything a compilation allocates lives in its own arena (plus one arena per
  * module, see ZModuleAllocator), so freestate releases it all at once. */
 ZState *makestate() {
+     memset(LangItems, 0, sizeof(LangItems));
+    interpType = NULL;
     Allocator *allocator        = getArenaAllocator();
     if (!allocator) return NULL;
 

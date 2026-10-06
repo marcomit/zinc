@@ -3,8 +3,6 @@
 
 #include "zmem.h"
 #include "zarena.h"
-#include "zvec.h"
-#include "zhset.h"
 
 Allocator *heapAllocator           = NULL;
 Allocator *arenaAllocator          = NULL;
@@ -86,6 +84,17 @@ Allocator *getArenaAllocator() {
     return a;
 }
 
+/**
+ * TODO: implement a different kind of arena where every allocation
+ * starts from the beginning of the bucket.
+ * if the allocator creates another bucket the arena should not allocate new buckets.
+ * Instead ose those buckets as a pre allocated buckets.
+ * The memory will not zeroed.
+ * */
+Allocator *getTempAllocator() {
+    return getArenaAllocator();
+}
+
 void init_allocators() {
     if (!heapAllocator)
         heapAllocator = getHeapAllocator();
@@ -95,4 +104,15 @@ void init_allocators() {
         vecDefaultAllocator = heapAllocator;
     if (!hashsetDefaultAllocator)
         hashsetDefaultAllocator = heapAllocator;
+}
+
+inline char *zstrndup(Allocator *allocator, char *str, usize len) {
+    char *copy = aalloc(allocator, len + 1);
+    memcpy(copy, str, len);
+    copy[len] = '\0';
+    return copy;
+}
+
+char *zstrdup(Allocator *allocator, char *str) {
+    return zstrndup(allocator, str, strlen(str));
 }

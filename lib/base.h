@@ -45,6 +45,7 @@ typedef float f32;
 typedef double f64;
 
 typedef size_t usize;
+typedef ssize_t isize;
 
 static inline void timer_start(struct timespec *t) {
     clock_gettime(CLOCK_MONOTONIC, t);

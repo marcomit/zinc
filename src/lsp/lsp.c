@@ -1,8 +1,15 @@
 #include "lsp.h"
+#include "zinc.h"
+#include "zmem.h"
 #include <unistd.h>
 
-static FILE *g_log = NULL;
+FILE *g_log = NULL;
 FILE *g_out = NULL;
+
+/*
+ * TODO: Implement a temporary allocator,
+ * It's an arena where every alloc restart from the beginning of the bucket. */
+Allocator *tempAllocator = NULL;
 
 static void log_open(void) {
     const char *path = getenv("EMPTY_LSP_LOG");
@@ -15,13 +22,25 @@ static void log_open(void) {
     setvbuf(g_log, NULL, _IONBF, 0);
 }
 
-void log_msg(const char *tag, const char *body, size_t len) {
+static inline void log_header(const char *tag) {
     time_t t = time(NULL);
     struct tm tm;
     char ts[32];
     localtime_r(&t, &tm);
     strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", &tm);
-    fprintf(g_log, "===== %s @ %s (%zu bytes) =====\n", tag, ts, len);
+    fprintf(g_log, "===== %s @ %s =====\n", tag, ts);
+}
+
+void log_json(const char *tag, Json *json) {
+    log_header(tag);
+    JsonFileWrite(json, g_log);
+    fputc('\n', g_log);
+    fputc('\n', g_log);
+    fflush(g_log);
+}
+
+void log_msg(const char *tag, const char *body, size_t len) {
+    log_header(tag);
     fwrite(body, 1, len, g_log);
     fputc('\n', g_log);
     fputc('\n', g_log);
@@ -73,8 +92,23 @@ static char *read_message(size_t *out_len) {
     return body;
 }
 
+void lsp_analyze(LspContext *ctx, const char *uri, char *text, int version) {
+    char *path = strncmp(uri, "file://", 7) == 0 ? (char *)uri + 7 : (char *)uri;
+    ZState *state = makestate();
+    useAllocator(state->allocator);
+    visit(state, &path, false);
+    initPrimitiveTypes(state);
+    ZNode *root = zparse(state, ztokenizeSource(state, text));
+    if (canAdvance(state)) {
+        zanalyze(state, root);
+    }
+    ctx->state = state;
+    publish_diagnostics(ctx, uri, version);
+}
+
 int main(void) {
     init_allocators();
+    tempAllocator = getArenaAllocator();
 
     g_out = fdopen(dup(STDOUT_FILENO), "w");
     dup2(STDERR_FILENO, STDOUT_FILENO);
@@ -83,6 +117,8 @@ int main(void) {
     log_fmt("START", "zinc-lsp started");
 
     LspContext ctx = { 0 };
+    Allocator *allocator = getArenaAllocator();
+    ctx.allocator = allocator;
 
     for (;;) {
         size_t len = 0;
@@ -90,12 +126,14 @@ int main(void) {
         if (!body) break;
 
         log_msg("RECV", body, len);
-        ctx.root = JsonDecode(body);
+        ctx.root = JsonDecode(allocator, body);
         LspResponse *result = handle_message(&ctx);
 
         if (result) lsp_send(result->response);
-        JsonFree(ctx.root);
+        JsonFree(allocator, ctx.root);
     }
+
+    free(ctx.allocator);
 
     return 0;
 }

@@ -242,7 +242,7 @@ DIAG(Z4022, Z_ERROR,   "Invalid lang item: expected type '%s', got '%s'", NULL)
 DIAG(Z5001, Z_ERROR,   "Invalid annotation kind", NULL)
 DIAG(Z5002, Z_ERROR,   "Annotation '%s' is not valid on this declaration", NULL)
 DIAG(Z5003, Z_ERROR,   "Unknown annotation '%s'", NULL)
-DIAG(Z5004, Z_ERROR,   "Lang-item already registered", NULL)
+DIAG(Z5004, Z_ERROR,   "Lang-item '%s' already registered", NULL)
 DIAG(Z5005, Z_ERROR,   "Accepted from %d to %d, got %zu argument(s)", NULL)
 DIAG(Z5006, Z_ERROR,   "Annotation '%s' already declared", "remove one of the declarations")
 

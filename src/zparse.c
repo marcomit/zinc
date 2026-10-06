@@ -114,6 +114,33 @@ ZNode *makenode(Allocator *allocator, ZNodeType type) {
     return self;
 }
 
+/* Sets the source range of a node: from `start` to the last consumed token.
+ * A NULL `start` clears it (the node doesn't belong to this file's source).
+ * Only the LSP keeps spans, the compiler compiles this out. */
+ZNode *setspan(ZParser *parser, ZNode *node, ZToken *start) {
+#if Z_LSP
+    if (!node) return node;
+    node->start = start;
+    node->end   = start && parser->last ? parser->last : start;
+#else
+    (void)parser;
+    (void)start;
+#endif
+    return node;
+}
+
+/* Like setspan, for nodes that extend an already parsed node to the right
+ * (binary operators, calls, member accesses, casts, ...). */
+ZNode *setspanfrom(ZParser *parser, ZNode *node, ZNode *left) {
+#if Z_LSP
+    return setspan(parser, node, left ? left->start : NULL);
+#else
+    (void)parser;
+    (void)left;
+    return node;
+#endif
+}
+
 ZType *maketype(Allocator *allocator, ZTypeKind kind) {
     ZType *self = zalloc(allocator, ZType);
     *self = (ZType){ 0 };
@@ -180,6 +207,7 @@ ZToken *consume(ZParser *parser) {
 
     parser->source->current++;
     parser->tokenIndex++;
+    parser->last = curr;
     return curr;
 }
 
@@ -244,6 +272,7 @@ typedef struct ZParserSnapshot {
     ZTokenStream    *stream;
     usize           streamIndex;
     usize           tokenIndex;
+    ZToken          *last;
 } ZParserSnapshot;
 
 static ZParserSnapshot *store(ZParser *parser) {
@@ -251,7 +280,8 @@ static ZParserSnapshot *store(ZParser *parser) {
     (*self) = (ZParserSnapshot){
         .stream         = parser->source,
         .streamIndex    = parser->source->current,
-        .tokenIndex     = parser->tokenIndex
+        .tokenIndex     = parser->tokenIndex,
+        .last           = parser->last
     };
     return self;
 }
@@ -260,6 +290,7 @@ static void undo(ZParser *parser, ZParserSnapshot *snap) {
     parser->source          = snap->stream;
     parser->source->current = snap->streamIndex;
     parser->tokenIndex      = snap->tokenIndex;
+    parser->last            = snap->last;
 }
 
 static ZNode *parseOrGrammar(ZParser *parser, ZParseFunc *pf, usize len) {
@@ -299,6 +330,7 @@ static ZNode *_parseGenericBinary(ZParser *parser,
         node->binary.left = left;
         node->binary.right = right;
         node->tok = op;
+        setspanfrom(parser, node, left);
         left = node;
     }
 
@@ -318,6 +350,7 @@ static ZNode *parseGenericBinary(ZParser *parser,
 }
 
 static ZNode *parseArrayInit(ZParser *parser) {
+    ZToken *start = peek(parser);
     ZType *arr = parseTypeArray(parser);
 
     guard(arr);
@@ -326,7 +359,7 @@ static ZNode *parseArrayInit(ZParser *parser) {
     ZNode *node = makenode(parser->allocator, NODE_ARRAY_INIT);
     node->arrayinit = arr;
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZInterpolation *makeinterpolation(Allocator *allocator, ZInterpolationType type, void *ptr) {
@@ -343,7 +376,7 @@ static ZNode *parseLit(ZParser *parser) {
         ZNode *node         = makenode(parser->allocator, NODE_LITERAL);
         node->literalTok    = consume(parser);
         node->tok           = start;
-        return node;
+        return setspan(parser, node, start);
     }
 
     consume(parser);
@@ -375,8 +408,10 @@ static ZNode *parseLit(ZParser *parser) {
         vecpush(node->interpolation, interp);
     }
 
+    /* The parts were consumed from the inner stream: the literal ends at the stream token. */
     parser->source = prev;
-    return node;
+    parser->last   = start;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parsePrimary(ZParser *parser) {
@@ -408,7 +443,7 @@ static ZNode *parsePrimary(ZParser *parser) {
         ZNode *node         = makenode(parser->allocator, NODE_IDENTIFIER);
         node->identNode.tok = consume(parser);
         node->tok           = node->identNode.tok;
-        return node;
+        return setspan(parser, node, start);
     } else if (checkMask(parser, TOK_LITERAL)) {
         return parseLit(parser);
     } else if (check(parser, TOK_SIZEOF)) {
@@ -421,7 +456,7 @@ static ZNode *parsePrimary(ZParser *parser) {
         ZNode *node = makenode(parser->allocator, NODE_SIZEOF);
         node->sizeofExpr.type   = type;
         node->tok               = tok;
-        return node;
+        return setspan(parser, node, start);
     } else if (check(parser, TOK_IF)) {
         return parseIf(parser);
     } else if (check(parser, TOK_LBRACKET)) {
@@ -434,11 +469,12 @@ static ZNode *parsePrimary(ZParser *parser) {
             ZNode *ident                = makenode(parser->allocator, NODE_IDENTIFIER);
             ident->tok                  = consume(parser);
             ident->identNode.tok        = ident->tok;
+            setspan(parser, ident, base);
             node->memberAccess.object   = ident;
             node->memberAccess.field    = consume(parser);
             node->tok                   = base;
 
-            return node;
+            return setspan(parser, node, base);
         } else if (checkAhead(parser, TOK_LBRACKET, 1)) {
             return parseStructLit(parser);
         } else {
@@ -462,7 +498,7 @@ static ZNode *parseArrSubscript(ZParser *parser, ZNode *previous) {
     node->subscript.index   = index;
     node->subscript.arr     = previous;
     node->tok               = previous->tok;
-    return node;
+    return setspanfrom(parser, node, previous);
 }
 
 static ZNode **parseArgs(ZParser *parser) {
@@ -492,7 +528,7 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
         unary->tok              = start;
         unary->unary.operand    = previous;
         unary->unary.operat     = consume(parser);
-        return unary;
+        return setspanfrom(parser, unary, previous);
     }
 
 
@@ -509,7 +545,7 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
     node->memberAccess.object   = previous;
     node->memberAccess.path     = NULL;
     node->tok = member;
-    return node;
+    return setspanfrom(parser, node, previous);
 }
 
 static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
@@ -531,7 +567,7 @@ static ZNode *parseFuncCall(ZParser *parser, ZNode *previous) {
     } else if (!previous->tok) {
         zlog(parser->state, start, Z900B, previous->type);
     }
-    return node;
+    return setspanfrom(parser, node, previous);
 }
 
 static ZNode *parseCast(ZParser *parser, ZNode *previous) {
@@ -544,7 +580,7 @@ static ZNode *parseCast(ZParser *parser, ZNode *previous) {
     node->castExpr.expr = previous;
     node->castExpr.toType = type;
     node->tok = previous->tok;
-    return node;
+    return setspanfrom(parser, node, previous);
 }
 
 static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
@@ -560,7 +596,7 @@ static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
         slice->slice.end    = i->binary.right;
         slice->slice.base   = node->subscript.arr;
         slice->tok          = previous->tok;
-        return slice;
+        return setspanfrom(parser, slice, previous);
     }
 
     return node;
@@ -573,7 +609,7 @@ static ZNode *parseExtractValue(ZParser *parser, ZNode *previous) {
     node->unary.operand = previous;
     node->unary.operat  = start;
     node->tok           = start;
-    return node;
+    return setspanfrom(parser, node, previous);
 }
 
 static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
@@ -648,7 +684,7 @@ static ZNode *_parseUnary(ZParser *parser, ZNode *expr) {
 
     guard(node->unary.operand);
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseUnary(ZParser *parser) {
@@ -740,6 +776,7 @@ static ZNode *parseLogicalOr(ZParser *parser) {
             right->binary.op    = or;
         }
 
+        setspanfrom(parser, right, node);
         node = right;
     }
 
@@ -768,7 +805,7 @@ static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
         node->binary.left  = lhs;
         node->binary.right = rhs;
         node->tok          = op;
-        return node;
+        return setspanfrom(parser, node, lhs);
     }
 
     /* Postfix on lhs: x: .field  ->  x.field,  x: [i]  ->  x[i] */
@@ -783,7 +820,7 @@ static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
         node->unary.operat  = consume(parser);
         node->unary.operand = lhs;
         node->tok           = node->unary.operat;
-        return node;
+        return setspanfrom(parser, node, lhs);
     }
 
     /* Function call with lhs prepended: x: f(args)  ->  f(x, args) */
@@ -804,6 +841,7 @@ static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
         call->call.callee = callee;
         call->call.args   = args;
         call->tok         = callee->tok;
+        setspanfrom(parser, call, callee);
         return _parsePostfixExpr(parser, call);
     }
 
@@ -827,7 +865,7 @@ static ZNode *parseUpdate(ZParser *parser) {
     assign->binary.left  = lhs;
     assign->binary.right = rhs;
     assign->tok          = lhs->tok;
-    return assign;
+    return setspanfrom(parser, assign, lhs);
 }
 
 static ZNode *parseRangeExpr(ZParser *parser) {
@@ -853,7 +891,8 @@ static ZNode *parseRangeExpr(ZParser *parser) {
     range->binary.right = right;
     range->tok          = op;
 
-    return range;
+    /* `..b` has no left operand: the range starts at the operator. */
+    return left ? setspanfrom(parser, range, left) : setspan(parser, range, op);
 }
 
 static ZNode *parseBinary(ZParser *parser) {
@@ -1077,6 +1116,7 @@ ZType *parseType(ZParser *parser) {
 }
 
 static ZNode *parseDefer(ZParser *parser) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_DEFER);
     parser->noReturnStmt = true;
     ZNode *expr = parseStmt(parser);
@@ -1086,10 +1126,11 @@ static ZNode *parseDefer(ZParser *parser) {
 
     ZNode *node = makenode(parser->allocator, NODE_DEFER);
     node->deferStmt.expr = expr;
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseMatchArm(ZParser *parser, bool asExpr) {
+    ZToken *start = peek(parser);
     ZVarDestructPattern *pattern = parseDestructVar(parser, true);
     guard(pattern);
 
@@ -1110,7 +1151,7 @@ static ZNode *parseMatchArm(ZParser *parser, bool asExpr) {
         arm->matchArm.expr  = parseBlock(parser);
     }
     arm->matchArm.pattern   = pattern;
-    return arm;
+    return setspan(parser, arm, start);
 }
 
 static ZNode *parseMatch(ZParser *parser, bool asExpr) {
@@ -1141,13 +1182,14 @@ static ZNode *parseMatch(ZParser *parser, bool asExpr) {
     match->tok          = start;
     match->match.cond   = expr;
     match->match.arms   = arms;
-    return match;
+    return setspan(parser, match, start);
 }
 
 /* Not handled yet. */
 ZNode *expandListMacro(ZParser *parser) {
     if (!parser->macroParser.currentMacro) return NULL;
 
+    ZToken *start = peek(parser);
     expect(parser, TOK_MACRO_EXPR);
     expect(parser, TOK_LPAREN);
 
@@ -1164,10 +1206,11 @@ ZNode *expandListMacro(ZParser *parser) {
     ZNode *node = makenode(parser->allocator, NODE_BLOCK);
     node->block = NULL;
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseCapabilityBlock(ZParser *parser) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_WITH);
 
     ZNode **capabilities    = NULL;
@@ -1187,7 +1230,7 @@ static ZNode *parseCapabilityBlock(ZParser *parser) {
     ZNode *capabilityBlock                      = makenode(parser->allocator, NODE_CAPABILITY);
     capabilityBlock->capability.capabilities    = capabilities;
     capabilityBlock->capability.block           = block;
-    return capabilityBlock;
+    return setspan(parser, capabilityBlock, start);
 }
 
 static ZNode *parseCompoundOperator(ZParser *parser) {
@@ -1206,7 +1249,7 @@ static ZNode *parseCompoundOperator(ZParser *parser) {
     node->binary.right  = right;
     node->binary.op     = op;
     node->tok           = op;
-    return node;
+    return setspanfrom(parser, node, left);
 }
 
 ZNode *parseStmt(ZParser *parser) {
@@ -1277,7 +1320,7 @@ static ZNode *parseBlockOrInline(ZParser *parser, bool wrap) {
         ZNode *body = makenode(parser->allocator, NODE_BLOCK);
         body->tok = start;
         vecpush(body->block, expr);
-        return body;
+        return setspan(parser, body, start);
     } else if (check(parser, TOK_LBRACKET) || check(parser, TOK_HASHTAG)) {
         return parseBlock(parser);
     } else {
@@ -1312,8 +1355,7 @@ static ZNode *parseBlock(ZParser *parser) {
 
     expect(parser, TOK_RBRACKET);
 
-
-    return block;
+    return setspan(parser, block, start);
 }
 
 static ZNode *parseField(ZParser *parser) {
@@ -1330,10 +1372,11 @@ static ZNode *parseField(ZParser *parser) {
     node->field.identifier  = ident;
     node->resolved          = type;
     node->tok               = ident;
-    return node;
+    return setspan(parser, node, ident);
 }
 
 static ZNode *parseFieldOptName(ZParser *parser) {
+    ZToken *start = peek(parser);
     ZToken *ident = NULL;
     if (check(parser, TOK_IDENT) && checkAhead(parser, TOK_COLON, 1)) {
         ident = consume(parser);
@@ -1352,12 +1395,13 @@ static ZNode *parseFieldOptName(ZParser *parser) {
     node->field.identifier  = ident;
     node->resolved          = type;
     node->tok               = ident;
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseStructField(ZParser *parser) {
     guard(canPeek(parser));
 
+    ZToken *start = peek(parser);
     if (match(parser, TOK_DOUBLE_DOT)) {
         if (!check(parser, TOK_IDENT)) {
             zlog(parser->state, peek(parser), Z2017);
@@ -1367,7 +1411,7 @@ static ZNode *parseStructField(ZParser *parser) {
         ZType *type             = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
         type->primitive.token   = consume(parser);
         node->resolved          = type;
-        return node;
+        return setspan(parser, node, start);
     } else {
         return parseField(parser);
     }
@@ -1386,7 +1430,7 @@ static ZNode *parseEnumVariantField(ZParser *parser) {
 
     field->resolved     = type;
     field->field.type   = type;
-    return field;
+    return setspan(parser, field, field->tok);
 }
 
 static ZNode *parseEnumField(ZParser *parser) {
@@ -1432,7 +1476,7 @@ static ZNode *parseEnumField(ZParser *parser) {
     }
 
     node->resolved = enm;
-    return node;
+    return setspan(parser, node, name);
 }
 
 static ZType *parseAnonEnum(ZParser *parser, ZAnnotation **annotations) {
@@ -1494,7 +1538,7 @@ static ZNode *parseEnumDecl(ZParser *parser,
     node->tok                   = node->enumDef.name;
     node->resolved          = type;
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZType *parseAnonStruct(ZParser *parser, ZAnnotation **annotations) {
@@ -1547,7 +1591,7 @@ static ZNode *parseStructDecl(ZParser *parser,
     node->structDef.pub         = public;
     node->structDef.annotations = annotations;
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 ZNode *parseExpr(ZParser *parser) {
@@ -1594,7 +1638,7 @@ static ZNode *parseReturn(ZParser *parser) {
     ret->returnStmt.expr    = NULL;
     ret->tok                = start;
 
-    if (!canPeek(parser) || peek(parser)->newlineBefore) return ret;
+    if (!canPeek(parser) || peek(parser)->newlineBefore) return setspan(parser, ret, start);
 
     do {
         expr = tryParse(parser, parseExpr(parser));
@@ -1607,11 +1651,11 @@ static ZNode *parseReturn(ZParser *parser) {
         expr                    = makenode(parser->allocator, NODE_TUPLE_LIT);
         expr->tuplelit          = list;
         expr->tok               = start;
-        ret->returnStmt.expr    = expr;
+        ret->returnStmt.expr    = setspanfrom(parser, expr, list[0]);
     } else {
         ret->returnStmt.expr    = expr;
     }
-    return ret;
+    return setspan(parser, ret, start);
 }
 
 static ZAnnotation *parseAnnotation(ZParser *parser) {
@@ -1683,6 +1727,7 @@ static ZAnnotation **parseAnnotations(ZParser *parser) {
 }
 
 static ZNode *parseCondDestructVar(ZParser *parser) {
+    ZToken *start = peek(parser);
     ZVarDestructPattern *pattern = parseDestructVar(parser, true);
     guard(pattern);
     expect(parser, TOK_ASSIGN);
@@ -1692,10 +1737,11 @@ static ZNode *parseCondDestructVar(ZParser *parser) {
 
     guard(expr);
 
-    return makenodevar(parser->allocator, pattern, NULL, expr);
+    return setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
 }
 
 static ZNode *parseIfBlock(ZParser *parser) {
+    ZToken *start = peek(parser);
     if (check(parser, TOK_DO)       ||
         check(parser, TOK_LBRACKET) ||
         check(parser, TOK_HASHTAG)  ) {
@@ -1722,11 +1768,13 @@ static ZNode *parseIfBlock(ZParser *parser) {
 
     vecpush(block->block, node);
 
-    return block;
+    return setspan(parser, block, start);
 }
 
 static ZNode *parseIfLet(ZParser *parser) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_IF);
+    ZToken *bindingStart = peek(parser);
     ZVarDestructPattern *pattern = parseDestructVar(parser, true);
     guard(pattern);
     expect(parser, TOK_ASSIGN);
@@ -1735,9 +1783,10 @@ static ZNode *parseIfLet(ZParser *parser) {
     ZNode *expr = parseExpr(parser);
     parser->noStructLit = savedNoStructLit;
     guard(expr);
-    ZNode *body = parseIfBlock(parser);
+    ZNode *var  = makenodevar(parser->allocator, pattern, NULL, expr);
+    setspan(parser, var, bindingStart);
 
-    ZNode *var = makenodevar(parser->allocator, pattern, NULL, expr);
+    ZNode *body = parseIfBlock(parser);
 
     ZNode *elseBranch = NULL;
     if (match(parser, TOK_ELSE)) {
@@ -1750,7 +1799,7 @@ static ZNode *parseIfLet(ZParser *parser) {
     iflet->ifStmt.cond          = var;
     iflet->ifStmt.body          = body;
     iflet->ifStmt.elseBranch    = elseBranch;
-    return iflet;
+    return setspan(parser, iflet, start);
 }
 
 static ZNode *parseIfStmt(ZParser *parser) {
@@ -1778,7 +1827,7 @@ static ZNode *parseIfStmt(ZParser *parser) {
     node->ifStmt.cond   = cond;
     node->ifStmt.body   = body;
     node->tok           = start;
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseIf(ZParser *parser) {
@@ -1787,6 +1836,7 @@ static ZNode *parseIf(ZParser *parser) {
 
 /* While parsed with 'for' token instead of standard while. */
 static ZNode *parseWhile(ZParser *parser) {
+    ZToken *start = peek(parser);
     expect(parser, TOK_FOR);
 
     parser->noStructLit = true;
@@ -1800,7 +1850,7 @@ static ZNode *parseWhile(ZParser *parser) {
     ZNode *node = makenode(parser->allocator, NODE_WHILE);
     node->whileStmt.branch  = body;
     node->whileStmt.cond    = cond;
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseForIn(ZParser *parser) {
@@ -1820,7 +1870,7 @@ static ZNode *parseForIn(ZParser *parser) {
     node->forin.body    = block;
     node->tok = start;
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseForLet(ZParser *parser) {
@@ -1835,7 +1885,7 @@ static ZNode *parseForLet(ZParser *parser) {
     node->whileStmt.branch  = body;
     node->whileStmt.cond    = cond;
     node->tok               = start;
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseLoops(ZParser *parser) {
@@ -1853,7 +1903,7 @@ static ZNode *parseLoops(ZParser *parser) {
         node->whileStmt.branch  = parseBlock(parser);
         node->whileStmt.cond    = cond;
 
-        return node;
+        return setspan(parser, node, start);
     }
 
     ZParseFunc f[] = { parseForIn, parseForLet, parseWhile };
@@ -1992,7 +2042,7 @@ static ZNode *parseFuncArgument(ZParser *parser) {
     node->field.identifier  = ident;
     node->resolved          = type;
     node->tok               = ident;
-    return node;
+    return setspan(parser, node, ident);
 }
 
 static ZNode *parseAnonFuncArgument(ZParser *parser) {
@@ -2008,7 +2058,7 @@ static ZNode *parseAnonFuncArgument(ZParser *parser) {
         field->resolved     = field->field.type;
     }
 
-    return field;
+    return setspan(parser, field, name);
 }
 
 static ZNode *parseAnonFunc(ZParser *parser) {
@@ -2038,17 +2088,20 @@ static ZNode *parseAnonFunc(ZParser *parser) {
 
     ZNode **capabilities = parseCapabilityList(parser);
 
-    ZNode *body = NULL;
+    ZNode *body     = NULL;
+    ZToken *arrow   = peek(parser);
 
     if (match(parser, TOK_ARROW)) {
         ZNode *expr = tryParse(parser, parseExpr(parser));
         if (!expr) return NULL;
         ZNode *ret = makenode(parser->allocator, NODE_RETURN);
         ret->returnStmt.expr = expr;
+        setspanfrom(parser, ret, expr);
 
         body = makenode(parser->allocator, NODE_BLOCK);
         body->block = NULL;
         vecpush(body->block, ret);
+        setspan(parser, body, arrow);
     } else if (check(parser, TOK_LBRACKET) && !parser->noStructLit) {
         body = tryParse(parser, parseBlock(parser));
     }
@@ -2085,7 +2138,7 @@ static ZNode *parseAnonFunc(ZParser *parser) {
     for (usize i = 0; i < veclen(args); i++) {
         vecpush(funcType->func.args, args[i]->resolved);
     }
-    return func;
+    return setspan(parser, func, start);
 }
 
 static ZType *parseFuncMultiReturn(ZParser *parser) {
@@ -2169,15 +2222,18 @@ static ZNode *parseFuncDecl(ZParser *parser,
         }
     }
 
-    ZNode *body = NULL;
+    ZNode *body     = NULL;
+    ZToken *arrow   = peek(parser);
 
     if (match(parser, TOK_ARROW)) {
         ZNode *expr = tryParse(parser, parseExpr(parser));
         if (expr) {
             ZNode *ret = makenode(parser->allocator, NODE_RETURN);
             ret->returnStmt.expr = expr;
+            setspanfrom(parser, ret, expr);
             body = makenode(parser->allocator, NODE_BLOCK);
             vecpush(body->block, ret);
+            setspan(parser, body, arrow);
         } else {
             zlog(parser->state, peek(parser), Z2024);
             return NULL;
@@ -2225,7 +2281,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
     node->funcDef.annotations   = annotations;
     node->funcDef.capabilities  = capabilities;
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZVarDestructPattern *parseDestructEnum(ZParser *parser, ZToken *base) {
@@ -2410,10 +2466,11 @@ static ZNode *parseMultiExpr(ZParser *parser) {
     ZNode *tuple    = makenode(parser->allocator, NODE_TUPLE_LIT);
     tuple->tok      = start;
     tuple->tuplelit = list;
-    return tuple;
+    return setspan(parser, tuple, start);
 }
 
 static ZNode *parseVarInferred(ZParser *parser) {
+    ZToken *start = peek(parser);
     ZVarDestructPattern *pattern = parseMultiDestructVar(parser);
 
     expect(parser, TOK_ASSIGN);
@@ -2423,7 +2480,7 @@ static ZNode *parseVarInferred(ZParser *parser) {
         zlog(parser->state, peek(parser), Z202B);
     }
 
-    return makenodevar(parser->allocator, pattern, NULL, expr);
+    return setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
 }
 
 static ZNode *parseVarDefTyped(ZParser *parser) {
@@ -2461,7 +2518,7 @@ static ZNode *parseVarDefTyped(ZParser *parser) {
 
     ZNode *node = makenodevar(parser->allocator, var, type, expr);
     if (node) node->varDecl.uninit = uninit;
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseVarDef(ZParser *parser) {
@@ -2473,18 +2530,18 @@ static ZNode *parseBreak(ZParser *parser) {
     ZNode *node = makenode(parser->allocator, NODE_BREAK);
     node->tok = consume(parser);
 
-    if (!canPeek(parser) || peek(parser)->newlineBefore) return node;
+    if (!canPeek(parser) || peek(parser)->newlineBefore) return setspan(parser, node, node->tok);
 
     node->breakStmt.expr = tryParse(parser, parseExpr(parser));
 
-    return node;
+    return setspan(parser, node, node->tok);
 }
 
 static ZNode *parseContinue(ZParser *parser) {
     ZNode *node = makenode(parser->allocator, NODE_CONTINUE);
     node->tok = consume(parser);
 
-    return node;
+    return setspan(parser, node, node->tok);
 }
 
 static ZNode *parseTupleLit(ZParser *parser) {
@@ -2508,7 +2565,7 @@ static ZNode *parseTupleLit(ZParser *parser) {
         zlog(parser->state, start, Z202E);
     }
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseArrayLit(ZParser *parser) {
@@ -2535,7 +2592,7 @@ static ZNode *parseArrayLit(ZParser *parser) {
     node->arraylit  = values;
     node->tok       = start;
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *_parseStructLit(ZParser *parser, ZToken **chain) {
@@ -2572,16 +2629,18 @@ static ZNode *_parseStructLit(ZParser *parser, ZToken **chain) {
             expr = makenode(parser->allocator, NODE_IDENTIFIER);
             expr->tok = tok;
             expr->identNode.tok = tok;
+            setspan(parser, expr, tok);
         } else {
             zlog(parser->state, peek(parser), Z2030, peek(parser));
         }
         var = makenodevar(parser->allocator, node, NULL, expr);
+        setspan(parser, var, tok);
         vecpush(structlit->structlit.fields, var);
     } while (!check(parser, TOK_RBRACKET) && match(parser, TOK_COMMA));
 
     expect(parser, TOK_RBRACKET);
 
-    return structlit;
+    return setspan(parser, structlit, chain ? chain[0] : NULL);
 }
 
 static ZNode *parseStructLit(ZParser *parser) {
@@ -2683,6 +2742,7 @@ static ZNode *getModuleByName(
 }
 
 static ZNode *parseImport(ZParser *parser, bool public) {
+    ZToken *start = peek(parser);
     ZToken *name = NULL;
     if (check(parser, TOK_IDENT) &&
         checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
@@ -2712,9 +2772,11 @@ static ZNode *parseImport(ZParser *parser, bool public) {
 
     if (isStd) expect(parser, TOK_GT);
 
+    /* The module node is the root of the imported file: its span is replaced
+     * with the import statement in this file. */
     ZNode *node = getModuleByName(parser, module, isStd, public);
     if (node) node->module.name = name;
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseTypedef(ZParser *parser, ZAnnotation **annotations, bool public) {
@@ -2733,7 +2795,7 @@ static ZNode *parseTypedef(ZParser *parser, ZAnnotation **annotations, bool publ
     node->typeDef.pub           = public;
     node->typeDef.annotations   = annotations;
     node->tok                   = alias;
-    return node;
+    return setspan(parser, node, alias);
 }
 
 static ZType *parseFuncType(ZParser *parser) {
@@ -2833,13 +2895,13 @@ static ZNode *parseForeignBlock(ZParser *parser, ZAnnotation **annotations, bool
         node->foreignDecl.pub   = public;
         node->tok               = name;
         node->resolved          = type;
-
+        setspan(parser, node, name);
 
         vecpush(namespace->block, node);
     }
     expect(parser, TOK_RBRACKET);
 
-    return namespace;
+    return setspan(parser, namespace, start);
 }
 
 static ZNode *parseForeignInlineDecl(ZParser *parser, ZAnnotation **annotations, bool public) {
@@ -2858,7 +2920,7 @@ static ZNode *parseForeignInlineDecl(ZParser *parser, ZAnnotation **annotations,
     node->foreignDecl.annotations   = annotations;
     node->tok                       = start;
     node->resolved                  = type;
-    return node;
+    return setspan(parser, node, start);
 }
 
 static ZNode *parseForeignUse(ZParser *parser, bool public) {
@@ -3041,7 +3103,7 @@ static ZNode *parseMacro(ZParser *parser) {
 
     vecpush(parser->macroParser.macros, node);
 
-    return node;
+    return setspan(parser, node, start);
 }
 
 /* Macros captured the start token. Skip over the macro declaration in pass 2. */
@@ -3085,6 +3147,7 @@ static void discoverMacros(ZParser *parser) {
         }
     }
     parser->source->current = saved;
+    parser->last            = NULL;
 }
 
 /* Parses a module by default and insert it at the first element in every module. */
@@ -3096,10 +3159,12 @@ static  ZNode *injectPrelude(ZParser *parser) {
     X("std")
     #undef X
 
-    return getModuleByName(parser, path, true, false);
+    /* Root of the std module: its span points into another file. */
+    return setspan(parser, getModuleByName(parser, path, true, false), NULL);
 }
 
 static ZNode *parseModule(ZParser *parser) {
+    ZToken *start = peek(parser);
     ZNode *root = makenode(parser->allocator, NODE_MODULE);
 
     root->module.root = NULL;
@@ -3123,10 +3188,11 @@ static ZNode *parseModule(ZParser *parser) {
             vecpush(root->module.root, child);
         }
     }
-    return root;
+    return setspan(parser, root, start);
 }
 
 static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool public) {
+    ZToken *start = peek(parser);
     ZType *type = parseType(parser);
     ZToken *rec = NULL;
 
@@ -3199,6 +3265,8 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     } while (!check(parser, TOK_RBRACKET));
 
     expect(parser, TOK_RBRACKET);
+
+    setspan(parser, block, start);
 
     usize len = veclen(block->impl.funcs);
 
@@ -3281,6 +3349,7 @@ static ZNode *parseFacet(ZParser *parser, ZAnnotation **annotations, bool public
         field->field.identifier = name;
         field->field.type       = func;
         field->resolved         = func;
+        setspan(parser, field, name);
 
         vecpush(facet->facet.funcs, field);
     } while (!check(parser, TOK_RBRACKET));
@@ -3296,8 +3365,9 @@ static ZNode *parseFacet(ZParser *parser, ZAnnotation **annotations, bool public
     type->facet.name    = start;
     type->facet.funcs   = facet->facet.funcs;
     facet->resolved     = type;
+    facet->tok          = start;
 
-    return facet;
+    return setspan(parser, facet, start);
 }
 
 static ZNode *parseConst(ZParser *parser) {
@@ -3309,7 +3379,7 @@ static ZNode *parseConst(ZParser *parser) {
     ZNode *expr = parseExpr(parser);
 
     ZVarDestructPattern *pattern = makeDestructIdent(parser->allocator, start);
-    return makenodevar(parser->allocator, pattern, NULL, expr);
+    return setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
 }
 
 static ZNode *parse(ZParser *parser) {
