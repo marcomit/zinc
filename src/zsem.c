@@ -93,6 +93,11 @@ static ZScope *makescope(Allocator *allocator, ZScope *parent, ZNode *node) {
     self->symbols       = NULL;
     self->seen          = NULL;
     self->capabilities  = NULL;
+
+#if Z_LSP
+    self->children      = NULL;
+#endif
+
     return self;
 }
 
@@ -752,6 +757,41 @@ static bool isComparable(ZThreadSem *ctx, ZType *type) {
     return true;
 }
 
+static bool isZeroable(ZThreadSem *ctx, ZType *type) {
+    if (!type) return false;
+    switch (type->kind) {
+    case Z_TYPE_POINTER:    return false;
+    case Z_TYPE_PRIMITIVE:  return true;
+    case Z_TYPE_FUNCTION:   return false;
+    case Z_TYPE_FACET:      return false;
+    case Z_TYPE_NONE:       return true;
+    case Z_TYPE_OPTIONAL:   return true;
+    case Z_TYPE_RESULT:     return true;
+    case Z_TYPE_SUM:
+        if (veclen(type->sumType) == 0) return false;
+        return isZeroable(ctx, type->sumType[0]);
+    case Z_TYPE_ENUM:
+        if (veclen(type->enm.fields) == 0) return false;
+        return isZeroable(ctx, type->enm.fields[0]->resolved);
+
+    case Z_TYPE_ARRAY:
+        if (type->array.dynamic) return false;
+        else if (type->array.size == 0) return true;
+        return isZeroable(ctx, type->array.base);
+    case Z_TYPE_STRUCT:
+        for (usize i = 0; i < veclen(type->strct.fields); i++) {
+            if (!isZeroable(ctx, type->strct.fields[i]->resolved)) return false;
+        }
+        return true;
+    case Z_TYPE_TUPLE:
+        for (usize i = 0; i < veclen(type->tuple); i++) {
+            if (!isZeroable(ctx, type->tuple[i])) return false;
+        }
+        return true;
+    default: return false;
+    }
+}
+
 /* An implementation note:
  * if a and b are pointers the returned type is a (used for implicit casting).
  * if a or b is a float the return type is always a float.
@@ -764,9 +804,9 @@ static bool isComparable(ZThreadSem *ctx, ZType *type) {
 static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
     if (!from || !to) return NULL;
 
-    if (to->kind == Z_TYPE_NONE && from->kind != Z_TYPE_NONE) {
+    if (to->kind == Z_TYPE_NONE && isZeroable(ctx, from)) {
         return from;
-    } else if (to->kind != Z_TYPE_NONE && from->kind == Z_TYPE_NONE) {
+    } else if (from->kind == Z_TYPE_NONE && isZeroable(ctx, to)) {
         return to;
     }
 
@@ -781,11 +821,7 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
         return to;
     }
 
-    if (typeKindIs(from->kind, TYPE_NULLABLE_MASK) && to->kind == Z_TYPE_NONE) {
-        return from;
-    } else if (typeKindIs(to->kind, TYPE_NULLABLE_MASK) && from->kind == Z_TYPE_NONE) {
-        return to;
-    } else if (from->kind == Z_TYPE_POINTER && to->kind == Z_TYPE_POINTER) {
+    else if (from->kind == Z_TYPE_POINTER && to->kind == Z_TYPE_POINTER) {
         return from;
     }
 
@@ -2323,6 +2359,8 @@ static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred
  */
 static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     if (!curr)           return NULL;
+
+    analyzeAnnotations(ctx->state, curr);
     /* NODE_FUNC always carries a pre-built shape (arg/ret types) set by the
      * parser, so the generic "already resolved" cache check below would skip
      * resolveAnonFunc entirely and leave the mangled name/body unanalyzed. */
@@ -2704,6 +2742,11 @@ static void analyzeVar(ZThreadSem *ctx, ZNode *curr, bool isGlobal) {
         /* Inferred type (:= syntax) */
         declaredType        = rvalueType;
         curr->resolved      = rvalueType;
+    }
+
+    // Uninitialized value must be zeroable.
+    if (!curr->varDecl.rvalue && !isZeroable(ctx, declaredType)) {
+        zlog(ctx->state, curr->tok, Z305B, stype(declaredType));
     }
 
     curr->resolved = declaredType;
@@ -3198,6 +3241,7 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 }
 
 static void analyzeStmt(ZThreadSem *ctx, ZNode *curr) {
+    analyzeAnnotations(ctx->state, curr);
     switch (curr->type) {
     case NODE_VAR_DECL:     analyzeVar(ctx, curr, false);           break;
     case NODE_IF:           analyzeIf(ctx, curr);                   break;

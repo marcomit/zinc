@@ -201,6 +201,7 @@ DIAG(Z3057, Z_ERROR,   "This field already declared in the same enum", "rename o
 DIAG(Z3058, Z_ERROR,   "field '%s' embeds enum by value causing infinite size; use a pointer", "make the field a pointer")
 DIAG(Z3059, Z_ERROR,   "Missing 'main' declaration", "add a 'main' function to the entry module")
 DIAG(Z305A, Z_ERROR,   "impl of facet '%s' is missing method '%s'", NULL)
+DIAG(Z305B, Z_ERROR,   "Uninitialized variable must be zeroable, '%s' is not", NULL)
 
 /* ---------------- Code generation (src/codegen/) ---------------- */
 DIAG(Z4001, Z_ERROR,   "unknown primitive type '%s'", NULL)

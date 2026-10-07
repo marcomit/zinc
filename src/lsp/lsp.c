@@ -102,6 +102,7 @@ void lsp_analyze(LspContext *ctx, const char *uri, char *text, int version) {
     if (canAdvance(state)) {
         zanalyze(state, root);
     }
+    freestate(ctx->state);
     ctx->state = state;
     publish_diagnostics(ctx, uri, version);
 }

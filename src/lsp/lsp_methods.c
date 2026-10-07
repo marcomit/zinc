@@ -97,15 +97,13 @@ void publish_diagnostics(LspContext *ctx, const char *uri, int version) {
 }
 
 LspResponse *lsp_open_document(LspContext *ctx) {
+    if (!ctx) return NULL;
     Json *doc   = JsonGetFmt(ctx->root, "params.textDocument");
     char *uri   = JsonAsString(JsonGet(doc, "uri"));
     char *src   = JsonAsString(JsonGet(doc, "text"));
     int version = (int)JsonAsNum(JsonGet(doc, "version"));
 
-    char *path = strncmp(uri, "file://", 7) == 0 ? uri + 7 : uri;
-
     if (!src) return NULL;
-    if (!ctx || !ctx->state) return NULL;
 
     lsp_analyze(ctx, uri, src, version);
 
