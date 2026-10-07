@@ -58,7 +58,7 @@ static ZAnnotationSpec Annotations[] = {
 
     { "allow_empty",    Z_ANN_IDENT,                0,              Z_TRG_FUNC,     0, 0, true, NULL            },
     { "print_ast",      Z_ANN_IDENT,                0,              Z_TRG_ANY,      0, 0, true, NULL            },
-
+    { "maybe_unused",   Z_ANN_IDENT,                0,              Z_TRG_STMT,     0, 0, true, NULL,           },
 
     None
 };
@@ -176,6 +176,10 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
         targetMask  = Z_TRG_FACET;
         break;
     default:
+        annotations = node->annotations;
+        if (node->type & NODE_STMT_MASK)        targetMask = Z_TRG_STMT;
+        else if (node->type & NODE_EXPR_MASK)   targetMask = Z_TRG_EXPR;
+        else annotations = NULL;
         /* Not every declaration accepts annotations; that is not an error. */
         return;
     }

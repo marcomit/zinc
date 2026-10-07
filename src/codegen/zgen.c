@@ -2294,9 +2294,9 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
     }
 
     if (resolved->kind == Z_TYPE_OPTIONAL) {
-        if (resolved->optional->kind == Z_TYPE_POINTER) return arg;
-
         checkUnsafeUnwrap(ctx, arg, resolved, node->tok);
+
+        if (resolved->optional->kind == Z_TYPE_POINTER) return arg;
 
         return LLVMBuildExtractValue(
             ctx->builder, arg, 0, label(ctx, "unwrap.ptr")
