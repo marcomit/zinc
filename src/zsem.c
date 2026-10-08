@@ -2745,7 +2745,7 @@ static void analyzeVar(ZThreadSem *ctx, ZNode *curr, bool isGlobal) {
     }
 
     // Uninitialized value must be zeroable.
-    if (!curr->varDecl.rvalue && !isZeroable(ctx, declaredType)) {
+    if (!curr->varDecl.uninit && !curr->varDecl.rvalue && !isZeroable(ctx, declaredType)) {
         zlog(ctx->state, curr->tok, Z305B, stype(declaredType));
     }
 

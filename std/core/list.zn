@@ -4,7 +4,7 @@ RawDynamicArray :: struct {
     len: usize
     cap: usize
     allocator: Allocator
-    buff: *u8
+    buff: ?*u8
 }
 
 *RawDynamicArray self :: impl {

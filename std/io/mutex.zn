@@ -1,7 +1,7 @@
 use <std.mem>
 
 c :: foreign {
-    pthread_mutex_init      : fn (*u8, *u0) i32
+    pthread_mutex_init      : fn (*u8, ?*u0) i32
     pthread_mutex_lock      : fn (*u8) i32
     pthread_mutex_unlock    : fn (*u8) i32
     pthread_mutex_destroy   : fn (*u8) i32

@@ -1,7 +1,7 @@
 use <std.mem>
 
 c :: foreign {
-    fopen   : fn (*char, *char) *u8
+    fopen   : fn (*char, *char) ?*u8
     fclose  : fn (*u8) i32
     fseek   : fn (*u8, i64, i32) i32
     ftell   : fn (*u8) i64
@@ -10,15 +10,16 @@ c :: foreign {
 }
 
 pub File :: struct {
-    file: *u8
+    file: ?*u8
     path: *char
     mode: *char
 }
 
 File :: impl {
-    pub new :: fn (path: *char, mode: []char) *File with Allocator {
-        self: *File = alloc(sizeof File)
-        if not self { return none }
+    pub new :: fn (path: *char, mode: []char) ?*File with Allocator {
+        raw := alloc(sizeof File)
+        if not raw { return none }
+        self := raw as *File
 
         self.file = none
         self.path = path
@@ -30,18 +31,18 @@ File :: impl {
 *File self :: impl {
     pub open :: fn () u1 {
         self.file = c.fopen(self.path, self.mode)
-        if self.file { return true }
+        if self.file != none { return true }
         return false
     }
 
     pub close :: fn () u0 {
-        if self.file {
+        if self.file != none {
             c.fclose(self.file)
             self.file = none
         }
     }
 
-    pub readAll :: fn () *char with Allocator {
+    pub readAll :: fn () ?*char with Allocator {
         if not self.file { return none }
 
         c.fseek(self.file, 0, 2)
@@ -50,8 +51,9 @@ File :: impl {
 
         if size <= 0 { return none }
 
-        buffer: *char = alloc(size + 1)
-        if not buffer { return none }
+        raw := alloc(size + 1)
+        if not raw { return none }
+        buffer := raw as *char
 
         bytesRead: i64 = c.fread(buffer, 1, size, self.file)
 

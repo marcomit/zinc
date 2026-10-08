@@ -7,18 +7,20 @@ SdsHdr :: struct {
     alloc:  u32
 }
 
-pub string :: type *char
+/* none is a valid string: every method accepts it. */
+pub string :: type ?*char
 
 string :: impl {
-    make :: fn (init: *char, initlen: u32, cap: u32) string with Allocator {
-        sh := alloc(sizeof SdsHdr + cap + 1) as *SdsHdr
-        if not sh return none
+    make :: fn (init: ?*char, initlen: u32, cap: u32) string with Allocator {
+        raw := alloc(sizeof SdsHdr + cap + 1)
+        if not raw return none
+        sh := raw as *SdsHdr
 
         sh.len   = initlen
         sh.alloc = cap
 
         base := sh as *u8
-        s := base[sizeof SdsHdr].& as string
+        s := base[sizeof SdsHdr].& as *char
 
         if initlen > 0 and init != none {
             mem.memcpy(s as *u8, init as *u8, initlen as u64)
@@ -28,8 +30,7 @@ string :: impl {
     }
 
     pub new :: fn (init: *char) string with Allocator {
-        l: u32 = 0
-        if init != none { l = mem.strlen(init) as u32 }
+        l := mem.strlen(init) as u32
         return string.make(init, l, l)
     }
 
@@ -46,7 +47,8 @@ string self :: impl {
     #[inline]
     header :: fn () *SdsHdr {
         off: i64 = 0 - (sizeof SdsHdr) as i64
-        return self[off].& as *SdsHdr
+        s := self as *char
+        return s[off].& as *SdsHdr
     }
 
     make_room_for :: fn (addlen: u32) string with Allocator {
@@ -64,12 +66,13 @@ string self :: impl {
             newalloc *= 2 as u32
         }
 
-        new_sh := resize(hdr, sizeof SdsHdr + newalloc + 1) as *SdsHdr
-        if not new_sh return none
+        raw := resize(hdr, sizeof SdsHdr + newalloc + 1)
+        if not raw return none
+        new_sh := raw as *SdsHdr
 
         new_sh.alloc = newalloc
         new_base := new_sh as *u8
-        return new_base[sizeof SdsHdr].& as string
+        return new_base[sizeof SdsHdr].& as *char
     }
 
     pub len :: fn () u32 {
@@ -106,7 +109,8 @@ string self :: impl {
         mem.memcpy(dst[hdr.len].&, t as *u8, tlen as u64)
 
         hdr.len += tlen
-        s[hdr.len] = 0 as char
+        chars := s as *char
+        chars[hdr.len] = 0 as char
         return s
     }
 
@@ -119,9 +123,10 @@ string self :: impl {
         if not s { return none }
 
         hdr := s.header()
-        s[hdr.len] = ch
+        chars := s as *char
+        chars[hdr.len] = ch
         hdr.len += 1 as u32
-        s[hdr.len] = 0 as char
+        chars[hdr.len] = 0 as char
         return s
     }
 
@@ -135,7 +140,8 @@ string self :: impl {
         if not self { return }
         hdr := self.header()
         hdr.len = 0
-        self[0] = 0 as char
+        chars := self as *char
+        chars[0] = 0 as char
     }
 
     pub cmp :: fn (other: *char) i32 {
@@ -173,7 +179,7 @@ string self :: impl {
 STRING_INITIAL_CAPACITY :: 8
 pub StringBuilder :: struct {
     allocator: Allocator
-    buff: *char
+    buff: ?*char
     len: usize
     cap: usize
 }
@@ -201,13 +207,14 @@ StringBuilder :: impl {
             }
 
             if not self.buff {
-                self.buff = alloc(self.cap)
+                self.buff = alloc(self.cap) as *char
             } else if self.cap != newcap {
                 self.cap = newcap
-                self.buff = resize(self.buff, self.cap)
+                self.buff = resize(self.buff as *u8, self.cap) as *char
             }
 
-            mem.memcpy(self.buff[self.len].&, buff, len)
+            dst := self.buff as *u8
+            mem.memcpy(dst[self.len].&, buff, len)
             self.len += len
         }
     }

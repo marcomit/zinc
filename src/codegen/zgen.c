@@ -2369,6 +2369,12 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+static inline bool isPointer(ZType *type) {
+    if (type->kind == Z_TYPE_POINTER) return true;
+    if (type->kind != Z_TYPE_OPTIONAL) return false;
+    return type->optional->kind == Z_TYPE_POINTER;
+}
+
 /**
  * @brief Generates the explicit cast
  * Emit the appropriate LLVM cast to convert val (of Zinc type `from`) to
@@ -2387,8 +2393,8 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
     if (!toType) return val;
 
     bool fromIsFloat = false, toIsFloat = false;
-    bool fromIsPtr   = (from->kind == Z_TYPE_POINTER);
-    bool toIsPtr     = (to->kind   == Z_TYPE_POINTER);
+    bool fromIsPtr   = isPointer(from);
+    bool toIsPtr     = isPointer(to);
     bool fromIsSigned = false;
 
     if (from->kind == Z_TYPE_PRIMITIVE) {

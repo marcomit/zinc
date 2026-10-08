@@ -11,7 +11,7 @@ pub mem :: foreign {
     strlen  : fn (*char)                u64
     strcmp  : fn (*char, *char)         i32
     strncmp : fn (*char, *char, u64)    i32
-    strstr  : fn (*char, *char)         *char
+    strstr  : fn (*char, *char)         ?*char
 }
 
 pub sys :: foreign {
