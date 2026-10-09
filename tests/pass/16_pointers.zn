@@ -31,7 +31,7 @@ main :: fn () i32 {
     c.printf("%d %d\n", hp.val, hp.extra)
 
     // none comparison
-    nptr: *i32 = none
+    nptr: ?*i32 = none
     if nptr == none { c.printf("is_null\n") }
     if nptr != none { c.printf("FAIL\n") }
 

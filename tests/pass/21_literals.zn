@@ -52,7 +52,7 @@ main :: fn () i32 {
     c.printf("quote:\"\n")
 
     // none as null
-    p: *i32 = none
+    p: ?*i32 = none
     if p == none { c.printf("null_ok\n") }
 
     // Large integer values
