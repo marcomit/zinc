@@ -4280,7 +4280,6 @@ void LLVMAddFuncAttribute(ZCodegen *ctx,
     );
 }
 
-// TODO: Create a function to query annotations
 static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
     (void)ctx; (void)f; (void)func;
     ZAnnotation **annotations = f->funcDef.annotations;
@@ -4402,7 +4401,6 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
             LLVMBuildRet(ctx->builder, LLVMConstNull(retType));
     }
     endScope(ctx);
-
 
     return func;
 }
