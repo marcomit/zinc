@@ -534,6 +534,8 @@ struct ZNode {
      * the injected prelude). Set by setspan / setspanfrom in the parser. */
     ZToken          *start;
     ZToken          *end;
+
+    ZToken          *comment;
 #endif
     union {
         // Can be used for both if and ternary operator

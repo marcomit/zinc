@@ -568,11 +568,16 @@ static void skipInlineComments(ZLexer *l) {
 
     while (*l->current && *l->current != '\n') next(l);
     if (*l->current) next(l);
+
 }
 
 static void skipMultilineComments(ZLexer *l) {
     if (!*l->current || !*(l->current + 1)) return;
     if (*l->current != '/' || *(l->current + 1) != '*') return;
+
+#if Z_LSP
+    char *start = l->current;
+#endif
 
     next(l); next(l);
     while (*l->current && l->current + 1) {
@@ -583,6 +588,14 @@ static void skipMultilineComments(ZLexer *l) {
         zlog(l->state, veclast(l->tokens), Z1008);
         return;
     }
+
+#if Z_LSP
+    char *end = l->current;
+#endif
+
+#if Z_LSP
+    addToken(l, maketoken(l->state->allocator, TOK_COMMENT, start, end));
+#endif
 
     next(l); next(l);
 }

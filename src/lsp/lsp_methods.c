@@ -110,15 +110,34 @@ LspResponse *lsp_open_document(LspContext *ctx) {
     return NULL;
 }
 
-static bool format_id(Json *id, char *buf, size_t buf_size) {
-    if (JsonType(id) == JSON_NUMBER) {
-        snprintf(buf, buf_size, "%.0f", JsonAsNum(id));
-        return true;
-    }
+LspResponse *lsp_hover(LspContext *ctx) {
+    Allocator *a = ctx->allocator;
+    char *uri = JsonAsString(JsonGetFmt(ctx->root, "params.textDocument.uri"));
+    Json *docPos = JsonGetFmt(ctx->root, "params.position");
+    LspPosition pos = {
+        .line       = (int)JsonAsNum(JsonGet(docPos, "line")),
+        .character  = (int)JsonAsNum(JsonGet(docPos, "character"))
+    };
 
-    if (JsonType(id) == JSON_STRING) {
-        snprintf(buf, buf_size, "\"%s\"", JsonAsString(id));
-        return true;
-    }
-    return false;
+    int cached = get_module(ctx, uri);
+    if (cached == -1) goto err;
+
+    LspModule *mod  = ctx->modules[cached];
+    ZToken *tok     = token_from_position(mod, pos);
+    ZNode *node     = node_from_position(mod, pos);
+
+    if (!tok || !node) goto err;
+
+    Json *contents  = JsonMap(a, NULL);
+
+    JsonSet(a, contents, "kind", JsonString(a, "markdown"));
+    JsonSet(a, contents, "value", JsonString(a, stype(node->resolved)));
+
+    Json *hover     = JsonMap(a, NULL);
+    JsonSet(a, hover, "contents", contents);
+    JsonSet(a, hover, "range", range_from_token(a, tok));
+
+    return lsp_reply(ctx, hover);
+err:
+    return lsp_reply(ctx, JsonNull(a));
 }

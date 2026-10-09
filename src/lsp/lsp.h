@@ -9,6 +9,7 @@
 #include <stdbool.h>
 
 #include "zinc.h"
+#include "zvisit.h"
 #include "json.c/json.h"
 
 extern Allocator *tempAllocator;
@@ -27,6 +28,7 @@ typedef struct {
     const char  *uri;
     const char  *src;
     ZNode       *root;
+    ZToken      **tokens;
     Allocator   *allocator;
 } LspModule;
 
@@ -107,10 +109,19 @@ void lsp_send(Json *);
 void lsp_notify(Allocator *, const char *, Json *);
 
 void lsp_analyze(LspContext *, const char *, char *, int);
+
 LspResponse *lsp_open_document(LspContext *);
 LspResponse *lsp_change_document(LspContext *);
 LspResponse *lsp_close_document(LspContext *);
 LspResponse *lsp_completion(LspContext *);
+LspResponse *lsp_hover(LspContext *);
+
 void publish_diagnostics(LspContext *, const char *, int);
+
+int  get_module(LspContext *, const char *);
+void put_module(LspContext *, LspModule *);
+
+ZNode *node_from_position(LspModule *, LspPosition);
+ZToken *token_from_position(LspModule *, LspPosition);
 
 #endif //!LSP_H

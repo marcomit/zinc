@@ -15,6 +15,16 @@
 
 #define zalloc(a, T) ((T *)(a)->alloc((a)->ctx, sizeof(T)))
 #define znalloc(a, T, n) ((T *)(a)->alloc((a)->ctx, (n) * sizeof(T)))
+#define new(a, T, ...) ({                                                       \
+    T *__tmp = aalloc(a, sizeof(T));                                            \
+    *__tmp = (T){ .allocator = a, __VA_ARGS__ };                                \
+    __tmp;                                                                      \
+})
+#define copy(a, T, obj) ({                                                      \
+    T *__tmp = zalloc(a, T);                                                    \
+    memcpy(__tmp, &((obj)), sizeof(T));                                         \
+    __tmp;                                                                      \
+})
 
 
 typedef struct Allocator {
