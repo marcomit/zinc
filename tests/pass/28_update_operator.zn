@@ -4,10 +4,10 @@ use <std.libc>
 
 LinkedList :: struct {
     val: i32
-    next: *LinkedList
+    next: ?*LinkedList
 }
 LinkedList :: impl {
-    new :: fn (next: *LinkedList, val: i32) *LinkedList with Allocator {
+    new :: fn (next: ?*LinkedList, val: i32) *LinkedList with Allocator {
         self: *LinkedList = alloc(sizeof LinkedList)
         self.next = next
         self.val = val
@@ -16,9 +16,10 @@ LinkedList :: impl {
 }
 *LinkedList self :: impl {
     print :: fn () u0 {
-        if not self { return }
         io.printf("%d\n", self.val)
-        self.next.print()
+        if not self.next return
+
+        self.next!.print()
     }
 }
 

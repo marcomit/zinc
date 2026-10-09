@@ -7,12 +7,12 @@ T :: type i32
 main :: fn () i32 {
     Node :: struct {
         val: i32
-        next: *Node
+        next: ?*Node
     }
 
     a := Node { val = 1, next = none }
     b := Node { val = 2, next = a.& }
-    c.printf("%d %d\n", b.val, b.next.val)
+    c.printf("%d %d\n", b.val, b.next!.val)
 
     T :: type u8
     v: T = 200

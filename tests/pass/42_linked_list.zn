@@ -5,11 +5,11 @@ c :: foreign {
 
 Node :: struct {
     val: i32
-    next: *Node
+    next: ?*Node
 }
 
 main :: fn () i32 {
-    head: *Node = none
+    head: ?*Node = none
     i := 5
     for i > 0 {
         n := c.malloc(sizeof Node) as *Node
@@ -21,9 +21,9 @@ main :: fn () i32 {
     sum := 0
     cur := head
     for cur != none {
-        sum = sum + cur.val
-        c.printf("%d ", cur.val)
-        cur = cur.next
+        sum = sum + cur!.val
+        c.printf("%d ", cur!.val)
+        cur = cur!.next
     }
     c.printf("\nsum=%d\n", sum)
     return 0

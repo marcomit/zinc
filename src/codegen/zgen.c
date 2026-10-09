@@ -1645,6 +1645,12 @@ static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
         label(ctx, "vtable")
     );
 
+    LLVMValueRef cond = LLVMBuildICmp(
+        ctx->builder, LLVMIntEQ, vtable,
+        LLVMConstPointerNull(ptrType), label(ctx, "facet.panic")
+    );
+    emitPanic(ctx, node->tok, cond, "Got null vtable");
+
     LLVMTypeRef vtableType = genFacetDecl(ctx, obj->resolved);
 
     LLVMValueRef funcSlot = LLVMBuildStructGEP2(
@@ -2294,9 +2300,9 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
     }
 
     if (resolved->kind == Z_TYPE_OPTIONAL) {
-        if (resolved->optional->kind == Z_TYPE_POINTER) return arg;
-
         checkUnsafeUnwrap(ctx, arg, resolved, node->tok);
+
+        if (resolved->optional->kind == Z_TYPE_POINTER) return arg;
 
         return LLVMBuildExtractValue(
             ctx->builder, arg, 0, label(ctx, "unwrap.ptr")
@@ -2369,6 +2375,12 @@ static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
+static inline bool isPointer(ZType *type) {
+    if (type->kind == Z_TYPE_POINTER) return true;
+    if (type->kind != Z_TYPE_OPTIONAL) return false;
+    return type->optional->kind == Z_TYPE_POINTER;
+}
+
 /**
  * @brief Generates the explicit cast
  * Emit the appropriate LLVM cast to convert val (of Zinc type `from`) to
@@ -2387,8 +2399,8 @@ static LLVMValueRef castValue(ZCodegen *ctx, LLVMValueRef val, ZType *from, ZTyp
     if (!toType) return val;
 
     bool fromIsFloat = false, toIsFloat = false;
-    bool fromIsPtr   = (from->kind == Z_TYPE_POINTER);
-    bool toIsPtr     = (to->kind   == Z_TYPE_POINTER);
+    bool fromIsPtr   = isPointer(from);
+    bool toIsPtr     = isPointer(to);
     bool fromIsSigned = false;
 
     if (from->kind == Z_TYPE_PRIMITIVE) {
@@ -4268,7 +4280,6 @@ void LLVMAddFuncAttribute(ZCodegen *ctx,
     );
 }
 
-// TODO: Create a function to query annotations
 static void genFuncAttrs(ZCodegen *ctx, ZNode *f, LLVMValueRef func) {
     (void)ctx; (void)f; (void)func;
     ZAnnotation **annotations = f->funcDef.annotations;
@@ -4390,7 +4401,6 @@ static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
             LLVMBuildRet(ctx->builder, LLVMConstNull(retType));
     }
     endScope(ctx);
-
 
     return func;
 }

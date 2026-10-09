@@ -1,18 +1,19 @@
 pub Allocator :: facet {
-    alloc:      fn (u64)      *u8
-    resize:     fn (*u8, u64) *u8
+    alloc:      fn (u64)       ?*u8
+    resize:     fn (?*u8, u64) ?*u8
     destroy:    fn (*u8)       u0
     init:       fn ()          u0
     deinit:     fn ()          u0
 }
 
 #[inline(always)]
-pub alloc :: fn (size: u64) *u8 with a: Allocator {
+pub alloc :: fn (size: u64) ?*u8 with a: Allocator {
     return a.alloc(size)
 }
 
+/* A none ptr behaves like alloc (same as C realloc). */
 #[inline(always)]
-pub resize :: fn (ptr: *u8, size: u64) *u8
+pub resize :: fn (ptr: ?*u8, size: u64) ?*u8
     with a: Allocator {
     return a.resize(ptr, size)
 }

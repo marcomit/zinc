@@ -1,8 +1,8 @@
 use lib
 
 c :: foreign {
-    malloc: fn (u64) *u8
-    realloc: fn (*u8, u64) *u8
+    malloc: fn (u64) ?*u8
+    realloc: fn (?*u8, u64) ?*u8
     free: fn (*u8) u0
 }
 
@@ -11,25 +11,20 @@ pub GeneralPurposeAllocator :: struct { }
 GeneralPurposeAllocator :: impl {
     pub init :: fn () GeneralPurposeAllocator -> .{  }
 
-    pub new :: fn () Allocator {
-        self: *GeneralPurposeAllocator = none
-        return Allocator(self)
-    }
+    pub new :: fn () Allocator -> Allocator(&GeneralPurposeAllocator{})
 }
 
 *GeneralPurposeAllocator self :: impl(Allocator) {
-    alloc :: fn (size: u64) *u8 {
+    alloc :: fn (size: u64) ?*u8 {
         p := c.malloc(size)
-        if not p { return none }
         return p
     }
 
-    resize :: fn (ptr: *u8, size: u64) *u8 {
+    resize :: fn (ptr: ?*u8, size: u64) ?*u8 {
         return c.realloc(ptr, size)
     }
 
     destroy :: fn (ptr: *u8) u0 {
-        if not ptr { return }
         c.free(ptr)
     }
     #allow_empty init ::     fn () u0 {  }

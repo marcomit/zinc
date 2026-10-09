@@ -35,7 +35,7 @@ pub json_str :: fn (val: *char) *Json with Allocator {
 }
 
 pub json_list :: fn (values: [..]*Json) *Json with Allocator {
-    self: *Json = alloc(sizeof Json)
+    self: *Json = alloc(sizeof *Json)
     self.* = .List(values)
     return self
 }
@@ -126,7 +126,7 @@ JsonDecoder :: struct {
         }
     }
 
-    decode_list :: fn () *Json with Allocator {
+    decode_list :: fn () ?*Json with Allocator {
         self.expect('[') or return none
 
         l: [..]*Json
@@ -146,7 +146,7 @@ JsonDecoder :: struct {
         return json_list(l)
     }
 
-    decode_map :: fn () *Json with Allocator {
+    decode_map :: fn () ?*Json with Allocator {
         map: [..]JsonMapEntry
         self.expect('{') or return none
 
@@ -166,7 +166,7 @@ JsonDecoder :: struct {
         return json_map(map)
     }
 
-    _decode_string :: fn () *char with Allocator {
+    _decode_string :: fn () ?*char with Allocator {
         self.expect('"') or return none
         buff := StringBuilder.new()
         for not self.check('"') {
@@ -179,16 +179,16 @@ JsonDecoder :: struct {
         return buff.buff
     }
 
-    decode_string :: fn () *Json with Allocator {
+    decode_string :: fn () ?*Json with Allocator {
         buff := self._decode_string() or return none
         return json_str(buff)
     }
 
-    decode_num :: fn () *Json with Allocator {
+    decode_num :: fn () ?*Json with Allocator {
         return none
     }
 
-    decode :: fn () *Json with Allocator {
+    decode :: fn () ?*Json with Allocator {
         self.skip_whitespaces()
         tok := self.peek()
         match tok {
@@ -213,7 +213,7 @@ JsonDecoder :: struct {
     }
 }
 
-pub JsonDecode :: fn (cursor: *char) *Json with Allocator {
+pub JsonDecode :: fn (cursor: *char) ?*Json with Allocator {
     decoder: *JsonDecoder = .{ cursor }.&
     return decoder.decode()
 }
@@ -259,24 +259,3 @@ pub JsonEncode :: fn (self: *Json) *char with Allocator {
     self.sink(sb.to_writer())
     return sb.buff
 }
-/*
-main :: fn (args: []*char) i32 {
-    #print_ast if args.len < 2 return {
-        println("Expected at least one argument")
-        break 1
-    }
-
-    with _ := GeneralPurposeAllocator.new() {
-        f := File.new(args[1], "r")
-
-        if not f.open() {
-            println("Unable to open file")
-            return 1
-        }
-        content := f.readAll()
-
-        json := JsonDecode(content)
-        println(#"{json}")
-    }
-    return 0
-}*/

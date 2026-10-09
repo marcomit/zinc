@@ -1434,6 +1434,13 @@ static ZNode *parseEnumVariantField(ZParser *parser) {
 }
 
 static ZNode *parseEnumField(ZParser *parser) {
+    ZAnnotation **annotations = NULL;
+    if (check(parser, TOK_HASHTAG)) {
+        annotations = parseAnnotations(parser);
+        if (!annotations) {
+            zlog(parser->state, peek(parser), Z2018);
+        }
+    }
     if (!check(parser, TOK_IDENT)) {
         zlog(parser->state, peek(parser), Z2018);
         return NULL;
@@ -1444,6 +1451,7 @@ static ZNode *parseEnumField(ZParser *parser) {
 
 
     ZNode *node                 = makenode(parser->allocator, NODE_ENUM_FIELD);
+    node->annotations           = annotations;
     node->enumField.name        = name;
     node->tok                   = name;
 

@@ -2,7 +2,7 @@ use <std.mem>
 
 pthread_t :: type u64
 
-pub ThreadFunc :: type fn (*u8) *u8
+pub ThreadFunc :: type fn (*u8) ?*u8
 
 timespec :: struct {
     tv_sec: i64
@@ -10,9 +10,9 @@ timespec :: struct {
 }
 
 c :: foreign {
-    pthread_create : fn (*pthread_t, *u8, ThreadFunc, *u8) i32
-    pthread_join : fn (pthread_t, **u8) i32
-    pthread_exit : fn (*u8) u0
+    pthread_create : fn (*pthread_t, ?*u8, ThreadFunc, *u8) i32
+    pthread_join : fn (pthread_t, ?**u8) i32
+    pthread_exit : fn (?*u8) u0
 
     nanosleep : fn (*timespec, *timespec) i32
 
@@ -28,7 +28,7 @@ pub Thread :: struct {
     handle: pthread_t
 }
 
-thread_trampoline :: fn (arg: *u8) *u8 {
+thread_trampoline :: fn (arg: *u8) ?*u8 {
     ctx := arg as *ThreadContext
     ctx.func(ctx.data)
     return none
