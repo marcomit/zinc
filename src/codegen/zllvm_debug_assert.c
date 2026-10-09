@@ -50,7 +50,7 @@ void emitRuntimeDebugPrint(ZCodegen *ctx, ZToken *tok, const char *message) {
     LLVMValueRef func           = LLVMGetNamedFunction(ctx->mod, "printf");
     if (!func) func             = LLVMAddFunction(ctx->mod, "printf", funcType);
 
-    const char *fmt = "%s(%llu:%llu): %s\n";
+    const char *fmt = "%s:%llu:%llu: %s\n";
     LLVMBuildCall2(
         ctx->builder, funcType, func, (LLVMValueRef[]){
             LLVMBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
@@ -75,8 +75,6 @@ void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
         LLVMValueRef ptr) {
     if (ctx->state->cli.mode != Z_MODE_DEBUG) return;
 
-    LLVMBasicBlockRef fail = makeblock(ctx, "bound.fail");
-    LLVMBasicBlockRef cont = makeblock(ctx, "bound.cont");
 
     LLVMValueRef lenPtr = LLVMBuildStructGEP2(
         ctx->builder, arrType, ptr,
@@ -95,13 +93,7 @@ void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
         ctx->builder, LLVMIntULT, idx, len, label(ctx, "bound.cond")
     );
 
-    makecondbr(ctx->builder, cond, cont, fail);
-    LLVMPositionBuilderAtEnd(ctx->builder, fail);
-    emitRuntimeDebugPrint(ctx, tok, "Index out of range");
-    LLVMBuildTrap(ctx);
-
-    emitRuntimeError(ctx, tok, "Index out of range");
-    LLVMPositionBuilderAtEnd(ctx->builder, cont);
+    emitPanic(ctx, tok, cond, "Index out of range");
 }
 
 /*
@@ -120,7 +112,40 @@ void initializeMemoryToZero(ZCodegen *ctx, LLVMValueRef value, LLVMTypeRef type)
     );
 }
 
-/*
+void emitPanic(ZCodegen *ctx, ZToken *loc, LLVMValueRef cond, const char *msg) {
+    LLVMBasicBlockRef fail = makeblock(ctx, "fail");
+    LLVMBasicBlockRef cont = makeblock(ctx, "continue");
+
+    makecondbr(ctx->builder, cond, fail, cont);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, fail);
+    emitRuntimeDebugPrint(ctx, loc, msg);
+    LLVMBuildTrap(ctx);
+
+    LLVMPositionBuilderAtEnd(ctx->builder, cont);
+}
+
+
+/**
+ * @brief Check whether the facet object is valid (does not contain null pointers).
+ *
+ * The facet is built with {objptr, vtable}.
+ * Both of these fields are pointers and could be null.
+ * So this function checks whether these fields are not null and emit a runtime panic.
+ * */
+void checkFacet(ZCodegen *ctx, LLVMValueRef facet, ZToken *tok) {
+    LLVMValueRef vtable = LLVMBuildExtractValue(
+        ctx->builder, facet, 1, label(ctx, "facet.vtable"));
+
+    LLVMValueRef vtableObj  = LLVMBuildICmp(
+        ctx->builder, LLVMIntEQ, vtable,
+        LLVMConstPointerNull(i8Type), label(ctx, "vtable.cond")
+    );
+
+    emitPanic(ctx, tok, vtableObj,  "Facet vtable pointer is null");
+}
+
+/**
  * @brief Check if the unwrap is unsafe.
  *
  * For optional types checks the flag (the data if the base type is a pointer).
@@ -140,35 +165,17 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
 
     if (!cond) return;
 
-    LLVMBasicBlockRef fail = makeblock(ctx, "fail");
-    LLVMBasicBlockRef cont = makeblock(ctx, "continue");
-
-    makecondbr(ctx->builder, cond, fail, cont);
-    LLVMPositionBuilderAtEnd(ctx->builder, fail);
-    emitRuntimeDebugPrint(ctx, loc, "Unwrap a none value");
-    LLVMBuildTrap(ctx);
-
-    LLVMPositionBuilderAtEnd(ctx->builder, cont);
+    emitPanic(ctx, loc, cond, "Unwrap a none value");
 }
 
 void emitNullCheck(ZCodegen *ctx, LLVMValueRef value, ZToken *tok) {
-    LLVMBasicBlockRef fail = makeblock(ctx, "fail");
-    LLVMBasicBlockRef cont = makeblock(ctx, "continue");
-
     LLVMValueRef cond = LLVMBuildICmp(
         ctx->builder, LLVMIntEQ, value,
         LLVMConstNull(LLVMPointerTypeInContext(ctx->ctx, 0)),
         label(ctx, "null.check")
     );
-    makecondbr(ctx->builder, cond, fail, cont);
 
-    LLVMPositionBuilderAtEnd(ctx->builder, fail);
-    emitRuntimeDebugPrint(
-        ctx, tok, "Trying to read null value, maybe uninitialized or freed memory"
-    );
-    LLVMBuildTrap(ctx);
-
-    LLVMPositionBuilderAtEnd(ctx->builder, cont);
+    emitPanic(ctx, tok, cond, "Trying to read null value, maybe uninitialized or freed memory");
 }
 
 LLVMValueRef loadWithNullDeref(ZCodegen *ctx, LLVMTypeRef type, LLVMValueRef value, ZToken *tok) {

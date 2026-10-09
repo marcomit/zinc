@@ -1645,6 +1645,12 @@ static LLVMValueRef genFacetMember(ZCodegen *ctx, ZNode *node) {
         label(ctx, "vtable")
     );
 
+    LLVMValueRef cond = LLVMBuildICmp(
+        ctx->builder, LLVMIntEQ, vtable,
+        LLVMConstPointerNull(ptrType), label(ctx, "facet.panic")
+    );
+    emitPanic(ctx, node->tok, cond, "Got null vtable");
+
     LLVMTypeRef vtableType = genFacetDecl(ctx, obj->resolved);
 
     LLVMValueRef funcSlot = LLVMBuildStructGEP2(
