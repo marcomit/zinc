@@ -1115,7 +1115,10 @@ void printLogs(ZState *);
 void initPrimitiveTypes(ZState *);
 bool canAdvance(ZState *);
 
-bool visit(ZState *, char **, bool);
+#define ENTRY_IMPORT_FILE "lib"
+
+char *resolveImport(ZState *, const char *);
+bool visit(ZState *, char *);
 void undoVisit(ZState *);
 
 char *stoken(ZToken *);

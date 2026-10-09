@@ -1127,36 +1127,6 @@ ZLog *emitNote(ZLog *log, ZToken *tok, const char *fmt, ...) {
     return log;
 }
 
-static char *resolvePath(ZState *state, char *filename) {
-    if (!state->filename) return filename;
-    if (filename[0] == sep) return filename;
-    // Windows absolute path: "C:/..." or "C:\..."
-    if (filename[0] && filename[1] == ':' && (filename[2] == '/' || filename[2] == '\\')) return filename;
-
-
-    usize len = strlen(state->filename);
-    char *path = znalloc(state->allocator, char, len+1);
-    strncpy(path, state->filename, len);
-    path[len] = '\0';
-
-    char *dir = dirname(path);
-    char *out = NULL;
-
-    while (*dir) {
-        vecpush(out, *dir);
-        dir++;
-    }
-    vecpush(out, '/');
-
-    while (*filename) {
-        vecpush(out, *filename);
-        filename++;
-    }
-
-    vecpush(out, '\0');
-    return out;
-}
-
 static bool fileExists(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) return false;
@@ -1164,40 +1134,70 @@ static bool fileExists(const char *path) {
     return true;
 }
 
-#define ENTRY_MODULE "/lib.zn"
+static bool isAbsolutePath(const char *path) {
+    if (path[0] == sep) return true;
+    // Windows absolute path: "C:/..." or "C:\..."
+    return path[0] && path[1] == ':' && (path[2] == '/' || path[2] == '\\');
+}
 
-static char *resolveModuleFile(ZState *state, char *filename) {
-    if (fileExists(filename)) return filename;
+static char *joinPath(ZState *state, const char *dir, const char *module, const char *suffix) {
+    usize len = strlen(dir) + 1 + strlen(module) + strlen(suffix) + 1;
+    char *out = znalloc(state->allocator, char, len);
+    if (*dir)   snprintf(out, len, "%s%c%s%s", dir, sep, module, suffix);
+    else        snprintf(out, len, "%s%s", module, suffix);
+    return out;
+}
 
-    usize n = strlen(filename);
-    if (n < 3 || strcmp(filename + n - 3, ".zn") != 0) return filename;
+static char *packagesDir(ZState *state) {
+    return joinPath(state, state->homePath ? state->homePath : "", ".zinc", "/packages");
+}
 
-    usize baseLen = n - 3;
-    char *alt = aalloc(state->allocator, baseLen + sizeof(ENTRY_MODULE));
-    memcpy(alt, filename, baseLen);
-    memcpy(alt + baseLen, ENTRY_MODULE, sizeof(ENTRY_MODULE));
+/* Tries <dir>/<module>/lib.zn, then <dir>/<module>.zn. */
+static char *resolveIn(ZState *state, const char *dir, const char *module) {
+    char *path = joinPath(state, dir, module, "/" ENTRY_IMPORT_FILE ".zn");
+    if (fileExists(path)) return path;
 
-    if (fileExists(alt)) return alt;
-    return filename;
+    path = joinPath(state, dir, module, ".zn");
+    if (fileExists(path)) return path;
+    return NULL;
+}
+
+/* Resolves an import string (e.g. "std/list") to a file path.
+ * The lookup is relative to the importing file first, then the package directory:
+ *   1. <dir>/<module>/lib.zn
+ *   2. <dir>/<module>.zn
+ *   3. ~/.zinc/packages/<module>/lib.zn or ~/.zinc/packages/<module>.zn
+ * It returns null if none of them exists.
+ * */
+char *resolveImport(ZState *state, const char *module) {
+    if (isAbsolutePath(module)) return resolveIn(state, "", module);
+
+    char *dir = ".";
+    if (state->filename) {
+        dir = dirname(zstrdup(state->allocator, state->filename));
+    }
+
+    char *path = resolveIn(state, dir, module);
+    if (path) return path;
+
+    return resolveIn(state, packagesDir(state), module);
 }
 
 /* Stores the filename in the global state of visited files.
- * if external is true means that the compiler try to find it in the package directory.
- * It returns the resolved file path or null if already visited.
+ * It returns false if the file was already visited.
  * */
-bool visit(ZState *state, char **filename, bool external) {
-    *filename = resolvePath(state, *filename);
-    *filename = resolveModuleFile(state, *filename);
+bool visit(ZState *state, char *filename) {
     for (usize i = 0; i < veclen(state->visitedFiles); i++) {
-        if (strcmp(state->visitedFiles[i], *filename) == 0) return false;
+        if (strcmp(state->visitedFiles[i], filename) == 0) return false;
     }
 
-    if (!external) {
-        printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", *filename);
+    char *packages = packagesDir(state);
+    if (strncmp(filename, packages, strlen(packages)) != 0) {
+        printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", filename);
     }
-    vecpush(state->visitedFiles,    *filename);
-    vecpush(state->pathFiles,       *filename);
-    state->filename = *filename;
+    vecpush(state->visitedFiles,    filename);
+    vecpush(state->pathFiles,       filename);
+    state->filename = filename;
     return true;
 }
 

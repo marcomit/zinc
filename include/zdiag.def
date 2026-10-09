@@ -111,6 +111,7 @@ DIAG(Z2038, Z_ERROR,   "Generics failed to parse", NULL)
 DIAG(Z2039, Z_ERROR,   "Expected a function declaration after 'pub'", NULL)
 DIAG(Z203A, Z_ERROR,   "Expected at least one function", NULL)
 DIAG(Z203B, Z_ERROR,   "Unexpected token '%s', expected a top-level declaration", NULL)
+DIAG(Z203C, Z_ERROR,   "Module '%s' not found", "looked for '<module>/lib.zn' and '<module>.zn' next to this file and in ~/.zinc/packages")
 
 /* ---------------- Semantic analysis (src/zsem.c) ---------------- */
 DIAG(Z3001, Z_ERROR,   "'%s' already defined in the same scope", "rename one of the definitions")

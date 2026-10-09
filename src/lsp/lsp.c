@@ -96,7 +96,7 @@ void lsp_analyze(LspContext *ctx, const char *uri, char *text, int version) {
     char *path = strncmp(uri, "file://", 7) == 0 ? (char *)uri + 7 : (char *)uri;
     ZState *state = makestate();
     useAllocator(state->allocator);
-    visit(state, &path, false);
+    visit(state, path);
     initPrimitiveTypes(state);
     ZNode *root = zparse(state, ztokenizeSource(state, text));
     if (canAdvance(state)) {

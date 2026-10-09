@@ -11,7 +11,6 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
-#define ENTRY_IMPORT_FILE "lib"
 
 #define arrlen(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -2678,49 +2677,34 @@ static ZNode **getCachedModule(ZParser *parser, char *filename) {
     return NULL;
 }
 
-static ZNode *getModuleByName(
-    ZParser *parser, ZToken **module, bool external, bool public) {
-    char *filename = NULL;
+/* Joins the segments of a 'use' path into an import string: a::super::b -> a/../b */
+static char *getPathFromTokens(ZParser *parser, ZToken **module) {
     usize len = veclen(module);
     if (len == 0) return NULL;
 
-    if (external) {
-        const char *home = parser->state->homePath;
-        if (!home) home = "";
-
-        vecunion(filename, home, strlen(home));
-        vecpush(filename, sep);
-        vecunion(filename, ".zinc", 5);
-        vecpush(filename, sep);
-        vecunion(filename, "packages", 8);
-        vecpush(filename, sep);
-
-        const char *pkg = module[0]->str;
-        vecunion(filename, pkg, strlen(pkg));
-        vecpush(filename, sep);
-
-        if (len > 1) {
-            for (usize i = 1; i < len; i++) {
-                const char *seg = module[i]->str;
-                vecunion(filename, seg, strlen(seg));
-                if (i < len - 1) vecpush(filename, sep);
-            }
-        } else {
-            vecunion(filename, ENTRY_IMPORT_FILE, strlen(ENTRY_IMPORT_FILE));
-        }
-    } else {
-        for (usize i = 0; i < len; i++) {
-            const char *seg = strcmp(module[i]->str, "super") == 0 ?
-                ".." :
-                module[i]->str;
-            vecunion(filename, seg, strlen(seg));
-            if (i < len - 1) vecpush(filename, sep);
-        }
+    char *path = NULL;
+    for (usize i = 0; i < len; i++) {
+        const char *seg = strcmp(module[i]->str, "super") == 0 ?
+            ".." :
+            module[i]->str;
+        vecunion(path, seg, strlen(seg));
+        if (i < len - 1) vecpush(path, sep);
     }
-    vecunion(filename, ".zn", 3);
-    vecpush(filename, '\0');
+    vecpush(path, '\0');
 
-    bool canVisit               = visit(parser->state, &filename, external);
+    (void)parser;
+    return path;
+}
+
+static ZNode *getModuleByName(
+    ZParser *parser, char *module, ZToken *tok, bool public) {
+    char *filename = resolveImport(parser->state, module);
+    if (!filename) {
+        zlog(parser->state, tok, Z203C, module);
+        return NULL;
+    }
+
+    bool canVisit               = visit(parser->state, filename);
     ZNode *node                 = makenode(parser->allocator, NODE_MODULE);
     if (!canVisit) {
         node->module.filename   = filename;
@@ -2782,7 +2766,8 @@ static ZNode *parseImport(ZParser *parser, bool public) {
 
     /* The module node is the root of the imported file: its span is replaced
      * with the import statement in this file. */
-    ZNode *node = getModuleByName(parser, module, isStd, public);
+    char *path = getPathFromTokens(parser, module);
+    ZNode *node = path ? getModuleByName(parser, path, start, public) : NULL;
     if (node) node->module.name = name;
     return setspan(parser, node, start);
 }
@@ -3160,15 +3145,8 @@ static void discoverMacros(ZParser *parser) {
 
 /* Parses a module by default and insert it at the first element in every module. */
 static  ZNode *injectPrelude(ZParser *parser) {
-    static char src[] = "<prelude>"; // sane anchor for diagnostics.
-    ZToken **path = NULL;
-
-    #define X(seg) vecpush(path, makeident(parser->allocator, seg, src, src + sizeof(src) + 1));
-    X("std")
-    #undef X
-
     /* Root of the std module: its span points into another file. */
-    return setspan(parser, getModuleByName(parser, path, true, false), NULL);
+    return setspan(parser, getModuleByName(parser, "std", NULL, false), NULL);
 }
 
 static ZNode *parseModule(ZParser *parser) {
@@ -3390,6 +3368,22 @@ static ZNode *parseConst(ZParser *parser) {
     return setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
 }
 
+static ZNode *parseImport2(ZParser *parser, bool public) {
+    ZToken *start   = peek(parser);
+    expect(parser, TOK_HASHTAG);
+    ZToken *import  = peek(parser);
+
+    if (!match(parser, TOK_IDENT))              return NULL;
+    if (strcmp(stoken(import), "import") != 0)  return NULL;
+    if (!check(parser, TOK_STR_LIT))            return NULL;
+
+    ZToken *name    = consume(parser);
+    ZNode *node     = getModuleByName(parser, stoken(name), name, public);
+
+    if (node) node->module.name = name;
+    return setspan(parser, node, start);
+}
+
 static ZNode *parse(ZParser *parser) {
     guard(canPeek(parser));
     ZToken *start = peek(parser);
@@ -3408,6 +3402,8 @@ static ZNode *parse(ZParser *parser) {
         if (checkAhead(parser, TOK_MODULE, 1)) {
             return parseForeignUse(parser, public);
         }
+    } else if (check(parser, TOK_HASHTAG)) {
+        return parseImport2(parser, public);
     }
 
     ZParserSnapshot *snap = store(parser);

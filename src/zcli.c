@@ -148,7 +148,7 @@ static void initState(ZState *state) {
         state->cli.output = base;
     }
 
-    visit(state, &filename, false);
+    visit(state, filename);
 }
 
 static ZErrorCode pipeline(ZState *state) {
