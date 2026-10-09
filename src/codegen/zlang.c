@@ -20,13 +20,16 @@ static LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
     if (veclen(call->call.args) != 1) {
         zlog(ctx->state, call->tok, Z4020, veclen(call->call.args));
     }
-    emitRuntimeDebugPrint(ctx, call->tok, stoken(call->call.args[0]->tok));
+
+    LLVMValueRef msg = genExpr(ctx, call->call.args[0]);
+    emitRuntimePanic(ctx, call->tok, msg);
     LLVMBuildTrap(ctx);
     return LLVMConstNull(i0Type);
 }
 
 static LLVMValueRef genReflect(ZCodegen *ctx, ZNode *node) {
-
+    (void)ctx;
+    (void)node;
     return NULL;
 }
 

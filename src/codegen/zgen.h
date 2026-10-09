@@ -149,6 +149,7 @@ char *labelStr  (ZCodegen *, char *);
 void emitPanic(ZCodegen *, ZToken *, LLVMValueRef, const char *);
 void emitRuntimeError(ZCodegen *, ZToken *, const char *);
 void emitRuntimeDebugPrint(ZCodegen *, ZToken *, const char *);
+void emitRuntimePanic(ZCodegen *, ZToken *, LLVMValueRef);
 void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
 void emitNullCheck(ZCodegen *, LLVMValueRef, ZToken *);
 void initializeMemoryToZero(ZCodegen *, LLVMValueRef, LLVMTypeRef);

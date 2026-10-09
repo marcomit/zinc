@@ -775,7 +775,7 @@ static bool isZeroable(ZThreadSem *ctx, ZType *type) {
         return isZeroable(ctx, type->enm.fields[0]->resolved);
 
     case Z_TYPE_ARRAY:
-        if (type->array.dynamic) return false;
+        if (type->array.dynamic) return true;
         else if (type->array.size == 0) return true;
         return isZeroable(ctx, type->array.base);
     case Z_TYPE_STRUCT:
@@ -962,15 +962,14 @@ bool typesEqual(ZType *a, ZType *b) {
         return tokeneq(a->primitive.token, b->primitive.token);
     case Z_TYPE_POINTER:
         return typesEqual(a->base, b->base);
-    case Z_TYPE_ARRAY:
-        // if (a->array.size == 0 && b->array.size > 0) {
-        //     a->array.size = b->array.size;
-        // } else if (b->array.size == 0 && a->array.size > 0) {
-        //     b->array.size = a->array.size;
-        // } else if (a->array.size != b->array.size) {
-        //     return false;
-        // }
+    case Z_TYPE_ARRAY: {
+        bool ad = a->array.dynamic;
+        bool bd = b->array.dynamic;
+
+        // A dynamic with non-dynamic array are not compatible
+        if ((ad && !bd) || (!ad && bd)) return false;
         return typesEqual(a->array.base, b->array.base);
+    }
     case Z_TYPE_STRUCT:
         return a == b;
     case Z_TYPE_FUNCTION:

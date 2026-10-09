@@ -62,6 +62,25 @@ void emitRuntimeDebugPrint(ZCodegen *ctx, ZToken *tok, const char *message) {
     );
 }
 
+void emitRuntimePanic(ZCodegen *ctx, ZToken *tok, LLVMValueRef msg) {
+    LLVMTypeRef ptrType         = LLVMPointerTypeInContext(ctx->ctx, 0);
+    LLVMTypeRef funcType        = LLVMFunctionType(i32Type, &ptrType, 1, true);
+
+    LLVMValueRef func           = LLVMGetNamedFunction(ctx->mod, "printf");
+    if (!func) func             = LLVMAddFunction(ctx->mod, "printf", funcType);
+
+    const char *fmt = "%s:%llu:%llu: %s\n";
+    LLVMBuildCall2(
+        ctx->builder, funcType, func, (LLVMValueRef[]){
+            LLVMBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
+            LLVMBuildGlobalString(ctx->builder, tok->filename, label(ctx, "file")),
+            LLVMConstInt(i64Type, tok->row, 0),
+            LLVMConstInt(i64Type, tok->col, 0),
+            msg,
+        }, 5, ""
+    );
+}
+
 void emitRuntimeError(ZCodegen *ctx, ZToken *tok, const char *message) {
     LLVMBasicBlockRef fail = makeblock(ctx, "fail");
 
