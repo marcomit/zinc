@@ -35,6 +35,13 @@
 
 static char sep = '/';
 
+#if Z_LSP
+/* It is the default field when the parser tries to parse a member access
+ * but there's no field. Then the parser inserts this virtual field.
+ */
+#define DEFAULT_MEMBER_ACCESS "__zinc_complete__"
+#endif
+
 typedef enum {
 
 #define DEF(id, str, m) id,
@@ -145,6 +152,13 @@ typedef struct {
     const char      *src_file;
     int             src_line;
 } ZLog;
+
+typedef struct {
+    const char      *code;
+    const char      *message;
+    const char      *hint;
+    const ZLogLevel level;
+} ZDiagnostic;
 
 typedef enum {
     Z_LTO_OFF = 0,
@@ -264,10 +278,6 @@ typedef struct {
 #if Z_COMPILER
     /* Indicates the start time of the current phase to calculate the diagnostics. */
     struct timespec phaseTime;
-#endif
-
-#if Z_LSP
-    ZScope *rootScope;
 #endif
 
     /* Save every 'here' call token such that the code generator build a
@@ -951,10 +961,6 @@ struct ZScope {
     ZCapability     **capabilities;
     u32             depth;
     hashset_t       seen;
-
-#if Z_LSP
-    ZScope          **children;
-#endif
 };
 
 /* Contains a type with a list of functions that accept
@@ -1111,6 +1117,7 @@ ZLog *emitNote  (ZLog *, ZToken *, const char *, ...);
 #define zlog(state, tok, code, ...) \
     _log(state, tok, code, __FILE__, __LINE__, ##__VA_ARGS__)
 
+ZDiagnostic get_diagnostics(ZDiagCode code);
 char *zstrdup(Allocator *, char *);
 char *zstrndup(Allocator *, char *, usize);
 void printLogs(ZState *);
@@ -1132,6 +1139,7 @@ void printTokens(ZToken **);
 void printNode(ZNode *, u8);
 void printDestructedVar(ZVarDestructPattern *, u8);
 void printSymbol(ZSymbol *);
+char *ssymbol(Allocator *, ZSymbol *);
 
 void printScope(ZScope *);
 
@@ -1165,5 +1173,11 @@ void analyzeAnnotations(ZState *, ZNode *);
 void validate(ZState *, ZNode *);
 bool initTargetMachine(ZState *);
 void disposeTargetMachine(ZState *);
+
+/* Last, so every type zlsp.h needs is already declared. zlsp.h includes this
+ * header too: the include guards make either inclusion order work. */
+#if Z_LSP
+#include "zlsp.h"
+#endif
 
 #endif

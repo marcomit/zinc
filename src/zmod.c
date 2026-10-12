@@ -99,6 +99,10 @@ char *stoken(ZToken *token) {
     }
     case TOK_STR_LIT:
     case TOK_IDENT:     return token->str;
+
+    #if Z_LSP
+    case TOK_COMMENT:
+    #endif
     case TOK_INT_LIT:
     case TOK_RUNE_LIT:
     case TOK_FLOAT_LIT: return zstrndup(arenaAllocator, token->start, token->end - token->start);
@@ -115,6 +119,8 @@ char *stoken(ZToken *token) {
     #undef TOK_FLOWS
 
     #undef DEF
+
+
     default:
         break;
     }
@@ -175,13 +181,13 @@ static void _stype(ZType *type, char **buff) {
         break;
     }
     case Z_TYPE_FUNCTION:
-        _stype(type->func.ret, buff);
-        vecpush(*buff, '(');
+        vecunion(*buff, "fn (", 4);
         for (usize i = 0; i < veclen(type->func.args); i++) {
             _stype(type->func.args[i], buff);
             if (i < veclen(type->func.args) - 1) vecunion(*buff, ", ", 2);
         }
-        vecpush(*buff, ')');
+        vecunion(*buff, ") ", 2);
+        _stype(type->func.ret, buff);
         break;
     case Z_TYPE_STRUCT:
         vecunion(*buff, "struct ", 7);
@@ -269,7 +275,7 @@ static void _stype(ZType *type, char **buff) {
 }
 
 char *stype(ZType *type) {
-    char *buff = NULL;
+    char *buff = vecnew(arenaAllocator, char);
     _stype(type, &buff);
     vecpush(buff, '\0');
     return buff;
@@ -923,6 +929,29 @@ void printSymbol(ZSymbol *symbol) {
     printf("\n");
 }
 
+static void _ssymbol(ZSymbol *symbol, char **buff) {
+    if (!symbol) return;
+    char *i = stoken(symbol->name);
+    const char *type = "";
+    switch (symbol->kind) {
+    case Z_SYM_VAR:     type = "Var";       break;
+    case Z_SYM_FUNC:    type = "Func";      break;
+    case Z_SYM_STRUCT:  type = "Struct";    break;
+    default: return;
+    }
+    vecunion(*buff, type, strlen(type));
+    vecunion(*buff, i, strlen(i));
+    vecunion(*buff, ") ", 2);
+    i = stype(symbol->type);
+    vecunion(*buff, i, strlen(i));
+}
+
+char *ssymbol(Allocator *a, ZSymbol *symbol) {
+    char *buff = vecnew(a, char);
+    _ssymbol(symbol, &buff);
+    return buff;
+}
+
 void printScope(ZScope *scope) {
     if (!scope) return;
     printf("\n\n==== Scope(len: %zu, depth: %d) ====\n",
@@ -1063,13 +1092,6 @@ LOG_FUNC(_warning,  Z_WARNING)
 LOG_FUNC(_info,     Z_INFO)
 LOG_FUNC(_debug,    Z_DEBUG)
 
-typedef struct {
-    const char      *code;
-    const char      *message;
-    const char      *hint;
-    const ZLogLevel level;
-} ZDiagnostic;
-
 static const ZDiagnostic ZDiagnostics[] = {
     [Z_DIAG_NONE] = (ZDiagnostic){ NULL, NULL, NULL, 0 },
     #define DIAG(code, level, msg, hint) [code] = (ZDiagnostic){ #code, msg, hint, level },
@@ -1191,10 +1213,12 @@ bool visit(ZState *state, char *filename) {
         if (strcmp(state->visitedFiles[i], filename) == 0) return false;
     }
 
+#if Z_COMPILER
     char *packages = packagesDir(state);
     if (strncmp(filename, packages, strlen(packages)) != 0) {
         printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", filename);
     }
+#endif
     vecpush(state->visitedFiles,    filename);
     vecpush(state->pathFiles,       filename);
     state->filename = filename;
@@ -1251,6 +1275,10 @@ static void printLineHighlight(ZToken *tok, const char *color) {
     }
 
     printf("\033[0m\n");
+}
+
+ZDiagnostic get_diagnostics(ZDiagCode code) {
+    return ZDiagnostics[code];
 }
 
 static void printLog(ZState *state, ZLog *log) {

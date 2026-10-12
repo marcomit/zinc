@@ -519,8 +519,7 @@ static ZNode **parseArgs(ZParser *parser) {
 
 static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
     ZToken *start = peek(parser);
-    expect(parser, TOK_DOT);
-
+    if (!match(parser, TOK_DOT)) return previous;
     if (check(parser, TOK_REF) ||
         check(parser, TOK_STAR)) {
         ZNode *unary            = makenode(parser->allocator, NODE_UNARY);
@@ -531,13 +530,23 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
     }
 
 
+    ZToken *member = NULL;
     if (!check(parser, TOK_IDENT) &&
         !check(parser, TOK_INT_LIT)) {
+#if Z_COMPILER
         zlog(parser->state, peek(parser), Z2004);
-        return NULL;
+        return previous;
+#else
+        member = makeident(
+            parser->allocator, DEFAULT_MEMBER_ACCESS, start->end, start->end
+        );
+        member->row = start->row;
+        member->col = start->col;
+#endif
+    } else {
+        member = consume(parser);
     }
 
-    ZToken *member = consume(parser);
     ZNode *node = makenode(parser->allocator, NODE_MEMBER);
 
     node->memberAccess.field    = member;
@@ -584,7 +593,7 @@ static ZNode *parseCast(ZParser *parser, ZNode *previous) {
 
 static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
     ZNode *node = parseArrSubscript(parser, previous);
-    if (!node) return NULL;
+    if (!node) return previous;
 
     if (node->type != NODE_SUBSCRIPT || !node->subscript.index) return node;
 
@@ -602,7 +611,7 @@ static ZNode *parseSquareBracket(ZParser *parser, ZNode *previous) {
 }
 
 static ZNode *parseExtractValue(ZParser *parser, ZNode *previous) {
-    if (!check(parser, TOK_ESCL)) return NULL;
+    if (!check(parser, TOK_ESCL)) return previous;
     ZToken *start       = consume(parser);
     ZNode *node         = makenode(parser->allocator, NODE_UNARY);
     node->unary.operand = previous;
@@ -3398,7 +3407,10 @@ static ZNode *parse(ZParser *parser) {
 
 #if Z_LSP
     ZToken *comment = NULL;
-    if (check(parser, TOK_COMMENT)) comment = consume(parser);
+    if (check(parser, TOK_COMMENT)) {
+        comment = consume(parser);
+        if (canPeek(parser)) t = peek(parser)->type;
+    }
 #endif
 
     if (t == TOK_HASHTAG) {

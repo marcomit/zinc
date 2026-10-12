@@ -1,69 +1,39 @@
-#include "lsp.h"
+#include "zlsp.h"
 #include "zinc.h"
 #include "zvisit.h"
 
-LspResponse *lsp_initialize(LspContext *ctx) {
-    if (!ctx) return NULL;
-    Allocator *a = ctx->allocator;
-    Json *result        = JsonMap(a, NULL);
-    Json *capabilities  = JsonMap(a, NULL);
-    Json *serverInfo    = JsonMap(a, NULL);
-    Json *workspace     = JsonMap(a, NULL);
-    Json *workspaceRT   = JsonMap(a, NULL);
-
-    Json *JsonTrue = JsonBool(a, true);
-
-    JsonSet(a, result,         "capabilities",             capabilities);
-    JsonSet(a, result,         "serverInfo",               serverInfo);
-
-    JsonSet(a, capabilities,   "textDocumentSync",         JsonNumber(a, 1));
-    JsonSet(a, capabilities,   "hoverProvider",            JsonTrue);
-    JsonSet(a, capabilities,   "definitionProvider",       JsonTrue);
-    JsonSet(a, capabilities,   "completionProvider",       JsonMap(a, NULL));
-    JsonSet(a, capabilities,   "workspace",                workspace);
-
-    JsonSet(a, serverInfo,     "name",                     JsonString(a, "zinc-lsp"));
-    JsonSet(a, serverInfo,     "version",                  JsonString(a, "0.2.0"));
-
-    JsonSet(a, workspace,      "workspaceFolders",         JsonTrue);
-    JsonSet(a, workspace,      "configuration",            JsonTrue);
-    JsonSet(a, workspace,      "didChangeWatchedFiles",    workspaceRT);
-
-    JsonSet(a, workspaceRT,    "dynamicRegistration",      JsonTrue);
-
-    return lsp_reply(ctx, result);
+LspCompletionKind completion_kind_from_symbol(ZSymType kind) {
+    switch (kind) {
+    case Z_SYM_ENUM:     return Z_LSP_ENUM;
+    case Z_SYM_FACET:    return Z_LSP_INTERFACE;
+    case Z_SYM_FOREIGN:  return Z_LSP_CLASS;
+    case Z_SYM_FUNC:     return Z_LSP_FUNCTION;
+    case Z_SYM_GENERIC:  return Z_LSP_VALUE;
+    case Z_SYM_IMPORT:   return Z_LSP_FILE;
+    case Z_SYM_STRUCT:   return Z_LSP_CLASS;
+    case Z_SYM_TYPEDEF:  return Z_LSP_UNIT;
+    case Z_SYM_VAR:      return Z_LSP_VARIABLE;
+    }
 }
 
-static LspResponse *lsp_shutdown(LspContext *ctx) {
-    freestate(ctx->state);
-    ctx->state = NULL;
-    aclose(ctx->allocator);
-    ctx->allocator = NULL;
-
-    return NULL;
-}
-
-static Json *get_completions(Allocator *allocator, LspCompletionItem *list) {
-    Json *items = JsonList(allocator, NULL);
+Json *completions2Json(Allocator *a, LspCompletionItem *list) {
+    Json *items = JsonList(a, NULL);
     for (usize i = 0; i < veclen(list); i++) {
-        Json *item = JsonMap(allocator, NULL);
-        JsonSet(allocator, item, "label", JsonString(allocator, list[i].label));
-        JsonSet(allocator, item, "kind", JsonNumber(allocator, list[i].kind));
-        JsonPush(allocator, items, item);
+        Json *item = JsonMap(a, NULL);
+        JsonSet(a, item, "label",           JsonString(a, list[i].label));
+        JsonSet(a, item, "kind",            JsonNumber(a, list[i].kind));
+
+        if (list[i].docs.kind && list[i].docs.value) {
+            Json *docs = JsonMap(a, NULL);
+            JsonSet(a, docs, "kind",            JsonString(a, list[i].docs.kind));
+            JsonSet(a, docs, "value",           JsonString(a, list[i].docs.value));
+            JsonSet(a, item, "documentation",   docs);
+        }
+
+        JsonSet(a, item, "detail",          JsonString(a, list[i].detail));
+        JsonPush(a, items, item);
     }
     return items;
-}
-
-LspResponse *lsp_completion(LspContext *ctx) {
-    LspCompletionItem *items = vecnew(ctx->state->allocator, LspCompletionItem);
-
-    vecpush(items, ((LspCompletionItem){"PRRR", Z_LSP_CLASS}));
-    vecpush(items, ((LspCompletionItem){"PRRR", Z_LSP_FUNCTION}));
-    vecpush(items, ((LspCompletionItem){"PRRR", Z_LSP_PROPERTY}));
-    vecpush(items, ((LspCompletionItem){"PRRR", Z_LSP_REFERENCE}));
-
-    Json *completions = get_completions(ctx->allocator, items);
-    return lsp_reply(ctx, completions);
 }
 
 LspResponse *lsp_change_document(LspContext *ctx) {
@@ -126,40 +96,48 @@ inline int get_module(LspContext *ctx, const char *uri) {
 inline void put_module(LspContext *ctx, LspModule *mod) {
     int cached = get_module(ctx, mod->uri);
     if (cached != -1) {
-        memcpy(ctx->modules + cached, mod, sizeof(LspModule));
+        *ctx->modules[cached] = *mod;
     } else {
         mod = copy(ctx->allocator, LspModule, *mod);
-        vecpush(ctx->modules, mod);
+        vecpushwith(ctx->modules, mod, ctx->allocator);
     }
 }
 
 void lsp_analyze(LspContext *ctx, const char *uri, char *text, int version) {
+    ZState *state   = makestate();
+    Allocator *prev = useAllocator(state->allocator);
+    uri     = zstrdup(state->allocator, (char *)uri);
+    text    = zstrdup(state->allocator, text);
     char *path = strncmp(uri, "file://", 7) == 0 ? (char *)uri + 7 : (char *)uri;
-    ZState *state = makestate();
-    useAllocator(state->allocator);
     visit(state, path);
     initPrimitiveTypes(state);
 
     ZToken **tokens = ztokenizeSource(state, text);
-    ZNode *root = zparse(state, tokens);
+    ZNode *root     = zparse(state, tokens);
+    ZSemantic *sem  = NULL;
     if (canAdvance(state)) {
-        zanalyze(state, root);
+        sem = zanalyze(state, root);
     }
-    freestate(ctx->state);
-    ctx->state = state;
 
     put_module(ctx, &(LspModule){
-        .allocator = state->allocator,
-        .uri = uri, .src = text,
-        .root = root,
-        .tokens = tokens
+        .allocator  = state->allocator,
+        .uri        = zstrdup(state->allocator, (char *)uri),
+        .src        = zstrdup(state->allocator, text),
+        .root       = root,
+        .tokens     = tokens,
+        .semantic   = sem
     });
+
+    freestate(ctx->state);
+    ctx->state = state;
     publish_diagnostics(ctx, uri, version);
+    useAllocator(prev);
 }
 
 typedef struct {
     LspPosition pos;
     ZNode *node;
+    ZScope *scope;
 } ZPositionLookup;
 
 static inline int compare_token_position(ZToken *tok, LspPosition pos) {
@@ -181,19 +159,34 @@ static ZVisitorState visit_position(ZNode *node, ZClientData data) {
 
     LspPosition pos = res->pos;
 
-    if (compare_token_position(node->start, pos) < 0 ||
-        compare_token_position(node->end,   pos) > 0) {
+    if (compare_token_position(node->start, pos) > 0 ||
+        compare_token_position(node->end,   pos) < 0) {
         return Z_BREAK;
     }
     res->node = node;
+    if (node->type == NODE_BLOCK && node->scope) res->scope = node->scope;
 #endif
 
     return Z_CONTINUE;
 }
 
+ZScope *scope_from_position(LspModule *mod, LspPosition pos) {
+    ZPositionLookup res = {
+        .pos = pos, .node = NULL, .scope = NULL
+    };
+    ZVisitor v = {
+        .visit = visit_position,
+        .clientData = &res
+    };
+
+    visitNode(&v, mod->root);
+
+    return res.scope;
+}
+
 ZNode *node_from_position(LspModule *mod, LspPosition pos) {
     ZPositionLookup res = {
-        .pos = pos, .node = NULL
+        .pos = pos, .node = NULL, .scope = NULL
     };
     ZVisitor v = {
         .visit = visit_position,
@@ -212,14 +205,94 @@ ZToken *token_from_position(LspModule *mod, LspPosition pos) {
     usize start = 0, end = len;
 
     ZToken **toks = mod->tokens;
-    while (start <= end) {
+    while (start < end) {
         usize mid = start + (end - start) / 2;
 
         int comp = compare_token_position(toks[mid], pos);
         if (comp == 0) return toks[mid];
-        else if (comp > 0) start = mid + 1;
+        else if (comp < 0) start = mid + 1;
         else end = mid;
     }
 
     return start > 0 ? toks[start - 1] : NULL;
+}
+
+LspPositionContext get_position_context(LspModule *mod, LspPosition pos) {
+    ZPositionLookup res = {
+        .pos = pos, .node = NULL, .scope = NULL
+    };
+    ZVisitor v = {
+        .visit = visit_position,
+        .clientData = &res
+    };
+
+    visitNode(&v, mod->root);
+
+    ZSymbol *symbol = NULL;
+    if (res.scope) {
+        for (usize i = 0; i < veclen(res.scope->symbols); i++) {
+            if (res.scope->symbols[i]->node == res.node) {
+                symbol = res.scope->symbols[i];
+                break;
+            }
+        }
+    }
+
+    return (LspPositionContext){
+        .token  = token_from_position(mod, pos),
+        .node   = res.node,
+        .symbol = symbol,
+        .scope  = res.scope,
+    };
+}
+
+static void add_item(char *name, ZType *type, ZNode *node, LspCompletionKind kind, void *ud) {
+    LspCompletionItem **items = ud;
+
+    vecpush(*items, ((LspCompletionItem){
+        .label = name,
+        .detail = "",
+        .label_details = { .detail = "", .description = "" },
+        .kind = kind, .docs = { .kind = "markdown", .value = "" }
+    }));
+}
+
+static void get_field_completions(LspModule *ctx,
+                                  LspPositionContext *p,
+                                  LspCompletionItem **items) {
+    if (!p->node) return;
+    zforEachMember(ctx->semantic, ctx->root, p->node, add_item, items);
+}
+
+LspCompletionItem *get_completions(LspContext *ctx, LspModule *module, LspPositionContext p) {
+    LspCompletionItem *items = vecnew(ctx->allocator, LspCompletionItem);
+    ZScope *scope = p.scope;
+    while (scope) {
+        for (usize i = 0; i < veclen(scope->symbols); i++) {
+            ZSymbol *s  = scope->symbols[i];
+            char *type  = stype(s->node->resolved);
+            vecpush(items, ((LspCompletionItem){
+                .label  = stoken(s->name),
+                .kind   = completion_kind_from_symbol(s->kind),
+                .detail = type,
+                .label_details = {
+                    .detail         = type,
+                    .description    = type
+                },
+                .docs   = { .kind = "markdown", .value = NULL }
+            }));
+        }
+        scope = scope->parent;
+    }
+    scope = p.scope;
+
+    get_field_completions(module, &p, &items);
+
+    if (p.node) {
+        char buff[24] = { 0 };
+        int len = snprintf(buff, 23, "%d", p.node->type);
+        log_msg("COMPLETION TOK", buff, len);
+    }
+
+    return items;
 }

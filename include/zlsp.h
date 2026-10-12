@@ -30,6 +30,7 @@ typedef struct {
     ZNode       *root;
     ZToken      **tokens;
     Allocator   *allocator;
+    ZSemantic   *semantic;
 } LspModule;
 
 struct LspContext {
@@ -45,6 +46,11 @@ struct LspResponse {
 };
 
 LspResponse *handle_message(LspContext *);
+
+typedef struct {
+    char *kind;
+    char *value;
+} LspDocumentation;
 
 typedef enum {
     Z_LSP_TEXT,
@@ -74,9 +80,30 @@ typedef enum {
     Z_LSP_TYPE_PARAM,
 } LspCompletionKind;
 
+typedef void (*ZMemberFn)(
+    char *name,
+    ZType *type,
+    ZNode *decl,
+    LspCompletionKind kind,
+    void *ud);
+
+void zforEachMember(ZSemantic *ctx,
+                    ZNode *module,
+                    ZNode *member,
+                    ZMemberFn fn,
+                    void *ud);
+
 typedef struct {
-    char                *label;
-    LspCompletionKind   kind;
+    char *detail;
+    char *description;
+} LspCompletionDetails;
+
+typedef struct {
+    char                    *label;
+    char                    *detail;
+    LspCompletionDetails    label_details;
+    LspCompletionKind       kind;
+    LspDocumentation        docs;
 } LspCompletionItem;
 
 typedef struct {
@@ -102,6 +129,13 @@ typedef struct {
     char *uri;
 } LspDocumentChange;
 
+typedef struct {
+    ZToken  *token;
+    ZNode   *node;
+    ZSymbol *symbol;
+    ZScope  *scope;
+} LspPositionContext;
+
 LspResponse *lsp_reply(LspContext *, Json *);
 void log_msg(const char *, const char *, size_t);
 void log_json(const char *, Json *);
@@ -110,18 +144,26 @@ void lsp_notify(Allocator *, const char *, Json *);
 
 void lsp_analyze(LspContext *, const char *, char *, int);
 
-LspResponse *lsp_open_document(LspContext *);
+LspResponse *lsp_initialize     (LspContext *);
+LspResponse *lsp_shutdown       (LspContext *);
+LspResponse *lsp_open_document  (LspContext *);
 LspResponse *lsp_change_document(LspContext *);
-LspResponse *lsp_close_document(LspContext *);
-LspResponse *lsp_completion(LspContext *);
-LspResponse *lsp_hover(LspContext *);
+LspResponse *lsp_close_document (LspContext *);
+LspResponse *lsp_completion     (LspContext *);
+LspResponse *lsp_hover          (LspContext *);
 
 void publish_diagnostics(LspContext *, const char *, int);
 
 int  get_module(LspContext *, const char *);
 void put_module(LspContext *, LspModule *);
 
-ZNode *node_from_position(LspModule *, LspPosition);
-ZToken *token_from_position(LspModule *, LspPosition);
+ZNode *node_from_position               (LspModule *, LspPosition);
+ZToken *token_from_position             (LspModule *, LspPosition);
+ZScope *scope_from_position             (LspModule *, LspPosition);
+LspPositionContext get_position_context (LspModule *, LspPosition);
+
+Json *completions2Json(Allocator *, LspCompletionItem *);
+LspCompletionKind completion_kind_from_symbol(ZSymType);
+LspCompletionItem *get_completions(LspContext *, LspModule *, LspPositionContext);
 
 #endif //!LSP_H

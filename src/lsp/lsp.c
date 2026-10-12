@@ -1,5 +1,4 @@
-#include "lsp.h"
-#include "zinc.h"
+#include "zlsp.h"
 #include "zmem.h"
 #include <unistd.h>
 

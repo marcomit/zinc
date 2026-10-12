@@ -22,7 +22,7 @@
 })
 #define copy(a, T, obj) ({                                                      \
     T *__tmp = zalloc(a, T);                                                    \
-    memcpy(__tmp, &((obj)), sizeof(T));                                         \
+    memcpy(__tmp, &(obj), sizeof(T));                                           \
     __tmp;                                                                      \
 })
 
