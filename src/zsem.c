@@ -1452,7 +1452,10 @@ static ZNode *resolveFuncCallEmbedded(ZThreadSem *ctx,
         }
     }
 
-    if (ptr) curr->memberAccess.mangled = ptr->funcDef.mangled;
+    if (ptr) {
+        curr->memberAccess.mangled  = ptr->funcDef.mangled;
+        curr->memberAccess.method   = ptr;
+    }
     return ptr;
 }
 
@@ -2717,7 +2720,6 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         }
         ZNode *method = resolveFuncCallEmbedded(ctx, curr, objType, field);
         if (method) {
-            curr->memberAccess.func = method;
             return method->resolved;
         }
         zlog(ctx->state, field, Z3035, field->str, stype(base));
@@ -2745,10 +2747,7 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
     } else if (objType->kind == Z_TYPE_FACET) {
         ZType *func = NULL;
         ZNode *node = resolveStaticFuncTable(ctx, objType, field);
-        if (node) {
-            curr->memberAccess.func = node;
-            return node->resolved;
-        }
+        if (node) return node->resolved;
 
         for (usize i = 0; i < veclen(objType->facet.funcs); i++) {
             ZNode *funcField = objType->facet.funcs[i];
@@ -2779,7 +2778,6 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
             zlog(ctx->state, curr->tok, Z3039);
             return NULL;
         }
-        curr->memberAccess.func = resolved;
         return resolved->resolved;
     }
 }

@@ -711,6 +711,7 @@ struct ZNode {
             char        *mangled;
             u32         *path;
             ZNode       *func;
+            ZNode       *method; // Receiver method target (self injected)
             ZSymbol     *sym;
         } memberAccess;
 

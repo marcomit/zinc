@@ -580,14 +580,18 @@ LspCompletionItem *get_completions(LspContext *ctx, LspModule *module, LspComple
 }
 
 Json *lsp_get_definition(LspModule *mod, LspPositionContext p) {
-    if (!p.node || !p.node->resolved) return NULL;
     ZToken *source = NULL;
 
-    if (p.node) switch (p.node->type) {
+    if (p.node && p.node->resolved) switch (p.node->type) {
     case NODE_IDENTIFIER:
         if (p.node->identNode.ref) source = p.node->identNode.ref->tok;
-    case NODE_MEMBER:
-        if (p.node->memberAccess.func) source = p.node->memberAccess.func->tok;
+        break;
+    case NODE_MEMBER: {
+        ZNode *target = p.node->memberAccess.func;
+        if (!target) target = p.node->memberAccess.method;
+        if (target) source = target->tok;
+        break;
+    }
     default: break;
     }
 
@@ -598,7 +602,7 @@ Json *lsp_get_definition(LspModule *mod, LspPositionContext p) {
         for (; scope && !source; scope = scope->parent) {
             if (!hashset_has(scope->seen, name)) continue;
             for (usize i = 0; i < veclen(scope->symbols) && !source; i++)
-                if (strcmp(name, scope->symbols[i]->name->str))
+                if (strcmp(name, scope->symbols[i]->name->str) == 0)
                     source = scope->symbols[i]->name;
         }
     }
