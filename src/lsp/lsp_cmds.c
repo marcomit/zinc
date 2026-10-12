@@ -217,6 +217,40 @@ ZToken *token_from_position(LspModule *mod, LspPosition pos) {
     return start > 0 ? toks[start - 1] : NULL;
 }
 
+typedef struct {
+    LspPosition pos;
+    ZNode       *member;
+} ZMemberLookup;
+
+static ZVisitorState visit_member(ZNode *node, ZClientData data) {
+    ZMemberLookup *res = data;
+    if (node->type != NODE_MEMBER) return Z_CONTINUE;
+
+    ZToken *field = node->memberAccess.field;
+    if (!field || !field->start || !field->end) return Z_CONTINUE;
+
+    int len = (int)(field->end - field->start);
+    int end = (int)field->col;
+    if ((int)field->row - 1 == res->pos.line &&
+        end - len <= res->pos.character && res->pos.character <= end) {
+        res->member = node;
+        return Z_STOP;
+    }
+    return Z_CONTINUE;
+}
+
+ZNode *member_from_position(LspModule *mod, LspPosition pos) {
+    ZMemberLookup res = { .pos = pos, .member = NULL };
+    ZVisitor v = {
+        .visit = visit_member,
+        .clientData = &res
+    };
+
+    visitNode(&v, mod->root);
+
+    return res.member;
+}
+
 LspPositionContext get_position_context(LspModule *mod, LspPosition pos) {
     ZPositionLookup res = {
         .pos = pos, .node = NULL, .scope = NULL
@@ -257,36 +291,32 @@ static void add_item(char *name, ZType *type, ZNode *node, LspCompletionKind kin
     }));
 }
 
-static void get_field_completions(LspModule *ctx,
-                                  LspPositionContext *p,
-                                  LspCompletionItem **items) {
-    if (!p->node) return;
-    zforEachMember(ctx->semantic, ctx->root, p->node, add_item, items);
-}
-
 LspCompletionItem *get_completions(LspContext *ctx, LspModule *module, LspPositionContext p) {
     LspCompletionItem *items = vecnew(ctx->allocator, LspCompletionItem);
     ZScope *scope = p.scope;
-    while (scope) {
-        for (usize i = 0; i < veclen(scope->symbols); i++) {
-            ZSymbol *s  = scope->symbols[i];
-            char *type  = stype(s->node->resolved);
-            vecpush(items, ((LspCompletionItem){
-                .label  = stoken(s->name),
-                .kind   = completion_kind_from_symbol(s->kind),
-                .detail = type,
-                .label_details = {
-                    .detail         = type,
-                    .description    = type
-                },
-                .docs   = { .kind = "markdown", .value = NULL }
-            }));
-        }
-        scope = scope->parent;
-    }
-    scope = p.scope;
 
-    get_field_completions(module, &p, &items);
+    if (!p.node || p.node->type != NODE_MEMBER) {
+        while (scope) {
+            for (usize i = 0; i < veclen(scope->symbols); i++) {
+                ZSymbol *s  = scope->symbols[i];
+                char *type  = stype(s->node->resolved);
+                vecpush(items, ((LspCompletionItem){
+                    .label  = stoken(s->name),
+                    .kind   = completion_kind_from_symbol(s->kind),
+                    .detail = type,
+                    .label_details = {
+                        .detail         = type,
+                        .description    = type
+                    },
+                    .docs   = { .kind = "markdown", .value = NULL }
+                }));
+            }
+            scope = scope->parent;
+        }
+        scope = p.scope;
+    } else {
+        zforEachMember(module->semantic, module->root, p.node, add_item, &items);
+    }
 
     if (p.node) {
         char buff[24] = { 0 };

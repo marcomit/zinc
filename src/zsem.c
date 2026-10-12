@@ -2513,16 +2513,15 @@ static ZThreadSem *findLocalSemantic(ZSemantic *ctx, ZNode *module) {
 }
 
 #if Z_LSP
-#else
+// #else
 static void listStatic(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
     if (!type) return;
     ZFuncTable *table = resolveFuncTable(ctx, type);
 
-    if (!table) return;
-    for (usize i = 0; i < veclen(table->staticFuncDef); i++) {
+    if (table) for (usize i = 0; i < veclen(table->staticFuncDef); i++) {
         ZNode *funcDef = table->staticFuncDef[i];
         fn(
-            funcDef->funcDef.name,
+            stoken(funcDef->funcDef.name),
             funcDef->resolved,
             funcDef,
             Z_LSP_METHOD,
@@ -2534,7 +2533,7 @@ static void listStatic(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
     for (usize i = 0; i < veclen(variants); i++) {
         ZNode *variant = variants[i];
         fn(
-            variant->resolved->strct.name,
+            stoken(variant->resolved->strct.name),
             variant->resolved,
             variant,
             Z_LSP_ENUM_MEMBER,
@@ -2547,7 +2546,7 @@ static void listScope(ZThreadSem *ctx, ZScope *scope, ZMemberFn fn, void *ud) {
     for (usize i = 0; i < veclen(scope->symbols); i++) {
         ZSymbol *sym = scope->symbols[i];
         fn(
-            sym->name,
+            stoken(sym->name),
             sym->type,
             sym->node,
             completion_kind_from_symbol(sym->kind),
@@ -2560,7 +2559,7 @@ static void listForeign(ZThreadSem *ctx, ZNode *node, ZMemberFn fn, void *ud) {
     for (usize i = 0; i < veclen(node->block); i++) {
         ZNode *foreign = node->block[i];
         fn(
-            foreign->foreignDecl.name,
+            stoken(foreign->foreignDecl.name),
             foreign->resolved,
             foreign,
             Z_LSP_FUNCTION,
@@ -2570,12 +2569,14 @@ static void listForeign(ZThreadSem *ctx, ZNode *node, ZMemberFn fn, void *ud) {
 }
 
 static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
+    if (!type) return;
+    type = resolveTypeRef(ctx, type);
     ZFuncTable *table = resolveFuncTable(ctx, type);
 
     if (table) for (usize i = 0; i < veclen(table->funcDef); i++) {
         ZNode *f = table->funcDef[i];
         fn(
-            f->funcDef.name,
+            stoken(f->funcDef.name),
             f->resolved,
             f,
             Z_LSP_METHOD,
@@ -2588,7 +2589,7 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
         for (usize i = 0; i < veclen(type->strct.fields); i++) {
             ZNode *field = type->strct.fields[i];
             fn(
-                field->tok,
+                stoken(field->tok),
                 field->resolved,
                 NULL,
                 Z_LSP_FIELD,
@@ -2601,7 +2602,7 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
         for (usize i = 0; i < veclen(type->enm.fields); i++) {
             ZNode *field = type->enm.fields[i];
             fn(
-                field->resolved->strct.name,
+                stoken(field->resolved->strct.name),
                 field->resolved,
                 field,
                 Z_LSP_ENUM_MEMBER,
@@ -2612,8 +2613,20 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
 
     case Z_TYPE_ARRAY:
         fn(
-
+            "len",
+            u64Type,
+            NULL,
+            Z_LSP_FIELD,
+            ud
         );
+        fn(
+            "ptr",
+            type->array.base,
+            NULL,
+            Z_LSP_FIELD,
+            ud
+        );
+        break;
 
     default: break;
     }

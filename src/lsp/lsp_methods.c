@@ -173,6 +173,9 @@ LspResponse *lsp_completion(LspContext *ctx) {
     LspModule *mod = ctx->modules[cached];
 
     LspPositionContext p        = get_position_context(mod, pos);
+    ZNode *member               = member_from_position(mod, pos);
+    if (member) p.node = member;
+
     LspCompletionItem *items    = get_completions(ctx, mod, p);
     Json *completions           = completions2Json(ctx->allocator, items);
     return lsp_reply(ctx, completions);

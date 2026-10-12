@@ -531,8 +531,12 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
 
 
     ZToken *member = NULL;
-    if (!check(parser, TOK_IDENT) &&
-        !check(parser, TOK_INT_LIT)) {
+
+    bool missing = !check(parser, TOK_IDENT) && !check(parser, TOK_INT_LIT);
+#if Z_LSP
+    missing = missing || !canPeek(parser) || peek(parser)->newlineBefore;
+#endif
+    if (missing) {
 #if Z_COMPILER
         zlog(parser->state, peek(parser), Z2004);
         return previous;

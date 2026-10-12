@@ -160,6 +160,7 @@ void put_module(LspContext *, LspModule *);
 ZNode *node_from_position               (LspModule *, LspPosition);
 ZToken *token_from_position             (LspModule *, LspPosition);
 ZScope *scope_from_position             (LspModule *, LspPosition);
+ZNode *member_from_position             (LspModule *, LspPosition);
 LspPositionContext get_position_context (LspModule *, LspPosition);
 
 Json *completions2Json(Allocator *, LspCompletionItem *);
