@@ -53,7 +53,7 @@ typedef struct {
 } LspDocumentation;
 
 typedef enum {
-    Z_LSP_TEXT,
+    Z_LSP_TEXT = 1,
     Z_LSP_METHOD,
     Z_LSP_FUNCTION,
     Z_LSP_CONSTRUCTOR,
@@ -136,6 +136,26 @@ typedef struct {
     ZScope  *scope;
 } LspPositionContext;
 
+typedef enum {
+    LSP_COMPLETION_NONE,        // Inside a string literal or a comment.
+    LSP_COMPLETION_SCOPE,       // Bare local variables and keywords
+    LSP_COMPLETION_IMPORT_PATH, // Inside an import path
+    LSP_COMPLETION_STRUCT_LIT,  // Inside a struct literal MyStruct{ | }
+    LSP_COMPLETION_TOPLEVEL,    // File-level
+    LSP_COMPLETION_TYPE,        // Type requested, shows only types
+    LSP_COMPLETION_MEMBER,      // obj.member
+    LSP_COMPLETION_STATIC       // Type.construct
+} LspCompletionContextKind;
+
+typedef struct {
+    LspCompletionContextKind    kind;
+    ZToken                      *token;
+    ZNode                       **path;
+    ZScope                      *scope;
+    ZNode                       *target;
+    char                        *prefix;
+} LspCompletionContext;
+
 LspResponse *lsp_reply(LspContext *, Json *);
 void log_msg(const char *, const char *, size_t);
 void log_json(const char *, Json *);
@@ -165,6 +185,7 @@ LspPositionContext get_position_context (LspModule *, LspPosition);
 
 Json *completions2Json(Allocator *, LspCompletionItem *);
 LspCompletionKind completion_kind_from_symbol(ZSymType);
-LspCompletionItem *get_completions(LspContext *, LspModule *, LspPositionContext);
+LspCompletionContext get_completion_context(LspModule *, LspPosition);
+LspCompletionItem *get_completions(LspContext *, LspModule *, LspCompletionContext);
 
 #endif //!LSP_H

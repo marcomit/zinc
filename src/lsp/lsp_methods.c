@@ -136,17 +136,8 @@ LspResponse *lsp_hover(LspContext *ctx) {
 
     JsonSet(a, contents, "kind", JsonString(a, "markdown"));
     JsonSet(a, contents, "value", JsonStringFmt(a,
-        "### %s\n"
-        "Type: %s\n"
-        "---"
         "%s",
-        ssymbol(a, p_ctx.symbol),
-        stype(p_ctx.node->resolved),
-        #if Z_LSP
-            stoken(p_ctx.node->comment)
-        #else
-            NULL
-        #endif
+        stype(p_ctx.node->resolved)
     ));
 
     Json *hover     = JsonMap(a, NULL);
@@ -172,11 +163,8 @@ LspResponse *lsp_completion(LspContext *ctx) {
 
     LspModule *mod = ctx->modules[cached];
 
-    LspPositionContext p        = get_position_context(mod, pos);
-    ZNode *member               = member_from_position(mod, pos);
-    if (member) p.node = member;
-
-    LspCompletionItem *items    = get_completions(ctx, mod, p);
+    LspCompletionContext cc     = get_completion_context(mod, pos);
+    LspCompletionItem *items    = get_completions(ctx, mod, cc);
     Json *completions           = completions2Json(ctx->allocator, items);
     return lsp_reply(ctx, completions);
 err:

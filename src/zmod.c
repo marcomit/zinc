@@ -190,7 +190,6 @@ static void _stype(ZType *type, char **buff) {
         _stype(type->func.ret, buff);
         break;
     case Z_TYPE_STRUCT:
-        vecunion(*buff, "struct ", 7);
         vecunion(*buff, type->strct.name->str, strlen(type->strct.name->str));
         break;
     case Z_TYPE_ARRAY: {
@@ -209,7 +208,6 @@ static void _stype(ZType *type, char **buff) {
         break;
     }
     case Z_TYPE_ENUM:
-        vecunion(*buff, "enum ", 5);
         vecunion(*buff, type->enm.name->str, strlen(type->enm.name->str));
         break;
     case Z_TYPE_TUPLE:
@@ -233,7 +231,6 @@ static void _stype(ZType *type, char **buff) {
         vecpush(*buff, ')');
         break;
     case Z_TYPE_FACET:
-        vecunion(*buff, "facet ", 6);
         vecunion(*buff, type->facet.name->str, strlen(type->facet.name->str));
         break;
     case Z_TYPE_OPTIONAL:

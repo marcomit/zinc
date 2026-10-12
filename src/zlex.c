@@ -376,6 +376,7 @@ static ZToken *parseString(ZLexer *l) {
         return NULL;
     }
     vecpush(buff, '\0');
+    l->col += src - l->current;
     l->current = src;
 
     ZToken *lit = makestring(a, buff, start, l->current);
