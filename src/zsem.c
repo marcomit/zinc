@@ -2516,6 +2516,7 @@ static ZThreadSem *findLocalSemantic(ZSemantic *ctx, ZNode *module) {
 // #else
 static void listStatic(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
     if (!type) return;
+    type = resolveTypeRef(ctx, type);
     ZFuncTable *table = resolveFuncTable(ctx, type);
 
     if (table) for (usize i = 0; i < veclen(table->staticFuncDef); i++) {
@@ -2598,34 +2599,9 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
         }
         break;
 
-    case Z_TYPE_ENUM:
-        for (usize i = 0; i < veclen(type->enm.fields); i++) {
-            ZNode *field = type->enm.fields[i];
-            fn(
-                stoken(field->resolved->strct.name),
-                field->resolved,
-                field,
-                Z_LSP_ENUM_MEMBER,
-                ud
-            );
-        }
-        break;
-
     case Z_TYPE_ARRAY:
-        fn(
-            "len",
-            u64Type,
-            NULL,
-            Z_LSP_FIELD,
-            ud
-        );
-        fn(
-            "ptr",
-            type->array.base,
-            NULL,
-            Z_LSP_FIELD,
-            ud
-        );
+        fn("len", u64Type, NULL, Z_LSP_FIELD, ud);
+        fn("ptr", type->array.base, NULL, Z_LSP_FIELD, ud);
         break;
 
     default: break;
@@ -2652,11 +2628,11 @@ void zforEachMember(ZSemantic *ctx,
     if (sym) switch (sym->kind) {
     case Z_SYM_STRUCT:
     case Z_SYM_ENUM:
-    case Z_SYM_TYPEDEF: listStatic   (sem, sym->type,    fn, ud);   return;
-    case Z_SYM_IMPORT:  listScope    (sem, sym->scope,   fn, ud);   return;
-    case Z_SYM_FOREIGN: listForeign  (sem, sym->node,    fn, ud);   return;
-    default:            listInstance (sem, obj->resolved,fn, ud);   return;
-    }
+    case Z_SYM_TYPEDEF: listStatic      (sem, sym->type,    fn, ud);    return;
+    case Z_SYM_IMPORT:  listScope       (sem, sym->scope,   fn, ud);    return;
+    case Z_SYM_FOREIGN: listForeign     (sem, sym->node,    fn, ud);    return;
+    default:            listInstance    (sem, obj->resolved,fn, ud);    return;
+    } else              listInstance    (sem, obj->resolved,fn, ud);    return;
 }
 #endif
 
@@ -2741,6 +2717,7 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         }
         ZNode *method = resolveFuncCallEmbedded(ctx, curr, objType, field);
         if (method) {
+            curr->memberAccess.func = method;
             return method->resolved;
         }
         zlog(ctx->state, field, Z3035, field->str, stype(base));
@@ -2768,7 +2745,10 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
     } else if (objType->kind == Z_TYPE_FACET) {
         ZType *func = NULL;
         ZNode *node = resolveStaticFuncTable(ctx, objType, field);
-        if (node) return node->resolved;
+        if (node) {
+            curr->memberAccess.func = node;
+            return node->resolved;
+        }
 
         for (usize i = 0; i < veclen(objType->facet.funcs); i++) {
             ZNode *funcField = objType->facet.funcs[i];
@@ -2799,6 +2779,7 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
             zlog(ctx->state, curr->tok, Z3039);
             return NULL;
         }
+        curr->memberAccess.func = resolved;
         return resolved->resolved;
     }
 }

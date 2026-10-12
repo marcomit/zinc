@@ -317,11 +317,12 @@ LspPositionContext get_position_context(LspModule *mod, LspPosition pos) {
 static void add_item(char *name, ZType *type, ZNode *node, LspCompletionKind kind, void *ud) {
     LspCompletionItem **items = ud;
 
+    char *sig = type ? stype(type) : NULL;
     vecpush(*items, ((LspCompletionItem){
         .label = name,
         .detail = "",
-        .label_details = { .detail = "", .description = "" },
-        .kind = kind, .docs = { .kind = "markdown", .value = "" }
+        .label_details = { NULL, sig },
+        .kind = kind, .docs = { NULL, NULL }
     }));
 }
 
@@ -582,22 +583,30 @@ Json *lsp_get_definition(LspModule *mod, LspPositionContext p) {
     if (!p.node || !p.node->resolved) return NULL;
     ZToken *source = NULL;
 
-    switch (p.node->type) {
+    if (p.node) switch (p.node->type) {
     case NODE_IDENTIFIER:
         if (p.node->identNode.ref) source = p.node->identNode.ref->tok;
-        break;
     case NODE_MEMBER:
-        if (p.node->memberAccess.func)
-            source = p.node->memberAccess.func->tok;
-        break;
+        if (p.node->memberAccess.func) source = p.node->memberAccess.func->tok;
     default: break;
+    }
+
+    if (!source && p.token && p.token->type == TOK_IDENT) {
+        char *name = stoken(p.token);
+
+        ZScope *scope = p.scope ? p.scope : module_scope(mod);
+        for (; scope && !source; scope = scope->parent) {
+            if (!hashset_has(scope->seen, name)) continue;
+            for (usize i = 0; i < veclen(scope->symbols) && !source; i++)
+                if (strcmp(name, scope->symbols[i]->name->str))
+                    source = scope->symbols[i]->name;
+        }
     }
 
     if (!source) return NULL;
 
     Allocator *a = mod->allocator;
     Json *response = JsonMap(a, NULL);
-
     JsonSet(a, response, "uri", JsonStringFmt(a, "file://%s", source->filename));
     JsonSet(a, response, "range", range_from_token(a, source));
     return response;

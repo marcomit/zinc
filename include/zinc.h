@@ -319,6 +319,10 @@ struct ZType {
     ZToken      *tok;
     u32         hash;
 
+#if Z_LSP
+    ZToken *lsp_start, *lsp_end;
+#endif
+
     union {
         struct {
             ZType   *base;

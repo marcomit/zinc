@@ -1102,6 +1102,9 @@ static ZType *parseBaseType(ZParser *parser) {
 }
 
 static ZType *parseSumType(ZParser *parser) {
+#if Z_LSP
+    ZToken *start   = peek(parser);
+#endif
     ZType *curr     = parseBaseType(parser);
     ZType **types   = NULL;
     vecpush(types, curr);
@@ -1112,13 +1115,21 @@ static ZType *parseSumType(ZParser *parser) {
         vecpush(types, curr);
     }
 
+    ZType *sumType = NULL;
     if (veclen(types) == 1) {
-        return types[0];
+        sumType = types[0];
+    } else {
+        sumType      = maketype(parser->allocator, Z_TYPE_SUM);
+        typesSort(types);
+        sumType->sumType    = types;
     }
 
-    ZType *sumType      = maketype(parser->allocator, Z_TYPE_SUM);
-    typesSort(types);
-    sumType->sumType    = types;
+#if Z_LSP
+    if (sumType) {
+        sumType->lsp_start  = start;
+        sumType->lsp_end    = peek(parser);
+    }
+#endif
 
     return sumType;
 }
@@ -1518,17 +1529,14 @@ static ZType *parseAnonEnum(ZParser *parser, ZAnnotation **annotations) {
             TOK_LBRACKET, TOK_RBRACKET,
             parseEnumField, false);
 
-    if (!fields || veclen(fields) < 2) {
-        zlog(parser->state, start, Z201A);
-        return NULL;
-    }
-
     ZType *type                 = maketype(parser->allocator, Z_TYPE_ENUM);
     type->enm.name              = start;
     type->enm.generics          = generics;
     type->enm.fields            = fields;
     type->tok                   = start;
     type->enm.integer           = integer;
+
+    if (!fields || veclen(fields) < 2) zlog(parser->state, start, Z201A);
 
     return type;
 }
