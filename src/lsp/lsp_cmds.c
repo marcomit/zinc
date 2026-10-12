@@ -5,6 +5,27 @@
 #include <ctype.h>
 #include <string.h>
 
+Json *range_from_token(Allocator *a, ZToken *tok) {
+    Json *start = JsonMap(a, NULL);
+    Json *end   = JsonMap(a, NULL);
+    Json *range = JsonMap(a, NULL);
+
+    int line    = tok ? (int)tok->row - 1 : 0;
+    int col     = tok ? (int)(tok->start - tok->sourceLinePtr) : 0;
+    int row     = tok ? (int)(tok->end - tok->start) : 0;
+
+    JsonSet(a, start,  "line",         JsonNumber(a, line));
+    JsonSet(a, start,  "character",    JsonNumber(a, col));
+
+    JsonSet(a, end,    "line",         JsonNumber(a, line));
+    JsonSet(a, end,    "character",    JsonNumber(a, col + row));
+
+    JsonSet(a, range,  "start",        start);
+    JsonSet(a, range,  "end",          end);
+
+    return range;
+}
+
 LspCompletionKind completion_kind_from_symbol(ZSymType kind) {
     switch (kind) {
     case Z_SYM_ENUM:     return Z_LSP_ENUM;
@@ -66,6 +87,7 @@ static LspHandler Handlers[] = {
     { "textDocument/didOpen",       lsp_open_document       },
     { "textDocument/didChange",     lsp_change_document     },
     { "textDocument/completion",    lsp_completion          },
+    { "textDocument/definition",    lsp_definition          },
     { "textDocument/hover",         lsp_hover               },
     { "workspace/configure",        lsp_workspace_configure },
     { NULL,                         NULL                    }
@@ -554,4 +576,29 @@ LspCompletionItem *get_completions(LspContext *ctx, LspModule *module, LspComple
         break;
     }
     return items;
+}
+
+Json *lsp_get_definition(LspModule *mod, LspPositionContext p) {
+    if (!p.node || !p.node->resolved) return NULL;
+    ZToken *source = NULL;
+
+    switch (p.node->type) {
+    case NODE_IDENTIFIER:
+        if (p.node->identNode.ref) source = p.node->identNode.ref->tok;
+        break;
+    case NODE_MEMBER:
+        if (p.node->memberAccess.func)
+            source = p.node->memberAccess.func->tok;
+        break;
+    default: break;
+    }
+
+    if (!source) return NULL;
+
+    Allocator *a = mod->allocator;
+    Json *response = JsonMap(a, NULL);
+
+    JsonSet(a, response, "uri", JsonStringFmt(a, "file://%s", source->filename));
+    JsonSet(a, response, "range", range_from_token(a, source));
+    return response;
 }

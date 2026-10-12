@@ -170,6 +170,7 @@ LspResponse *lsp_open_document  (LspContext *);
 LspResponse *lsp_change_document(LspContext *);
 LspResponse *lsp_close_document (LspContext *);
 LspResponse *lsp_completion     (LspContext *);
+LspResponse *lsp_definition     (LspContext *);
 LspResponse *lsp_hover          (LspContext *);
 
 void publish_diagnostics(LspContext *, const char *, int);
@@ -187,5 +188,7 @@ Json *completions2Json(Allocator *, LspCompletionItem *);
 LspCompletionKind completion_kind_from_symbol(ZSymType);
 LspCompletionContext get_completion_context(LspModule *, LspPosition);
 LspCompletionItem *get_completions(LspContext *, LspModule *, LspCompletionContext);
+Json *range_from_token(Allocator *, ZToken *);
+Json *lsp_get_definition(LspModule *, LspPositionContext);
 
 #endif //!LSP_H
