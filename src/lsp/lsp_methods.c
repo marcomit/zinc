@@ -1,5 +1,5 @@
 #include "json.c/json.h"
-#include "lsp.h"
+#include "zlsp.h"
 #include "zinc.h"
 #include "zmem.h"
 #include "zvec.h"
@@ -34,7 +34,7 @@ void lsp_send(Json *message) {
     fprintf(g_out, "Content-Length: %zu\r\n\r\n", len);
     JsonFileWrite(message, g_out);
     fflush(g_out);
-    log_json("SENT", message);
+    // log_json("SENT", message);
 }
 
 void lsp_notify(Allocator *allocator, const char *method, Json *params) {
@@ -48,27 +48,6 @@ void lsp_notify(Allocator *allocator, const char *method, Json *params) {
     JsonFree(allocator, msg);
 }
 
-static Json *range_from_token(Allocator *a, ZToken *tok) {
-    Json *start = JsonMap(a, NULL);
-    Json *end   = JsonMap(a, NULL);
-    Json *range = JsonMap(a, NULL);
-
-    int line    = tok ? (int)tok->row - 1 : 0;
-    int col     = tok ? (int)(tok->start - tok->sourceLinePtr) : 0;
-    int row     = tok ? (int)(tok->end - tok->start) : 0;
-
-    JsonSet(a, start,  "line",         JsonNumber(a, line));
-    JsonSet(a, start,  "character",    JsonNumber(a, col));
-
-    JsonSet(a, end,    "line",         JsonNumber(a, line));
-    JsonSet(a, end,    "character",    JsonNumber(a, col + row));
-
-    JsonSet(a, range,  "start",        start);
-    JsonSet(a, range,  "end",          end);
-
-    return range;
-}
-
 void publish_diagnostics(LspContext *ctx, const char *uri, int version) {
     Allocator *a = getTempAllocator();
     Json *diags = JsonList(a, NULL);
@@ -79,10 +58,14 @@ void publish_diagnostics(LspContext *ctx, const char *uri, int version) {
         if (log->level != Z_ERROR && log->level != Z_WARNING) continue;
 
         Json *d = JsonMap(a, NULL);
-        JsonSet(a, d, "range", range_from_token(a, log->token));
-        JsonSet(a, d, "severity", JsonNumber(a, 1 + (int)log->level));
-        JsonSet(a, d, "source", JsonString(a, "zinc"));
-        JsonSet(a, d, "message", JsonString(a, log->message));
+        JsonSet(a, d, "range",      range_from_token(a, log->token));
+        JsonSet(a, d, "severity",   JsonNumber(a, 1 + (int)log->level));
+        JsonSet(a, d, "source",     JsonString(a, "zinc"));
+        JsonSet(a, d, "message",    JsonString(a, log->message ? log->message : ""));
+
+        // Logs from the untyped error()/warning() path have no diagnostic code.
+        const char *code = get_diagnostics(log->code).code;
+        if (code) JsonSet(a, d, "code", JsonString(a, (char *)code));
 
         JsonPush(a, diags, d);
     }
@@ -110,15 +93,130 @@ LspResponse *lsp_open_document(LspContext *ctx) {
     return NULL;
 }
 
-static bool format_id(Json *id, char *buf, size_t buf_size) {
-    if (JsonType(id) == JSON_NUMBER) {
-        snprintf(buf, buf_size, "%.0f", JsonAsNum(id));
-        return true;
-    }
+LspResponse *lsp_hover(LspContext *ctx) {
+    Allocator *a = ctx->allocator;
+    char *uri = JsonAsString(JsonGetFmt(ctx->root, "params.textDocument.uri"));
+    Json *docPos = JsonGetFmt(ctx->root, "params.position");
+    LspPosition pos = {
+        .line       = (int)JsonAsNum(JsonGet(docPos, "line")),
+        .character  = (int)JsonAsNum(JsonGet(docPos, "character"))
+    };
 
-    if (JsonType(id) == JSON_STRING) {
-        snprintf(buf, buf_size, "\"%s\"", JsonAsString(id));
-        return true;
-    }
-    return false;
+    int cached = get_module(ctx, uri);
+    if (cached == -1) goto err;
+
+    LspModule *mod  = ctx->modules[cached];
+    LspPositionContext p_ctx = get_position_context(mod, pos);
+
+    if (!p_ctx.token            ||
+        !p_ctx.node             ||
+        !p_ctx.scope            ||
+        // !p_ctx.symbol           ||
+        !p_ctx.node->resolved   ) goto err;
+
+    Json *contents  = JsonMap(a, NULL);
+
+    JsonSet(a, contents, "kind", JsonString(a, "markdown"));
+    JsonSet(a, contents, "value", JsonStringFmt(a,
+        "%s",
+        stype(p_ctx.node->resolved)
+    ));
+
+    Json *hover     = JsonMap(a, NULL);
+    JsonSet(a, hover, "contents", contents);
+    JsonSet(a, hover, "range", range_from_token(a, p_ctx.token));
+
+    return lsp_reply(ctx, hover);
+err:
+    return lsp_reply(ctx, JsonNull(a));
+}
+
+LspResponse *lsp_completion(LspContext *ctx) {
+    Allocator *a = ctx->allocator;
+    const char *uri = JsonAsString(JsonGetFmt(ctx->root, "params.textDocument.uri"));
+    Json *position  = JsonGetFmt(ctx->root, "params.position");
+    LspPosition pos = {
+        .line       = (int)JsonAsNum(JsonGet(position, "line")),
+        .character  = (int)JsonAsNum(JsonGet(position, "character"))
+    };
+
+    int cached = get_module(ctx, uri);
+    if (cached == -1) goto err;
+
+    LspModule *mod = ctx->modules[cached];
+
+    LspCompletionContext cc     = get_completion_context(mod, pos);
+    LspCompletionItem *items    = get_completions(ctx, mod, cc);
+    Json *completions           = completions2Json(ctx->allocator, items);
+    return lsp_reply(ctx, completions);
+err:
+    return lsp_reply(ctx, JsonNull(a));
+}
+
+LspResponse *lsp_definition(LspContext *ctx) {
+    Allocator *a = ctx->allocator;
+    const char *uri = JsonAsString(JsonGetFmt(ctx->root, "params.textDocument.uri"));
+    Json *position  = JsonGetFmt(ctx->root, "params.position");
+    LspPosition pos = {
+        .line       = (int)JsonAsNum(JsonGet(position, "line")),
+        .character  = (int)JsonAsNum(JsonGet(position, "character"))
+    };
+
+    int cached = get_module(ctx, uri);
+    if (cached == -1) goto err;
+
+    LspModule *mod = ctx->modules[cached];
+
+
+    LspPositionContext pctx = get_position_context(mod, pos);
+    Json *response = lsp_get_definition(mod, pctx);
+    return lsp_reply(ctx, response);
+err:
+    return lsp_reply(ctx, JsonNull(a));
+}
+
+LspResponse *lsp_initialize(LspContext *ctx) {
+    if (!ctx) return NULL;
+    Allocator *a = ctx->allocator;
+    Json *result                = JsonMap(a, NULL);
+    Json *capabilities          = JsonMap(a, NULL);
+    Json *serverInfo            = JsonMap(a, NULL);
+    Json *workspace             = JsonMap(a, NULL);
+    Json *workspaceRT           = JsonMap(a, NULL);
+    Json *completion            = JsonMap(a, NULL);
+    Json *completion_triggers   = JsonList(a, NULL);
+
+    Json *JsonTrue = JsonBool(a, true);
+
+    JsonPush(a, completion_triggers, JsonString(a, "."));
+    JsonSet(a, completion,      "triggerCharacters", completion_triggers);
+
+    JsonSet(a, result,          "capabilities",             capabilities);
+    JsonSet(a, result,          "serverInfo",               serverInfo);
+
+    JsonSet(a, capabilities,    "textDocumentSync",         JsonNumber(a, 1));
+    JsonSet(a, capabilities,    "hoverProvider",            JsonTrue);
+    JsonSet(a, capabilities,    "definitionProvider",       JsonTrue);
+    JsonSet(a, capabilities,    "completionProvider",       completion);
+    JsonSet(a, capabilities,    "workspace",                workspace);
+
+    JsonSet(a, serverInfo,      "name",                     JsonString(a, "zinc-lsp"));
+    JsonSet(a, serverInfo,      "version",                  JsonString(a, "0.2.0"));
+
+    JsonSet(a, workspace,       "workspaceFolders",         JsonTrue);
+    JsonSet(a, workspace,       "configuration",            JsonTrue);
+    JsonSet(a, workspace,       "didChangeWatchedFiles",    workspaceRT);
+
+    JsonSet(a, workspaceRT,     "dynamicRegistration",      JsonTrue);
+
+    return lsp_reply(ctx, result);
+}
+
+LspResponse *lsp_shutdown(LspContext *ctx) {
+    freestate(ctx->state);
+    ctx->state = NULL;
+    aclose(ctx->allocator);
+    ctx->allocator = NULL;
+
+    return NULL;
 }

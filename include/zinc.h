@@ -35,6 +35,13 @@
 
 static char sep = '/';
 
+#if Z_LSP
+/* It is the default field when the parser tries to parse a member access
+ * but there's no field. Then the parser inserts this virtual field.
+ */
+#define DEFAULT_MEMBER_ACCESS "__zinc_complete__"
+#endif
+
 typedef enum {
 
 #define DEF(id, str, m) id,
@@ -145,6 +152,13 @@ typedef struct {
     const char      *src_file;
     int             src_line;
 } ZLog;
+
+typedef struct {
+    const char      *code;
+    const char      *message;
+    const char      *hint;
+    const ZLogLevel level;
+} ZDiagnostic;
 
 typedef enum {
     Z_LTO_OFF = 0,
@@ -266,10 +280,6 @@ typedef struct {
     struct timespec phaseTime;
 #endif
 
-#if Z_LSP
-    ZScope *rootScope;
-#endif
-
     /* Save every 'here' call token such that the code generator build a
      * 'SourceLocation' struct and zinc can use the location to show diagnostics.
      * */
@@ -308,6 +318,10 @@ struct ZType {
     ZTypeKind   kind;
     ZToken      *tok;
     u32         hash;
+
+#if Z_LSP
+    ZToken *lsp_start, *lsp_end;
+#endif
 
     union {
         struct {
@@ -534,6 +548,8 @@ struct ZNode {
      * the injected prelude). Set by setspan / setspanfrom in the parser. */
     ZToken          *start;
     ZToken          *end;
+
+    ZToken          *comment;
 #endif
     union {
         // Can be used for both if and ternary operator
@@ -695,6 +711,7 @@ struct ZNode {
             char        *mangled;
             u32         *path;
             ZNode       *func;
+            ZNode       *method; // Receiver method target (self injected)
             ZSymbol     *sym;
         } memberAccess;
 
@@ -949,10 +966,6 @@ struct ZScope {
     ZCapability     **capabilities;
     u32             depth;
     hashset_t       seen;
-
-#if Z_LSP
-    ZScope          **children;
-#endif
 };
 
 /* Contains a type with a list of functions that accept
@@ -1109,13 +1122,17 @@ ZLog *emitNote  (ZLog *, ZToken *, const char *, ...);
 #define zlog(state, tok, code, ...) \
     _log(state, tok, code, __FILE__, __LINE__, ##__VA_ARGS__)
 
+ZDiagnostic get_diagnostics(ZDiagCode code);
 char *zstrdup(Allocator *, char *);
 char *zstrndup(Allocator *, char *, usize);
 void printLogs(ZState *);
 void initPrimitiveTypes(ZState *);
 bool canAdvance(ZState *);
 
-bool visit(ZState *, char **, bool);
+#define ENTRY_IMPORT_FILE "lib"
+
+char *resolveImport(ZState *, const char *);
+bool visit(ZState *, char *);
 void undoVisit(ZState *);
 
 char *stoken(ZToken *);
@@ -1127,6 +1144,7 @@ void printTokens(ZToken **);
 void printNode(ZNode *, u8);
 void printDestructedVar(ZVarDestructPattern *, u8);
 void printSymbol(ZSymbol *);
+char *ssymbol(Allocator *, ZSymbol *);
 
 void printScope(ZScope *);
 
@@ -1160,5 +1178,11 @@ void analyzeAnnotations(ZState *, ZNode *);
 void validate(ZState *, ZNode *);
 bool initTargetMachine(ZState *);
 void disposeTargetMachine(ZState *);
+
+/* Last, so every type zlsp.h needs is already declared. zlsp.h includes this
+ * header too: the include guards make either inclusion order work. */
+#if Z_LSP
+#include "zlsp.h"
+#endif
 
 #endif

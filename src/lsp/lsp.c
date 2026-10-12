@@ -1,5 +1,4 @@
-#include "lsp.h"
-#include "zinc.h"
+#include "zlsp.h"
 #include "zmem.h"
 #include <unistd.h>
 
@@ -90,21 +89,6 @@ static char *read_message(size_t *out_len) {
     body[got] = '\0';
     *out_len = got;
     return body;
-}
-
-void lsp_analyze(LspContext *ctx, const char *uri, char *text, int version) {
-    char *path = strncmp(uri, "file://", 7) == 0 ? (char *)uri + 7 : (char *)uri;
-    ZState *state = makestate();
-    useAllocator(state->allocator);
-    visit(state, &path, false);
-    initPrimitiveTypes(state);
-    ZNode *root = zparse(state, ztokenizeSource(state, text));
-    if (canAdvance(state)) {
-        zanalyze(state, root);
-    }
-    freestate(ctx->state);
-    ctx->state = state;
-    publish_diagnostics(ctx, uri, version);
 }
 
 int main(void) {

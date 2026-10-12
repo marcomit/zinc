@@ -94,9 +94,6 @@ static ZScope *makescope(Allocator *allocator, ZScope *parent, ZNode *node) {
     self->seen          = NULL;
     self->capabilities  = NULL;
 
-#if Z_LSP
-    self->children      = NULL;
-#endif
 
     return self;
 }
@@ -687,11 +684,6 @@ static void checkUnusedSymbols(ZThreadSem *ctx) {
 
 static void beginScope(ZThreadSem *ctx, ZNode *curr) {
     ZScope *scope       = makescope(ctx->allocator, ctx->current, curr);
-#if Z_LSP
-    if (ctx->current) {
-        vecpushwith(ctx->current->children, scope, ctx->allocator);
-    }
-#endif
     ctx->current = scope;
 }
 
@@ -1404,11 +1396,10 @@ static bool funcTableBaseMatches(ZThreadSem *ctx, ZType *tableBase, ZType *obj) 
     return false;
 }
 
-static ZFuncTable *resolveFuncTable(ZThreadSem *ctx, ZType *obj) {
-    for (usize i = 0; i < veclen(ctx->funcs); i++) {
+static inline ZFuncTable *resolveFuncTable(ZThreadSem *ctx, ZType *obj) {
+    for (usize i = 0; i < veclen(ctx->funcs); i++)
         if (funcTableBaseMatches(ctx, ctx->funcs[i]->base, obj))
             return ctx->funcs[i];
-    }
     return NULL;
 }
 
@@ -1461,7 +1452,10 @@ static ZNode *resolveFuncCallEmbedded(ZThreadSem *ctx,
         }
     }
 
-    if (ptr) curr->memberAccess.mangled = ptr->funcDef.mangled;
+    if (ptr) {
+        curr->memberAccess.mangled  = ptr->funcDef.mangled;
+        curr->memberAccess.method   = ptr;
+    }
     return ptr;
 }
 
@@ -2514,9 +2508,141 @@ static ZType *resolveTypeStatic(
     return NULL;
 }
 
+static ZThreadSem *findLocalSemantic(ZSemantic *ctx, ZNode *module) {
+    for (usize i = 0; i < veclen(ctx->scopes); i++)
+        if (ctx->scopes[i]->module == module)
+            return ctx->scopes[i]->ctx;
+    return NULL;
+}
+
+#if Z_LSP
+// #else
+static void listStatic(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
+    if (!type) return;
+    type = resolveTypeRef(ctx, type);
+    ZFuncTable *table = resolveFuncTable(ctx, type);
+
+    if (table) for (usize i = 0; i < veclen(table->staticFuncDef); i++) {
+        ZNode *funcDef = table->staticFuncDef[i];
+        fn(
+            stoken(funcDef->funcDef.name),
+            funcDef->resolved,
+            funcDef,
+            Z_LSP_METHOD,
+            ud
+        );
+    }
+    if (type->kind != Z_TYPE_ENUM) return;
+    ZNode **variants = type->enm.fields;
+    for (usize i = 0; i < veclen(variants); i++) {
+        ZNode *variant = variants[i];
+        fn(
+            stoken(variant->resolved->strct.name),
+            variant->resolved,
+            variant,
+            Z_LSP_ENUM_MEMBER,
+            ud
+        );
+    }
+}
+
+static void listScope(ZThreadSem *ctx, ZScope *scope, ZMemberFn fn, void *ud) {
+    for (usize i = 0; i < veclen(scope->symbols); i++) {
+        ZSymbol *sym = scope->symbols[i];
+        fn(
+            stoken(sym->name),
+            sym->type,
+            sym->node,
+            completion_kind_from_symbol(sym->kind),
+            ud
+        );
+    }
+}
+
+static void listForeign(ZThreadSem *ctx, ZNode *node, ZMemberFn fn, void *ud) {
+    for (usize i = 0; i < veclen(node->block); i++) {
+        ZNode *foreign = node->block[i];
+        fn(
+            stoken(foreign->foreignDecl.name),
+            foreign->resolved,
+            foreign,
+            Z_LSP_FUNCTION,
+            ud
+        );
+    }
+}
+
+static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
+    if (!type) return;
+    type = resolveTypeRef(ctx, type);
+    ZFuncTable *table = resolveFuncTable(ctx, type);
+
+    if (table) for (usize i = 0; i < veclen(table->funcDef); i++) {
+        ZNode *f = table->funcDef[i];
+        fn(
+            stoken(f->funcDef.name),
+            f->resolved,
+            f,
+            Z_LSP_METHOD,
+            ud
+        );
+    }
+
+    switch (type->kind) {
+    case Z_TYPE_STRUCT:
+        for (usize i = 0; i < veclen(type->strct.fields); i++) {
+            ZNode *field = type->strct.fields[i];
+            fn(
+                stoken(field->tok),
+                field->resolved,
+                NULL,
+                Z_LSP_FIELD,
+                ud
+            );
+        }
+        break;
+
+    case Z_TYPE_ARRAY:
+        fn("len", u64Type, NULL, Z_LSP_FIELD, ud);
+        fn("ptr", type->array.base, NULL, Z_LSP_FIELD, ud);
+        break;
+
+    default: break;
+    }
+}
+
+void zforEachMember(ZSemantic *ctx,
+                    ZNode *module,
+                    ZNode *member,
+                    ZMemberFn fn,
+                    void *ud) {
+    if (!ctx || !module || !member || member->type != NODE_MEMBER) return;
+    ZThreadSem *sem = findLocalSemantic(ctx, module);
+    if (!sem) return;
+
+    ZNode *obj = member->memberAccess.object;
+
+    if (obj->type == NODE_IDENTIFIER && strcmp(stoken(obj->tok), ".") == 0) {
+        listStatic(sem, obj->resolved, fn, ud); return;
+    }
+
+    ZSymbol *sym = nodeSymbol(obj);
+
+    if (sym) switch (sym->kind) {
+    case Z_SYM_STRUCT:
+    case Z_SYM_ENUM:
+    case Z_SYM_TYPEDEF: listStatic      (sem, sym->type,    fn, ud);    return;
+    case Z_SYM_IMPORT:  listScope       (sem, sym->scope,   fn, ud);    return;
+    case Z_SYM_FOREIGN: listForeign     (sem, sym->node,    fn, ud);    return;
+    default:            listInstance    (sem, obj->resolved,fn, ud);    return;
+    } else              listInstance    (sem, obj->resolved,fn, ud);    return;
+}
+#endif
+
 static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZType *objType  = NULL;
     ZToken *field   = curr->memberAccess.field;
+
     if (curr->memberAccess.object->type == NODE_IDENTIFIER &&
         strcmp(curr->memberAccess.object->tok->str, ".") == 0) {
         if (!inferred) {
@@ -2535,8 +2661,12 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
     } else {
         objType = resolveType(ctx, curr->memberAccess.object, inferred);
     }
-
     ZSymbol *objSym = nodeSymbol(curr->memberAccess.object);
+
+    #if Z_LSP
+    if (strcmp(stoken(field), DEFAULT_MEMBER_ACCESS) == 0) return NULL;
+    #endif
+
     if (objSym) {
         if (!curr->memberAccess.object->resolved)
             curr->memberAccess.object->resolved = modType;
@@ -3605,10 +3735,6 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     ZSemantic *ctx = makesemantic(state, root);
 
     ZScope *globalScope     = makescope(state->allocator, NULL, root);
-
-#if Z_LSP
-    state->rootScope = globalScope;
-#endif
 
     ZThreadSem *first       = makethreadsem(
         ctx, globalScope, root, state->allocator
