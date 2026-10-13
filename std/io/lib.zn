@@ -1,4 +1,4 @@
-pub use <std.io.file>
-pub use <std.io.net>
-pub use <std.io.thread>
-pub use <std.io.mutex>
+pub #import "std/io/file"
+pub #import "std/io/net"
+pub #import "std/io/thread"
+pub #import "std/io/mutex"

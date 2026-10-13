@@ -112,6 +112,7 @@ DIAG(Z2039, Z_ERROR,   "Expected a function declaration after 'pub'", NULL)
 DIAG(Z203A, Z_ERROR,   "Expected at least one function", NULL)
 DIAG(Z203B, Z_ERROR,   "Unexpected token '%s', expected a top-level declaration", NULL)
 DIAG(Z203C, Z_ERROR,   "Module '%s' not found", "looked for '<module>/lib.zn' and '<module>.zn' next to this file and in ~/.zinc/packages")
+DIAG(Z203D, Z_ERROR,   "Expected an identifier after '@', got '%s'", NULL)
 
 /* ---------------- Semantic analysis (src/zsem.c) ---------------- */
 DIAG(Z3001, Z_ERROR,   "'%s' already defined in the same scope", "rename one of the definitions")
@@ -203,6 +204,7 @@ DIAG(Z3058, Z_ERROR,   "field '%s' embeds enum by value causing infinite size; u
 DIAG(Z3059, Z_ERROR,   "Missing 'main' declaration", "add a 'main' function to the entry module")
 DIAG(Z305A, Z_ERROR,   "impl of facet '%s' is missing method '%s'", NULL)
 DIAG(Z305B, Z_ERROR,   "Uninitialized variable must be zeroable, '%s' is not", NULL)
+DIAG(Z305C, Z_ERROR,   "structs marked with #sealed are allowed only in their source file", NULL)
 
 /* ---------------- Code generation (src/codegen/) ---------------- */
 DIAG(Z4001, Z_ERROR,   "unknown primitive type '%s'", NULL)

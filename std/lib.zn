@@ -1,11 +1,11 @@
-pub use <std.core.rand>
-pub use <std.core.display>
-pub use <std.core.string>
-pub use <std.mem>
-pub use <std.libc>
-pub use <std.mem>
-pub use <std.mem.gpa>
-pub use <std.io>
+pub #import "std/core/rand"
+pub #import "std/core/display"
+pub #import "std/core/string"
+pub #import "std/mem"
+pub #import "std/libc"
+pub #import "std/mem"
+pub #import "std/mem/gpa"
+pub #import "std/io"
 
 pub void :: type u0
 pub bool :: type u1

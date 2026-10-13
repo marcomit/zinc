@@ -59,6 +59,7 @@ static ZAnnotationSpec Annotations[] = {
     { "allow_empty",    Z_ANN_IDENT,                0,              Z_TRG_FUNC,     0, 0, true, NULL            },
     { "print_ast",      Z_ANN_IDENT,                0,              Z_TRG_ANY,      0, 0, true, NULL            },
     { "maybe_unused",   Z_ANN_IDENT,                0,              Z_TRG_STMT,     0, 0, true, NULL,           },
+    { "sealed",         Z_ANN_IDENT,                0, Z_TRG_ENUM | Z_TRG_STRUCT,   0, 0, true, NULL            },
 
     None
 };
@@ -146,23 +147,23 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
 
     switch (node->type) {
     case NODE_ENUM:
-        annotations = node->enumDef.annotations;
+        annotations = node->annotations;
         targetMask  = Z_TRG_ENUM;
         break;
     case NODE_FUNC:
-        annotations = node->funcDef.annotations;
+        annotations = node->annotations;
         targetMask  = Z_TRG_FUNC;
         break;
     case NODE_STRUCT:
-        annotations = node->structDef.annotations;
+        annotations = node->annotations;
         targetMask  = Z_TRG_STRUCT;
         break;
     case NODE_FOREIGN:
-        annotations = node->foreignDecl.annotations;
+        annotations = node->annotations;
         targetMask  = Z_TRG_FOREIGN;
         break;
     case NODE_IMPL:
-        annotations = node->impl.annotations;
+        annotations = node->annotations;
         targetMask  = Z_TRG_IMPL;
 
         /* Methods carry their own annotations and are never visited by the
@@ -172,7 +173,7 @@ void analyzeAnnotations(ZState *state, ZNode *node) {
         }
         break;
     case NODE_FACET:
-        annotations = node->facet.annotations;
+        annotations = node->annotations;
         targetMask  = Z_TRG_FACET;
         break;
     default:
@@ -254,13 +255,14 @@ ZAnnotation *query(ZAnnotation **anns, const char *name) {
 ZLangItemType getLangItemType(ZNode *node) {
     if (!node) return Z_LANG_NONE;
     ZAnnotation **anns = NULL;
+
     switch (node->type) {
-    case NODE_FOREIGN:  anns = node->foreignDecl.annotations;   break;
-    case NODE_IMPL:     anns = node->impl.annotations;          break;
-    case NODE_FUNC:     anns = node->funcDef.annotations;       break;
-    case NODE_STRUCT:   anns = node->structDef.annotations;     break;
-    case NODE_ENUM:     anns = node->enumDef.annotations;       break;
-    case NODE_FACET:    anns = node->facet.annotations;         break;
+    case NODE_FOREIGN:  anns = node->annotations;   break;
+    case NODE_IMPL:     anns = node->annotations;   break;
+    case NODE_FUNC:     anns = node->annotations;   break;
+    case NODE_STRUCT:   anns = node->annotations;   break;
+    case NODE_ENUM:     anns = node->annotations;   break;
+    case NODE_FACET:    anns = node->annotations;   break;
     case NODE_IDENTIFIER: return node->identNode.li;
     default: break;
     }

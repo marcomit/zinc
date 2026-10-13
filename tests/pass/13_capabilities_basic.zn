@@ -1,8 +1,3 @@
-use <std.libc>
-use <std.mem>
-use <std.mem.gpa>
-
-
 fill :: fn (size: u64) i32 with alloc: Allocator {
     _ := alloc.alloc(size)
     return 42

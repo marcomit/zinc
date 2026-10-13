@@ -1,5 +1,5 @@
-use <std.mem>
-use <std.core.string>
+#import "std/mem"
+#import "std/core/string"
 
 printf :: foreign fn (*char, ..) u0
 

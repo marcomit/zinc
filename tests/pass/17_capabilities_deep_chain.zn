@@ -1,7 +1,3 @@
-use <std::mem::gpa>
-use <std::mem>
-use <std::libc>
-
 leaf :: fn () i32 with alloc: Allocator {
     _ := alloc.alloc(8)
     return 99

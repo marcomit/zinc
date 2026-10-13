@@ -522,7 +522,7 @@ static void putStruct(ZThreadSem *ctx, ZNode *node) {
     type->strct.name        = node->structDef.ident;
     type->strct.fields      = node->structDef.fields;
     type->strct.generics    = NULL;
-    type->strct.annotations = node->structDef.annotations;
+    type->annotations       = node->annotations;
     type->tok               = node->tok;
     node->resolved          = type;
 
@@ -1730,11 +1730,17 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->tok, Z300E, curr->tok->str);
             return NULL;
         }
+
         symType = resolveType(ctx, structSym->node, inferred);
     }
     if (!symType || symType->kind != Z_TYPE_STRUCT) {
         zlog(ctx->state, ident, Z300F, stoken(ident));
         return NULL;
+    }
+
+    if (structSym && strcmp(structSym->name->filename, curr->tok->filename) != 0) {
+        if (query(structSym->node->annotations, "sealed"))
+            zlog(ctx->state, curr->tok, Z305C);
     }
 
     if (veclen(curr->structlit.fields) != veclen(symType->strct.fields)) {
@@ -2508,6 +2514,7 @@ static ZType *resolveTypeStatic(
     return NULL;
 }
 
+#if Z_LSP
 static ZThreadSem *findLocalSemantic(ZSemantic *ctx, ZNode *module) {
     for (usize i = 0; i < veclen(ctx->scopes); i++)
         if (ctx->scopes[i]->module == module)
@@ -2515,7 +2522,6 @@ static ZThreadSem *findLocalSemantic(ZSemantic *ctx, ZNode *module) {
     return NULL;
 }
 
-#if Z_LSP
 // #else
 static void listStatic(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
     if (!type) return;
@@ -2572,11 +2578,7 @@ static void listForeign(ZThreadSem *ctx, ZNode *node, ZMemberFn fn, void *ud) {
     }
 }
 
-static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
-    if (!type) return;
-    type = resolveTypeRef(ctx, type);
-    ZFuncTable *table = resolveFuncTable(ctx, type);
-
+static void dispatchFuncTable(ZThreadSem *ctx, ZFuncTable *table, ZMemberFn fn, void *ud) {
     if (table) for (usize i = 0; i < veclen(table->funcDef); i++) {
         ZNode *f = table->funcDef[i];
         fn(
@@ -2586,6 +2588,23 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
             Z_LSP_METHOD,
             ud
         );
+    }
+}
+
+static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
+    if (!type) return;
+    type = resolveTypeRef(ctx, type);
+    ZFuncTable *table = resolveFuncTable(ctx, type);
+    dispatchFuncTable(ctx, table, fn, ud);
+
+
+    ZType *derefType = type;
+    while (derefType && derefType->kind == Z_TYPE_POINTER)
+        derefType = derefType->base;
+
+    if (derefType != type) {
+        table = resolveFuncTable(ctx, derefType);
+        dispatchFuncTable(ctx, table, fn, ud);
     }
 
     switch (type->kind) {

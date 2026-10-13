@@ -1,4 +1,4 @@
-use a
+#import "a"
 
 c :: foreign {
     printf : fn (*char, ..) u0

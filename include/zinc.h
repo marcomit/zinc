@@ -87,6 +87,8 @@ typedef struct ZScope       ZScope;
 typedef struct ZSymbol      ZSymbol;
 typedef struct ZThreadSem   ZThreadSem;
 typedef struct ZAnnotation  ZAnnotation;
+typedef struct ZProvenance  ZProvenance;
+typedef struct ZCapability  ZCapability;
 
 extern ZType *none;
 extern ZType *u0Type;
@@ -96,6 +98,8 @@ extern ZType *u64Type;
 extern ZType *modType;
 extern ZType *strType;
 extern ZType *interpType;
+
+extern ZProvenance *raw;
 
 typedef enum {
     Z_ERROR,
@@ -318,7 +322,8 @@ struct ZType {
     ZTypeKind   kind;
     ZToken      *tok;
     u32         hash;
-
+    ZProvenance *provenance;
+    ZAnnotation **annotations;
 #if Z_LSP
     ZToken *lsp_start, *lsp_end;
 #endif
@@ -345,7 +350,6 @@ struct ZType {
             /* Array of NODE_FIELD */
             ZNode       **fields;
             ZType       **generics;
-            ZAnnotation ** annotations;
         } strct;
 
         struct {
@@ -676,7 +680,6 @@ struct ZNode {
             ZToken      *ident;
             ZNode       **fields;
             ZType       **generics;
-            ZAnnotation **annotations;
             bool        pub;
         } structDef;
 
@@ -693,7 +696,6 @@ struct ZNode {
             ZToken      *name;
             /* Fields are a list of enumField. */
             ZNode       **fields;
-            ZAnnotation **annotations;
             bool        pub;
         } enumDef;
 
@@ -750,7 +752,6 @@ struct ZNode {
             ZToken          *alias;
             ZType           *type;
             bool            pub;
-            ZAnnotation     **annotations;
         } typeDef;
 
         struct {
@@ -819,7 +820,6 @@ struct ZNode {
             /* Array of NODE_FIELD */
             ZNode       **funcs;
 
-            ZAnnotation **annotations;
             ZType       **generics;
         } facet;
 
@@ -830,7 +830,6 @@ struct ZNode {
             ZType       *base;
             ZToken      *self;
             ZNode       **funcs;
-            ZAnnotation **annotations;
             ZNode       **capabilities;
         } impl;
 
@@ -948,16 +947,16 @@ struct ZSymbol {
     bool            reachable;
 };
 
-typedef struct ZCapability {
+struct ZCapability {
     ZType *type;
     ZNode **nodes;
-} ZCapability;
+};
 
-typedef struct {
+struct ZProvenance {
     ZNode *origin;
     const char *name;
     int depth;
-} ZProvenance;
+};
 
 struct ZScope {
     ZSymbol         **symbols;

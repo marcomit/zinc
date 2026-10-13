@@ -1,5 +1,5 @@
-use <std.mem.gpa>
-use <std.core.list>
+#import "std/mem/gpa"
+#import "std/core/list"
 
 JsonMapEntry :: struct {
     key:    *char

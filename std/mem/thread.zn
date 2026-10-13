@@ -1,5 +1,5 @@
-use <std.io.mutex>
-use lib
+#import "std/io/mutex"
+#import "lib"
 
 pub ThreadAllocator :: struct {
     inner: Allocator

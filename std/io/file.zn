@@ -1,4 +1,4 @@
-use <std.mem>
+#import "std/mem"
 
 c :: foreign {
     fopen   : fn (*char, *char) ?*u8
