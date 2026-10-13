@@ -147,6 +147,14 @@ ZType *maketype(Allocator *allocator, ZTypeKind kind) {
     return self;
 }
 
+static ZProvenance *makeprovenance(Allocator *allocator, const char *name, int depth) {
+    ZProvenance *provenance = zalloc(allocator, ZProvenance);
+    provenance->depth       = depth;
+    provenance->name        = name;
+    provenance->origin      = NULL;
+    return provenance;
+}
+
 static ZVarDestructPattern *makeVarDestructPattern(Allocator *allocator, int type) {
     ZVarDestructPattern *self = zalloc(allocator, ZVarDestructPattern);
     self->type = type;
@@ -1135,7 +1143,19 @@ static ZType *parseSumType(ZParser *parser) {
 }
 
 ZType *parseType(ZParser *parser) {
-    return parseSumType(parser);
+    ZType *type = parseSumType(parser);
+    if (!type) return NULL;
+
+    if (!match(parser, TOK_AT)) return type;
+    if (!check(parser, TOK_IDENT)) {
+        zlog(parser->state, peek(parser), Z0009, stoken(peek(parser)));
+        return type;
+    }
+    ZToken *name = consume(parser);
+
+    type->provenance = makeprovenance(parser->allocator, stoken(name), 0);
+
+    return type;
 }
 
 static ZNode *parseDefer(ZParser *parser) {
@@ -1562,7 +1582,7 @@ static ZNode *parseEnumDecl(ZParser *parser,
     node->enumDef.name          = start;
     node->enumDef.pub           = public;
     node->enumDef.fields        = type->enm.fields;
-    node->enumDef.annotations   = annotations;
+    node->annotations           = annotations;
     node->tok                   = node->enumDef.name;
     node->resolved          = type;
 
@@ -1587,7 +1607,7 @@ static ZType *parseAnonStruct(ZParser *parser, ZAnnotation **annotations) {
             parseStructField, false);
 
     ZType *type                 = maketype(parser->allocator, Z_TYPE_STRUCT);
-    type->strct.annotations     = annotations;
+    type->annotations           = annotations;
     type->strct.name            = start;
     type->strct.generics        = generics;
     type->strct.fields          = fields;
@@ -1617,7 +1637,7 @@ static ZNode *parseStructDecl(ZParser *parser,
     node->structDef.generics    = type->strct.generics;
     node->structDef.ident       = start;
     node->structDef.pub         = public;
-    node->structDef.annotations = annotations;
+    node->annotations           = annotations;
 
     return setspan(parser, node, start);
 }
@@ -2698,25 +2718,6 @@ static ZNode **getCachedModule(ZParser *parser, char *filename) {
     return NULL;
 }
 
-/* Joins the segments of a 'use' path into an import string: a::super::b -> a/../b */
-static char *getPathFromTokens(ZParser *parser, ZToken **module) {
-    usize len = veclen(module);
-    if (len == 0) return NULL;
-
-    char *path = NULL;
-    for (usize i = 0; i < len; i++) {
-        const char *seg = strcmp(module[i]->str, "super") == 0 ?
-            ".." :
-            module[i]->str;
-        vecunion(path, seg, strlen(seg));
-        if (i < len - 1) vecpush(path, sep);
-    }
-    vecpush(path, '\0');
-
-    (void)parser;
-    return path;
-}
-
 static ZNode *getModuleByName(
     ZParser *parser, char *module, ZToken *tok, bool public) {
     char *filename = resolveImport(parser->state, module);
@@ -2754,45 +2755,6 @@ static ZNode *getModuleByName(
     return node;
 }
 
-static ZNode *parseImport(ZParser *parser, bool public) {
-    ZToken *start = peek(parser);
-    ZToken *name = NULL;
-    if (check(parser, TOK_IDENT) &&
-        checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
-        name = consume(parser);
-        consume(parser);
-    }
-
-    expect(parser, TOK_MODULE);
-
-    bool isStd = match(parser, TOK_LT);
-
-    ZToken **module = NULL;
-    ZToken *segment;
-    while (canPeek(parser)) {
-        if (peek(parser)->newlineBefore) break;
-        if (!check(parser, TOK_IDENT)) {
-            zlog(parser->state, peek(parser), Z2015);
-        }
-
-        segment = consume(parser);
-        vecpush(module, segment);
-        if (check(parser, TOK_GT)) break;
-        if (!match(parser, TOK_DOT) && !match(parser, TOK_DOUBLE_COLON)) {
-            break;
-        }
-    }
-
-    if (isStd) expect(parser, TOK_GT);
-
-    /* The module node is the root of the imported file: its span is replaced
-     * with the import statement in this file. */
-    char *path = getPathFromTokens(parser, module);
-    ZNode *node = path ? getModuleByName(parser, path, start, public) : NULL;
-    if (node) node->module.name = name;
-    return setspan(parser, node, start);
-}
-
 static ZNode *parseTypedef(ZParser *parser, ZAnnotation **annotations, bool public) {
     ZToken *alias = peek(parser);
     expect(parser, TOK_IDENT);
@@ -2807,7 +2769,7 @@ static ZNode *parseTypedef(ZParser *parser, ZAnnotation **annotations, bool publ
     node->typeDef.alias         = alias;
     node->typeDef.type          = type;
     node->typeDef.pub           = public;
-    node->typeDef.annotations   = annotations;
+    node->annotations           = annotations;
     node->tok                   = alias;
     return setspan(parser, node, alias);
 }
@@ -2840,9 +2802,9 @@ static ZType *parseFuncType(ZParser *parser) {
 
     expect(parser, TOK_RPAREN);
 
-    ZNode **capabilities    = parseCapabilityList(parser);
     ZType *ret              = tryParse(parser, parseType(parser));
     guard(ret);
+    ZNode **capabilities    = parseCapabilityList(parser);
     ZType *func             = maketype(parser->allocator, Z_TYPE_FUNCTION);
     func->func.ret          = ret;
     func->func.args         = args;
@@ -2935,19 +2897,6 @@ static ZNode *parseForeignInlineDecl(ZParser *parser, ZAnnotation **annotations,
     node->tok                       = start;
     node->resolved                  = type;
     return setspan(parser, node, start);
-}
-
-static ZNode *parseForeignUse(ZParser *parser, bool public) {
-    (void)public;
-    expect(parser, TOK_FOREIGN);
-    expect(parser, TOK_MODULE);
-    if (!check(parser, TOK_STR_LIT)) {
-        zlog(parser->state, peek(parser), Z2032);
-    }
-    ZToken *import = consume(parser);
-    (void)import;
-    // convertHeaderToZNode(parser, import);
-    return NULL;
 }
 
 static ZNode *parseForeign(ZParser *parser, ZAnnotation **annotations, bool public) {
@@ -3245,8 +3194,8 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     block->impl.facets          = facets;
     block->impl.generics        = generics;
     block->impl.capabilities    = capabilities;
-    block->impl.annotations     = implAnnotations;
     block->impl.pub             = public;
+    block->annotations          = implAnnotations;
 
     ZAnnotation **annotations   = NULL;
     do {
@@ -3341,7 +3290,7 @@ static ZNode *parseFacet(ZParser *parser, ZAnnotation **annotations, bool public
     facet->facet.name           = start;
     facet->facet.funcs          = NULL;
     facet->facet.generics       = generics;
-    facet->facet.annotations    = annotations;
+    facet->annotations          = annotations;
 
     do {
         if (!check(parser, TOK_IDENT)) break;
@@ -3389,7 +3338,7 @@ static ZNode *parseConst(ZParser *parser) {
     return setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
 }
 
-static ZNode *parseImport2(ZParser *parser, bool public) {
+static ZNode *parseImport(ZParser *parser, bool public) {
     ZToken *start   = peek(parser);
     ZToken *alias   = NULL;
     if (check(parser, TOK_IDENT) && checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
@@ -3426,7 +3375,7 @@ static ZNode *parse(ZParser *parser) {
 #endif
 
     if (t == TOK_HASHTAG) {
-        ZNode *import = tryParse(parser, parseImport2(parser, false));
+        ZNode *import = tryParse(parser, parseImport(parser, false));
         if (import) {
             res = import;
             goto success;
@@ -3436,16 +3385,8 @@ static ZNode *parse(ZParser *parser) {
 
     bool public = match(parser, TOK_PUB);
 
-    if (check(parser, TOK_MODULE)) {
+    if (check(parser, TOK_HASHTAG)) {
         res = parseImport(parser, public);
-        goto success;
-    } else if (check(parser, TOK_FOREIGN)) {
-        if (checkAhead(parser, TOK_MODULE, 1)) {
-            res = parseForeignUse(parser, public);
-            goto success;
-        }
-    } else if (check(parser, TOK_HASHTAG)) {
-        res = parseImport2(parser, public);
         goto success;
     }
 
@@ -3468,7 +3409,6 @@ static ZNode *parse(ZParser *parser) {
     case TOK_MACRO:     res = skipMacro        (parser, public);                break;
     case TOK_IMPL:      res = parseImpl        (parser, annotations, public);   break;
     case TOK_FACET:     res = parseFacet       (parser, annotations, public);   break;
-    case TOK_MODULE:    res = parseImport      (parser, public);                break;
     case TOK_TYPEDEF:   res = parseTypedef     (parser, annotations, public);   break;
     case TOK_FOREIGN:   res = parseForeign     (parser, annotations, public);   break;
     case TOK_ENUM:      res = parseEnumDecl    (parser, annotations, public);   break;
@@ -3479,7 +3419,7 @@ static ZNode *parse(ZParser *parser) {
         );
         if (res) break;
 
-        res = tryParse(parser, parseImport2(parser, public));
+        res = tryParse(parser, parseImport(parser, public));
         if (res) break;
 
         res = parseConst(parser);

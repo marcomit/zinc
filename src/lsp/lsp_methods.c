@@ -34,7 +34,7 @@ void lsp_send(Json *message) {
     fprintf(g_out, "Content-Length: %zu\r\n\r\n", len);
     JsonFileWrite(message, g_out);
     fflush(g_out);
-    // log_json("SENT", message);
+    log_json("SENT", message);
 }
 
 void lsp_notify(Allocator *allocator, const char *method, Json *params) {

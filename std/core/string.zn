@@ -1,5 +1,5 @@
-use <std.mem>
-use <std.libc>
+#import "std/mem"
+#import "std/libc"
 
 #[packed]
 SdsHdr :: struct {

@@ -405,7 +405,7 @@ usize typeSize(ZState *state, ZType *type) {
             state,
             (void **)type->strct.fields,
             alignStructFieldIter,
-            query(type->strct.annotations, "packed") != NULL
+            query(type->annotations, "packed") != NULL
         );
         return res;
     }
@@ -441,7 +441,7 @@ static usize typeAlign(ZState *state, ZType *type) {
     if (!type) return 1;
     switch (type->kind) {
     case Z_TYPE_STRUCT: {
-        if (query(type->strct.annotations, "packed")) return 1;
+        if (query(type->annotations, "packed")) return 1;
         usize res = 1;
         for (usize i = 0; i < veclen(type->strct.fields); i++) {
             usize cur = typeAlign(state, type->strct.fields[i]->resolved);
@@ -632,7 +632,7 @@ static LLVMTypeRef genStructType(ZCodegen *ctx, ZType *type) {
         ftypes[i] = field;
     }
 
-    bool packed = query(type->strct.annotations, "packed");
+    bool packed = query(type->annotations, "packed");
     LLVMStructSetBody(structType, ftypes, nfields, packed);
 
     return structType;

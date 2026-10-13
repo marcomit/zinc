@@ -1,4 +1,4 @@
-use lib
+#import "lib"
 
 c :: foreign {
     mmap   : fn (*u8, u64, i32, i32, i32, i64) *u8

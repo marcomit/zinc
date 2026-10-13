@@ -144,7 +144,8 @@ typedef enum {
     LSP_COMPLETION_TOPLEVEL,    // File-level
     LSP_COMPLETION_TYPE,        // Type requested, shows only types
     LSP_COMPLETION_MEMBER,      // obj.member
-    LSP_COMPLETION_STATIC       // Type.construct
+    LSP_COMPLETION_STATIC,      // Type.construct
+    LSP_COMPLETION_ANNOTATION   // Inside #[ | ] or after #
 } LspCompletionContextKind;
 
 typedef struct {

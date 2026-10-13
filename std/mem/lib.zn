@@ -22,5 +22,3 @@ pub resize :: fn (ptr: ?*u8, size: u64) ?*u8
 pub destroy :: fn (ptr: *u8) u0 with a: Allocator {
     a.destroy(ptr)
 }
-
-pub use <std.mem.gpa>

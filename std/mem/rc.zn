@@ -1,4 +1,4 @@
-use <std.mem>
+#import "std/mem"
 
 RcDrop :: type fn (*u8) u0
 

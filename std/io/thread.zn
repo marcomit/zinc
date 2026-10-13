@@ -1,4 +1,4 @@
-use <std.mem>
+#import "std/mem"
 
 pthread_t :: type u64
 
@@ -35,7 +35,7 @@ thread_trampoline :: fn (arg: *u8) ?*u8 {
 }
 
 Thread :: impl {
-    pub spawn :: fn (func: ThreadFunc, data: *u8) Thread with Allocator {
+    pub spawn :: fn (func: ThreadFunc, data: ?*u8) Thread with Allocator {
         ctx: *ThreadContext = alloc(sizeof ThreadContext)
         ctx.func = func
         ctx.data = data
