@@ -1,7 +1,3 @@
-use <std.mem.gpa>
-use <std.mem>
-use <std.libc>
-
 allocInner :: fn (size: u64) *u8 with Allocator -> alloc(size)
 
 allocOuter :: fn (size: u64) i32 with Allocator {

@@ -1,7 +1,3 @@
-use <std.mem.gpa>
-use <std.mem>
-use <std.libc>
-
 LinkedList :: struct {
     val: i32
     next: ?*LinkedList

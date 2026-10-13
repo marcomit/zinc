@@ -1,5 +1,5 @@
-use a
-use b
+#import "a"
+#import "b"
 
 main :: fn () i32 {
     a: A = A.new("ciao")

@@ -1,8 +1,3 @@
-use <std.libc>
-use <std.mem>
-use <std.mem.gpa>
-use <std.core.string>
-
 main :: fn () i32 {
     gpa := GeneralPurposeAllocator.init()
     with _ := gpa.&.allocator() {

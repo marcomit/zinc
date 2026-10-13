@@ -1,7 +1,3 @@
-use <std.mem.gpa>
-use <std.mem>
-use <std.libc>
-
 allocate :: fn (size: u64) i32 with alloc: Allocator {
     buf: *u8 = alloc.alloc(size)
     return 1
