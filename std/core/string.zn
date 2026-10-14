@@ -1,178 +1,37 @@
 #import "std/mem"
 #import "std/libc"
+#import "list"
+#import "display"
 
-#[packed]
-SdsHdr :: struct {
-    len:    u32
-    alloc:  u32
-}
-
-/* none is a valid string: every method accepts it. */
-pub string :: type ?*char
+pub string :: type [..]char
 
 string :: impl {
-    make :: fn (init: ?*char, initlen: u32, cap: u32) string with Allocator {
-        raw := alloc(sizeof SdsHdr + cap + 1)
-        if not raw return none
-        sh := raw as *SdsHdr
-
-        sh.len   = initlen
-        sh.alloc = cap
-
-        base := sh as *u8
-        s := base[sizeof SdsHdr].& as *char
-
-        if initlen > 0 and init != none {
-            mem.memcpy(s as *u8, init as *u8, initlen as u64)
-        }
-        s[initlen] = 0 as char
-        return s
+    #inline
+    pub new :: fn (lit: []char) string with Allocator {
+        res: string
+        make_room(&res, lit.len, sizeof char)
+        res.len += lit.len
+        mem.memcpy(res.ptr, lit.ptr, lit.len)
+        return res
     }
 
-    pub new :: fn (init: *char) string with Allocator {
-        l := mem.strlen(init) as u32
-        return string.make(init, l, l)
-    }
-
-    pub empty :: fn () string with Allocator {
-        return string.make(none, 0, 0)
-    }
-
-    pub with_capacity :: fn (cap: u32) string with Allocator {
-        return string.make(none, 0, cap)
+    #inline
+    pub with_capacity :: fn (capacity: usize) string with Allocator {
+        res: string
+        make_room(&res, capacity, sizeof char)
+        return res
     }
 }
 
 string self :: impl {
-    #[inline]
-    header :: fn () *SdsHdr {
-        off: i64 = 0 - (sizeof SdsHdr) as i64
-        s := self as *char
-        return s[off].& as *SdsHdr
+    pub equals :: fn (other: string) u1 {
+        return mem.strcmp(self.ptr, other.ptr) == 0
     }
+}
 
-    make_room_for :: fn (addlen: u32) string with Allocator {
-        if not self return none
-
-        hdr := self.header()
-        available := hdr.alloc - hdr.len
-        if available >= addlen return self
-
-        newlen := hdr.len + addlen
-        newalloc := newlen
-        if newalloc < 32 {
-            newalloc = 32
-        } else {
-            newalloc *= 2 as u32
-        }
-
-        raw := resize(hdr, sizeof SdsHdr + newalloc + 1)
-        if not raw return none
-        new_sh := raw as *SdsHdr
-
-        new_sh.alloc = newalloc
-        new_base := new_sh as *u8
-        return new_base[sizeof SdsHdr].& as *char
-    }
-
-    pub len :: fn () u32 {
-        if not self return 0
-        hdr := self.header()
-        return hdr.len
-    }
-
-    pub cap :: fn () u32 {
-        if not self return 0
-        hdr := self.header()
-        return hdr.alloc
-    }
-
-    pub avail :: fn () u32 {
-        if not self return 0
-        hdr := self.header()
-        return hdr.alloc - hdr.len
-    }
-
-    pub is_empty :: fn () u1 -> self.len() == 0
-
-    pub append :: fn (t: *char) string with Allocator {
-        if not t { return self }
-
-        tlen := mem.strlen(t) as u32
-        if tlen == 0 { return self }
-
-        s := self.make_room_for(tlen)
-        if not s { return none }
-
-        hdr := s.header()
-        dst := s as *u8
-        mem.memcpy(dst[hdr.len].&, t as *u8, tlen as u64)
-
-        hdr.len += tlen
-        chars := s as *char
-        chars[hdr.len] = 0 as char
-        return s
-    }
-
-    pub append_str :: fn (other: string) string with Allocator {
-        return self.append(other)
-    }
-
-    pub append_char :: fn (ch: char) string with Allocator {
-        s := self.make_room_for(1)
-        if not s { return none }
-
-        hdr := s.header()
-        chars := s as *char
-        chars[hdr.len] = ch
-        hdr.len += 1 as u32
-        chars[hdr.len] = 0 as char
-        return s
-    }
-
-    pub dup :: fn () string with Allocator {
-        if not self { return none }
-        hdr := self.header()
-        return string.make(self, hdr.len, hdr.len)
-    }
-
-    pub clear :: fn () u0 {
-        if not self { return }
-        hdr := self.header()
-        hdr.len = 0
-        chars := self as *char
-        chars[0] = 0 as char
-    }
-
-    pub cmp :: fn (other: *char) i32 {
-        return mem.strcmp(self, other)
-    }
-
-    // #[overload(==)]
-    pub equals :: fn (other: *char) u1 {
-        return mem.strcmp(self, other) == 0
-    }
-
-    pub starts_with :: fn (prefix: *char) u1 {
-        plen := mem.strlen(prefix)
-        return mem.strncmp(self, prefix, plen) == 0
-    }
-
-    pub contains :: fn (needle: *char) u1 {
-        return mem.strstr(self, needle) != none
-    }
-
-    pub print :: fn () u0 {
-        io.printf("%s", self)
-    }
-
-    pub println :: fn () u0 {
-        io.printf("%s\n", self)
-    }
-
-    pub free :: fn () u0 with Allocator {
-        if not self { return }
-        destroy(self.header())
+*string self :: impl(Writable) {
+    pub sink :: fn (w: Writer) {
+        w.write(self.ptr, self.len)
     }
 }
 
@@ -192,6 +51,19 @@ StringBuilder :: impl {
         self.cap                = 0
         self.allocator = a
         return self
+    }
+}
+
+*StringBuilder self :: impl {
+    to_string :: fn () string {
+        res: [..]char
+        with _ := self.allocator {
+            make_room(&res, self.len + 1, sizeof char)
+            mem.memcpy(res.ptr, self.buff, self.len)
+            res.len += self.len + 1
+            res[res.len - 1] = 0
+        }
+        return res
     }
 }
 
@@ -233,4 +105,11 @@ StringBuilder :: impl {
             self.append_buff(buff, len)
         }
     }
+}
+
+#[inline]
+pub sprint :: fn (items: []InterpolatedString) string with Allocator {
+    res := StringBuilder.new()
+    interpolate(res.to_writer(), items)
+    return res.to_string()
 }

@@ -1,3 +1,5 @@
+#import "std/mem"
+
 DEFAULT_DYNAMIC_ARRAY_CAPACITY :: 16
 
 RawDynamicArray :: struct {
@@ -29,9 +31,3 @@ pub make_room :: fn (list: *[..]char, n: usize, elem_size: usize) with Allocator
     items: *RawDynamicArray = list
     items.make_room(n, elem_size)
 }
-
-// append_user :: fn (users: *[..]User, user: User) with Allocator {
-//     make_room(users, 1, sizeof User)
-//     users.len += 1
-//     users.*[users.len-1] = user
-// }

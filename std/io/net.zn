@@ -91,7 +91,7 @@ TcpStream self :: impl {
     pub recv   :: fn (buf: *u8, n: u64) i64 -> c.recv(self.fd, buf, n, 0)
 
     pub send_string :: fn (message: string) i64 {
-        return c.send(self.fd, message, message.len() as u64, 0)
+        return c.send(self.fd, message.ptr, message.len as u64, 0)
     }
     pub close  :: fn () u0 {
         c.close(self.fd)

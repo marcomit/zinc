@@ -6,11 +6,9 @@ main :: fn () i32 {
 
         hello2 := string.new("Ciao")
 
-        hello.println()
+        println(#"{&hello}")
 
-        if hello.equals(hello2) {
-            io.printf("ok\n")
-        }
+        if hello.equals(hello2) do println("ok")
     }
 
     return 0
