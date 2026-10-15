@@ -4699,7 +4699,14 @@ void disposeTargetMachine(ZState *state) {
     state->targetMachine = NULL;
 }
 
+static inline void printOptimizer(ZCodegen *ctx) {
+    if (!ctx->state->cli.verbose) return;
+    const char *format;
+    float elapsed = timer_elapsed(ctx->state->phaseTime, &format);
+    printf(COLOR_BOLD COLOR_CYAN "  Optimizer:" COLOR_RESET "  %.2f%s\n", elapsed, format);
+}
 static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileType fileType) {
+    if (ctx->state->cli.verbose) timer_start(&ctx->state->phaseTime);
     LLVMInitializeAllTargetInfos();
     LLVMInitializeAllTargets();
     LLVMInitializeAllTargetMCs();
@@ -4760,15 +4767,15 @@ static bool emitObjectFile(ZCodegen *ctx, const char *filename, LLVMCodeGenFileT
         ok = (LLVMWriteBitcodeToFile(ctx->mod, filename) == 0);
         if (!ok) zlog(ctx->state, NULL, Z4016, filename);
     } else {
-        ok = !LLVMTargetMachineEmitToFile(machine, ctx->mod, (char *)filename,
-                                          fileType, &errmsg);
+        ok = !LLVMTargetMachineEmitToFile(
+            machine, ctx->mod, (char *)filename, fileType, &errmsg);
         if (!ok) {
             zlog(ctx->state, NULL, Z4017, errmsg);
             LLVMDisposeMessage(errmsg);
         }
     }
-
     LLVMDisposeTargetMachine(machine);
+    printOptimizer(ctx);
     return ok;
 }
 
@@ -4876,13 +4883,14 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
         return;
     }
 
+
     if (state->cli.emit == Z_EMIT_EXE && !state->cli.nostdlib &&
         !LLVMGetNamedFunction(ctx->mod, "main")) {
         zlog(state, NULL, Z401B);
     }
 
+    if (state->cli.verbose) timer_start(&state->phaseTime);
     char *errmsg = NULL;
-
 
     if (!state->cli.skipLLVMValidation && LLVMVerifyModule(ctx->mod, LLVMReturnStatusAction, &errmsg)) {
         zlog(state, NULL, Z401C, errmsg);
@@ -4891,6 +4899,11 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
         return;
     }
     LLVMDisposeMessage(errmsg);
+
+    if (state->cli.verbose) {
+        elapsed = timer_elapsed(state->phaseTime, &format);
+        printf(COLOR_BOLD COLOR_CYAN "  Verify:     " COLOR_RESET "%.2f%s\n", elapsed, format);
+    }
 
     switch (state->cli.emit) {
     case Z_EMIT_IR:
