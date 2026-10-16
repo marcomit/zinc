@@ -2328,9 +2328,9 @@ static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred
                     ctx, interp->expr, writable->resolved
                 );
             } else {
-                error(ctx->state, interp->expr->tok,
-                      "'%s' must implement the writable facet",
-                      stype(interp->expr->resolved)
+                zlog(ctx->state,
+                    interp->expr->tok, Z305D,
+                    stype(interp->expr->resolved)
                 );
             }
             break;
@@ -2625,6 +2625,28 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
         fn("ptr", type->array.base, NULL, Z_LSP_FIELD, ud);
         break;
 
+    case Z_TYPE_FACET:
+        for (usize i = 0; i < veclen(type->facet.funcs); i++) {
+            ZNode *func = type->facet.funcs[i];
+            fn(
+                stoken(func->field.identifier),
+                func->resolved,
+                NULL,
+                Z_LSP_FIELD,
+                ud
+            );
+        }
+        break;
+
+    case Z_TYPE_TUPLE: {
+        char buff[32];
+        for (usize i = 0; i < veclen(type->tuple); i++) {
+            int len = snprintf(buff, 31, "%zu", i);
+            buff[len] = '\0';
+            fn(zstrdup(ctx->allocator, buff), type->tuple[i], NULL, Z_LSP_FIELD, ud);
+        }
+        break;
+    }
     default: break;
     }
 }

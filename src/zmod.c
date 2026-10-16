@@ -859,7 +859,13 @@ void encodeType(ZType *type, char **buf) {
         break;
     }
     case Z_TYPE_ARRAY:
-        vecpush(*buf, 'A');
+        if (type->array.dynamic) {
+            vecpush(*buf, 'D');
+        } else {
+            vecpush(*buf, 'A');
+            if (type->array.size != 0)
+                vecpush(*buf, '0');
+        }
         encodeType(type->array.base, buf);
         break;
     case Z_TYPE_FUNCTION:
@@ -883,6 +889,7 @@ void encodeType(ZType *type, char **buf) {
     }
     case Z_TYPE_FACET:
         vecpush(*buf, 'I');
+        vecunion(*buf, type->facet.name->str, strlen(type->facet.name->str));
         break;
     default: break;
     }
@@ -1327,6 +1334,7 @@ ZType *u64Type      = NULL;
 ZType *modType      = NULL;
 ZType *strType      = NULL;
 ZType *interpType   = NULL;
+ZRegion *rawRegion  = NULL;
 
 void initPrimitiveTypes(ZState *state) {
     (void)state;
@@ -1343,5 +1351,13 @@ void initPrimitiveTypes(ZState *state) {
         strType             = maketype(allocator, Z_TYPE_ARRAY);
         strType->array.base = charType;
         strType->array.size = 0;
+    }
+
+    if (!rawRegion) {
+        rawRegion   = copy(allocator, ZRegion, ((ZRegion){
+            .depth  = 0,
+            .name   = "raw",
+            .origin = NULL
+        }));
     }
 }
