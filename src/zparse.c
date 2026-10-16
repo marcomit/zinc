@@ -1407,6 +1407,11 @@ static ZNode *parseBlock(ZParser *parser) {
 }
 
 static ZNode *parseField(ZParser *parser) {
+    ZAnnotation **annotations =
+        check(parser, TOK_HASHTAG) ?
+        parseAnnotations(parser) :
+        NULL;
+
     ensure(check(parser, TOK_IDENT), "Expected an identifier");
     ZToken *ident = consume(parser);
 
@@ -1420,6 +1425,7 @@ static ZNode *parseField(ZParser *parser) {
     node->field.identifier  = ident;
     node->resolved          = type;
     node->tok               = ident;
+    node->annotations       = annotations;
     return setspan(parser, node, ident);
 }
 
@@ -2116,25 +2122,6 @@ static ZType **parseGenericsDecl(ZParser *parser) {
     return generics;
 }
 
-static ZNode *parseFuncArgument(ZParser *parser) {
-    ensure(check(parser, TOK_IDENT), "Expected an identifier");
-    ZToken *ident = consume(parser);
-
-    expect(parser, TOK_COLON);
-
-    ZType *type = NULL;
-    type = tryParse(parser, parseType(parser));
-
-    guard(type);
-
-    ZNode *node             = makenode(parser->allocator, NODE_FIELD);
-    node->field.type        = type;
-    node->field.identifier  = ident;
-    node->resolved          = type;
-    node->tok               = ident;
-    return setspan(parser, node, ident);
-}
-
 static ZNode *parseAnonFuncArgument(ZParser *parser) {
     if (!check(parser, TOK_IDENT)) return NULL;
     ZToken *name = consume(parser);
@@ -2291,7 +2278,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
 
     ZNode **args = parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
-        parseFuncArgument,  true
+        parseField,  true
     );
 
     ZType *ret = parseFuncMultiReturn(parser);

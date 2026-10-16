@@ -57,6 +57,14 @@ Json *completions2Json(Allocator *a, LspCompletionItem *list) {
 
         if (list[i].detail)
             JsonSet(a, item, "detail",      JsonString(a, list[i].detail));
+
+        LspCompletionDetails details = list[i].label_details;
+        if (details.description || details.detail) {
+            Json *ld = JsonMap(a, NULL);
+            if (details.detail)         JsonSet(a, ld, "detail",         JsonString(a, details.detail));
+            if (details.description)    JsonSet(a, ld, "description",    JsonString(a, details.description));
+            JsonSet(a, item, "labelDetails", ld);
+        }
         JsonPush(a, items, item);
     }
     return items;
@@ -77,10 +85,6 @@ LspResponse *lsp_change_document(LspContext *ctx) {
     return NULL;
 }
 
-static LspResponse *lsp_workspace_configure(LspContext *ctx) {
-    return NULL;
-}
-
 static LspHandler Handlers[] = {
     { "initialize",                 lsp_initialize          },
     { "shutdown",                   lsp_shutdown            },
@@ -89,7 +93,6 @@ static LspHandler Handlers[] = {
     { "textDocument/completion",    lsp_completion          },
     { "textDocument/definition",    lsp_definition          },
     { "textDocument/hover",         lsp_hover               },
-    { "workspace/configure",        lsp_workspace_configure },
     { NULL,                         NULL                    }
 };
 
@@ -107,9 +110,6 @@ LspResponse *handle_message(LspContext *ctx) {
     }
 
     return NULL;
-}
-
-void get_token(LspContext *ctx, LspModule *current, LspPosition pos) {
 }
 
 inline int get_module(LspContext *ctx, const char *uri) {
@@ -315,13 +315,14 @@ LspPositionContext get_position_context(LspModule *mod, LspPosition pos) {
 }
 
 static void add_item(char *name, ZType *type, ZNode *node, LspCompletionKind kind, void *ud) {
+    (void)node;
     LspCompletionItem **items = ud;
 
     char *sig = type ? stype(type) : NULL;
     vecpush(*items, ((LspCompletionItem){
         .label = name,
         .detail = sig,
-        .label_details = { sig, sig },
+        .label_details = { NULL, sig },
         .kind = kind, .docs = { NULL, NULL }
     }));
 }
@@ -337,15 +338,14 @@ static void list_scope(LspCompletionItem **items, ZScope *scope, int mask) {
                 .kind = completion_kind_from_symbol(sym->kind),
                 .label = stoken(sym->name),
                 .detail = type,
-                .label_details = { type, type },
+                .label_details = { NULL, type },
                 .docs = { NULL, NULL }
             }));
         }
     }
 }
 
-static void list_keywords(LspCompletionItem **items, int mask) {
-    struct { char *name; int mask; } keywords[] = {
+static struct { char *name; int mask; } keywords[] = {
 #define TOK_FLOWS
 #define TOK_TYPES
 #define DEF(type, name, mask) { name, mask },
@@ -353,8 +353,9 @@ static void list_keywords(LspCompletionItem **items, int mask) {
 #undef DEF
 #undef TOK_TYPES
 #undef TOK_FLOWS
-    };
+};
 
+static void list_keywords(LspCompletionItem **items, int mask) {
     for (usize i = 0; i < (sizeof(keywords)/sizeof(keywords[0])); i++) {
         if (!(keywords[i].mask & mask)) continue;
         vecpush(*items, ((LspCompletionItem){
@@ -388,14 +389,15 @@ static void list_struct_fields(LspCompletionItem **items, ZNode *lit, ZToken *ex
             .kind = Z_LSP_FIELD,
             .label = field,
             .detail = detail,
-            .label_details = { detail, detail },
+            .label_details = { NULL, detail },
             .docs = { NULL, NULL }
         }));
     }
 }
 
 static void list_import_paths(LspCompletionItem **items, char *prefix) {
-
+    (void)items;
+    (void)prefix;
 }
 
 /* ================== Completion context ================== */
@@ -549,6 +551,7 @@ LspCompletionContext get_completion_context(LspModule *mod, LspPosition pos) {
 LspCompletionItem *get_completions(LspContext *ctx, LspModule *module, LspCompletionContext cc) {
     LspCompletionItem *items = vecnew(ctx->allocator, LspCompletionItem);
     switch (cc.kind) {
+    case LSP_COMPLETION_ANNOTATION:
     case LSP_COMPLETION_NONE:
         break;
     case LSP_COMPLETION_SCOPE:

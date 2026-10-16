@@ -654,6 +654,8 @@ static ZThreadSem *registerModule(ZSemantic *ctx, ZNode *module) {
 }
 
 static void warnUnused(ZThreadSem *ctx, ZSymbol *symbol) {
+    if (!symbol) return;
+    if (query(symbol->node->annotations, "unused")) return;
     switch (symbol->kind) {
     case Z_SYM_FUNC:
         if (ctx->state->cli.unusedFunc) break;
@@ -2551,7 +2553,7 @@ static void listStatic(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
     }
 }
 
-static void listScope(ZThreadSem *ctx, ZScope *scope, ZMemberFn fn, void *ud) {
+static void listScope(ZScope *scope, ZMemberFn fn, void *ud) {
     for (usize i = 0; i < veclen(scope->symbols); i++) {
         ZSymbol *sym = scope->symbols[i];
         fn(
@@ -2564,7 +2566,7 @@ static void listScope(ZThreadSem *ctx, ZScope *scope, ZMemberFn fn, void *ud) {
     }
 }
 
-static void listForeign(ZThreadSem *ctx, ZNode *node, ZMemberFn fn, void *ud) {
+static void listForeign(ZNode *node, ZMemberFn fn, void *ud) {
     for (usize i = 0; i < veclen(node->block); i++) {
         ZNode *foreign = node->block[i];
         fn(
@@ -2577,7 +2579,7 @@ static void listForeign(ZThreadSem *ctx, ZNode *node, ZMemberFn fn, void *ud) {
     }
 }
 
-static void dispatchFuncTable(ZThreadSem *ctx, ZFuncTable *table, ZMemberFn fn, void *ud) {
+static void dispatchFuncTable(ZFuncTable *table, ZMemberFn fn, void *ud) {
     if (table) for (usize i = 0; i < veclen(table->funcDef); i++) {
         ZNode *f = table->funcDef[i];
         fn(
@@ -2594,13 +2596,13 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
     if (!type) return;
     type = resolveTypeRef(ctx, type);
     ZFuncTable *table = resolveFuncTable(ctx, type);
-    dispatchFuncTable(ctx, table, fn, ud);
+    dispatchFuncTable(table, fn, ud);
 
     ZType *derefType = type;
     while (derefType && derefType->kind == Z_TYPE_POINTER) {
         derefType = derefType->base;
         table = resolveFuncTable(ctx, derefType);
-        dispatchFuncTable(ctx, table, fn, ud);
+        dispatchFuncTable(table, fn, ud);
     }
 
     if (derefType != type) {
@@ -2673,8 +2675,8 @@ void zforEachMember(ZSemantic *ctx,
     case Z_SYM_STRUCT:
     case Z_SYM_ENUM:
     case Z_SYM_TYPEDEF: listStatic      (sem, sym->type,    fn, ud);    return;
-    case Z_SYM_IMPORT:  listScope       (sem, sym->scope,   fn, ud);    return;
-    case Z_SYM_FOREIGN: listForeign     (sem, sym->node,    fn, ud);    return;
+    case Z_SYM_IMPORT:  listScope       (sym->scope,   fn, ud);    return;
+    case Z_SYM_FOREIGN: listForeign     (sym->node,    fn, ud);    return;
     default:            listInstance    (sem, obj->resolved,fn, ud);    return;
     } else              listInstance    (sem, obj->resolved,fn, ud);    return;
 }
