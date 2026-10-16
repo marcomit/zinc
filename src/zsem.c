@@ -312,20 +312,21 @@ static void putImpl(ZThreadSem *ctx, ZNode *node) {
         return;
     }
 
-    for (usize i = 0; i < veclen(node->impl.facets); i++) {
-        ZToken *facetRef = node->impl.facets[i]->tok;
-        ZType *facet = resolveTypeRef(ctx, node->impl.facets[i]);
+    ZType **facets = node->impl.facets;
+    for (usize i = 0; i < veclen(facets); i++) {
+        if (!facets[i]) continue;
+        ZToken *facetRef = facets[i]->tok;
+        ZType *facet = resolveTypeRef(ctx, facets[i]);
 
         if (!facet) continue;
-        node->impl.facets[i] = facet;
-
         if (facet->kind != Z_TYPE_FACET) {
             zlog(ctx->state,
-                node->impl.facets[i]->tok,
+                facets[i]->tok,
                 Z304D, stype(facet)
             );
             continue;
         }
+        node->impl.facets[i] = facet;
 
         usize facetFuncs = veclen(facet->facet.funcs);
         for (usize j = 0; j < facetFuncs; j++) {

@@ -3266,6 +3266,9 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
 
     setspan(parser, block, start);
 
+    block->impl.base = type;
+    block->impl.self = rec;
+
     usize len = veclen(block->impl.funcs);
 
     if (len == 0) return block;
@@ -3277,8 +3280,6 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     while (baseType->kind == Z_TYPE_POINTER) baseType = baseType->base;
     ZToken *typeNameTok = baseType->primitive.token;
 
-    block->impl.base = type;
-    block->impl.self = rec;
     if (rec) { // receiver functions
         ZNode *receiver = makenode(parser->allocator, NODE_FIELD);
         receiver->field.identifier = rec;
