@@ -827,6 +827,8 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
     } else if (to->kind == Z_TYPE_OPTIONAL) {
         return typesCompatible(ctx, from, to->optional);
     }
+    ZType *interpType   = consts(ctx->state, interpType);
+    ZType *strType      = consts(ctx->state, strType);
 
     if (!interpType) {
         ZNode *interp = LangItems[Z_LANG_INTERPOLATED_STRING];
@@ -835,7 +837,7 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
             arr->array.base     = interp->resolved;
             arr->array.size     = 1;
             arr->array.dynamic  = false;
-            interpType = arr;
+            interpType = consts(ctx->state, interpType) = arr;
         }
     }
 
@@ -1123,7 +1125,7 @@ static inline ZType *derefType(ZType *t) {
 
 static ZType *resolveLiteralType(ZThreadSem *ctx, ZToken *curr, ZType *inferred) {
     (void)inferred;
-    if (curr->type == TOK_NONE) return none;
+    if (curr->type == TOK_NONE) return consts(ctx->state, none);
 
     ZType *t = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
     switch (curr->type) {
@@ -1805,6 +1807,7 @@ static ZType *resolveIdentByScope(ZThreadSem *ctx, ZScope *scope, ZNode *node) {
         zlog(ctx->state, tok, Z3014, tok->str);
         return NULL;
     }
+
     node->identNode.ref = sym->node;
     node->identNode.sym = sym;
     node->identNode.li  = getLangItemType(sym->node);
@@ -2017,7 +2020,7 @@ static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case TOK_NOT:
 
         // curr->unary.operand = implicitCast(ctx, curr->unary.operand, u1Type);
-        return u1Type;
+        return consts(ctx->state, u1Type);
 
     case TOK_ESCL:
         if (!typeKindIs(operand->kind, TYPE_WRAPPER_MASK)) {
@@ -2108,6 +2111,7 @@ static ZType *resolveSlice(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         zlog(ctx->state, curr->slice.end->tok, Z3020);
     }
 
+    ZType *u64Type = consts(ctx->state, u64Type);
     curr->slice.start   = implicitCast(ctx, curr->slice.start, u64Type);
     curr->slice.end     = implicitCast(ctx, curr->slice.end, u64Type);
 
@@ -2309,6 +2313,7 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
 static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZNode *writable = LangItems[Z_LANG_WRITABLE];
+    ZType *strType = consts(ctx->state, strType);
     if (veclen(curr->interpolation) == 1 && typesEqual(inferred, strType)) {
         if (typesEqual(inferred, strType))
             return strType;
@@ -2624,7 +2629,7 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
         break;
 
     case Z_TYPE_ARRAY:
-        fn("len", u64Type, NULL, Z_LSP_FIELD, ud);
+        fn("len", consts(ctx->state, u64Type), NULL, Z_LSP_FIELD, ud);
         fn("ptr", type->array.base, NULL, Z_LSP_FIELD, ud);
         break;
 
@@ -2712,7 +2717,7 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
 
     if (objSym) {
         if (!curr->memberAccess.object->resolved)
-            curr->memberAccess.object->resolved = modType;
+            curr->memberAccess.object->resolved = consts(ctx->state, modType);
         switch (objSym->kind) {
         case Z_SYM_IMPORT: {
             ZSymbol *sym = resolveByScope(objSym->scope, field);
@@ -2784,7 +2789,7 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
 
         return base->tuple[field->integer];
     } else if (base->kind == Z_TYPE_ARRAY && strcmp(stoken(field), "len") == 0) {
-        return u64Type;
+        return consts(ctx->state, u64Type);
     } else if (base->kind == Z_TYPE_ARRAY && strcmp(stoken(field), "ptr") == 0) {
         ZType *pointer = makeTypeThread(ctx, Z_TYPE_POINTER);
         pointer->base = base->array.base;
@@ -2813,7 +2818,7 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         if (!resolved) {
             if (objType->kind == Z_TYPE_ARRAY &&
                     strcmp(field->str, "len") == 0) {
-                return u64Type;
+                return consts(ctx->state, u64Type);
             } else if (objType->kind == Z_TYPE_ARRAY &&
                     strcmp(field->str, "ptr") == 0) {
                 ZType *pointer = makeTypeThread(ctx, Z_TYPE_POINTER);
@@ -2965,7 +2970,8 @@ static void analyzeIf(ZThreadSem *ctx, ZNode *curr) {
     }
 
     if (curr->ifStmt.cond->type != NODE_VAR_DECL) {
-        curr->ifStmt.cond = implicitCast(ctx, curr->ifStmt.cond, u1Type);
+        curr->ifStmt.cond = implicitCast(
+            ctx, curr->ifStmt.cond, consts(ctx->state, u1Type));
     }
 
     analyzeStmt(ctx, curr->ifStmt.body);
@@ -2990,7 +2996,8 @@ static void analyzeWhile(ZThreadSem *ctx, ZNode *curr) {
             zlog(ctx->state, curr->whileStmt.cond->tok, Z3021);
         }
 
-        curr->whileStmt.cond = implicitCast(ctx, curr->whileStmt.cond, u1Type);
+        curr->whileStmt.cond = implicitCast(
+            ctx, curr->whileStmt.cond, consts(ctx->state, u1Type));
     }
 
     ctx->loopDepth++;
@@ -3156,7 +3163,7 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
 
     bool sumAcceptVoid =
         ctx->currentFuncRet->kind == Z_TYPE_SUM &&
-        sumTypeIndexOf(ctx->currentFuncRet, u0Type) != -1;
+        sumTypeIndexOf(ctx->currentFuncRet, consts(ctx->state, u0Type)) != -1;
 
     bool isVoidRet  = isVoid(retType);
     bool isVoid     = isType(ctx->currentFuncRet, TOK_VOID);
@@ -3206,7 +3213,7 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
         }
         curr->resolved = curr->returnStmt.expr->resolved;
     } else if (sumAcceptVoid && isVoidRet) {
-        curr->resolved = u0Type;
+        curr->resolved = consts(ctx->state, u0Type);
     }
 }
 
@@ -3402,7 +3409,7 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
         putVarPattern(ctx, curr, elemType, binding->tuple[0], false);
         if (veclen(binding->tuple) == 2) {
-            putVarPattern(ctx, curr, u64Type, binding->tuple[1], false);
+            putVarPattern(ctx, curr, consts(ctx->state, u64Type), binding->tuple[1], false);
         }
     } else {
         putVarPattern(ctx, curr, elemType, curr->forin.binding, true);
@@ -3506,7 +3513,7 @@ static void discoverImport(
     if (node->module.name) {
         ZSymbol *import = makeRawSymbol(
             parent->allocator,  Z_SYM_IMPORT,
-            node->module.name,  modType,
+            node->module.name,  consts(child->state, modType),
             node,               pub
         );
         import->scope = child->global;

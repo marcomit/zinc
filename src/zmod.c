@@ -973,7 +973,6 @@ extern ZNode *LangItems[Z_LANG_COUNT];
  * module, see ZModuleAllocator), so freestate releases it all at once. */
 ZState *makestate() {
      memset(LangItems, 0, sizeof(LangItems));
-    interpType = NULL;
     Allocator *allocator        = getArenaAllocator();
     if (!allocator) return NULL;
 
@@ -1326,6 +1325,7 @@ void printLogs(ZState *state) {
     }
 }
 
+/*
 ZType *none         = NULL;
 ZType *u0Type       = NULL;
 ZType *charType     = NULL;
@@ -1335,29 +1335,26 @@ ZType *modType      = NULL;
 ZType *strType      = NULL;
 ZType *interpType   = NULL;
 ZRegion *rawRegion  = NULL;
+*/
 
 void initPrimitiveTypes(ZState *state) {
-    (void)state;
+    if (state->consts.initialized) return;
+    state->consts.initialized = true;
     /* Cached in globals and reused by every later state (the LSP makes one per
      * request), so they must outlive any single state's arena. */
     Allocator *allocator = arenaAllocator;
-    if (!none)      none    = maketype          (allocator, Z_TYPE_NONE);
-    if (!u0Type)    u0Type  = makePrimitiveType (allocator, TOK_VOID);
-    if (!charType)  charType= makePrimitiveType (allocator, TOK_CHAR);
-    if (!u1Type)    u1Type  = makePrimitiveType (allocator, TOK_BOOL);
-    if (!u64Type)   u64Type = makePrimitiveType (allocator, TOK_U64);
-    if (!modType)   modType = maketype          (allocator, Z_TYPE_NAMESPACE);
-    if (!strType) {
-        strType             = maketype(allocator, Z_TYPE_ARRAY);
-        strType->array.base = charType;
-        strType->array.size = 0;
-    }
-
-    if (!rawRegion) {
-        rawRegion   = copy(allocator, ZRegion, ((ZRegion){
-            .depth  = 0,
-            .name   = "raw",
-            .origin = NULL
-        }));
-    }
+    state->consts.none    = maketype          (allocator, Z_TYPE_NONE);
+    state->consts.u0Type  = makePrimitiveType (allocator, TOK_VOID);
+    state->consts.charType= makePrimitiveType (allocator, TOK_CHAR);
+    state->consts.u1Type  = makePrimitiveType (allocator, TOK_BOOL);
+    state->consts.u64Type = makePrimitiveType (allocator, TOK_U64);
+    state->consts.modType = maketype          (allocator, Z_TYPE_NAMESPACE);
+    state->consts.strType             = maketype(allocator, Z_TYPE_ARRAY);
+    state->consts.strType->array.base = state->consts.charType;
+    state->consts.strType->array.size = 0;
+    state->consts.rawRegion   = copy(allocator, ZRegion, ((ZRegion){
+        .depth  = 0,
+        .name   = "raw",
+        .origin = NULL
+    }));
 }

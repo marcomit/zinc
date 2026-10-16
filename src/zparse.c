@@ -1157,7 +1157,7 @@ ZType *parseType(ZParser *parser) {
     if (region) {
         type->region = makeregion(parser->allocator, stoken(region), 0);
     } else {
-        type->region = rawRegion;
+        type->region = consts(parser->state, rawRegion);
     }
 
     return type;
@@ -2237,7 +2237,7 @@ static ZType *parseFuncMultiReturn(ZParser *parser) {
         ret->tok    = start;
     }
 
-    if (!ret) return u0Type;
+    if (!ret) return consts(parser->state, u0Type);
     return ret;
 }
 
