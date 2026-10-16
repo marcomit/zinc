@@ -118,7 +118,7 @@ LspResponse *lsp_hover(LspContext *ctx) {
 
     JsonSet(a, contents, "kind", JsonString(a, "markdown"));
     JsonSet(a, contents, "value", JsonStringFmt(a,
-        "%s",
+        "`%s`",
         stype(p_ctx.node->resolved)
     ));
 

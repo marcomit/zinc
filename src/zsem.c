@@ -1407,35 +1407,33 @@ static inline ZFuncTable *resolveFuncTable(ZThreadSem *ctx, ZType *obj) {
 static ZNode *resolveFuncCallEmbedded(ZThreadSem *ctx,
     ZNode *curr, ZType *obj, ZToken *prop) {
     ZNode *ptr = NULL;
-    if (obj) {
-        switch (obj->kind) {
-        case Z_TYPE_STRUCT:
-            for (usize i = 0; i < veclen(obj->strct.fields); i++) {
-                ZNode *field = obj->strct.fields[i];
-                if (field->type != NODE_EMBED_FIELD) continue;
-                if (ptr) {
-                    zlog(ctx->state, prop, Z00A3, stype(ptr->resolved));
-                } else {
-                    ptr = resolveFuncCallEmbedded(
-                        ctx, curr, field->resolved, prop);
-                }
+    if (obj) switch (obj->kind) {
+    case Z_TYPE_STRUCT:
+        for (usize i = 0; i < veclen(obj->strct.fields); i++) {
+            ZNode *field = obj->strct.fields[i];
+            if (field->type != NODE_EMBED_FIELD) continue;
+            if (ptr) {
+                zlog(ctx->state, prop, Z00A3, stype(ptr->resolved));
+            } else {
+                ptr = resolveFuncCallEmbedded(
+                    ctx, curr, field->resolved, prop);
             }
-            break;
-        case Z_TYPE_FACET:
-            for (usize i = 0; i < veclen(obj->facet.funcs); i++) {
-                ZNode *field = obj->facet.funcs[i];
-                if (field->type != NODE_EMBED_FIELD) continue;
-                if (ptr) {
-                    zlog(ctx->state, prop, Z00A3, stype(ptr->resolved));
-                } else {
-                    ptr = resolveFuncCallEmbedded(
-                        ctx, curr, field->resolved, prop);
-                }
-            }
-            break;
-
-        default: break;
         }
+        break;
+    case Z_TYPE_FACET:
+        for (usize i = 0; i < veclen(obj->facet.funcs); i++) {
+            ZNode *field = obj->facet.funcs[i];
+            if (field->type != NODE_EMBED_FIELD) continue;
+            if (ptr) {
+                zlog(ctx->state, prop, Z00A3, stype(ptr->resolved));
+            } else {
+                ptr = resolveFuncCallEmbedded(
+                    ctx, curr, field->resolved, prop);
+            }
+        }
+        break;
+
+    default: break;
     }
 
     ZFuncTable *funcs = resolveFuncTable(ctx, obj);
@@ -2597,14 +2595,15 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
     ZFuncTable *table = resolveFuncTable(ctx, type);
     dispatchFuncTable(ctx, table, fn, ud);
 
-
     ZType *derefType = type;
-    while (derefType && derefType->kind == Z_TYPE_POINTER)
+    while (derefType && derefType->kind == Z_TYPE_POINTER) {
         derefType = derefType->base;
-
-    if (derefType != type) {
         table = resolveFuncTable(ctx, derefType);
         dispatchFuncTable(ctx, table, fn, ud);
+    }
+
+    if (derefType != type) {
+        type = derefType;
     }
 
     switch (type->kind) {
@@ -2726,6 +2725,8 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
     }
 
     ZType *base = derefType(objType);
+
+
 
     if (!base) {
         zlog(ctx->state, curr->tok, Z302E);

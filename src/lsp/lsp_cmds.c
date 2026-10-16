@@ -320,8 +320,8 @@ static void add_item(char *name, ZType *type, ZNode *node, LspCompletionKind kin
     char *sig = type ? stype(type) : NULL;
     vecpush(*items, ((LspCompletionItem){
         .label = name,
-        .detail = "",
-        .label_details = { NULL, sig },
+        .detail = sig,
+        .label_details = { sig, sig },
         .kind = kind, .docs = { NULL, NULL }
     }));
 }
@@ -388,7 +388,7 @@ static void list_struct_fields(LspCompletionItem **items, ZNode *lit, ZToken *ex
             .kind = Z_LSP_FIELD,
             .label = field,
             .detail = detail,
-            .label_details = { NULL, NULL },
+            .label_details = { detail, detail },
             .docs = { NULL, NULL }
         }));
     }
