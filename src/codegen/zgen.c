@@ -45,7 +45,6 @@ _Thread_local LLVMTypeRef usizeType     = NULL;
 _Thread_local LLVMTypeRef ptrType       = NULL;
 _Thread_local LLVMTypeRef f32Type       = NULL;
 _Thread_local LLVMTypeRef f64Type       = NULL;
-_Thread_local LLVMTypeRef StringType    = NULL;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
@@ -167,12 +166,6 @@ static void initNativeTypes(ZCodegen *ctx) {
     }
     usizeType   = LLVMIntTypeInContext(ctx->ctx, ctx->state->pointerSize * 8);
     ptrType     = LLVMPointerTypeInContext(ctx->ctx, 0);
-    StringType  = LLVMStructTypeInContext(
-        ctx->ctx,
-        (LLVMTypeRef []){
-            usizeType, ptrType
-        }, 2, false
-    );
 
     // LLVMSourceLocation = LLVMStructCreateNamed(
     //         ctx->ctx, "builtin.SourceLocation"
@@ -2567,7 +2560,8 @@ static LLVMValueRef genCast(ZCodegen *ctx, ZNode *node) {
         return genFacetConstruct(ctx, stack, to, node->castExpr.expr);
     }
 
-    if (typesEqual(from, strType) && typesEqual(to, interpType)) {
+    if (typesEqual(from,    consts(ctx->state, strType)) &&
+        typesEqual(to,      consts(ctx->state, interpType))) {
         ZLLVMStack *stack = getStackValue(ctx, node);
         if (!stack) {
             zlog(ctx->state, node->tok, Z901B);
@@ -3115,7 +3109,7 @@ static inline LLVMValueRef buildInterpolationValue(
     ZCodegen *ctx, ZInterpolation *interp) {
     LLVMValueRef value = NULL;
     switch (interp->type) {
-    case Z_INTERP_LIT:  return genLitTok(ctx, interp->literal, strType);
+    case Z_INTERP_LIT:  return genLitTok(ctx, interp->literal, consts(ctx->state, strType));
     case Z_INTERP_EXPR: return genExpr(ctx, interp->expr);
     }
     ZToken *tok = interp->type == Z_INTERP_LIT ?
@@ -4022,10 +4016,11 @@ static void buildNestedFuncVar(
  * @brief Returns the length of element should be allocated in the stack.
  * It's used only innside buildFuncVar.
  * */
-static inline usize backingLen(ZNode *node) {
+static inline usize backingLen(ZState *state, ZNode *node) {
     ZType *type = node->resolved;
     if (!type || type->kind != Z_TYPE_ARRAY) return 0;
     if (type->array.size > 0) return type->array.size;
+    ZType *interpType = consts(state, interpType);
     if (node->type == NODE_CAST && interpType && typesEqual(type, interpType))
         return 1;
     return 0;
@@ -4061,7 +4056,7 @@ static LLVMValueRef buildFuncVar(ZCodegen *ctx, ZNode *node, ZType *overrided, b
     LLVMValueRef elem = NULL;
     LLVMTypeRef elemType = NULL;
 
-    usize count = backingLen(node);
+    usize count = backingLen(ctx->state, node);
     if (count > 0) {
         LLVMTypeRef baseType = genType(ctx, node->resolved->array.base);
         elemType = LLVMArrayType2(baseType, count);
@@ -4117,7 +4112,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         if (!getStackValue(ctx, node) && (
                 node->resolved->kind == Z_TYPE_SUM      ||
                 node->resolved->kind == Z_TYPE_FACET    ||
-                backingLen(node) > 0))
+                backingLen(ctx->state, node) > 0))
             buildFuncVar(ctx, node, node->resolved, false);
         genFuncVars(ctx, node->castExpr.expr);
         break;

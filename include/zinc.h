@@ -90,17 +90,6 @@ typedef struct ZAnnotation  ZAnnotation;
 typedef struct ZRegion      ZRegion;
 typedef struct ZCapability  ZCapability;
 
-extern ZType *none;
-extern ZType *u0Type;
-extern ZType *u1Type;
-extern ZType *charType;
-extern ZType *u64Type;
-extern ZType *modType;
-extern ZType *strType;
-extern ZType *interpType;
-
-extern ZRegion *rawRegion;
-
 typedef enum {
     Z_ERROR,
     Z_WARNING,
@@ -238,9 +227,26 @@ typedef struct {
 #endif
 } ZCliOptions;
 
+#define consts(state, var) ((state)->consts.var)
+
+typedef struct {
+    ZType *none;
+    ZType *u0Type;
+    ZType *charType;
+    ZType *u1Type;
+    ZType *u64Type;
+    ZType *modType;
+    ZType *strType;
+    ZType *interpType;
+    ZRegion *rawRegion;
+
+    bool initialized;
+} ZConsts;
+
 typedef struct {
     Allocator       *allocator;
     ZCliOptions     cli;
+    ZConsts         consts;
     ZLog            **logs;
     ZPhase          currentPhase;
     char            *currentPath;
