@@ -87,7 +87,7 @@ typedef struct ZScope       ZScope;
 typedef struct ZSymbol      ZSymbol;
 typedef struct ZThreadSem   ZThreadSem;
 typedef struct ZAnnotation  ZAnnotation;
-typedef struct ZProvenance  ZProvenance;
+typedef struct ZRegion      ZRegion;
 typedef struct ZCapability  ZCapability;
 
 extern ZType *none;
@@ -99,7 +99,7 @@ extern ZType *modType;
 extern ZType *strType;
 extern ZType *interpType;
 
-extern ZProvenance *raw;
+extern ZRegion *rawRegion;
 
 typedef enum {
     Z_ERROR,
@@ -322,7 +322,7 @@ struct ZType {
     ZTypeKind   kind;
     ZToken      *tok;
     u32         hash;
-    ZProvenance *provenance;
+    ZRegion     *region;
     ZAnnotation **annotations;
 #if Z_LSP
     ZToken *lsp_start, *lsp_end;
@@ -350,6 +350,7 @@ struct ZType {
             /* Array of NODE_FIELD */
             ZNode       **fields;
             ZType       **generics;
+            ZToken      **regions;
         } strct;
 
         struct {
@@ -387,6 +388,7 @@ struct ZType {
             ZType       **generics;
 
             ZToken      *integer;
+            ZToken      **regions;
         } enm;
 
         ZType **tuple;
@@ -952,7 +954,7 @@ struct ZCapability {
     ZNode **nodes;
 };
 
-struct ZProvenance {
+struct ZRegion {
     ZNode *origin;
     const char *name;
     int depth;

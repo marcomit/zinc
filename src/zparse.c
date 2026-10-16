@@ -147,12 +147,12 @@ ZType *maketype(Allocator *allocator, ZTypeKind kind) {
     return self;
 }
 
-static ZProvenance *makeprovenance(Allocator *allocator, const char *name, int depth) {
-    ZProvenance *provenance = zalloc(allocator, ZProvenance);
-    provenance->depth       = depth;
-    provenance->name        = name;
-    provenance->origin      = NULL;
-    return provenance;
+ZRegion *makeregion(Allocator *allocator, const char *name, int depth) {
+    ZRegion *region     = zalloc(allocator, ZRegion);
+    region->depth       = depth;
+    region->name        = name;
+    region->origin      = NULL;
+    return region;
 }
 
 static ZVarDestructPattern *makeVarDestructPattern(Allocator *allocator, int type) {
@@ -698,8 +698,9 @@ static ZNode *_parseUnary(ZParser *parser, ZNode *expr) {
         return NULL;
     }
 
-    node = makenode(parser->allocator, NODE_UNARY);
-    node->unary.operat = consume(parser);
+    node                = makenode(parser->allocator, NODE_UNARY);
+    node->tok           = start;
+    node->unary.operat  = consume(parser);
     node->unary.operand = expr ? expr : tryParse(parser, parseUnary(parser));
 
     guard(node->unary.operand);
@@ -1146,14 +1147,18 @@ ZType *parseType(ZParser *parser) {
     ZType *type = parseSumType(parser);
     if (!type) return NULL;
 
-    if (!match(parser, TOK_AT)) return type;
-    if (!check(parser, TOK_IDENT)) {
-        zlog(parser->state, peek(parser), Z0009, stoken(peek(parser)));
-        return type;
+    ZToken *region = NULL;
+    if (match(parser, TOK_AT)) {
+        if (!check(parser, TOK_IDENT)) {
+            zlog(parser->state, peek(parser), Z2015);
+        } else region = consume(parser);
     }
-    ZToken *name = consume(parser);
 
-    type->provenance = makeprovenance(parser->allocator, stoken(name), 0);
+    if (region) {
+        type->region = makeregion(parser->allocator, stoken(region), 0);
+    } else {
+        type->region = rawRegion;
+    }
 
     return type;
 }
@@ -1530,6 +1535,31 @@ static ZNode *parseEnumField(ZParser *parser) {
     return setspan(parser, node, name);
 }
 
+static ZToken **parseRegions(ZParser *parser) {
+    ZToken **list = NULL;
+    if (!match(parser, TOK_AT)) return NULL;
+
+    if (check(parser, TOK_IDENT)) {
+        vecpush(list, consume(parser));
+    } else if (match(parser, TOK_LPAREN)) {
+        do {
+            if (!check(parser, TOK_IDENT)) break;
+            vecpush(list, consume(parser));
+
+        } while (!check(parser, TOK_RPAREN) && match(parser, TOK_COMMA));
+
+        if (!match(parser, TOK_RPAREN)) {
+            zlog(parser->state, peek(parser), Z2015);
+        } else if (veclen(list) == 0) {
+            zlog(parser->state, peek(parser), Z2015);
+        }
+    } else {
+        zlog(parser->state, peek(parser), Z2015);
+    }
+
+    return list;
+}
+
 static ZType *parseAnonEnum(ZParser *parser, ZAnnotation **annotations) {
     (void)annotations;
     ZToken *start = peek(parser);
@@ -1545,6 +1575,11 @@ static ZType *parseAnonEnum(ZParser *parser, ZAnnotation **annotations) {
         generics = parseGenericsDecl(parser);
     }
 
+    ZToken **regions = NULL;
+    if (check(parser, TOK_AT)) {
+        regions = parseRegions(parser);
+    }
+
     ZNode **fields = parseGenericList(parser,
             TOK_LBRACKET, TOK_RBRACKET,
             parseEnumField, false);
@@ -1555,6 +1590,7 @@ static ZType *parseAnonEnum(ZParser *parser, ZAnnotation **annotations) {
     type->enm.fields            = fields;
     type->tok                   = start;
     type->enm.integer           = integer;
+    type->enm.regions           = regions;
 
     if (!fields || veclen(fields) < 2) zlog(parser->state, start, Z201A);
 
@@ -1602,6 +1638,11 @@ static ZType *parseAnonStruct(ZParser *parser, ZAnnotation **annotations) {
         }
     }
 
+    ZToken **regions = NULL;
+    if (check(parser, TOK_AT)) {
+        regions = parseRegions(parser);
+    }
+
     ZNode **fields = parseGenericList(parser,
             TOK_LBRACKET, TOK_RBRACKET,
             parseStructField, false);
@@ -1611,6 +1652,7 @@ static ZType *parseAnonStruct(ZParser *parser, ZAnnotation **annotations) {
     type->strct.name            = start;
     type->strct.generics        = generics;
     type->strct.fields          = fields;
+    type->strct.regions         = regions;
     return type;
 }
 
