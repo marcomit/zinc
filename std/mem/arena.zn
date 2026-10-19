@@ -1,95 +1,134 @@
 #import "lib"
 
-c :: foreign {
-    malloc : fn (u64) *u8
-    free   : fn (*u8) u0
-    memcpy : fn (*u8, *u8, u64) *u8
-}
-
 DEFAULT_BLOCK :: 4096
 
 #[packed]
 Block :: struct {
-    next: *Block
+    next: ?*Block
     cap:  u64
     used: u64
 }
 
+Block :: impl {
+    new :: fn (buffer_size: usize) ?*Block with Allocator {
+        self: *Block = alloc(sizeof Block + buffer_size) or return none
+        self.next = none
+        self.cap = buffer_size
+        self.used = 0
+        return self
+    }
+}
+
+*Block self :: impl {
+    #inline(always)
+    has_size :: fn (size: usize) u1 -> self.used + size < self.cap
+
+    #inline(always)
+    current_ptr :: fn (size: usize) ?*u8 {
+        if not self.has_size(size) return none
+        defer self.used += size
+
+        buffer: *u8 = self[1].&
+        return buffer[self.used].&
+    }
+
+    destroy :: fn () with Allocator {
+        if self.next {
+            self.next!.destroy()
+        }
+        destroy(self)
+    }
+}
+
 pub ArenaAllocator :: struct {
-    head: *Block
+    parent_allocator: Allocator
+    #private head: ?*Block
+    #private tail: ?*Block
 }
 
 ArenaAllocator :: impl {
-    pub init :: fn () ArenaAllocator {
-        return ArenaAllocator{ head: none }
+    new :: fn () Allocator with parent_allocator: Allocator {
+        self: *ArenaAllocator = alloc(sizeof ArenaAllocator)
+        self.head = none
+        self.tail = none
+        self.parent_allocator = parent_allocator
+    }
+}
+
+*ArenaAllocator self :: impl {
+    grow :: fn () {
+        with _ := self.parent_allocator {
+            block := Block.new(DEFAULT_ALLOCATOR)
+            if not self.head {
+                self.head = block
+                self.tail = block
+            } else {
+                self.tail!.next = block
+            }
+        }
+    }
+
+    pub scope :: fn () Allocator {
+        temp: *TempAllocator = self.alloc(sizeof TempAllocator)
+        temp.arena = self
+        temp.block = self.tail!
+        return Allocator(temp)
+    }
+
+    end_scope :: fn (block: Block) {
+
     }
 }
 
 *ArenaAllocator self :: impl(Allocator) {
-    init :: fn () u0 { }
-    alloc :: fn (size: u64) *u8 {
-        need := sizeof u64 + size
+    alloc :: fn (size: usize) ?*u8 {
+        with _ := self.parent_allocator {
+            if not self.head or not self.tail {
+                    self.head = Block.new(DEFAULT_BLOCK)
+                    self.tail = self.head
+            }
 
-        block := self.head
-        if not block or block.used + need > block.cap {
-            block = self.grow(need)
-            if not block { return none }
+            if not self.tail return none
+            if not self.tail!.has_size() {
+                self.grow()
+            }
+
+            return self.tail!.current_ptr()
         }
-
-        base := block as *u8
-        slot := &(base[sizeof Block + block.used])
-        head := slot as *u64
-        head[0] = size
-        block.used :+ need
-        return &(slot[sizeof u64])
     }
 
-    resize :: fn (ptr: *u8, size: u64) *u8 {
-        if not ptr { return self.alloc(size) }
-
-        off: i64 = 0 - (sizeof u64) as i64
-        hdr := (&(ptr[off])) as *u64
-        old := hdr[0]
-        if size <= old {
-            hdr[0] = size
-            return ptr
-        }
-
-        fresh := self.alloc(size)
-        if not fresh { return none }
-        c::memcpy(fresh, ptr, old)
-        return fresh
+    realloc :: fn (#unused ptr: *u8, size: usize) ?*u8 {
+        return self.alloc(size)
     }
 
-    destroy :: fn (ptr: *u8) u0 { return }
+    #allow_empty
+    free :: fn (ptr: *u8) {
 
-    pub deinit :: fn () u0 {
-        block := self.head
-        for block {
-            next := block.next
-            c::free(block as *u8)
-            block = next
-        }
-        self.head = none
     }
 
+    init :: fn () {
+
+    }
+
+    deinit :: fn () {
+        with _ := self.parent_allocator {
+            self.head.destroy()
+        }
+    }
 }
 
-*ArenaAllocator self :: impl {
-    pub allocator :: fn () Allocator -> self as Allocator
+pub TempAllocator :: struct {
+    arena: *ArenaAllocator
+    block: Block
+}
 
-    grow :: fn (min: u64) *Block {
-        cap := DEFAULT_BLOCK as u64
-        if min > cap { cap = min }
+*TempAllocator self :: impl(Allocator) {
+    alloc :: fn (size: usize) ?*u8 -> self.arena.alloc(size)
+    realloc :: fn (ptr: *u8, size: usize) ?*u8 -> self.arena.realloc(size)
+    free :: fn (ptr: *u8) -> self.arena.free(ptr)
 
-        raw := c::malloc(sizeof Block + cap)
-        if not raw { return none }
+    #allow_empty
+    init :: fn () { }
 
-        block := raw as *Block
-        block.next = self.head
-        block.cap  = cap
-        block.used = 0
-        self.head  = block
-        return block
-    }
+    deinit :: fn () -> self.arena.end_scope()
 }

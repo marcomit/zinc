@@ -168,7 +168,6 @@ static ZSymbol *makeRawSymbol(
     symbol->type        = type;
     symbol->node        = node;
     symbol->isPublic    = isPublic;
-    symbol->generics    = NULL;
     symbol->reachable   = strcmp(name->str, "_") == 0;
 
     return symbol;
@@ -807,18 +806,18 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
 
     if (to->kind == Z_TYPE_FACET        &&
         from->kind == Z_TYPE_POINTER    &&
-        satisfyFacet(ctx, from, to)     ) {
+        satisfyFacet(ctx, from, to)     )
         return from;
-    }
 
     if (to->kind == Z_TYPE_POINTER      &&
-        from->kind == Z_TYPE_ARRAY      ) {
+        from->kind == Z_TYPE_ARRAY      )
         return to;
-    }
 
-    else if (from->kind == Z_TYPE_POINTER && to->kind == Z_TYPE_POINTER) {
+    if (from->kind == Z_TYPE_POINTER && to->kind == Z_TYPE_POINTER)
         return from;
-    }
+
+    if (from->kind == Z_TYPE_TYPE && to->kind == Z_TYPE_TYPE)
+        return from;
 
     if (typesEqual(from, to)) return to;
 
@@ -1038,6 +1037,8 @@ bool typesEqual(ZType *a, ZType *b) {
             typesEqual(a->result.success,   b->result.success) &&
             typesEqual(a->result.error,     b->result.error);
 
+    case Z_TYPE_TYPE:
+        return true;
     default:
         return false;
     }
@@ -1295,6 +1296,9 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
         for (usize i = 0; i < veclen(type->sumType); i++)
             type->sumType[i] = _resolveTypeRef(ctx, type->sumType[i], seen);
         return type;
+    case Z_TYPE_TYPE:
+        type->typeType = _resolveTypeRef(ctx, type->typeType, seen);
+        return type;
     default: return type;
     }
 }
@@ -1373,8 +1377,21 @@ static ZNode *resolveStaticFuncTable(ZThreadSem *ctx,
     return node;
 }
 
+/* A `type` value is a pointer to the typeinfo at runtime, so methods and
+ * facets are looked up as if it were `*Type`. */
+static inline ZType *resolveOperand(ZThreadSem *ctx, ZType *obj) {
+    if (!obj || obj->kind != Z_TYPE_TYPE) return obj;
+    ZNode *info = LangItems[Z_LANG_TYPE_INFO];
+    if (!info || !info->resolved) return obj;
+    ZType *ptr  = makeTypeThread(ctx, Z_TYPE_POINTER);
+    ptr->base   = info->resolved;
+    ptr->tok    = obj->tok;
+    return ptr;
+}
+
 static bool funcTableBaseMatches(ZThreadSem *ctx, ZType *tableBase, ZType *obj) {
     if (!tableBase || !obj) return false;
+    obj = resolveOperand(ctx, obj);
     if (typesEqual(tableBase, obj)) return true;
 
     if (tableBase->kind == Z_TYPE_PRIMITIVE &&
@@ -1398,6 +1415,10 @@ static bool funcTableBaseMatches(ZThreadSem *ctx, ZType *tableBase, ZType *obj) 
     if (tableBase->kind == Z_TYPE_POINTER && obj->kind == Z_TYPE_POINTER) {
         return funcTableBaseMatches(ctx, tableBase->base, obj->base);
     }
+
+    if (obj->kind == Z_TYPE_PRIMITIVE && obj->primitive.token->type == TOK_IDENT &&
+        tableBase->kind != Z_TYPE_PRIMITIVE)
+        return funcTableBaseMatches(ctx, obj, tableBase);
     return false;
 }
 
@@ -1506,7 +1527,6 @@ static void resolveFuncArgs(
         zlog(ctx->state, start, Z000F, expectedArgsLen, veclen(args));
         return;
     }
-
 
     for (usize i = 0; i < expectedArgsLen; i++) {
         ZType *expected     = expectedArgs[i];
@@ -1623,10 +1643,9 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             curr->type = NODE_ENUM_LIT;
             callee->type = NODE_MEMBER;
         }
-        if (!resolved) {
-            zlog(ctx->state, callee->tok, Z00A2);
-            return NULL;
-        } else if (resolved->kind == Z_TYPE_FUNCTION) {
+        if (!resolved) return NULL;
+
+        if (resolved->kind == Z_TYPE_FUNCTION) {
             for (usize i = 0; i < veclen(resolved->func.args); i++) {
                 resolved->func.args[i] = resolveTypeRef(
                     ctx, resolved->func.args[i]
@@ -1889,22 +1908,14 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     curr->binary.left = implicitCast(ctx, curr->binary.left, promoted);
     curr->binary.right = implicitCast(ctx, curr->binary.right, promoted);
 
-    /* Comparison / logical operators always produce a bool. */
-    switch (op) {
-    case TOK_EQEQ:
-    case TOK_NOTEQ:
-    case TOK_LT:
-    case TOK_GT:
-    case TOK_LTE:
-    case TOK_GTE:
-    case TOK_AND:
-    case TOK_OR: {
+    if (tokmask(tok, TOK_BOOL_MASK)) {
         ZType *boolType = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
         boolType->primitive.token = makeTokenThread(ctx, TOK_BOOL, NULL);
         boolType->tok = curr->tok;
         return boolType;
     }
 
+    switch (op) {
     case TOK_PLUS:
         if (left && left->kind == Z_TYPE_POINTER &&
             isNumeric(right)             ) {
@@ -1982,13 +1993,6 @@ static ZType *resolveTupleLiteral(ZThreadSem *ctx, ZNode *node, ZType *inferred)
     result->tuple   = types;
     result->tok     = node->tok;
     return result;
-}
-
-static ZType *resolveArrayInit(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
-    (void)inferred;
-    node->arrayinit = resolveTypeRef(ctx, node->arrayinit);
-    node->resolved = node->arrayinit;
-    return node->arrayinit;
 }
 
 static ZType *resolveUnary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
@@ -2358,6 +2362,39 @@ static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred
     return arr;
 }
 
+static ZType *_exprAsType(ZThreadSem *ctx, ZNode *curr) {
+    if (!curr) return NULL;
+    switch (curr->type) {
+    case NODE_IDENTIFIER: {
+        ZType *type = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
+        type->primitive.token = curr->identNode.tok;
+        return type;
+    }
+    case NODE_UNARY: {
+        if (curr->unary.operat->type != TOK_STAR) return NULL;
+        ZType *base = _exprAsType(ctx, curr->unary.operand);
+        if (!base) return NULL;
+        ZType *ptr  = makeTypeThread(ctx, Z_TYPE_POINTER);
+        ptr->base   = base;
+        return ptr;
+    }
+    case NODE_TYPE: return curr->resolved;
+    default: return NULL;
+    }
+    return NULL;
+}
+
+static ZType *exprAsType(ZThreadSem *ctx, ZNode *curr) {
+    ZType *res      = _exprAsType(ctx, curr);
+    if (!res) {
+        zlog(ctx->state, curr->tok, Z305E);
+        return NULL;
+    }
+    ZType *type     = makeTypeThread(ctx, Z_TYPE_TYPE);
+    type->typeType  = res;
+    return type;
+}
+
 /*
  * Resolve the type of any expression node and cache the result in node->resolved.
  * Returns the resolved ZType* or NULL on error.
@@ -2365,12 +2402,24 @@ static ZType *resolveInterpolation(ZThreadSem *ctx, ZNode *curr, ZType *inferred
 static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     if (!curr)           return NULL;
 
+    if (typesEqual(inferred, ctx->state->consts.typeType)) {
+        return curr->resolved = exprAsType(ctx, curr);
+    }
+
     analyzeAnnotations(ctx->state, curr);
     /* NODE_FUNC always carries a pre-built shape (arg/ret types) set by the
      * parser, so the generic "already resolved" cache check below would skip
      * resolveAnonFunc entirely and leave the mangled name/body unanalyzed. */
     if (curr->type == NODE_FUNC) return resolveAnonFunc(ctx, curr, inferred);
-    if (curr->resolved)  return curr->resolved;
+    if (curr->resolved)  {
+        if (curr->type == NODE_TYPE && curr->resolved->kind != Z_TYPE_TYPE) {
+            ZType *res = makeTypeThread(ctx, Z_TYPE_TYPE);
+            res->tok = curr->tok;
+            res->typeType = curr->resolved;
+            return curr->resolved = res;
+        }
+        return curr->resolved;
+    }
 
     ZType *result = NULL;
 
@@ -2382,7 +2431,6 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_MEMBER:       result = resolveMemberAccess    (ctx, curr, inferred);      break;
     case NODE_ARRAY_LIT:    result = resolveArrayLiteral    (ctx, curr, inferred);      break;
     case NODE_SUBSCRIPT:    result = resolveArrSubscript    (ctx, curr, inferred);      break;
-    case NODE_ARRAY_INIT:   result = resolveArrayInit       (ctx, curr, inferred);      break;
     case NODE_IDENTIFIER:   result = resolveIdent           (ctx, curr, inferred);      break;
     case NODE_STRUCT_LIT:   result = resolveStructLit       (ctx, curr, inferred);      break;
     case NODE_TUPLE_LIT:    result = resolveTupleLiteral    (ctx, curr, inferred);      break;
@@ -2861,6 +2909,7 @@ static ZType *resolveArrSubscript(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
 }
 
 static bool satisfyFacet(ZThreadSem *ctx, ZType *type, ZType *facet) {
+    type = resolveOperand(ctx, type);
     if (!type) return false;
     if (type->kind != Z_TYPE_POINTER) {
         // zlog(ctx->state, type->tok, Z303C);

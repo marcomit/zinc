@@ -67,6 +67,7 @@ static ZType *parseTypeArray                (ZParser *);
 static ZNode *parseStructLit                (ZParser *);
 static ZNode *parseVarInferred              (ZParser *);
 static ZNode *parseVarDefTyped              (ZParser *);
+static ZNode *parseTypeAsExpr               (ZParser *);
 static ZNode *parseBlockOrInline            (ZParser *, bool);
 static ZNode *_parseStructLit               (ZParser *, ZToken **);
 
@@ -356,19 +357,6 @@ static ZNode *parseGenericBinary(ZParser *parser,
     );
 }
 
-static ZNode *parseArrayInit(ZParser *parser) {
-    ZToken *start = peek(parser);
-    ZType *arr = parseTypeArray(parser);
-
-    guard(arr);
-    guard(arr->array.size > 0);
-
-    ZNode *node = makenode(parser->allocator, NODE_ARRAY_INIT);
-    node->arrayinit = arr;
-
-    return setspan(parser, node, start);
-}
-
 static ZInterpolation *makeinterpolation(Allocator *allocator, ZInterpolationType type, void *ptr) {
     ZInterpolation *self    = zalloc(allocator, ZInterpolation);
     self->expr              = ptr;
@@ -438,10 +426,21 @@ static ZNode *parsePrimary(ZParser *parser) {
         expect(parser, TOK_RPAREN);
         return node;
     } else if (check(parser, TOK_LSBRACKET)) {
-        return parseOrGrammar(parser, (ZParseFunc[]){
-            parseArrayInit,
-            parseArrayLit,
-        }, 2);
+        if (checkAhead(parser, TOK_RSBRACKET, 1)) {
+            ZToken *t = peekAhead(parser, 2);
+            u16 mask = TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT;
+            if (t && !t->newlineBefore)
+                if (t->type == TOK_IDENT    ||
+                    t->type == TOK_STAR     ||
+                    t->type == TOK_OPT      ||
+                    t->type == TOK_LSBRACKET||
+                    t->type == TOK_LPAREN   ||
+                    tokmask(t, mask)) {
+                return parseTypeAsExpr(parser);
+            }
+        }
+        ZNode *expr = tryParse(parser, parseArrayLit(parser));
+        if (expr) return expr;
     } else if (check(parser, TOK_IDENT)) {
         if (!parser->noStructLit && checkAhead(parser, TOK_LBRACKET, 1)) {
             ZNode *structlit = tryParse(parser, parseStructLit(parser));
@@ -489,6 +488,8 @@ static ZNode *parsePrimary(ZParser *parser) {
         }
     } else if (check(parser, TOK_FN)) {
         return parseAnonFunc(parser);
+    } else if (checkMask(parser, TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT)) {
+        return parseTypeAsExpr(parser);
     }
 
     return NULL;
@@ -1045,6 +1046,9 @@ static ZType *parseAtom(ZParser *parser) {
     if (!start) return NULL;
 
     switch (start->type) {
+    case TOK_TYPEDEF:
+        consume(parser);
+        return consts(parser->state, typeType);
     case TOK_FN:
         return parseFuncType(parser);
     case TOK_LSBRACKET:
@@ -1690,6 +1694,16 @@ static ZNode *parseStructDecl(ZParser *parser,
     return setspan(parser, node, start);
 }
 
+static ZNode *parseTypeAsExpr(ZParser *parser) {
+    ZToken *start   = peek(parser);
+    ZType *type     = parseType(parser);
+    guard(type);
+
+    ZNode *node     = makenode(parser->allocator, NODE_TYPE);
+    node->resolved  = type;
+    return setspan(parser, node, start);
+}
+
 ZNode *parseExpr(ZParser *parser) {
     if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_EXPR)) {
         if (!check(parser, TOK_IDENT)) {
@@ -1707,21 +1721,26 @@ ZNode *parseExpr(ZParser *parser) {
         return placeholder;
     }
 
-    ZToken *curr = peek(parser);
+    ZAnnotation **annotations = NULL;
+    if (check(parser, TOK_HASHTAG)) {
+        annotations = parseAnnotations(parser);
+    }
+
+    ZToken *curr    = peek(parser);
+    ZNode *res      = NULL;
     if (!curr) return NULL;
 
     switch (curr->type) {
-    case TOK_IF:        return parseIf(parser);
-    case TOK_MATCH:     return parseMatch(parser, true);
-    case TOK_WITH:      return parseCapabilityBlock(parser);
-    case TOK_HASHTAG: {
-        ZAnnotation **annotations = parseAnnotations(parser);
-        ZNode *expr = parseExpr(parser);
-        expr->annotations = annotations;
-        return expr;
+    case TOK_IF:        res = parseIf(parser);              break;
+    case TOK_MATCH:     res = parseMatch(parser, true);     break;
+    case TOK_WITH:      res = parseCapabilityBlock(parser); break;
+    case TOK_OPT:       res = parseTypeAsExpr(parser);      break;
+    default:            res = parseOrGrammar(
+            parser, exprFunc, arrlen(exprFunc));            break;
     }
-    default:            return parseOrGrammar(parser, exprFunc, arrlen(exprFunc));
-    }
+
+    if (res) res->annotations = annotations;
+    return res;
 }
 
 static ZNode *parseReturn(ZParser *parser) {
@@ -2086,6 +2105,7 @@ static ZType *parseGenericDecl(ZParser *parser) {
  *  [K: Display + Drop]
  * */
 static ZType **parseGenericsDecl(ZParser *parser) {
+    expect(parser, TOK_LSBRACKET);
     ZType **generics    = NULL;
     ZType *generic      = NULL;
     do {
@@ -2118,6 +2138,8 @@ static ZType **parseGenericsDecl(ZParser *parser) {
 
         vecpush(generics, generic);
     } while (!check(parser, TOK_RSBRACKET) && match(parser, TOK_COMMA));
+
+    expect(parser, TOK_RSBRACKET);
 
     return generics;
 }

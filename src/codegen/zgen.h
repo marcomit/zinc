@@ -96,6 +96,11 @@ typedef struct ZLLVMScope {
 } ZLLVMScope;
 
 typedef struct {
+    ZType *type;
+    LLVMValueRef value;
+} ZLLVMTypeInfo;
+
+typedef struct {
     ZState                  *state;
     ZModuleAllocator        *module;
     LLVMContextRef          ctx;
@@ -130,13 +135,15 @@ typedef struct {
     hashset_t               seenModuleDefs;
 
     LLVMTargetMachineRef    machine;
+    ZLLVMTypeInfo           *typeInfos;
 } ZCodegen;
 
 void LLVMAddFuncAttribute(ZCodegen *ctx, LLVMValueRef func, const char *llvmAttr);
 
-LLVMTypeRef genType(ZCodegen *, ZType *);
-LLVMValueRef genExpr(ZCodegen *, ZNode *);
-LLVMValueRef genLValue(ZCodegen *, ZNode *);
+LLVMTypeRef genType             (ZCodegen *, ZType *);
+LLVMValueRef genExpr            (ZCodegen *, ZNode *);
+LLVMValueRef genLValue          (ZCodegen *, ZNode *);
+LLVMValueRef genStrLitGlobal    (ZCodegen *, ZToken *);
 
 LLVMBasicBlockRef makeblock(ZCodegen *, char *);
 void makebr(LLVMBuilderRef, LLVMBasicBlockRef);
@@ -160,5 +167,6 @@ bool genBuiltin(ZCodegen *, ZNode *, LLVMValueRef *out);
 
 LLVMValueRef loadWithNullDeref(ZCodegen *, LLVMTypeRef, LLVMValueRef, ZToken *);
 LLVMValueRef getFlagOptional(ZCodegen *, ZType *, LLVMValueRef);
+LLVMValueRef genTypeType(ZCodegen *, ZNode *);
 
 #endif //!Z_GEN
