@@ -145,7 +145,6 @@ bool visitNode(ZVisitor *ctx, ZNode *node) {
     case NODE_MACRO:
     case NODE_TYPE:
     case NODE_SIZEOF:
-    case NODE_ARRAY_INIT:
     case NODE_CONTINUE:
     case NODE_TYPE_COUNT:
         break;

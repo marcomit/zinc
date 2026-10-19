@@ -9,6 +9,7 @@ c :: foreign {
     fread   : fn (*u8, i64, i64, *char) i64
 }
 
+#sealed
 pub File :: struct {
     file: ?*u8
     path: *char
@@ -16,35 +17,22 @@ pub File :: struct {
 }
 
 File :: impl {
-    pub new :: fn (path: *char, mode: []char) ?*File with Allocator {
-        raw := alloc(sizeof File)
-        if not raw { return none }
-        self := raw as *File
-
-        self.file = none
-        self.path = path
-        self.mode = mode
-        return self
+    pub open :: fn (path: *char, mode: *char) ?File {
+        file := c.fopen(path, mode) or return none
+        return .{ file, path, mode }
     }
 }
 
-*File self :: impl {
-    pub open :: fn () u1 {
-        self.file = c.fopen(self.path, self.mode)
-        if self.file != none { return true }
-        return false
+File self :: impl {
+    close :: fn () {
+        if not self.file return
+        c.fclose(self.file)
+        self.file = none
     }
+}
 
-    pub close :: fn () u0 {
-        if self.file != none {
-            c.fclose(self.file)
-            self.file = none
-        }
-    }
-
+File self :: impl {
     pub readAll :: fn () ?*char with Allocator {
-        if not self.file { return none }
-
         c.fseek(self.file, 0, 2)
         size: i64 = c.ftell(self.file)
         c.rewind(self.file)

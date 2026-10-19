@@ -1,5 +1,4 @@
 LANG(Z_LANG_TYPE_INFO,              "type_info",                ENUM,       NULL,               NULL)
-LANG(Z_LANG_TYPE_INFO_STRUCT,       "type_info_struct",         STRUCT,     NULL,               NULL)
 LANG(Z_LANG_TYPE_INFO_STRUCT_FIELD, "type_info_struct_field",   STRUCT,     NULL,               NULL)
 LANG(Z_LANG_TYPE_INFO_ENUM_VARIANT, "type_info_enum_variant",   STRUCT,     NULL,               NULL)
 LANG(Z_LANG_REFLECT,                "reflect",                  FOREIGN,    genReflect,         NULL)
@@ -15,3 +14,4 @@ LANG(Z_LANG_PTR_FROM_INT,           "ptr_from_int",             FOREIGN,    genP
 LANG(Z_LANG_INTERPOLATED_STRING,    "interpolated_string",      ENUM,       NULL,               NULL)
 LANG(Z_LANG_WRITABLE,               "writable",                 FACET,      NULL,               NULL)
 LANG(Z_LANG_WRITER,                 "writer",                   FACET,      NULL,               NULL)
+LANG(Z_LANG_REGION,                 "region",                   FACET,      NULL,               NULL)

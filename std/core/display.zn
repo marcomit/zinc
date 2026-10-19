@@ -57,6 +57,8 @@ pub FDWriter :: struct {
     }
 }
 
+#inline pub tprint :: fn (w: Writer, items: []InterpolatedString) -> interpolate(w, items)
+
 #inline
 pub sink_char :: fn (w: Writer, c: char) {
     w.write(&c, 1)

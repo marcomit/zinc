@@ -248,22 +248,16 @@ static void _stype(ZType *type, char **buff) {
 
     case Z_TYPE_RESULT:
         _stype(type->result.success, buff);
-        vecpush(*buff, '?');
-        vecpush(*buff, '?');
+        vecpush(*buff, '!');
         _stype(type->result.error, buff);
         break;
     case Z_TYPE_GENERIC:
         vecunion(*buff, "Generic", 7);
-    // case Z_TYPE_GENERIC:
-    //     vecunion(*buff, type->generic.name->str, strlen(type->generic.name->str));
-    //     vecpush(*buff, '[');
-    //
-    //     for (usize i = 0; i < veclen(type->generic.args); i++) {
-    //         _stype(type->generic.args[i], buff);
-    //         if (i < veclen(type->generic.args) - 1) vecpush(*buff, ',');
-    //     }
-    //     vecpush(*buff, ']');
-    //     break;
+        break;
+
+    case Z_TYPE_TYPE:
+        vecunion(*buff, "type", 4);
+        break;
 
     default:
         printf("Type %d not handled\n", type->kind);
@@ -371,12 +365,10 @@ u32 hashType(ZType *type) {
         h = hashMix(h, hashType(type->result.success));
         h = hashMix(h, hashType(type->result.error));
         break;
+    case Z_TYPE_TYPE:
     case Z_TYPE_NAMESPACE:
     case Z_TYPE_NONE:
-        // No structural payload compared by typesEqual; the kind seed suffices.
-        break;
     case Z_TYPE_COUNT:
-        // Not a kind; only the catalog sentinel.
         break;
     }
 
@@ -504,7 +496,6 @@ void printNode(ZNode *node, u8 depth) {
             printNode(node->breakStmt.expr, depth);
         }
     case NODE_CONTINUE:
-    case NODE_ARRAY_INIT:
         break;
     case NODE_LITERAL:
         printf("Value: ");
@@ -1342,17 +1333,18 @@ void initPrimitiveTypes(ZState *state) {
     state->consts.initialized = true;
     /* Cached in globals and reused by every later state (the LSP makes one per
      * request), so they must outlive any single state's arena. */
-    Allocator *allocator = arenaAllocator;
-    state->consts.none    = maketype          (allocator, Z_TYPE_NONE);
-    state->consts.u0Type  = makePrimitiveType (allocator, TOK_VOID);
-    state->consts.charType= makePrimitiveType (allocator, TOK_CHAR);
-    state->consts.u1Type  = makePrimitiveType (allocator, TOK_BOOL);
-    state->consts.u64Type = makePrimitiveType (allocator, TOK_U64);
-    state->consts.modType = maketype          (allocator, Z_TYPE_NAMESPACE);
-    state->consts.strType             = maketype(allocator, Z_TYPE_ARRAY);
-    state->consts.strType->array.base = state->consts.charType;
-    state->consts.strType->array.size = 0;
-    state->consts.rawRegion   = copy(allocator, ZRegion, ((ZRegion){
+    Allocator *allocator    = arenaAllocator;
+    state->consts.none      = maketype          (allocator, Z_TYPE_NONE);
+    state->consts.u0Type    = makePrimitiveType (allocator, TOK_VOID);
+    state->consts.charType  = makePrimitiveType (allocator, TOK_CHAR);
+    state->consts.u1Type    = makePrimitiveType (allocator, TOK_BOOL);
+    state->consts.u64Type   = makePrimitiveType (allocator, TOK_U64);
+    state->consts.modType   = maketype          (allocator, Z_TYPE_NAMESPACE);
+    state->consts.strType               = maketype(allocator, Z_TYPE_ARRAY);
+    state->consts.strType->array.base   = state->consts.charType;
+    state->consts.strType->array.size   = 0;
+    state->consts.typeType      = maketype(allocator, Z_TYPE_TYPE);
+    state->consts.rawRegion     = copy(allocator, ZRegion, ((ZRegion){
         .depth  = 0,
         .name   = "raw",
         .origin = NULL

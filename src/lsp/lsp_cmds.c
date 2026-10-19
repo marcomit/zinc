@@ -30,7 +30,7 @@ LspCompletionKind completion_kind_from_symbol(ZSymType kind) {
     switch (kind) {
     case Z_SYM_ENUM:     return Z_LSP_ENUM;
     case Z_SYM_FACET:    return Z_LSP_INTERFACE;
-    case Z_SYM_FOREIGN:  return Z_LSP_CLASS;
+    case Z_SYM_FOREIGN:  return Z_LSP_MODULE;
     case Z_SYM_FUNC:     return Z_LSP_FUNCTION;
     case Z_SYM_GENERIC:  return Z_LSP_TYPE_PARAM;
     case Z_SYM_IMPORT:   return Z_LSP_MODULE;

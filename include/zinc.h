@@ -238,6 +238,7 @@ typedef struct {
     ZType *modType;
     ZType *strType;
     ZType *interpType;
+    ZType *typeType;
     ZRegion *rawRegion;
 
     bool initialized;
@@ -420,6 +421,8 @@ struct ZType {
         } result;
 
         ZToken **chain;
+
+        ZType *typeType;
     };
 
     /* Future implementation:
@@ -940,15 +943,6 @@ struct ZSymbol {
     ZType           *type;
     ZNode           *node;
     ZScope          *scope;
-
-    /* All types that resovled a generic.
-     * Example:
-     * Hashmap[K, V]
-     * Every time in the code appear a Hashmap called with two generics
-     * it saves these two type in the array.
-     * So it is the list of all types that must be generated
-     * */
-    ZType           ***generics;
 
     usize           useCount;
     bool            isPublic;
