@@ -27,6 +27,21 @@ RawDynamicArray :: struct {
     }
 }
 
+RawSlice :: struct {
+    len: usize
+    ptr: *u8
+}
+
+pub alloc_slice :: fn (ptr: *[]char, n: usize, elem_size: usize) with Allocator {
+    slice: *RawSlice = ptr
+    slice.len = n
+    slice.ptr = alloc(elem_size * n)
+}
+
+pub free_slice :: fn (ptr: *[]char) with Allocator {
+    destroy(ptr as *RawSlice.ptr)
+}
+
 pub make_room :: fn (list: *[..]char, n: usize, elem_size: usize) with Allocator {
     items: *RawDynamicArray = list
     items.make_room(n, elem_size)
