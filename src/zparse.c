@@ -980,15 +980,6 @@ static ZType **parseTypeList(ZParser *parser, ZTokenType left, ZTokenType right)
     return args;
 }
 
-static ZType *applyStarsToType(Allocator *allocator, ZType *base, u8 stars) {
-    for (u8 i = 0; i < stars; i++) {
-        ZType *node = maketype(allocator, Z_TYPE_POINTER);
-        node->base = base;
-        base = node;
-    }
-    return base;
-}
-
 static ZType *parseTypeArray(ZParser *parser) {
     expect(parser, TOK_LSBRACKET);
 
@@ -1046,6 +1037,14 @@ static ZType *parseAtom(ZParser *parser) {
     if (!start) return NULL;
 
     switch (start->type) {
+    case TOK_BITXOR:
+    case TOK_STAR: {
+        consume(parser);
+        ZType *type = maketype(parser->allocator, Z_TYPE_POINTER);
+        type->tok   = start;
+        type->base  = parseAtom(parser);
+        return type;
+    }
     case TOK_TYPEDEF:
         consume(parser);
         return consts(parser->state, typeType);
@@ -1084,13 +1083,8 @@ static ZType *parseBaseType(ZParser *parser) {
     ZToken *start   = peek(parser);
     bool constant   = match(parser, TOK_CONST);
 
-    u8 stars        = 0;
-    while (match(parser, TOK_STAR)) stars++;
-
     ZType *base     = tryParse(parser, parseAtom(parser));
     ensure(base, "Failed to parse atom type");
-
-    base = applyStarsToType(parser->allocator, base, stars);
 
     base->constant  = constant;
 
@@ -1268,7 +1262,9 @@ static ZNode *parseCapabilityBlock(ZParser *parser) {
     ZNode **capabilities    = NULL;
     ZNode *capability       = NULL;
     do {
-        capability = parseVarDef(parser);
+        capability = parseOrGrammar(parser, (ZParseFunc[]){
+            parseVarDef, parseExpr
+        }, 2);
         if (!capability) {
             zlog(parser->state, peek(parser), Z2013);
             return NULL;

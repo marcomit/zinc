@@ -3270,7 +3270,7 @@ static void analyzeCapability(ZThreadSem *ctx, ZNode *curr) {
     beginScope(ctx, curr);
     ZNode **capabilities = curr->capability.capabilities;
     for (usize i = 0; i < veclen(capabilities); i++) {
-        analyzeVar(ctx, capabilities[i], false);
+        resolveType(ctx, capabilities[i], NULL);
         putCapability(ctx, capabilities[i]);
     }
     analyzeStmt(ctx, curr->capability.block);
