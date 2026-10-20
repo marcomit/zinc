@@ -58,7 +58,7 @@ void publish_diagnostics(LspContext *ctx, const char *uri, int version) {
     for (usize i = 0; i < veclen(state->logs); i++) {
         ZLog *log = state->logs[i];
         if (log->level != Z_ERROR && log->level != Z_WARNING) continue;
-        if (strcmp(log->filename, filename) != 0) continue;
+        if (!log->filename || strcmp(log->filename, filename) != 0) continue;
 
         Json *d = JsonMap(a, NULL);
         JsonSet(a, d, "range",      range_from_token(a, log->token));

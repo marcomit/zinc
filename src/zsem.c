@@ -1489,6 +1489,7 @@ static ZNode *lookupScopedCapability(ZThreadSem *ctx, ZType *required) {
     while (curr) {
         i = lookupCapabilityByType(curr, required);
         if (i != -1) break;
+        if (curr->node->type == NODE_FUNC) break;
         curr = curr->parent;
     }
     if (i == -1 || veclen(curr->capabilities[i]->nodes) == 0) return NULL;
@@ -1766,7 +1767,9 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 
     if (veclen(curr->structlit.fields) != veclen(symType->strct.fields)) {
-        zlog(ctx->state, curr->tok, Z3010);
+        if (!query(curr->annotations, "partial")) {
+            zlog(ctx->state, curr->tok, Z3010);
+        }
     }
 
     for (usize i = 0; i < veclen(curr->structlit.fields); i++) {
@@ -3068,12 +3071,12 @@ static void analyzeForeign(ZThreadSem *ctx, ZNode *curr) {
 static void analyzeFuncArgs(ZThreadSem *ctx, ZType **types, ZNode **fields, ZType **inferred) {
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *field        = fields[i];
-        ZType *fieldType    = resolveTypeRef(ctx, field->field.type);
+        ZType *fieldType    = resolveTypeRef(ctx, field->resolved);
 
         if (!fieldType) {
             if (inferred) fieldType = inferred[i];
             else {
-                zlog(ctx->state, field->field.identifier, Z9008);
+                zlog(ctx->state, field->tok, Z9008);
                 continue;
             }
         }

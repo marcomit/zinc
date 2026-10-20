@@ -193,6 +193,11 @@ static inline void addToken(ZLexer *l, ZToken *token) {
     vecpush(l->tokens, token);
 }
 
+/* Last emitted token, or NULL when nothing has been emitted yet. */
+static inline ZToken *lastToken(ZLexer *l) {
+    return veclen(l->tokens) ? veclast(l->tokens) : NULL;
+}
+
 static void next(ZLexer *l) {
     if (!l || !l->current || !*l->current) return;
     if (*l->current == '\n') {
@@ -251,14 +256,14 @@ static u32 decodeHexCode(ZLexer *l, char **src, int len) {
     for (int i = 0; i < len; i++) {
         char c = **src;
         if (!c) {
-            zlog(l->state, veclast(l->tokens), Z1001);
+            zlog(l->state, lastToken(l), Z1001);
             return 0xFFFD;
         }
         if      (c >= '0' && c <= '9') cp = (cp << 4) | (u32)(c - '0');
         else if (c >= 'a' && c <= 'f') cp = (cp << 4) | (u32)(c - 'a' + 10);
         else if (c >= 'A' && c <= 'F') cp = (cp << 4) | (u32)(c - 'A' + 10);
         else {
-            zlog(l->state, veclast(l->tokens), Z1002);
+            zlog(l->state, lastToken(l), Z1002);
             return 0xFFFD;
         }
         (*src)++;
@@ -370,6 +375,7 @@ static ZToken *parseString(ZLexer *l) {
         ZToken *tok = maketoken(a, TOK_STR_LIT, start - 1, l->current);
         tok->row    = l->row;
         tok->col    = l->col;
+        tok->filename  = l->state->filename;
         tok->sourcePtr = start - 1;
         tok->sourceLinePtr = l->line;
         zlog(l->state, tok, Z1003);
@@ -442,7 +448,7 @@ static ZToken *parseSymbol(ZLexer *l) {
     #undef DEF
 
     if (!sym) {
-        zlog(l->state, veclast(l->tokens), Z1004);
+        zlog(l->state, lastToken(l), Z1004);
         ZToken *tok = maketoken(a, 0, l->current, l->current);
         tok->str = "";
         return NULL;
@@ -463,7 +469,7 @@ static ZToken *parseHexNumber(ZLexer *l) {
 
     errno = 0;
     unsigned long long value = strtoull(start, NULL, 16);
-    if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
+    if (errno == ERANGE) zlog(l->state, lastToken(l), Z1005, start);
 
     return makeinteger(l->state->allocator, (i64)value, start, l->current);
 }
@@ -490,7 +496,7 @@ static ZToken *parseBinNumber(ZLexer *l) {
 
     errno = 0;
     unsigned long long value = strtoull(start, NULL, 2);
-    if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
+    if (errno == ERANGE) zlog(l->state, lastToken(l), Z1005, start);
 
     return makeinteger(a, (i64)value, start, l->current);
 }
@@ -520,7 +526,7 @@ static ZToken *parseNumber(ZLexer *l) {
         next(l);  // consume 'e' or 'E'
         if (*l->current == '+' || *l->current == '-') next(l);
         if (!isdigit(*l->current)) {
-            zlog(l->state, veclast(l->tokens), Z1006);
+            zlog(l->state, lastToken(l), Z1006);
             return NULL;
         }
         while (isdigit(*l->current)) next(l);
@@ -529,13 +535,13 @@ static ZToken *parseNumber(ZLexer *l) {
     if (isFloat) {
         errno = 0;
         double value = strtod(start, NULL);
-        if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1007, start);
+        if (errno == ERANGE) zlog(l->state, lastToken(l), Z1007, start);
         return makefloat(l->state->allocator, value, start, l->current);
     }
 
     errno = 0;
     long long value = strtoll(start, NULL, 10);
-    if (errno == ERANGE) zlog(l->state, veclast(l->tokens), Z1005, start);
+    if (errno == ERANGE) zlog(l->state, lastToken(l), Z1005, start);
 
     return makeinteger(l->state->allocator, value, start, l->current);
 }
@@ -586,7 +592,7 @@ static void skipMultilineComments(ZLexer *l) {
         next(l);
     }
     if (!l->current[0] || !l->current[1]) {
-        zlog(l->state, veclast(l->tokens), Z1008);
+        zlog(l->state, lastToken(l), Z1008);
         return;
     }
 
@@ -663,7 +669,7 @@ ZToken **ztokenizeSource(ZState *state, char *source) {
 
     while (emitNextToken(l, &curr)) {
         if (!curr) {
-            zlog(l->state, veclast(l->tokens), Z1004);
+            zlog(l->state, lastToken(l), Z1004);
             next(l);
         } else {
             addToken(l, curr);

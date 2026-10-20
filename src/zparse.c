@@ -2004,14 +2004,15 @@ static ZNode *parseLoops(ZParser *parser) {
     ensure(check(parser, TOK_FOR), "Expected 'for' keyword");
 
     // Infinite loop without condition
-    if (checkAhead(parser, TOK_LBRACKET, 1)) {
+    if (checkAhead(parser, TOK_LBRACKET, 1) ||
+        checkAhead(parser, TOK_DO, 1)       ) {
         Allocator *allocator    = parser->allocator;
         ZNode *cond             = makenode(allocator, NODE_LITERAL);
         cond->tok               = maketoken(allocator, TOK_TRUE, NULL, NULL);
         cond->literalTok        = cond->tok;
         ZNode *node             = makenode(allocator, NODE_WHILE);
         node->tok               = consume(parser);
-        node->whileStmt.branch  = parseBlock(parser);
+        node->whileStmt.branch  = parseBlockOrInline(parser, true);
         node->whileStmt.cond    = cond;
 
         return setspan(parser, node, start);

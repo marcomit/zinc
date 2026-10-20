@@ -102,7 +102,7 @@ pub sink_cstr :: fn (w: Writer, str: *char) {
 }
 
 *char self :: impl(Writable) {
-    sink :: fn (w: Writer) {
+    pub sink :: fn (w: Writer) {
         w.write(self, mem.strlen(self))
     }
 }
