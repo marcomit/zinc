@@ -3833,28 +3833,39 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
  * Capabilities are compiled like normal variables.
  */
 static void genCapability(ZCodegen *ctx, ZNode *node) {
-
     beginScope(Z_SCOPE_BLOCK, ctx);
 
     for (usize i = 0; i < veclen(node->capability.capabilities); i++) {
         ZNode *decl = node->capability.capabilities[i];
-        genStmt(ctx, decl);
-
-        if (decl->type == NODE_VAR_DECL &&
-            decl->varDecl.pattern->type == Z_VAR_IDENT) {
-            ZLLVMCapability *capability = aalloc(
-                ctx->module->allocator, sizeof(ZLLVMCapability)
-            );
-            capability->capability  = decl->resolved;
-            capability->ref         = getLLVMValueRef(
-                ctx, decl->varDecl.pattern->ident->str
-            );
-            vecpush(ctx->scope->capabilities, capability);
+        LLVMValueRef ref = NULL;
+        if (decl->type == NODE_VAR_DECL) {
+            genStmt(ctx, decl);
+            if (decl->varDecl.pattern->type == Z_VAR_IDENT) {
+                ref = getLLVMValueRef(ctx, stoken(decl->tok));
+            }
+        } else {
+            ZLLVMStack *stack = getStackValue(ctx, decl);
+            if (!stack) {
+                zlog(ctx->state, decl->tok, Z9018, stoken(decl->tok));
+                continue;
+            }
+            LLVMValueRef val = genExpr(ctx, decl);
+            if (val && val != stack->stack)
+                LLVMBuildStore(ctx->builder, val, stack->stack);
+            ref = stack->stack;
         }
+
+        if (!ref) continue;
+        ZLLVMCapability *capability = copy(
+            ctx->module->allocator, ZLLVMCapability, ((ZLLVMCapability){
+                .capability = decl->resolved,
+                .ref = ref
+            })
+        );
+        vecpush(ctx->scope->capabilities, capability);
     }
 
     genStmt(ctx, node->capability.block);
-
     endScope(ctx);
 }
 
@@ -4189,7 +4200,10 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
         break;
     case NODE_CAPABILITY:
         for (usize i = 0; i < veclen(node->capability.capabilities); i++) {
-            genFuncVars(ctx, node->capability.capabilities[i]);
+            ZNode *cap = node->capability.capabilities[i];
+            genFuncVars(ctx, cap);
+            if (cap->type != NODE_VAR_DECL && !getStackValue(ctx, cap))
+                buildFuncVar(ctx, cap, cap->resolved, true);
         }
         genFuncVars(ctx, node->capability.block);
         break;
