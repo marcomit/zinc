@@ -1032,6 +1032,20 @@ static ZType *parseTypeOptional(ZParser *parser) {
     return opt;
 }
 
+static ZType *parseIdentType(ZParser *parser) {
+    ZType *base = NULL, *prev = NULL;
+    while (check(parser, TOK_IDENT)) {
+        base                    = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
+        base->tok               = peek(parser);
+        base->primitive.token   = consume(parser);
+        base->primitive.base    = prev;
+
+        if (!match(parser, TOK_DOT)) break;
+        prev = base;
+    }
+    return base;
+}
+
 static ZType *parseAtom(ZParser *parser) {
     ZToken *start = peek(parser);
     if (!start) return NULL;
@@ -1069,13 +1083,15 @@ static ZType *parseAtom(ZParser *parser) {
         }
         return parseAnonEnum(parser, NULL);
     default:
-        if (checkMask(parser, TOK_TYPES_MASK) || check(parser, TOK_IDENT)) {
+        if (checkMask(parser, TOK_TYPES_MASK)) {
             ZType *base = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
-            base->primitive.token = consume(parser);
-            base->primitive.base     = NULL;
+            base->primitive.token   = consume(parser);
+            base->primitive.base    = NULL;
             return base;
         }
-        return NULL;
+
+        if (!check(parser, TOK_IDENT)) return NULL;
+        return parseIdentType(parser);
     }
 }
 

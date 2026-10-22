@@ -2719,32 +2719,6 @@ static LLVMValueRef genStructLitInto(
     return ptr;
 }
 
-// static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
-//     if (!node || !node->resolved) {
-//         zlog(ctx->state, node ? node->tok : NULL, Z9033);
-//         return NULL;
-//     }
-//
-//     char *mangled = node->staticAccess.mangled;
-//
-//     if (!mangled) {
-//         zlog(ctx->state, node->tok, Z9034);
-//     }
-//
-//     LLVMValueRef val = getLLVMValueRef(ctx, mangled);
-//
-//     if (!val) {
-//         zlog(ctx->state, node->tok, Z400F, mangled);
-//         return NULL;
-//     }
-//     LLVMValueKind kind = LLVMGetValueKind(val);
-//     if (kind == LLVMInstructionValueKind || kind == LLVMGlobalVariableValueKind) {
-//         LLVMTypeRef type = genType(ctx, node->resolved);
-//         return LLVMBuildLoad2(ctx->builder, type, val, node->tok->str);
-//     }
-//     return val;
-// }
-
 static void matchPattern(
     ZCodegen *,             ZType *,
     ZVarDestructPattern *,  LLVMValueRef, LLVMBasicBlockRef
@@ -2752,24 +2726,24 @@ static void matchPattern(
 
 static void matchTuplePattern(
         ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
-        LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+        LLVMValueRef value, LLVMBasicBlockRef failBranch) {
     LLVMTypeRef typeRef = genType(ctx, type);
     for (usize i = 0; i < veclen(pattern->tuple); i++) {
-        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
-            ctx->builder, typeRef, ptr, i, label(ctx, pattern->tuple[i]->tok));
+        LLVMValueRef fieldValue = LLVMBuildExtractValue(
+            ctx->builder, value, i, label(ctx, pattern->tuple[i]->tok));
         matchPattern(
             ctx, type->tuple[i],
-            pattern->tuple[i], fieldPtr, failBranch);
+            pattern->tuple[i], fieldValue, failBranch);
     }
 }
 
 static void matchStructPattern(
         ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
-        LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+        LLVMValueRef value, LLVMBasicBlockRef failBranch) {
     LLVMTypeRef typeRef = genType(ctx, type);
     for (usize i = 0; i < veclen(pattern->fields); i++) {
-        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
-            ctx->builder, typeRef, ptr, i, label(ctx, pattern->fields[i]->key)
+        LLVMValueRef fieldPtr = LLVMBuildExtractValue(
+            ctx->builder, value, i, label(ctx, pattern->fields[i]->key)
         );
         matchPattern(
             ctx, type->strct.fields[i]->resolved,
@@ -2780,7 +2754,7 @@ static void matchStructPattern(
 
 static void matchEnumPattern(
         ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
-        LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+        LLVMValueRef value, LLVMBasicBlockRef failBranch) {
     i32 variantIndex = enumIndexField(type, pattern->prop);
 
     if (variantIndex == -1) {
@@ -2789,12 +2763,8 @@ static void matchEnumPattern(
     }
     ZType *variantType = type->enm.fields[variantIndex]->resolved;
 
-    LLVMValueRef tagPtr = LLVMBuildStructGEP2(
-        ctx->builder, genType(ctx, type), ptr, 0, label(ctx, pattern->prop));
-
-    LLVMValueRef tag = LLVMBuildLoad2(
-        ctx->builder, i8Type, tagPtr, label(ctx, pattern->prop)
-    );
+    LLVMValueRef tag = LLVMBuildExtractValue(
+        ctx->builder, value, 0, label(ctx, pattern->prop));
 
     LLVMValueRef cond = LLVMBuildICmp(
         ctx->builder, LLVMIntEQ, tag,
@@ -2810,13 +2780,13 @@ static void matchEnumPattern(
     LLVMTypeRef variantTypeRef = genType(ctx, variantType);
 
     for (usize i = 0; i < veclen(pattern->args); i++) {
-        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(
-            ctx->builder, variantTypeRef, ptr,
+        LLVMValueRef fieldValue = LLVMBuildExtractValue(
+            ctx->builder, value,
             i + 1, label(ctx, pattern->args[i]->tok));
 
         matchPattern(ctx,
             variantType->strct.fields[i + 1]->resolved,
-            pattern->args[i], fieldPtr, failBranch);
+            pattern->args[i], fieldValue, failBranch);
     }
 }
 
@@ -2840,11 +2810,7 @@ static LLVMValueRef genEqCmp(
 
 static void matchLitPattern(
     ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
-    LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
-    LLVMValueRef left       = LLVMBuildLoad2(
-        ctx->builder, genType(ctx, type), ptr, label(ctx, pattern->tok)
-    );
-
+    LLVMValueRef left, LLVMBasicBlockRef failBranch) {
     LLVMValueRef right = genLitTok(ctx, pattern->ident, pattern->resolved);
     right = castValue(ctx, right, pattern->resolved, type);
 
@@ -2856,17 +2822,16 @@ static void matchLitPattern(
 
 static void matchSumPattern(
         ZCodegen *ctx, ZType *type, ZVarDestructPattern *pattern,
-        LLVMValueRef ptr, LLVMBasicBlockRef failBranch) {
+        LLVMValueRef value, LLVMBasicBlockRef failBranch) {
     i32 index = sumTypeIndexOf(type, pattern->sum.type);
     if (index == -1) {
         zlog(ctx->state, pattern->sum.type->tok, Z9035);
         return;
     }
 
-    LLVMValueRef flagPtr    = LLVMBuildStructGEP2(
-        ctx->builder, genType(ctx, type), ptr, 0, label(ctx, "sum.flag.ptr"));
-    LLVMValueRef right      = LLVMBuildLoad2(
-        ctx->builder, i8Type, flagPtr, label(ctx, "sum.flag"));
+    LLVMValueRef right      = LLVMBuildExtractValue(
+        ctx->builder, value, 0, label(ctx, "sum.flag")
+    );
     LLVMValueRef cond       = genEqCmp(
         ctx, LLVMConstInt(i8Type, index, false), right, false
     );
@@ -2880,15 +2845,15 @@ static void matchPattern(
         ZCodegen *ctx,
         ZType *type,
         ZVarDestructPattern *pattern,
-        LLVMValueRef ptr,
+        LLVMValueRef value,
         LLVMBasicBlockRef failBranch) {
     switch (pattern->type) {
-    case Z_VAR_IDENT:                                                              break;
-    case Z_VAR_TUPLE:   matchTuplePattern   (ctx, type, pattern, ptr, failBranch); break;
-    case Z_VAR_STRUCT:  matchStructPattern  (ctx, type, pattern, ptr, failBranch); break;
-    case Z_VAR_ENUM:    matchEnumPattern    (ctx, type, pattern, ptr, failBranch); break;
-    case Z_VAR_LIT:     matchLitPattern     (ctx, type, pattern, ptr, failBranch); break;
-    case Z_VAR_SUM:     matchSumPattern     (ctx, type, pattern, ptr, failBranch); break;
+    case Z_VAR_IDENT:                                                                   break;
+    case Z_VAR_TUPLE:   matchTuplePattern   (ctx, type, pattern, value, failBranch);    break;
+    case Z_VAR_STRUCT:  matchStructPattern  (ctx, type, pattern, value, failBranch);    break;
+    case Z_VAR_ENUM:    matchEnumPattern    (ctx, type, pattern, value, failBranch);    break;
+    case Z_VAR_LIT:     matchLitPattern     (ctx, type, pattern, value, failBranch);    break;
+    case Z_VAR_SUM:     matchSumPattern     (ctx, type, pattern, value, failBranch);    break;
     default:
         zlog(ctx->state, pattern->tok, Z9036, pattern->type);
         break;
@@ -2897,12 +2862,12 @@ static void matchPattern(
 
 static LLVMValueRef genMatchCond(
     ZCodegen *ctx,                  ZType *type,
-    ZVarDestructPattern *pattern,   LLVMValueRef ptr) {
+    ZVarDestructPattern *pattern,   LLVMValueRef value) {
     LLVMBasicBlockRef success   = makeblock(ctx, "match.success");
     LLVMBasicBlockRef failure   = makeblock(ctx, "match.failure");
     LLVMBasicBlockRef merge     = makeblock(ctx, "match.merge");
 
-    matchPattern(ctx, type, pattern, ptr, failure);
+    matchPattern(ctx, type, pattern, value, failure);
     makebr(ctx->builder, success);
 
     LLVMPositionBuilderAtEnd(ctx->builder, success);
@@ -3771,7 +3736,7 @@ static void genContinue(ZCodegen *ctx, ZNode *node) {
  *
  * At compile-time, every scope (function body, if, loops ...)
  * owns its own defer stack. Each defer statement is pushed into the stack
- * if its enclosing scope.
+ * in its enclosing scope.
  * At the end of the scope each defer statement is fired in reverse order.
  *
  * A special case is an early exit (break, continue or return). inside a nested
@@ -3792,10 +3757,13 @@ static void genDefer(ZCodegen *ctx, ZNode *node) {
 }
 
 static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef cond = genLValue(ctx, node->match.cond);
-    ZType *condType = node->match.cond->resolved;
-    usize armLen = veclen(node->match.arms);
-    LLVMBasicBlockRef *blocks = aalloc(ctx->module->allocator, sizeof(LLVMBasicBlockRef) * (armLen+1));
+    LLVMValueRef condPtr    = genLValue(ctx, node->match.cond);
+    LLVMValueRef cond       = LLVMBuildLoad2(
+        ctx->builder, NULL, cond, label(ctx, "match.cond"));
+    ZType *condType         = node->match.cond->resolved;
+    usize armLen            = veclen(node->match.arms);
+    LLVMBasicBlockRef *blocks = aalloc(
+        ctx->module->allocator, sizeof(LLVMBasicBlockRef) * (armLen+1));
 
     blocks[0] = LLVMGetInsertBlock(ctx->builder);
     for (usize i = 1; i <= armLen; i++) blocks[i] = makeblock(ctx, "matcharm");
@@ -3815,7 +3783,8 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
         makecondbr(ctx->builder, matchArm, exprBlock, blocks[i+1]);
         LLVMPositionBuilderAtEnd(ctx->builder, exprBlock);
         beginScope(Z_SCOPE_BLOCK, ctx);
-        putDestructuredPatternInStack(ctx, node->match.cond->resolved, arm->matchArm.pattern, cond);
+        putDestructuredPatternInStack(
+            ctx, node->match.cond->resolved, arm->matchArm.pattern, condPtr);
         if (arm->matchArm.expr == NODE_BLOCK) {
             genBlock(ctx, arm->matchArm.expr);
         } else {

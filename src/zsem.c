@@ -1843,7 +1843,7 @@ static ZType *resolveIdentByScope(ZThreadSem *ctx, ZScope *scope, ZNode *node) {
             zlog(ctx->state, tok, Z3015, tok->str);
         }
     }
-    return sym->type;
+    return sym->type = resolveTypeRef(ctx, sym->type);
 }
 
 static ZType* resolveIdent(ZThreadSem *ctx, ZNode *node, ZType *inferred) {

@@ -670,7 +670,6 @@ struct ZNode {
             struct {
                 ZToken      *name;
                 bool        pub;
-                ZAnnotation **annotations;
             } foreignDecl;
         };
 
@@ -994,6 +993,15 @@ typedef struct ZScopeTable {
     ZThreadSem      *ctx;
 } ZScopeTable;
 
+typedef struct {
+    ZNode *declaration;
+    ZType **generics;
+} ZInstance;
+
+typedef struct {
+
+} ZGenericsQueue;
+
 typedef struct ZSemantic {
     ZState          *state;
 
@@ -1166,7 +1174,8 @@ typedef enum {
     Z_TRG_IMPL      = 1 << 0x06,
     Z_TRG_FACET     = 1 << 0x07,
     Z_TRG_EXPR      = 1 << 0x08,
-    Z_TRG_STMT      = 1 << 0x09
+    Z_TRG_STMT      = 1 << 0x09,
+    Z_TRG_VAR_DECL  = 1 << 0x0A
 } ZAnnotationTarget;
 
 ZAnnotation *query(ZAnnotation **, const char *);

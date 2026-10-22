@@ -1,0 +1,178 @@
+#import "std/core/list"
+
+ExprOperator :: enum u8 {
+    Add
+    Sub
+    Mul
+    Div
+}
+
+Expr :: enum {
+    Num(f64)
+    Sym(string)
+    Unary(ExprOperator, *Expr)
+    Binary(left: *Expr, op: ExprOperator, right: *Expr)
+}
+
+num :: fn (val: f64) *Expr with Allocator {
+    self: *Expr = alloc(sizeof Expr)
+    *self = .Num(val)
+    return self
+}
+
+sym :: fn (val: string) *Expr with Allocator {
+    self: *Expr = alloc(sizeof Expr)
+    *self = .Sym(val)
+    return self
+}
+unary :: fn (op: ExprOperator, arg: *Expr) *Expr with Allocator {
+    self: *Expr = alloc(sizeof Expr)
+    *self = .Unary(op, arg)
+    return self
+}
+binary :: fn (left: *Expr, op: ExprOperator, right: *Expr) *Expr with Allocator {
+    self: *Expr = alloc(sizeof Expr)
+    *self = .Binary(left, op, right)
+    return self
+}
+
+Token :: enum {
+    Op(ExprOperator)
+    Num(f64)
+    Sym(string)
+}
+
+Scanner :: struct {
+    source: string
+    current: usize
+}
+
+libc :: foreign {
+    isspace: fn (i32) i32
+}
+
+*Scanner self :: impl {
+    skip_whitespaces :: fn () {
+
+    }
+
+    #inline
+    can_peek :: fn () bool -> self.current < self.source.len
+
+    #inline
+    peek :: fn () char -> self.source[self.current]
+
+    #inline
+    consume :: fn () char {
+        cur := self.source[self.current]
+        self.current += 1
+        return cur
+    }
+
+    #inline
+    isnum :: fn () bool {
+        cur := self.peek()
+        return cur >= '0' and cur <= '9'
+    }
+
+    #inline
+    isalpha :: fn () bool {
+        cur := self.peek()
+        return  (cur >= 'a' and cur <= 'z') or
+                (cur >= 'A' and cur <= 'Z')
+    }
+
+    scan_num :: fn () ?Token {
+        start := self.current
+        num: i64 = 0
+        for self.can_peek() and self.isnum() {
+            num *= 10
+            num += (self.consume() - '0') as i64
+            self.current += 1
+        }
+
+        if start == self.current return none
+        return Token.Num(num as f64)
+    }
+
+    scan_sym :: fn () ?Token with Allocator {
+        sb := StringBuilder.new()
+
+        for self.can_peek() and self.isalpha() {
+            sb.append_char(self.consume())
+            self.current += 1
+        }
+        return Token.Sym(sb.to_string())
+    }
+
+    scan_operator :: fn () ?Token {
+        match self.peek() {
+        '+' { return Token.Op(.Add) },
+        '-' { return Token.Op(.Sub) },
+        '*' { return Token.Op(.Mul) },
+        '/' { return Token.Op(.Div) },
+        _   { return none }
+        }
+        return none
+    }
+
+    scan :: fn (text: string) [..]Token with Allocator {
+        tokens: [..]Token
+        self.source = text
+        self.current = 0
+
+        for self.can_peek() {
+            self.skip_whitespaces()
+            if not self.can_peek() break
+
+            tok: ?Token
+            if self.isnum() {
+                tok = self.scan_num()
+            } else if self.isalpha() {
+                tok = self.scan_sym()
+            }
+
+            match tok == none {
+                true { self.consume() println("Invalid token") },
+                false -> add_token(&tokens, tok!)
+            }
+        }
+        return tokens
+    }
+}
+
+Parser :: struct {
+    tokens: [..]Token
+}
+
+Context :: struct {
+    scanner: *Scanner
+    parser: *Parser
+    history: [..]string
+}
+
+add_token :: fn (toks: *[..]Token, tok: Token) with Allocator {
+    make_room(toks, 1, sizeof tok)
+    toks.len += 1
+    toks.*[toks.len - 1] = tok
+}
+
+readline :: foreign fn (*char) *char
+repl :: fn (ctx: *Context) with Allocator {
+    text := string.from_cstr(readline(">> "))
+    println(#"{&text}")
+    ctx.scanner.scan(text)
+}
+
+main :: fn () i32 {
+    with _ := GeneralPurposeAllocator.new() {
+        scanner := #partial Scanner{}
+        parser := #partial Parser{}
+        ctx := #partial Context{
+            scanner = &scanner,
+            parser = &parser,
+        }
+        for do repl(&ctx)
+    }
+    return 0
+}
