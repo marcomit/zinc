@@ -1,3 +1,5 @@
+#import "std/core/display"
+
 #lang(type_info)
 pub Type :: enum {
     Void
@@ -27,6 +29,68 @@ pub TypeEnumVariant :: struct {
 pub TypeKeyValueField :: struct {
     name: []char
     type_info: *Type
+}
+
+*Type self :: impl(Writable) {
+    pub sink :: fn (w: Writer) {
+        match *self {
+            .Void -> sink_str(w, "void"),
+            .Bool -> sink_str(w, "bool"),
+            .Integer(bits, signed) {
+                sink_char(w, if signed do 'i' else 'u')
+                sink_int(w, bits)
+            },
+            .Float -> sink_str(w, "f32"),
+            .Double -> sink_str(w, "f64"),
+            .Array(base) {
+                sink_str(w, "[]")
+                base.sink(w)
+            },
+            .Pointer(base) {
+                sink_char(w, '*')
+                base.sink(w)
+            },
+            .Optional(base) {
+                sink_char(w, '?')
+                base.sink(w)
+            },
+            .Tuple(types) {
+                sink_char(w, '(')
+                for i in 0..types.len {
+                    types[i].sink(w)
+                    if i != types.len - 1 {
+                        sink_str(w, ", ")
+                    }
+                }
+                sink_char(w, ')')
+            },
+            .Result(success, error) {
+                success.sink(w)
+                sink_char(w, '!')
+                error.sink(w)
+            },
+            .Struct(name, _) {
+                sink_str(w, name)
+            },
+            .Enum(name, _) {
+                sink_str(w, name)
+            },
+            .Facet(name, _) {
+                sink_str(w, name)
+            },
+            .Func(ret, args) {
+                sink_str(w, "fn (")
+                for i in 0..args.len {
+                    if i != args.len - 1 {
+                        args[i].type_info.sink(w)
+                        sink_str(w, ", ")
+                    }
+                }
+                sink_str(w, ") ")
+                ret.sink(w )
+            }
+        }
+    }
 }
 
 #lang(source_location_type)

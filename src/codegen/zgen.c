@@ -2930,7 +2930,7 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
     ZNode *rvalue = node->varDecl.rvalue;
     LLVMValueRef ptr = NULL;
 
-    if (rvalue->type == NODE_IDENTIFIER) {
+    if (rvalue->type == NODE_IDENTIFIER && !rvalue->identNode.li) {
         char *key = manglingIdent(rvalue);
         ptr = getLLVMValueRef(ctx, key);
         if (!ptr) {

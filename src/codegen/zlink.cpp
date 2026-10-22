@@ -1,6 +1,7 @@
 #include "zlink.h"
 #include "lld/Common/Driver.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -14,6 +15,29 @@ LLD_HAS_DRIVER(coff)
 #else
 LLD_HAS_DRIVER(elf)
 #endif
+
+ZBuiltinOS ztripleOS(const char *triple) {
+    llvm::Triple t(triple);
+    if (t.isMacOSX())           return Z_OS_MACOS;
+    if (t.isiOS())              return Z_OS_IOS;
+    if (t.isOSLinux())          return Z_OS_LINUX;
+    if (t.isOSWindows())        return Z_OS_WINDOWS;
+    if (t.isOSBinFormatWasm())  return Z_OS_WASM;
+    if (t.isOSFreeBSD())        return Z_OS_FREEBSD;
+    if (t.getOS() == llvm::Triple::UnknownOS) return Z_OS_FREESTANDING;
+    return Z_OS_UNKNOWN;
+}
+
+ZBuiltinArch ztripleArch(const char *triple) {
+    switch(llvm::Triple(triple).getArch()) {
+    case llvm::Triple::x86_64:  return Z_ARCH_X86_64;
+    case llvm::Triple::aarch64: return Z_ARCH_AARCH64;
+    case llvm::Triple::riscv64: return Z_ARCH_RISCV64;
+    case llvm::Triple::wasm32:  return Z_ARCH_WASM32;
+    case llvm::Triple::avr:     return Z_ARCH_AVR;
+    default:                    return Z_ARCH_UNKNOWN;
+    }
+}
 
 static std::string runCmd(const char *cmd) {
     char buf[1024] = {};
