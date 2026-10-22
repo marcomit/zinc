@@ -15,3 +15,7 @@ LANG(Z_LANG_INTERPOLATED_STRING,    "interpolated_string",      ENUM,       NULL
 LANG(Z_LANG_WRITABLE,               "writable",                 FACET,      NULL,               NULL)
 LANG(Z_LANG_WRITER,                 "writer",                   FACET,      NULL,               NULL)
 LANG(Z_LANG_REGION,                 "region",                   FACET,      NULL,               NULL)
+LANG(Z_LANG_TARGET_OS_TYPE,         "target_os_type",           ENUM,       NULL,               NULL)
+LANG(Z_LANG_TARGET_OS,              "target_os",                FOREIGN,    genTargetOS,        NULL)
+LANG(Z_LANG_TARGET_ARCH_TYPE,       "target_arch_type",         ENUM,       NULL,               NULL)
+LANG(Z_LANG_TARGET_ARCH,            "target_arch",              FOREIGN,    genTargetArch,      NULL)

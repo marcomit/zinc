@@ -1,5 +1,6 @@
 #include "zinc.h"
 #include "zgen.h"
+#include "zlink.h"
 
 extern _Thread_local LLVMTypeRef i0Type;
 extern _Thread_local LLVMTypeRef i1Type;
@@ -401,6 +402,29 @@ static LLVMValueRef genPtrFromInt(ZCodegen *ctx, ZNode *node) {
     return LLVMBuildIntToPtr(
         ctx->builder, ptr, LLVMPointerTypeInContext(ctx->ctx, 0), label(ctx, "builtin.ptr_from_int")
     );
+}
+
+static LLVMValueRef genEnumTagConst(ZCodegen *ctx, ZNode *enumNode, u64 tag) {
+    if (!enumNode) return NULL;
+    LLVMTypeRef enumType        = genType(ctx, enumNode->resolved);
+    unsigned count              = LLVMCountStructElementTypes(enumType);
+    LLVMValueRef fields[2]      = {
+        LLVMConstInt(LLVMStructGetTypeAtIndex(enumType, 0), tag, false),
+        count > 1 ? LLVMConstNull(LLVMStructGetTypeAtIndex(enumType, 1)) : NULL,
+    };
+    return LLVMConstNamedStruct(enumType, fields, count);
+}
+
+static LLVMValueRef genTargetOS(ZCodegen *ctx, ZNode *node) {
+    (void)node;
+    ZBuiltinOS os               = ztripleOS(ctx->state->resolvedTriple);
+    return genEnumTagConst(ctx, LangItems[Z_LANG_TARGET_OS_TYPE], os);
+}
+
+static LLVMValueRef genTargetArch(ZCodegen *ctx, ZNode *node) {
+    (void)node;
+    ZBuiltinArch arch           = ztripleArch(ctx->state->resolvedTriple);
+    return genEnumTagConst(ctx, LangItems[Z_LANG_TARGET_ARCH_TYPE], arch);
 }
 
 #define ensure(cond, tok, ...) if (!(cond)) {                               \

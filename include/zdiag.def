@@ -204,7 +204,7 @@ DIAG(Z3058, Z_ERROR,    "field '%s' embeds enum by value causing infinite size; 
 DIAG(Z3059, Z_ERROR,    "Missing 'main' declaration", "add a 'main' function to the entry module")
 DIAG(Z305A, Z_ERROR,    "impl of facet '%s' is missing method '%s'", NULL)
 DIAG(Z305B, Z_ERROR,    "Uninitialized variable must be zeroable, '%s' is not", NULL)
-DIAG(Z305C, Z_ERROR,    "structs marked with #sealed are allowed only in their source file", NULL)
+DIAG(Z305C, Z_ERROR,    "types marked with #sealed are allowed only in their source file", NULL)
 DIAG(Z305D, Z_ERROR,    "'%s' must implement the writable facet", NULL)
 DIAG(Z305E, Z_ERROR,    "Expected a concrete type here", NULL)
 

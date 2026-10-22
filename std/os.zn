@@ -1,0 +1,27 @@
+#[lang(target_os_type), sealed]
+pub ZincOS :: enum u8 {
+    Macos
+    Ios
+    Linux
+    Windows
+    Wasm
+    FreeBSD
+    FreeStanding
+    Unknown
+}
+
+#lang(target_os)
+pub ZINC_OS :: foreign ZincOS
+
+#[lang(target_arch_type), sealed]
+pub ZincArch :: enum u8 {
+    X86_64
+    Aarch64
+    Riscv64
+    Wasm32
+    Avr
+    Unknown
+}
+
+#lang(target_arch)
+pub ZINC_ARCH :: foreign ZincArch

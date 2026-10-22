@@ -1303,13 +1303,16 @@ static ZNode *parseCompoundOperator(ZParser *parser) {
 ZNode *parseStmt(ZParser *parser) {
     guard(canPeek(parser));
 
-    ZTokenType t                = peek(parser)->type;
     ZAnnotation **annotations   = NULL;
     ZNode *res                  = NULL;
 
     if (check(parser, TOK_HASHTAG)) {
         annotations = parseAnnotations(parser);
+        guard(canPeek(parser));
     }
+
+    /* Read after the annotations, so '#comp for ...' dispatches on 'for'. */
+    ZTokenType t                = peek(parser)->type;
 
     if (check(parser, TOK_IDENT) &&
         checkAhead(parser, TOK_DOUBLE_COLON, 1)) {
@@ -1816,7 +1819,7 @@ static ZAnnotation *parseAnnotation(ZParser *parser) {
 }
 
 static ZAnnotation **parseAnnotations(ZParser *parser) {
-    expect(parser, TOK_HASHTAG);
+    if (!match(parser, TOK_HASHTAG)) return NULL;
 
     bool group = match(parser, TOK_LSBRACKET);
 
@@ -1945,10 +1948,12 @@ static ZNode *parseIf(ZParser *parser) {
     return parseOrGrammar(parser, (ZParseFunc[]){parseIfLet, parseIfStmt}, 2);
 }
 
-/* While parsed with 'for' token instead of standard while. */
 static ZNode *parseWhile(ZParser *parser) {
     ZToken *start = peek(parser);
-    expect(parser, TOK_FOR);
+
+    if (!check(parser, TOK_FOR))
+        return NULL;
+    consume(parser);
 
     parser->noStructLit = true;
     ZNode *cond = tryParse(parser, parseExpr(parser));
@@ -1966,11 +1971,16 @@ static ZNode *parseWhile(ZParser *parser) {
 
 static ZNode *parseForIn(ZParser *parser) {
     ZToken *start = peek(parser);
-    expect(parser, TOK_FOR);
+
+    if (!check(parser, TOK_FOR))
+        return NULL;
+    consume(parser);
 
     ZVarDestructPattern *binding = parseMultiDestructVar(parser);
     expect(parser, TOK_IN);
+    parser->noStructLit = true;
     ZNode *iter = tryParse(parser, parseExpr(parser));
+    parser->noStructLit = false;
     ZNode *block = tryParse(parser, parseBlockOrInline(parser, true));
 
     guard(binding && iter && block);
@@ -1986,7 +1996,10 @@ static ZNode *parseForIn(ZParser *parser) {
 
 static ZNode *parseForLet(ZParser *parser) {
     ZToken *start = peek(parser);
-    expect(parser, TOK_FOR);
+
+    if (!check(parser, TOK_FOR))
+        return NULL;
+    consume(parser);
 
     ZNode *cond = tryParse(parser, parseCondDestructVar(parser));
     ZNode *body = tryParse(parser, parseBlockOrInline(parser, true));
@@ -2941,7 +2954,7 @@ static ZNode *parseForeignInlineDecl(ZParser *parser, ZAnnotation **annotations,
     ZNode *node = makenode(parser->allocator, NODE_FOREIGN);
     node->foreignDecl.name          = start;
     node->foreignDecl.pub           = public;
-    node->foreignDecl.annotations   = annotations;
+    node->annotations               = annotations;
     node->tok                       = start;
     node->resolved                  = type;
     return setspan(parser, node, start);
@@ -3394,12 +3407,9 @@ static ZNode *parseImport(ZParser *parser, bool public) {
         alias = consume(parser);
         consume(parser);
     }
-    expect(parser, TOK_HASHTAG);
-    ZToken *import  = peek(parser);
-
-    if (!match(parser, TOK_IDENT))              return NULL;
-    if (strcmp(stoken(import), "import") != 0)  return NULL;
-    if (!check(parser, TOK_STR_LIT))            return NULL;
+    expect(parser, TOK_IMPORT);
+    if (!check(parser, TOK_STR_LIT))
+        return NULL;
 
     ZToken *name    = consume(parser);
     ZNode *node     = getModuleByName(parser, stoken(name), name, public);
@@ -3423,18 +3433,10 @@ static ZNode *parse(ZParser *parser) {
     }
 #endif
 
-    if (t == TOK_HASHTAG) {
-        ZNode *import = tryParse(parser, parseImport(parser, false));
-        if (import) {
-            res = import;
-            goto success;
-        }
-        annotations = parseAnnotations(parser);
-    }
-
+    annotations = parseAnnotations(parser);
     bool public = match(parser, TOK_PUB);
 
-    if (check(parser, TOK_HASHTAG)) {
+    if (check(parser, TOK_IMPORT)) {
         res = parseImport(parser, public);
         goto success;
     }
@@ -3448,6 +3450,13 @@ static ZNode *parse(ZParser *parser) {
         res = parseImpl(parser, annotations, public);
         goto success;
     }
+
+    if (check(parser, TOK_COLON) || check(parser, TOK_ASSIGN) || check(parser, TOK_COMMA)) {
+        undo(parser, snap);
+        res = parseVarDef(parser);
+        goto success;
+    }
+
     expect(parser, TOK_DOUBLE_COLON);
     guard(canPeek(parser));
     t = peek(parser)->type;
