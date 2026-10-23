@@ -2719,32 +2719,6 @@ static LLVMValueRef genStructLitInto(
     return ptr;
 }
 
-// static LLVMValueRef genStaticAccess(ZCodegen *ctx, ZNode *node) {
-//     if (!node || !node->resolved) {
-//         zlog(ctx->state, node ? node->tok : NULL, Z9033);
-//         return NULL;
-//     }
-//
-//     char *mangled = node->staticAccess.mangled;
-//
-//     if (!mangled) {
-//         zlog(ctx->state, node->tok, Z9034);
-//     }
-//
-//     LLVMValueRef val = getLLVMValueRef(ctx, mangled);
-//
-//     if (!val) {
-//         zlog(ctx->state, node->tok, Z400F, mangled);
-//         return NULL;
-//     }
-//     LLVMValueKind kind = LLVMGetValueKind(val);
-//     if (kind == LLVMInstructionValueKind || kind == LLVMGlobalVariableValueKind) {
-//         LLVMTypeRef type = genType(ctx, node->resolved);
-//         return LLVMBuildLoad2(ctx->builder, type, val, node->tok->str);
-//     }
-//     return val;
-// }
-
 static void matchPattern(
     ZCodegen *,             ZType *,
     ZVarDestructPattern *,  LLVMValueRef, LLVMBasicBlockRef
@@ -2925,6 +2899,46 @@ static LLVMValueRef genMatchCond(
     return phi;
 }
 
+/**
+ * @brief Generate the address of an expression.
+ *
+ * Expressions that live in memory return their own address (see genLValue).
+ * Everything else (lang items like ZINC_OS, binary ops, literals, ...) is
+ * evaluated and spilled into a temporary stack slot.
+ * */
+static LLVMValueRef genAddressable(ZCodegen *ctx, ZNode *node) {
+    switch (node->type) {
+    case NODE_IDENTIFIER:
+        if (node->identNode.li) break;
+        return genLValue(ctx, node);
+    case NODE_CALL:
+        if (getLangItemType(node->call.callee)) break;
+        return genLValue(ctx, node);
+    case NODE_UNARY:
+        if (node->unary.operat->type != TOK_STAR) break;
+        return genLValue(ctx, node);
+    case NODE_ARRAY_LIT:
+    case NODE_SLICE:
+    case NODE_ENUM_LIT:
+    case NODE_ENUM_LIT_NO_PAYLOAD:
+    case NODE_STRUCT_LIT:
+    case NODE_TUPLE_LIT:
+    case NODE_MEMBER:
+    case NODE_SUBSCRIPT:
+        return genLValue(ctx, node);
+    default: break;
+    }
+
+    LLVMValueRef value  = genExpr(ctx, node);
+    if (!value) return NULL;
+
+    LLVMValueRef tmp    = LLVMBuildAlloca(
+        ctx->builder, genType(ctx, node->resolved), label(ctx, "tmp")
+    );
+    LLVMBuildStore(ctx->builder, value, tmp);
+    return tmp;
+}
+
 static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
     genVarDecl(ctx, node);
     ZNode *rvalue = node->varDecl.rvalue;
@@ -2939,11 +2953,11 @@ static LLVMValueRef genVarDestruct(ZCodegen *ctx, ZNode *node) {
         }
     } else {
         ZLLVMStack *stack = getStackValue(ctx, rvalue);
-        if (!stack) {
+        ptr = stack ? stack->stack : genAddressable(ctx, rvalue);
+        if (!ptr) {
             zlog(ctx->state, node->tok, Z901B);
             return NULL;
         }
-        ptr = stack->stack;
     }
 
     putDestructuredPatternInStack(ctx, node->resolved, node->varDecl.pattern, ptr);
@@ -3771,7 +3785,7 @@ static void genContinue(ZCodegen *ctx, ZNode *node) {
  *
  * At compile-time, every scope (function body, if, loops ...)
  * owns its own defer stack. Each defer statement is pushed into the stack
- * if its enclosing scope.
+ * in its enclosing scope.
  * At the end of the scope each defer statement is fired in reverse order.
  *
  * A special case is an early exit (break, continue or return). inside a nested
@@ -3792,10 +3806,12 @@ static void genDefer(ZCodegen *ctx, ZNode *node) {
 }
 
 static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef cond = genLValue(ctx, node->match.cond);
-    ZType *condType = node->match.cond->resolved;
-    usize armLen = veclen(node->match.arms);
-    LLVMBasicBlockRef *blocks = aalloc(ctx->module->allocator, sizeof(LLVMBasicBlockRef) * (armLen+1));
+    ZType *condType         = node->match.cond->resolved;
+    LLVMValueRef condPtr    = genAddressable(ctx, node->match.cond);
+    if (!condPtr) return;
+    usize armLen            = veclen(node->match.arms);
+    LLVMBasicBlockRef *blocks = aalloc(
+        ctx->module->allocator, sizeof(LLVMBasicBlockRef) * (armLen+1));
 
     blocks[0] = LLVMGetInsertBlock(ctx->builder);
     for (usize i = 1; i <= armLen; i++) blocks[i] = makeblock(ctx, "matcharm");
@@ -3807,7 +3823,7 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
         LLVMBasicBlockRef block = blocks[i];
         LLVMPositionBuilderAtEnd(ctx->builder, block);
         LLVMValueRef matchArm = genMatchCond(
-            ctx, condType, arm->matchArm.pattern, cond
+            ctx, condType, arm->matchArm.pattern, condPtr
         );
 
         LLVMBasicBlockRef exprBlock = makeblock(ctx, "match.block");
@@ -3815,8 +3831,9 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
         makecondbr(ctx->builder, matchArm, exprBlock, blocks[i+1]);
         LLVMPositionBuilderAtEnd(ctx->builder, exprBlock);
         beginScope(Z_SCOPE_BLOCK, ctx);
-        putDestructuredPatternInStack(ctx, node->match.cond->resolved, arm->matchArm.pattern, cond);
-        if (arm->matchArm.expr == NODE_BLOCK) {
+        putDestructuredPatternInStack(
+            ctx, node->match.cond->resolved, arm->matchArm.pattern, condPtr);
+        if (arm->matchArm.expr->type == NODE_BLOCK) {
             genBlock(ctx, arm->matchArm.expr);
         } else {
             genExpr(ctx, arm->matchArm.expr);
@@ -4361,7 +4378,7 @@ cold:
 }
 
 static LLVMValueRef genFunc(ZCodegen *ctx, ZNode *f) {
-    LLVMTypeRef ret = genType(ctx, f->funcDef.ret);
+    LLVMTypeRef ret = genType(ctx, f->resolved->func.ret);
     LLVMTypeRef *args = NULL;
 
     ZAnnotation *export = query(f->funcDef.annotations, "export");
@@ -4637,7 +4654,7 @@ static LLVMValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
             return existing;
         }
 
-        LLVMTypeRef ret      = genType(ctx, node->funcDef.ret);
+        LLVMTypeRef ret      = genType(ctx, node->resolved->func.ret);
         LLVMTypeRef *args    = NULL;
 
         if (node->funcDef.receiver) {

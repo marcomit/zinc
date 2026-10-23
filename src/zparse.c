@@ -1032,12 +1032,26 @@ static ZType *parseTypeOptional(ZParser *parser) {
     return opt;
 }
 
+static ZType *parseIdentType(ZParser *parser) {
+    ZType *base = NULL, *prev = NULL;
+    while (check(parser, TOK_IDENT)) {
+        base                    = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
+        base->tok               = peek(parser);
+        base->primitive.token   = consume(parser);
+        base->primitive.base    = prev;
+
+        if (!match(parser, TOK_DOT)) break;
+        prev = base;
+    }
+    return base;
+}
+
 static ZType *parseAtom(ZParser *parser) {
     ZToken *start = peek(parser);
     if (!start) return NULL;
 
     switch (start->type) {
-    case TOK_BITXOR:
+    // case TOK_BITXOR:
     case TOK_STAR: {
         consume(parser);
         ZType *type = maketype(parser->allocator, Z_TYPE_POINTER);
@@ -1045,9 +1059,9 @@ static ZType *parseAtom(ZParser *parser) {
         type->base  = parseAtom(parser);
         return type;
     }
-    case TOK_TYPEDEF:
-        consume(parser);
-        return consts(parser->state, typeType);
+    // case TOK_TYPEDEF:
+    //     consume(parser);
+    //     return consts(parser->state, typeType);
     case TOK_FN:
         return parseFuncType(parser);
     case TOK_LSBRACKET:
@@ -1069,13 +1083,15 @@ static ZType *parseAtom(ZParser *parser) {
         }
         return parseAnonEnum(parser, NULL);
     default:
-        if (checkMask(parser, TOK_TYPES_MASK) || check(parser, TOK_IDENT)) {
+        if (checkMask(parser, TOK_TYPES_MASK)) {
             ZType *base = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
-            base->primitive.token = consume(parser);
-            base->primitive.base     = NULL;
+            base->primitive.token   = consume(parser);
+            base->primitive.base    = NULL;
             return base;
         }
-        return NULL;
+
+        if (!check(parser, TOK_IDENT)) return NULL;
+        return parseIdentType(parser);
     }
 }
 
@@ -2229,7 +2245,6 @@ static ZNode *parseAnonFunc(ZParser *parser) {
     func->funcDef.name          = NULL;
     func->funcDef.body          = body;
     func->funcDef.mangled       = NULL;
-    func->funcDef.ret           = type;
     func->tok                   = start;
 
     ZType *funcType             = maketype(parser->allocator, Z_TYPE_FUNCTION);
@@ -2378,7 +2393,6 @@ static ZNode *parseFuncDecl(ZParser *parser,
     ZNode *node                 = makenode(parser->allocator, NODE_FUNC);
     node->tok                   = name;
     node->resolved              = func;
-    node->funcDef.ret           = ret;
     node->funcDef.name          = name;
     node->funcDef.args          = args;
     node->funcDef.body          = body;

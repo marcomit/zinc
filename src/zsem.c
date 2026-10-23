@@ -285,7 +285,7 @@ static void putFunc(ZThreadSem *ctx, ZNode *node) {
 
         if (strcmp(node->funcDef.name->str, "main") == 0) {
             ctx->semantic->main = f;
-            if (node->funcDef.ret && isVoid(node->funcDef.ret)) {
+            if (isVoid(node->resolved->func.ret)) {
                 zlog(ctx->state, node->funcDef.name, Z3003);
             }
         }
@@ -955,6 +955,10 @@ bool typesEqual(ZType *a, ZType *b) {
 
     switch (a->kind) {
     case Z_TYPE_PRIMITIVE:
+        if (a->primitive.base &&
+            b->primitive.base &&
+            !typesEqual(a->primitive.base, b->primitive.base))
+            return false;
         return tokeneq(a->primitive.token, b->primitive.token);
     case Z_TYPE_POINTER:
         return typesEqual(a->base, b->base);
@@ -1098,7 +1102,6 @@ static inline ZSymbol *resolveByScope(ZScope *scope, ZToken *ident) {
         int len = veclen(scope->symbols);
         if (len == 0) goto next;
         for (int i = len-1; i >= 0; i--) {
-        // for (usize i = 0; i < len; i++) {
             if (tokeneq(scope->symbols[i]->name, ident)) {
                 scope->symbols[i]->useCount++;
                 return scope->symbols[i];
@@ -1226,6 +1229,58 @@ static bool isInfiniteSize(ZType *type, ZType *root, ZType ***seen) {
     }
 }
 
+static ZType *_resolveTypeRef(ZThreadSem *, ZType *, ZType ***);
+
+static ZScope *resolveModulePath(ZThreadSem *ctx, ZType *path) {
+    ZToken *name    = path->primitive.token;
+    ZSymbol *sym    = NULL;
+
+    if (path->primitive.base) {
+        ZScope *outer = resolveModulePath(ctx, path->primitive.base);
+        if (!outer) return NULL;
+        sym = resolveByScope(outer, name);
+    } else {
+        sym = resolve(ctx, name);
+    }
+
+    if (!sym || sym->kind != Z_SYM_IMPORT) {
+        zlog(ctx->state, name, Z305F);
+        return NULL;
+    }
+    return sym->scope;
+}
+
+static ZType *resolvePrimitiveRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
+    ZToken *tok = type->primitive.token;
+    if (tok->type != TOK_IDENT) return type;
+
+    ZSymbol *sym = NULL;
+    if (type->primitive.base) {
+        ZScope *mod = resolveModulePath(ctx, type->primitive.base);
+        if (!mod) return NULL;
+        sym = resolveByScope(mod, tok);
+        if (!sym) {
+            zlog(ctx->state, tok, Z3060, stoken(tok));
+            return NULL;
+        }
+    } else {
+        sym = resolve(ctx, type->primitive.token);
+        if (!sym) {
+            zlog(ctx->state, type->primitive.token, Z00AB, stype(type));
+            return NULL;
+        }
+    }
+
+    if (sym->kind == Z_SYM_TYPEDEF) {
+        if (sym->node->resolved) return sym->node->resolved;
+        vecpush(*seen, type);
+        ZType *res = _resolveTypeRef(ctx, sym->node->typeDef.type, seen);
+        vecpop(*seen);
+        return res;
+    }
+    return sym->type;
+}
+
 static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
     if (!type) return NULL;
 
@@ -1236,28 +1291,7 @@ static ZType *_resolveTypeRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
         }
     }
     switch (type->kind) {
-    case Z_TYPE_PRIMITIVE: {
-        if (type->primitive.token->type != TOK_IDENT) return type;
-        ZSymbol *sym = resolve(ctx, type->primitive.token);
-        if (!sym) {
-            zlog(ctx->state, type->primitive.token, Z00AB, stype(type));
-            return NULL;
-        }
-        if (sym->kind == Z_SYM_STRUCT) {
-            // for (usize i = 0; i < veclen(sym->type->strct.fields); i++) {
-            //     ZNode *field = sym->type->strct.fields[i];
-            //     field->resolved = _resolveTypeRef(
-            //         ctx, field->resolved, NULL
-            //     );
-            //     sym->node->structDef.fields[i]->resolved = field->resolved;
-            // }
-        } else if (sym->kind == Z_SYM_TYPEDEF) {
-            if (sym->node->resolved) return sym->node->resolved;
-            vecpush(*seen, type);
-            return _resolveTypeRef(ctx, sym->node->typeDef.type, seen);
-        }
-        return sym->type;
-    }
+    case Z_TYPE_PRIMITIVE: return resolvePrimitiveRef(ctx, type, seen);
     case Z_TYPE_POINTER:
         type->base = _resolveTypeRef(ctx, type->base, seen);
         return type;
@@ -1619,7 +1653,7 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             ZType *rawRet = sym->type->func.ret;
             if (sym->node->type == NODE_FUNC) {
                 callee->identNode.mangled = sym->node->funcDef.mangled;
-                rawRet = sym->node->funcDef.ret;
+                rawRet = sym->type->func.ret;
             }
 
             /* Resolve the signature so that named types (e.g. "Vec2" ->
@@ -1631,9 +1665,6 @@ static ZType *resolveFuncCall(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
                 );
             }
             sym->type->func.ret     = resolveTypeRef(ctx, rawRet);
-            if (sym->node->type == NODE_FUNC) {
-                sym->node->funcDef.ret = sym->type->func.ret;
-            }
             expectedFunc            = sym->type;
             callee->resolved        = expectedFunc->func.ret;
         }
@@ -1843,7 +1874,7 @@ static ZType *resolveIdentByScope(ZThreadSem *ctx, ZScope *scope, ZNode *node) {
             zlog(ctx->state, tok, Z3015, tok->str);
         }
     }
-    return sym->type;
+    return sym->type = resolveTypeRef(ctx, sym->type);
 }
 
 static ZType* resolveIdent(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
@@ -2193,8 +2224,6 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->tok, Z3024);
             return NULL;
         }
-
-        curr->funcDef.ret = inferred->func.ret;
         curr->resolved = inferred;
 
         for (usize i = 0; i < veclen(curr->funcDef.args); i++) {
@@ -3175,9 +3204,8 @@ static void analyzeFunc(ZThreadSem *ctx, ZNode *curr) {
     ZType *savedRet             = ctx->currentFuncRet;
     ZNode *savedFunc            = ctx->currentFunc;
 
-    curr->funcDef.ret           = resolveTypeRef(ctx, curr->funcDef.ret);
-    curr->resolved->func.ret    = curr->funcDef.ret;
-    ctx->currentFuncRet         = curr->funcDef.ret;
+    curr->resolved              = resolveTypeRef(ctx, curr->resolved);
+    ctx->currentFuncRet         = curr->resolved->func.ret;
     ctx->currentFunc            = curr;
 
     analyzeBlock(ctx, curr->funcDef.body, false);
@@ -3630,6 +3658,21 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
     return ctx;
 }
 
+static void resolveGlobalScope(ZSemantic *semantic) {
+    for (usize i = 0; i < veclen(semantic->semantics); i++) {
+        ZThreadSem *ctx = semantic->semantics[i];
+        ZNode **nodes   = ctx->root->module.root;
+        ZScope *saved   = ctx->current;
+
+        for (usize j = 0; j < veclen(nodes); j++) {
+            ZNode *node = nodes[j];
+            if (node->type != NODE_FUNC) continue;
+            node->resolved = resolveTypeRef(ctx, node->resolved);
+        }
+        ctx->current = saved;
+    }
+}
+
 static void _checkEmbedFieldConflicts(
         ZThreadSem *ctx, ZType *strct,
         hashset_t *fieldSeen, hashset_t *structSeen, ZToken *embedTok) {
@@ -3844,10 +3887,10 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
         ctx, globalScope, root, state->allocator
     );
     discoverGlobalScope(first, root);
+    resolveGlobalScope(ctx);
 
     usize len                   = veclen(ctx->scopes);
     pthread_t *threads          = znalloc(state->allocator, pthread_t, len);
-
     ZScopeTable **scopes        = ctx->scopes;
     ZThreadSem **semantics      = ctx->semantics;
     for (usize i = 0; i < len; i++) {

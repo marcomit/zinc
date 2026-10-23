@@ -16,12 +16,17 @@ string :: impl {
     }
 
     #inline
-    pub from_cstr :: fn (ptr: *char, len: usize) string with Allocator {
+    pub from_len :: fn (ptr: *char, len: usize) string with Allocator {
         res: string
         make_room(&res, len, sizeof char)
         res.len += len
         mem.memcpy(res.ptr, ptr, len)
         return res
+    }
+
+    #inline
+    pub from_cstr :: fn (ptr: *char) string with Allocator {
+        return string.from_len(ptr, mem.strlen(ptr))
     }
 
     #inline
