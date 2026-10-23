@@ -39,7 +39,7 @@ pub alloc_slice :: fn (ptr: *[]char, n: usize, elem_size: usize) with Allocator 
 }
 
 pub free_slice :: fn (ptr: *[]char) with Allocator {
-    destroy(ptr as *RawSlice.ptr)
+    destroy((ptr as *RawSlice).ptr)
 }
 
 pub make_room :: fn (list: *[..]char, n: usize, elem_size: usize) with Allocator {

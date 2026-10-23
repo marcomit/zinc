@@ -542,7 +542,7 @@ void printNode(ZNode *node, u8 depth) {
         } else if (node->funcDef.base) {
             printf("%s::", node->funcDef.base->primitive.token->str);
         }
-        printf("%s, Type: %s", stoken(node->funcDef.name), stype(node->funcDef.ret));
+        printf("%s, Type: %s", stoken(node->funcDef.name), stype(node->resolved->func.ret));
         printf("\n");
         for (usize i = 0; i < veclen(node->funcDef.generics); i++) {
             indent(depth);

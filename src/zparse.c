@@ -2245,7 +2245,6 @@ static ZNode *parseAnonFunc(ZParser *parser) {
     func->funcDef.name          = NULL;
     func->funcDef.body          = body;
     func->funcDef.mangled       = NULL;
-    func->funcDef.ret           = type;
     func->tok                   = start;
 
     ZType *funcType             = maketype(parser->allocator, Z_TYPE_FUNCTION);
@@ -2394,7 +2393,6 @@ static ZNode *parseFuncDecl(ZParser *parser,
     ZNode *node                 = makenode(parser->allocator, NODE_FUNC);
     node->tok                   = name;
     node->resolved              = func;
-    node->funcDef.ret           = ret;
     node->funcDef.name          = name;
     node->funcDef.args          = args;
     node->funcDef.body          = body;

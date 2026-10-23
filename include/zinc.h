@@ -645,7 +645,6 @@ struct ZNode {
 
         union {
             struct {
-                ZType   *ret;
                 ZToken  *name;
                 char    *mangled;
 

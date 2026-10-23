@@ -207,6 +207,8 @@ DIAG(Z305B, Z_ERROR,    "Uninitialized variable must be zeroable, '%s' is not", 
 DIAG(Z305C, Z_ERROR,    "types marked with #sealed are allowed only in their source file", NULL)
 DIAG(Z305D, Z_ERROR,    "'%s' must implement the writable facet", NULL)
 DIAG(Z305E, Z_ERROR,    "Expected a concrete type here", NULL)
+DIAG(Z305F, Z_ERROR,    "Expected a module identifier", NULL)
+DIAG(Z3060, Z_ERROR,    "'%s' not found in the module", NULL)
 
 /* ---------------- Code generation (src/codegen/) ---------------- */
 DIAG(Z4001, Z_ERROR,    "unknown primitive type '%s'", NULL)
