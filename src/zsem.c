@@ -1274,7 +1274,9 @@ static ZType *resolvePrimitiveRef(ZThreadSem *ctx, ZType *type, ZType ***seen) {
     if (sym->kind == Z_SYM_TYPEDEF) {
         if (sym->node->resolved) return sym->node->resolved;
         vecpush(*seen, type);
-        return _resolveTypeRef(ctx, sym->node->typeDef.type, seen);
+        ZType *res = _resolveTypeRef(ctx, sym->node->typeDef.type, seen);
+        vecpop(*seen);
+        return res;
     }
     return sym->type;
 }

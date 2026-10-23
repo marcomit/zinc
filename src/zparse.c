@@ -1051,7 +1051,7 @@ static ZType *parseAtom(ZParser *parser) {
     if (!start) return NULL;
 
     switch (start->type) {
-    case TOK_BITXOR:
+    // case TOK_BITXOR:
     case TOK_STAR: {
         consume(parser);
         ZType *type = maketype(parser->allocator, Z_TYPE_POINTER);
@@ -1059,9 +1059,9 @@ static ZType *parseAtom(ZParser *parser) {
         type->base  = parseAtom(parser);
         return type;
     }
-    case TOK_TYPEDEF:
-        consume(parser);
-        return consts(parser->state, typeType);
+    // case TOK_TYPEDEF:
+    //     consume(parser);
+    //     return consts(parser->state, typeType);
     case TOK_FN:
         return parseFuncType(parser);
     case TOK_LSBRACKET:
