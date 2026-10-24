@@ -1504,6 +1504,13 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
             ctx->builder, genType(ctx, baseType),
             ptr, (unsigned)index, label(ctx, tok)
         );
+    } else if (baseType->kind == Z_TYPE_ENUM) {
+        if (strcmp(tok->str, "tag") == 0) {
+            vecpush(path, 0);
+        }
+    } else {
+        zlog(ctx->state, tok, Z9023);
+        return NULL;
     }
 
     LLVMValueRef objPtr    = objType->kind == Z_TYPE_POINTER
