@@ -2767,6 +2767,27 @@ void zforEachMember(ZSemantic *ctx,
 }
 #endif
 
+static ZType *resolveIntrinsicAccess(ZThreadSem *ctx, ZType *objType, ZToken *field) {
+    if (objType->kind == Z_TYPE_ARRAY) {
+        if (strcmp(field->str, "len") == 0)
+            return consts(ctx->state, u64Type);
+        if (strcmp(field->str, "ptr") == 0) {
+            ZType *ptr  = makeTypeThread(ctx, Z_TYPE_POINTER);
+            ptr->tok    = field;
+            ptr->base   = objType->array.base;
+            return ptr;
+        }
+    }
+
+    if (objType->kind == Z_TYPE_ENUM && strcmp(field->str, "tag") == 0) {
+        ZTokenType t = objType->enm.integer ?
+            objType->enm.integer->type : TOK_U8;
+        return makePrimitiveType(ctx->allocator, t);
+    }
+
+    return NULL;
+}
+
 static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZType *objType  = NULL;
     ZToken *field   = curr->memberAccess.field;
@@ -2868,12 +2889,6 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         }
 
         return base->tuple[field->integer];
-    } else if (base->kind == Z_TYPE_ARRAY && strcmp(stoken(field), "len") == 0) {
-        return consts(ctx->state, u64Type);
-    } else if (base->kind == Z_TYPE_ARRAY && strcmp(stoken(field), "ptr") == 0) {
-        ZType *pointer = makeTypeThread(ctx, Z_TYPE_POINTER);
-        pointer->base = base->array.base;
-        return pointer;
     } else if (objType->kind == Z_TYPE_FACET) {
         ZType *func = NULL;
         ZNode *node = resolveStaticFuncTable(ctx, objType, field);
@@ -2896,15 +2911,8 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
     } else {
         ZNode *resolved = resolveFuncCallEmbedded(ctx, curr, objType, field);
         if (!resolved) {
-            if (objType->kind == Z_TYPE_ARRAY &&
-                    strcmp(field->str, "len") == 0) {
-                return consts(ctx->state, u64Type);
-            } else if (objType->kind == Z_TYPE_ARRAY &&
-                    strcmp(field->str, "ptr") == 0) {
-                ZType *pointer = makeTypeThread(ctx, Z_TYPE_POINTER);
-                pointer->base = objType->array.base;
-                return pointer;
-            }
+            ZType *res = resolveIntrinsicAccess(ctx, base, field);
+            if (res) return res;
             zlog(ctx->state, curr->tok, Z3039);
             return NULL;
         }
