@@ -739,16 +739,7 @@ static ZTokenType toSigned(u8 rank) {
 static bool isComparable(ZThreadSem *ctx, ZType *type) {
     type = resolveTypeRef(ctx, type);
     if (!type) return false;
-
-    if (type->kind == Z_TYPE_FUNCTION       ||
-            type->kind == Z_TYPE_ARRAY      ||
-            type->kind == Z_TYPE_GENERIC    ||
-            type->kind == Z_TYPE_STRUCT     ||
-            type->kind == Z_TYPE_TUPLE) {
-        return false;
-    }
-
-    return true;
+    return typeKindIs(type->kind, TYPE_COMPARABLE_MASK);
 }
 
 static bool isZeroable(ZThreadSem *ctx, ZType *type) {
@@ -951,6 +942,9 @@ bool typesEqual(ZType *a, ZType *b) {
 
     if (a->kind != b->kind) return false;
 
+    if (!a->hash) a->hash = hash(a);
+    if (!b->hash) b->hash = hash(b);
+    if (a->hash == b->hash) return true;
     // if (a->hash && b->hash && a->hash == b->hash) return true;
 
     switch (a->kind) {
@@ -1885,12 +1879,13 @@ static ZType* resolveIdent(ZThreadSem *ctx, ZNode *node, ZType *inferred) {
 static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZToken *tok         = curr->binary.op;
     ZTokenType op       = tok->type;
-    ZType     *left     = resolveType(ctx, curr->binary.left, inferred);
+    ZType     *left     = resolveTypeRef(
+        ctx, resolveType(ctx, curr->binary.left, inferred)
+    );
 
     if (op == TOK_EQ || tokmask(tok, TOK_SELF_OPERATOR)) inferred = left;
     ZType     *right    = resolveType(ctx, curr->binary.right, inferred);
     right               = resolveTypeRef(ctx, right);
-    left                = resolveTypeRef(ctx, left);
 
     if (tokmask(tok, TOK_BITOPERATOR_MASK) &&
             (!isNumeric(left) ||
@@ -1932,21 +1927,24 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return left;
     }
 
-    /* Auto promotion rules should be handled by typesCompatible. */
     ZType *promoted     = typesCompatible(ctx, left, right);
+
+    if (tok->type == TOK_AND || tok->type == TOK_OR) {
+        if (!isComparable(ctx, left))
+            zlog(ctx->state, curr->binary.left->tok, Z3040, stype(left));
+        if (!isComparable(ctx, right))
+            zlog(ctx->state, curr->binary.right->tok, Z3040, stype(right));
+        return consts(ctx->state, u1Type);
+    }
 
     if (!promoted) {
         zlog(ctx->state, curr->binary.op, Z3019, stype(left), stype(right));
     }
-
     curr->binary.left = implicitCast(ctx, curr->binary.left, promoted);
     curr->binary.right = implicitCast(ctx, curr->binary.right, promoted);
 
     if (tokmask(tok, TOK_BOOL_MASK)) {
-        ZType *boolType = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
-        boolType->primitive.token = makeTokenThread(ctx, TOK_BOOL, NULL);
-        boolType->tok = curr->tok;
-        return boolType;
+        return consts(ctx->state, u1Type);
     }
 
     switch (op) {
@@ -2695,6 +2693,12 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
     }
 
     switch (type->kind) {
+    case Z_TYPE_ENUM: {
+        ZTokenType t = TOK_U8;
+        if (type->enm.integer) t = type->enm.integer->type;
+        fn("tag", makePrimitiveType(ctx->allocator, t), NULL, Z_LSP_FIELD, ud);
+        break;
+    }
     case Z_TYPE_STRUCT:
         for (usize i = 0; i < veclen(type->strct.fields); i++) {
             ZNode *field = type->strct.fields[i];
@@ -2798,6 +2802,9 @@ static ZType *resolveMemberAccess(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
             zlog(ctx->state, curr->tok, Z3031);
             return NULL;
         }
+
+        if (inferred->kind == Z_TYPE_OPTIONAL)
+            inferred = inferred->optional;
 
         inferred = resolveTypeRef(ctx, inferred);
         curr->memberAccess.object->resolved = inferred;
@@ -3054,13 +3061,8 @@ static void analyzeIf(ZThreadSem *ctx, ZNode *curr) {
 
     if (!cond) return;
 
-    if (!isComparable(ctx, cond)) {
+    if (!isIfLet && !isComparable(ctx, cond)) {
         zlog(ctx->state, curr->ifStmt.cond->tok, Z3040, stype(cond));
-    }
-
-    if (curr->ifStmt.cond->type != NODE_VAR_DECL) {
-        curr->ifStmt.cond = implicitCast(
-            ctx, curr->ifStmt.cond, consts(ctx->state, u1Type));
     }
 
     analyzeStmt(ctx, curr->ifStmt.body);
@@ -3085,8 +3087,8 @@ static void analyzeWhile(ZThreadSem *ctx, ZNode *curr) {
             zlog(ctx->state, curr->whileStmt.cond->tok, Z3021);
         }
 
-        curr->whileStmt.cond = implicitCast(
-            ctx, curr->whileStmt.cond, consts(ctx->state, u1Type));
+        // curr->whileStmt.cond = implicitCast(
+        //     ctx, curr->whileStmt.cond, consts(ctx->state, u1Type));
     }
 
     ctx->loopDepth++;

@@ -57,13 +57,18 @@ typedef struct {
     ZNode           *node;
 } ZLLVMStack;
 
-enum {
+typedef enum {
     Z_SCOPE_BLOCK,
     Z_SCOPE_LOOP,
     Z_SCOPE_FUNC,
     Z_SCOPE_FILE,
     Z_SCOPE_GLOB
-};
+} ZGenScope;
+
+typedef enum {
+    Z_PREDICATE_EQ,
+    Z_PREDICATE_NE,
+} ZPredicate;
 
 typedef struct ZLLVMCapability {
     ZType           *capability;
