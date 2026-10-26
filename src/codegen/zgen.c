@@ -26,7 +26,7 @@ LLVMValueRef        genLValue           (ZCodegen *, ZNode *);
 static LLVMValueRef genForeign          (ZCodegen *, ZNode *);
 static LLVMValueRef genStructLitInto    (ZCodegen *, ZNode *, LLVMValueRef);
 static LLVMValueRef genFacetConstruct   (ZCodegen *, ZLLVMStack *, ZType *, ZNode *);
-static LLVMValueRef genCond             (ZCodegen *, LLVMValueRef, ZType *, LLVMIntPredicate);
+static LLVMValueRef genCond             (ZCodegen *, LLVMValueRef, ZType *, ZPredicate);
 static LLVMValueRef genInterpolation    (ZCodegen *, ZNode *);
 static ZLLVMStack   *getStackValue      (ZCodegen *, ZNode *);
 static void         buildNestedFuncVar  (ZCodegen *, ZNode *, LLVMValueRef);
@@ -2056,6 +2056,13 @@ static void storeSumBranch(ZCodegen *ctx, LLVMValueRef alloca, LLVMTypeRef sumLL
     storeSumVariant(ctx, alloca, sumLLVMType, tag, val, valType);
 }
 
+static inline LLVMValueRef genTruth(
+    ZCodegen *ctx, ZNode *node) {
+    LLVMValueRef cond = genExpr(ctx, node);
+    if (!cond || node->type == NODE_VAR_DECL) return cond;
+    return genCond(ctx, cond, node->resolved, Z_PREDICATE_NE);
+}
+
 /**
  * @brief Generates inline if.
  *
@@ -2083,16 +2090,10 @@ static LLVMValueRef genInlineIf(ZCodegen *ctx, ZNode *node) {
         }
         sumLLVMType = genType(ctx, node->resolved);
     }
-    LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
+    LLVMValueRef cond = genTruth(ctx, node->ifStmt.cond);
     LLVMBasicBlockRef tBranch = makeblock(ctx, "true");
     LLVMBasicBlockRef fBranch = makeblock(ctx, "false");
     LLVMBasicBlockRef merge = makeblock(ctx, "endif");
-
-    cond = LLVMBuildICmp(
-        ctx->builder, LLVMIntNE, cond,
-        LLVMConstInt(LLVMTypeOf(cond), 0, false),
-        label(ctx, node->tok)
-    );
     makecondbr(ctx->builder, cond, tBranch, fBranch);
 
     LLVMPositionBuilderAtEnd(ctx->builder, tBranch);
@@ -2293,33 +2294,30 @@ static LLVMValueRef genBinary(ZCodegen *ctx, ZNode *root) {
     if (op == TOK_AND || op == TOK_OR) {
         bool is_and = op == TOK_AND;
 
-        LLVMValueRef lv = genExpr(ctx, root->binary.left);
+        LLVMValueRef lv = genTruth(ctx, root->binary.left);
         if (!lv) return NULL;
-        LLVMValueRef lv_bool = LLVMBuildICmp(ctx->builder, LLVMIntNE, lv,
-            LLVMConstInt(LLVMTypeOf(lv), 0, false), label(ctx, root->tok));
 
         LLVMBasicBlockRef entry_bb = LLVMGetInsertBlock(ctx->builder);
         LLVMBasicBlockRef rhs_bb   = makeblock(ctx, is_and ? "and_right" : "or_right");
         LLVMBasicBlockRef merge_bb = makeblock(ctx, is_and ? "and_merge" : "or_merge");
 
         if (is_and)
-            makecondbr(ctx->builder, lv_bool, rhs_bb, merge_bb);
+            makecondbr(ctx->builder, lv, rhs_bb, merge_bb);
         else
-            makecondbr(ctx->builder, lv_bool, merge_bb, rhs_bb);
+            makecondbr(ctx->builder, lv, merge_bb, rhs_bb);
 
         LLVMPositionBuilderAtEnd(ctx->builder, rhs_bb);
-        LLVMValueRef rv = genExpr(ctx, root->binary.right);
+        LLVMValueRef rv = genTruth(ctx, root->binary.right);
         if (!rv) return NULL;
-        LLVMValueRef rv_bool = LLVMBuildICmp(ctx->builder, LLVMIntNE, rv,
-            LLVMConstInt(LLVMTypeOf(rv), 0, false), label(ctx, root->tok));
         makebr(ctx->builder, merge_bb);
-        LLVMBasicBlockRef rhs_end = LLVMGetInsertBlock(ctx->builder);
+        LLVMBasicBlockRef rhs_end   = LLVMGetInsertBlock(ctx->builder);
 
         LLVMPositionBuilderAtEnd(ctx->builder, merge_bb);
-        LLVMValueRef phi = LLVMBuildPhi(ctx->builder, i1Type, label(ctx, root->tok));
-        LLVMValueRef short_val = LLVMConstInt(i1Type, is_and ? 0 : 1, false);
-        LLVMValueRef  vals[2]   = {short_val, rv_bool};
-        LLVMBasicBlockRef bbs[2] = {entry_bb, rhs_end};
+        LLVMValueRef phi            = LLVMBuildPhi(
+            ctx->builder, i1Type, label(ctx, root->tok));
+        LLVMValueRef short_val      = LLVMConstInt(i1Type, is_and ? 0 : 1, false);
+        LLVMValueRef  vals[2]       = { short_val,  rv      };
+        LLVMBasicBlockRef bbs[2]    = { entry_bb,   rhs_end };
         LLVMAddIncoming(phi, vals, bbs, 2);
         return phi;
     }
@@ -2360,7 +2358,7 @@ static LLVMValueRef genUnsafeUnwrap(ZCodegen *ctx, ZNode *node, LLVMValueRef arg
 }
 
 static inline LLVMValueRef genNot(ZCodegen *ctx, ZType *base, LLVMValueRef val) {
-    return genCond(ctx, val, base, LLVMIntEQ);
+    return genCond(ctx, val, base, Z_PREDICATE_EQ);
 }
 
 static LLVMValueRef genUnary(ZCodegen *ctx, ZNode *node) {
@@ -3077,8 +3075,24 @@ LLVMValueRef getFlagOptional(ZCodegen *ctx,
     return _getFlagOptional(ctx, type, value, LLVMIntEQ);
 }
 
+static inline LLVMIntPredicate getIntPredicate(ZPredicate predicate) {
+    switch (predicate) {
+    case Z_PREDICATE_EQ:    return LLVMIntEQ;
+    case Z_PREDICATE_NE:    return LLVMIntNE;
+    default:                return LLVMIntEQ;
+    }
+}
+
+static inline LLVMRealPredicate getRealPredicate(ZPredicate predicate) {
+    switch (predicate) {
+    case Z_PREDICATE_EQ:    return LLVMRealOEQ;
+    case Z_PREDICATE_NE:    return LLVMRealUNE;
+    default:                return LLVMRealUNE;
+    }
+}
+
 static LLVMValueRef genCond(ZCodegen *ctx,
-    LLVMValueRef left, ZType *type, LLVMIntPredicate predicate) {
+    LLVMValueRef left, ZType *type, ZPredicate predicate) {
     if (!type || !left || !typeKindIs(type->kind, TYPE_COMPARABLE_MASK)) return NULL;
     LLVMValueRef right = NULL;
 
@@ -3098,13 +3112,22 @@ static LLVMValueRef genCond(ZCodegen *ctx,
     case Z_TYPE_RESULT:
         right = LLVMConstNull(i8Type);
         left = LLVMBuildExtractValue(ctx->builder, left, 1, label(ctx, "cond"));
+        break;
     default:
         error(ctx->state, type->tok, "Invalid type %s", stype(type));
         return NULL;
     }
 
+    LLVMTypeKind kind = LLVMGetTypeKind(LLVMTypeOf(left));
+    if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+        return LLVMBuildFCmp(
+            ctx->builder, getRealPredicate(predicate),
+            left, right, label(ctx, "cond")
+        );
+    }
     return LLVMBuildICmp(
-        ctx->builder, predicate, left, right, label(ctx, "cond")
+        ctx->builder, getIntPredicate(predicate),
+        left, right, label(ctx, "cond")
     );
 }
 
@@ -3115,7 +3138,7 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
     case UNWRAP_BREAK:
     case UNWRAP_CONTINUE:
     case UNWRAP_RETURN: {
-        LLVMValueRef cond = genCond(ctx, base, node->unwrap.base->resolved, LLVMIntNE);
+        LLVMValueRef cond = genCond(ctx, base, node->unwrap.base->resolved, Z_PREDICATE_NE);
         LLVMBasicBlockRef success = makeblock(ctx, "unwrap.success");
         LLVMBasicBlockRef then = makeblock(ctx, "unwrap.failure");
 
@@ -3135,7 +3158,7 @@ static LLVMValueRef genUnwrap(ZCodegen *ctx, ZNode *node) {
         );
 
         LLVMValueRef cond           = genCond(
-            ctx, base, node->unwrap.base->resolved, LLVMIntNE
+            ctx, base, node->unwrap.base->resolved, Z_PREDICATE_NE
         );
 
         LLVMBasicBlockRef origin    = LLVMGetInsertBlock(ctx->builder);
@@ -3451,7 +3474,7 @@ static void genIf(ZCodegen *ctx, ZNode *node) {
     LLVMBasicBlockRef endif = makeblock(ctx, "endif");
     LLVMBasicBlockRef nextBlock = hasElse ? elseBranch : endif;
 
-    LLVMValueRef cond = genExpr(ctx, node->ifStmt.cond);
+    LLVMValueRef cond = genTruth(ctx, node->ifStmt.cond);
 
     makecondbr(ctx->builder, cond, then, nextBlock);
 
@@ -3500,7 +3523,7 @@ static void genWhile(ZCodegen *ctx, ZNode *node) {
     makebr             (ctx->builder, entry);
     LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
-    LLVMValueRef cond = genExpr(ctx, node->whileStmt.cond);
+    LLVMValueRef cond = genTruth(ctx, node->whileStmt.cond);
     makecondbr(ctx->builder, cond, block, endwhile);
 
     LLVMPositionBuilderAtEnd(ctx->builder, block);

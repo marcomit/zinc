@@ -69,7 +69,9 @@ StringBuilder :: impl {
 }
 
 *StringBuilder self :: impl {
-    to_string :: fn () string {
+    pub to_writer :: fn () Writer -> self
+
+    pub to_string :: fn () string {
         res: [..]char
         with _ := self.allocator {
             make_room(&res, self.len + 1, sizeof char)
@@ -79,10 +81,6 @@ StringBuilder :: impl {
         }
         return res
     }
-}
-
-*StringBuilder self :: impl {
-    pub to_writer :: fn () Writer -> self
 
     pub append_buff :: fn (buff: *u8, len: usize) {
         with _ := self.allocator {
