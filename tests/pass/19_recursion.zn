@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 // Factorial: direct self-recursion
@@ -21,14 +21,14 @@ sumTo :: fn (n: i32, acc: i32) i32 {
 }
 
 // Descending print
-countDown :: fn (n: i32) u0 {
+countDown :: fn (n: i32) void {
     if n < 0 { return }
     c.printf("%d\n", n)
     countDown(n - 1)
 }
 
 // Ascending print
-countUp :: fn (start: i32, limit: i32) u0 {
+countUp :: fn (start: i32, limit: i32) void {
     if start > limit { return }
     c.printf("%d\n", start)
     countUp(start + 1, limit)

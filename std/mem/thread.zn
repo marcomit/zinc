@@ -27,8 +27,8 @@ ThreadAllocator :: impl {
 }
 
 *ThreadAllocator self :: impl(Allocator) {
-    pub init :: fn () u0 {}
-    pub deinit :: fn () u0 -> self.mutex.destroy()
+    pub init :: fn () void {}
+    pub deinit :: fn () void -> self.mutex.destroy()
 
     pub alloc :: fn (size: u64) *u8 {
         self.mutex.lock()
@@ -44,7 +44,7 @@ ThreadAllocator :: impl {
         return new_ptr
     }
 
-    pub destroy :: fn (ptr: *u8) u0 {
+    pub destroy :: fn (ptr: *u8) void {
         self.mutex.lock()
         self.allocator.free(ptr)
         self.mutex.unlock()

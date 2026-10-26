@@ -1,4 +1,4 @@
-foreign u0 printf(*char, ..)
+foreign void printf(*char, ..)
 foreign *u8 malloc(u64)
 
 struct Node {
@@ -14,7 +14,7 @@ for Node {
 }
 
 for *Node self {
-    u0 insert(i32 val) {
+    void insert(i32 val) {
         self.val = val
     }
 }
@@ -22,7 +22,7 @@ for *Node self {
 for Hashmap[K, V] self
     with Display + Drop + Comparable
     where K: Hash, V {
-    // u0 p() {}
+    // void p() {}
 }
 
 i32 main() {

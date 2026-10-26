@@ -1,8 +1,6 @@
-printf :: foreign fn (*char, ..) u0
-exit :: foreign fn (i32) u0
+printf :: foreign fn (*char, ..) void
+exit :: foreign fn (i32) void
 
-void  :: type u0
-bool  :: type u1
 int   :: type i32
 uint  :: type u32
 byte  :: type u8

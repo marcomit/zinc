@@ -38,7 +38,7 @@ string :: impl {
 }
 
 string self :: impl {
-    pub equals :: fn (other: string) u1 {
+    pub equals :: fn (other: string) bool {
         return mem.strcmp(self.ptr, other.ptr) == 0
     }
 }
@@ -59,7 +59,7 @@ pub StringBuilder :: struct {
 
 StringBuilder :: impl {
     pub new :: fn () *StringBuilder with a: Allocator {
-        self: *StringBuilder    = alloc(sizeof StringBuilder)
+        self: *StringBuilder    = alloc(sizeof StringBuilder) as *StringBuilder
         self.buff               = none
         self.len                = 0
         self.cap                = 0
@@ -75,7 +75,7 @@ StringBuilder :: impl {
         res: [..]char
         with _ := self.allocator {
             make_room(&res, self.len + 1, sizeof char)
-            mem.memcpy(res.ptr, self.buff, self.len)
+            mem.memcpy(res.ptr, self.buff as *u8, self.len)
             res.len += self.len + 1
             res[res.len - 1] = 0
         }
@@ -91,10 +91,10 @@ StringBuilder :: impl {
             }
 
             if not self.buff {
-                self.buff = alloc(self.cap) as *char
+                self.buff = alloc(self.cap)
             } else if self.cap != newcap {
                 self.cap = newcap
-                self.buff = resize(self.buff as *u8, self.cap) as *char
+                self.buff = resize(self.buff, self.cap)
             }
 
             dst := self.buff as *u8

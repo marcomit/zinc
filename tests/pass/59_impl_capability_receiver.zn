@@ -1,5 +1,5 @@
 c :: foreign {
-    printf: fn (*char, ..) u0
+    printf: fn (*char, ..) void
 }
 
 Scale :: struct {
@@ -19,22 +19,22 @@ Counter :: impl with s: Scale {
 }
 
 *Counter self :: impl with s: Scale {
-    bump :: fn () u0 {
+    bump :: fn () void {
         self.value += s.factor
     }
 
-    shift :: fn () u0 with o: Offset {
+    shift :: fn () void with o: Offset {
         self.value += o.amount * s.factor
     }
 
-    twice :: fn () u0 {
+    twice :: fn () void {
         self.bump()
         self.bump()
     }
 }
 
 Counter self :: impl {
-    print :: fn () u0 -> c.printf("%d\n", self.value)
+    print :: fn () void -> c.printf("%d\n", self.value)
 }
 
 main :: fn () i32 {

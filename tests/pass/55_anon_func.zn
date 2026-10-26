@@ -1,6 +1,6 @@
-printf :: foreign fn (*char, ..) u0
+printf :: foreign fn (*char, ..) void
 
-map :: fn (nums: []i32, iter: fn(i32) i32) u0 {
+map :: fn (nums: []i32, iter: fn(i32) i32) void {
     i := 0
     for i < nums.len {
         nums[i] = iter(nums[i])
@@ -8,7 +8,7 @@ map :: fn (nums: []i32, iter: fn(i32) i32) u0 {
     }
 }
 
-printNums :: fn (nums: []i32) u0 {
+printNums :: fn (nums: []i32) void {
     i := 0
     printf("NUMS: ")
     for i < nums.len {

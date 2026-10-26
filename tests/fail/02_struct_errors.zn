@@ -1,11 +1,11 @@
-foreign u0 printf(*char)
+foreign void printf(*char)
 
 struct Greeter {
     f32 p
 }
 
 for Greeter {
-    u0 say() { printf("Hi\n") }
+    void say() { printf("Hi\n") }
 }
 
 i32 main() {

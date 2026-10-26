@@ -1,10 +1,10 @@
-printf :: foreign fn (*char) u0
+printf :: foreign fn (*char) void
 
-greet :: fn () u0 -> printf("greet\n")
+greet :: fn () void -> printf("greet\n")
 
-say_bye :: fn () u0 -> printf("bye\n")
+say_bye :: fn () void -> printf("bye\n")
 
-print_msg :: fn (msg: *char) u0 -> printf(msg)
+print_msg :: fn (msg: *char) void -> printf(msg)
 
 add :: fn (a: i32, b: i32) i32 -> a + b
 
@@ -13,11 +13,11 @@ Vec :: struct { len: i32 }
 Counter :: struct { count: i32 }
 
 Vec :: impl {
-    create :: fn () u0 -> printf("Vec:new\n")
+    create :: fn () void -> printf("Vec:new\n")
 }
 
 Counter :: impl {
-    say :: fn (msg: *char) u0 -> printf(msg)
+    say :: fn (msg: *char) void -> printf(msg)
     value :: fn () i32 -> 65
 }
 

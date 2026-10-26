@@ -8,7 +8,7 @@ JsonMapEntry :: struct {
 
 pub Json :: enum {
     Num(f64)
-    Bool(u1)
+    Bool(bool)
     Str(*char)
     List([..]*Json)
     Map([..]JsonMapEntry)
@@ -21,7 +21,7 @@ pub json_num :: fn (num: f64) *Json with Allocator {
     return self
 }
 
-pub json_bool :: fn (val: u1) *Json with Allocator {
+pub json_bool :: fn (val: bool) *Json with Allocator {
     self := alloc(sizeof Json) as *Json
     self.* = .Bool(val)
 

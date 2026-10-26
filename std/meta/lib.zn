@@ -4,7 +4,7 @@
 pub Type :: enum {
     Void
     Bool
-    Integer(bits: u8, signed: u1)
+    Integer(bits: u8, signed: bool)
     Float
     Double
     Array(*Type)

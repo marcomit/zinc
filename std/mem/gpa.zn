@@ -3,7 +3,7 @@
 c :: foreign {
     malloc: fn (u64) ?*u8
     realloc: fn (?*u8, u64) ?*u8
-    free: fn (*u8) u0
+    free: fn (*u8) void
 }
 
 pub GeneralPurposeAllocator :: struct { }
@@ -24,11 +24,11 @@ GeneralPurposeAllocator :: impl {
         return c.realloc(ptr, size)
     }
 
-    destroy :: fn (ptr: *u8) u0 {
+    destroy :: fn (ptr: *u8) void {
         c.free(ptr)
     }
-    #allow_empty init ::     fn () u0 {  }
-    #allow_empty deinit ::   fn () u0 {  }
+    #allow_empty init ::     fn () void {  }
+    #allow_empty deinit ::   fn () void {  }
 }
 
 *GeneralPurposeAllocator self :: impl {

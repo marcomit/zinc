@@ -1,7 +1,7 @@
 #import "lib"
 
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 pub DebugAllocator :: struct {
@@ -32,7 +32,7 @@ DebugAllocator :: impl {
         return p
     }
 
-    destroy :: fn (ptr: *u8) u0 {
+    destroy :: fn (ptr: *u8) void {
         c::printf("[debug] destroy(%p)\n", ptr)
         if ptr { self.frees :+ 1 }
         self.inner.destroy(ptr)
@@ -44,7 +44,7 @@ DebugAllocator :: impl {
 
     pub live :: fn () u64 -> self.allocs - self.frees
 
-    pub report :: fn () u0 {
+    pub report :: fn () void {
         c::printf(
             "[debug] allocs=%lu resizes=%lu frees=%lu live=%lu\n",
             self.allocs, self.resizes, self.frees, self.live()

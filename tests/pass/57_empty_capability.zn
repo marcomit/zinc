@@ -1,7 +1,7 @@
 Io :: struct { }
 
 Sys :: foreign with Io {
-    printf: fn (*char, ..) u0
+    printf: fn (*char, ..) void
 }
 
 main :: fn () i32 {

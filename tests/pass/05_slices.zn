@@ -1,6 +1,6 @@
 putchar :: foreign fn (i32) i32
 
-printSlice :: fn (s: []i32) u0 {
+printSlice :: fn (s: []i32) void {
     i := 0
     for i < s.len {
         putchar(48 + s[i])

@@ -1,8 +1,8 @@
 pub io :: foreign {
-    printf:     fn (*char, ..) u0
+    printf:     fn (*char, ..) void
     putchar:    fn (i32)       i32
-    perror:     fn (*char)      u0
-    exit:       fn (i32)        u0
+    perror:     fn (*char)      void
+    exit:       fn (i32)        void
     snprintf:   fn (*char, usize, *char, ..) i32
 }
 pub mem :: foreign {

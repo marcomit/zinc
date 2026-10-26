@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 Option :: enum {
@@ -19,7 +19,7 @@ doubleCond :: fn () (Option, Option) {
     return (Option.Some("message 1"), Option.None())
 }
 
-printDoubleCond :: fn (cond: (Option, Option)) u0 {
+printDoubleCond :: fn (cond: (Option, Option)) void {
     match cond {
         (Option.Some(msg1), Option.Some(msg2))    -> c.printf("%s, %s\n", msg1.ptr, msg2.ptr),
         (Option.Some(msg), Option.None())         -> c.printf("1:%s\n", msg.ptr),

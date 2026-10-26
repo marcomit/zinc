@@ -1,7 +1,7 @@
 #import "std/mem"
 #import "std/core/string"
 
-printf :: foreign fn (*char, ..) u0
+printf :: foreign fn (*char, ..) void
 
 c :: foreign {
     socket     : fn (i32, i32, i32) i32
@@ -93,7 +93,7 @@ TcpStream self :: impl {
     pub send_string :: fn (message: string) i64 {
         return c.send(self.fd, message.ptr, message.len as u64, 0)
     }
-    pub close  :: fn () u0 {
+    pub close  :: fn () void {
         c.close(self.fd)
     }
 }
@@ -152,7 +152,7 @@ TcpListener self :: impl {
         return .{ fd }
     }
 
-    pub close :: fn () u0 {
+    pub close :: fn () void {
         c.close(self.fd)
     }
 }
@@ -216,7 +216,7 @@ UdpSocket self :: impl {
         return c.recvfrom(self.fd, buf, n, 0, &addr, &addrlen)
     }
 
-    pub close :: fn () u0 {
+    pub close :: fn () void {
         c.close(self.fd)
     }
 }

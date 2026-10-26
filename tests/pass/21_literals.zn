@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 main :: fn () i32 {
@@ -39,8 +39,8 @@ main :: fn () i32 {
     c.printf("%.2f\n", pi * two)
 
     // Boolean literals
-    tval: u1 = true
-    fval: u1 = false
+    tval: bool = true
+    fval: bool = false
     if tval { c.printf("true\n") }
     if not fval { c.printf("false_inverted\n") }
     c.printf("%d\n", tval)

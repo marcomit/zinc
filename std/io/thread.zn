@@ -1,4 +1,5 @@
 #import "std/mem"
+#import "std/core"
 
 pthread_t :: type u64
 
@@ -12,11 +13,11 @@ timespec :: struct {
 c :: foreign {
     pthread_create : fn (*pthread_t, ?*u8, ThreadFunc, *u8) i32
     pthread_join : fn (pthread_t, ?**u8) i32
-    pthread_exit : fn (?*u8) u0
+    pthread_exit : fn (?*u8) void
 
     nanosleep : fn (*timespec, *timespec) i32
 
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 ThreadContext :: struct {
@@ -36,9 +37,9 @@ thread_trampoline :: fn (arg: *u8) ?*u8 {
 
 Thread :: impl {
     pub spawn :: fn (func: ThreadFunc, data: ?*u8) Thread with Allocator {
-        ctx: *ThreadContext = alloc(sizeof ThreadContext)
+        ctx: *ThreadContext = alloc(sizeof ThreadContext) as *ThreadContext
         ctx.func = func
-        ctx.data = data
+        ctx.data = data as *u8
 
         t := Thread { handle= 0 }
 
@@ -46,7 +47,7 @@ Thread :: impl {
         return t
     }
 
-    pub sleep :: fn (millis: i64) u0 {
+    pub sleep :: fn (millis: i64) void {
         req := timespec {
             tv_sec= millis / 1000,
             tv_nsec= (millis % 1000) * 1000000
@@ -59,7 +60,27 @@ Thread :: impl {
 }
 
 Thread self :: impl {
-    pub join :: fn () u0 {
+    pub join :: fn () {
         c.pthread_join(self.handle, none)
+    }
+}
+
+ThreadScope :: struct {
+    threads: [..]Thread
+}
+
+ThreadScope :: impl {
+    new :: fn () *ThreadScope with Allocator {
+        self: *ThreadScope = alloc(sizeof ThreadScope) as *ThreadScope
+        return self
+    }
+}
+
+*ThreadScope self :: impl {
+    spawn :: fn (worker: fn(*u8) ?*u8, arg: ?*u8) with Allocator {
+        make_room(&self.threads, 1, sizeof Thread)
+        thread := Thread.spawn(worker, arg)
+        self.threads.len += 1
+        self.threads[self.threads.len - 1] = thread
     }
 }

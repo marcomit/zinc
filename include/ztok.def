@@ -50,11 +50,12 @@ DEF(TOK_WITH,       "with",             TOK_FLOWS_MASK)
 DEF(TOK_IMPL,       "impl",             TOK_FLOWS_MASK)
 DEF(TOK_FACET,      "facet",            TOK_FLOWS_MASK)
 DEF(TOK_FN,         "fn",               TOK_FLOWS_MASK)
+DEF(TOK_BITSET,     "bitset",           TOK_FLOWS_MASK)
 #endif
 
 #ifdef TOK_TYPES
-DEF(TOK_VOID,       "u0",               TOK_TYPES_MASK)
-DEF(TOK_BOOL,       "u1",               TOK_TYPES_MASK | TOK_UNSIGNED)
+DEF(TOK_VOID,       "void",             TOK_TYPES_MASK)
+DEF(TOK_BOOL,       "bool",             TOK_TYPES_MASK | TOK_UNSIGNED)
 DEF(TOK_CHAR,       "char",             TOK_TYPES_MASK | TOK_SIGNED)
 DEF(TOK_RUNE,       "rune",             TOK_TYPES_MASK | TOK_UNSIGNED)
 DEF(TOK_F32,        "f32",              TOK_TYPES_MASK | TOK_FLOAT)

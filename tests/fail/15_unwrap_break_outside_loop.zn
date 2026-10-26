@@ -1,0 +1,11 @@
+// `or break` / `or continue` are only valid inside a loop body.
+// Using `or break` at function scope must be rejected.
+opt :: fn (n: i32) ?i32 {
+    if n < 0 { return none }
+    return n
+}
+
+main :: fn (argc: i32) i32 {
+    v := opt(-1) or break
+    return v
+}

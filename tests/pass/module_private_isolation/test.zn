@@ -1,10 +1,10 @@
 #import "mod2"
 
-printf :: foreign fn (*char, ..) u0
+printf :: foreign fn (*char, ..) void
 
 // Private function with the SAME name as one in mod2. Each file's test
 // must stay independent after the per-module LLVM modules are merged.
-test :: fn () u0 {
+test :: fn () void {
     printf("mod1\n")
 }
 

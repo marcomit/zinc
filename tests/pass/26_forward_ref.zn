@@ -1,7 +1,7 @@
-printf :: foreign fn (*char, ..) u0
+printf :: foreign fn (*char, ..) void
 
-caller :: fn () u0 -> helper()
-helper :: fn () u0 -> printf("helper\n")
+caller :: fn () void -> helper()
+helper :: fn () void -> printf("helper\n")
 
 main :: fn () i32 {
     caller()

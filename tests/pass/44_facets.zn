@@ -1,8 +1,8 @@
-printf :: foreign fn (*char, ..) u0
+printf :: foreign fn (*char, ..) void
 
 Entity :: facet {
-    draw : fn () u0
-    update : fn () u0
+    draw : fn () void
+    update : fn () void
 }
 
 Circle :: struct {
@@ -15,26 +15,26 @@ Rect :: struct {
 }
 
 *Circle self :: impl(Entity) {
-    draw :: fn () u0 {
+    draw :: fn () void {
         printf("Circle{radius: %d}\n", self.radius)
     }
 
-    update :: fn () u0 {
+    update :: fn () void {
         self.radius += 1
     }
 }
 
 *Rect self :: impl(Entity) {
-    draw :: fn () u0 {
+    draw :: fn () void {
         printf("Rect{w:%d, h:%d}\n", self.width, self.height)
     }
 
-    update :: fn () u0 {
+    update :: fn () void {
 
     }
 }
 
-draw :: fn (entity: Entity) u0 -> entity.draw()
+draw :: fn (entity: Entity) void -> entity.draw()
 
 main :: fn () i32 {
     rect            := Rect{width = 10, height = 12}.&

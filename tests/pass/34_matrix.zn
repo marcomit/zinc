@@ -1,8 +1,8 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
-printMatrix :: fn (matrix: [][]i32) u0 {
+printMatrix :: fn (matrix: [][]i32) void {
     i := 0
     for i < matrix.len {
         j := 0

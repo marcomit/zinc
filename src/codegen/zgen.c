@@ -1477,10 +1477,12 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
             zlog(ctx->state, tok, Z4005, tok->integer);
             return NULL;
         }
+        LLVMValueRef ptr = genLValue(ctx, node->memberAccess.object);
+        if (!ptr) return NULL;
         return LLVMBuildStructGEP2(
             ctx->builder,
             genType(ctx, baseType),
-            genLValue(ctx, node->memberAccess.object),
+            ptr,
             tok->integer,
             label(ctx, tok)
         );
@@ -1517,6 +1519,7 @@ static LLVMValueRef genMemberAccessPtr(ZCodegen *ctx, ZNode *node) {
         ? genExpr  (ctx, node->memberAccess.object)
         : genLValue(ctx, node->memberAccess.object);
 
+    if (!objPtr) return NULL;
     emitNullCheck(ctx, objPtr, node->tok);
     LLVMValueRef chain = genStructGEPChain(
         ctx, baseType, objPtr, path
@@ -1992,15 +1995,34 @@ LLVMValueRef genLValue(ZCodegen *ctx, ZNode *node) {
         return val;
     }
     case NODE_UNARY: {
-        if (node->unary.operat->type != TOK_STAR) {
-            zlog(ctx->state, node->tok, Z9029);
-            return NULL;
+        ZToken *operator = node->unary.operat;
+        if (operator->type == TOK_STAR) {
+            LLVMValueRef ptr = genLValue(ctx, node->unary.operand);
+            LLVMTypeRef typeRef = genType(ctx, node->unary.operand->resolved);
+            ptr = LLVMBuildLoad2(ctx->builder, typeRef, ptr, label(ctx, node->tok));
+            return ptr;
+        } else if (operator->type == TOK_ESCL) {
+            ZType *opt = node->unary.operand->resolved;
+            if (!opt || opt->kind != Z_TYPE_OPTIONAL) {
+                zlog(ctx->state, node->tok, Z301E, stype(opt));
+                return NULL;
+            }
+            LLVMValueRef ptr    = genLValue(ctx, node->unary.operand);
+            if (!ptr) return NULL;
+            LLVMTypeRef optType = genType(ctx, opt);
+            LLVMValueRef val    = LLVMBuildLoad2(
+                ctx->builder, optType, ptr, label(ctx, "unwrap.load")
+            );
+
+            checkUnsafeUnwrap(ctx, val, opt, node->tok);
+            if (opt->optional->kind == Z_TYPE_POINTER) return ptr;
+            return LLVMBuildStructGEP2(
+                ctx->builder, optType, ptr, 0, label(ctx, "unwrap.ptr")
+            );
         }
 
-        LLVMValueRef ptr = genLValue(ctx, node->unary.operand);
-        LLVMTypeRef typeRef = genType(ctx, node->unary.operand->resolved);
-        ptr = LLVMBuildLoad2(ctx->builder, typeRef, ptr, label(ctx, node->tok));
-        return ptr;
+        zlog(ctx->state, node->tok, Z9029);
+        return NULL;
     }
     default:
         zlog(ctx->state, node->tok, Z902A, node->type);
@@ -2564,7 +2586,7 @@ static LLVMValueRef castToOptional(ZCodegen *ctx, ZNode *node) {
 
     LLVMValueRef value = genExpr(ctx, node->castExpr.expr);
 
-    if (from->kind == Z_TYPE_POINTER ||
+    if (isPointer(from) ||
         typesEqual(from, to)) return value;
 
     LLVMValueRef stack      = LLVMBuildAlloca(
