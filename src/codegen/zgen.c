@@ -859,7 +859,7 @@ ZMIRBasicBlockRef makeblock(ZCodegen *ctx, char *name) {
 
 inline void makebr(ZMIRBuilderRef builder, ZMIRBasicBlockRef block) {
     if (ZMIRGetBasicBlockTerminator(ZMIRGetInsertBlock(builder))) return;
-    ZMIRMBuildBr(builder, block);
+    ZMIRBuildBr(builder, block);
 }
 
 inline void makecondbr(
@@ -4386,20 +4386,6 @@ static usize addFuncArgs(ZCodegen *ctx,
     return param - paramOffset;
 }
 
-void ZMIRAddFuncAttribute(ZCodegen *ctx,
-    ZMIRValueRef func, const char *llvmAttr) {
-    ZMIRAttributeRef attr = ZMIRCreateEnumAttribute(
-        ctx->ctx,
-        ZMIRGetEnumAttributeKindForName(llvmAttr, strlen(llvmAttr)),
-        0
-    );
-    ZMIRAddAttributeAtIndex(
-        func,
-        ZMIRAttributeFunctionIndex,
-        attr
-    );
-}
-
 static void genFuncAttrs(ZCodegen *ctx, ZNode *f, ZMIRValueRef func) {
     (void)ctx; (void)f; (void)func;
     ZAnnotation **annotations = f->funcDef.annotations;
@@ -4416,16 +4402,16 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, ZMIRValueRef func) {
 
     if (!inl) goto cold;
     if (queryArg(inl, "always")) {
-        ZMIRAddFuncAttribute(ctx, func, "alwaysinline");
+        ZMIRAddAttribute(func, "alwaysinline");
     } else if (queryArg(inl, "never")) {
-        ZMIRAddFuncAttribute(ctx, func, "noinline");
+        ZMIRAddAttribute(func, "noinline");
     } else {
-        ZMIRAddFuncAttribute(ctx, func, "inlinehint");
+        ZMIRAddAttribute(func, "inlinehint");
     }
 
 cold:
     if (query(annotations, "cold")) {
-        ZMIRAddFuncAttribute(ctx, func, "cold");
+        ZMIRAddAttribute(func, "cold");
     }
 }
 
@@ -4741,170 +4727,6 @@ static ZMIRValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
-static ZMIRCodeGenOptLevel toCodeGenLevel(char level) {
-    switch (level) {
-    case '0': return ZMIRCodeGenLevelNone;
-    case '1': return ZMIRCodeGenLevelLess;
-    case '3': return ZMIRCodeGenLevelAggressive;
-    case 's':
-    case 'z': return ZMIRCodeGenLevelAggressive;
-    default:  return ZMIRCodeGenLevelDefault;
-    }
-}
-
-static void buildOptPipeline(char level, char *buf, usize bufsize) {
-    char lvl = level ? level : '2';
-    if      (lvl == 's') snprintf(buf, bufsize, "default<Os>");
-    else if (lvl == 'z') snprintf(buf, bufsize, "default<Oz>");
-    else                 snprintf(buf, bufsize, "default<O%c>", lvl);
-}
-
-/* The target triple, always copied into the state arena so callers never free it. */
-static char *targetTriple(ZState *state) {
-    if (state->cli.targetTriple) return zstrdup(state->allocator, state->cli.targetTriple);
-
-    char *host   = ZMIRGetDefaultTargetTriple();
-    char *triple = zstrdup(state->allocator, host);
-    ZMIRDisposeMessage(host);
-    return triple;
-}
-
-bool initTargetMachine(ZState *state) {
-    ZMIRInitializeAllTargetInfos();
-    ZMIRInitializeAllTargets();
-    ZMIRInitializeAllTargetMCs();
-    ZMIRInitializeAllAsmParsers();
-    ZMIRInitializeAllAsmPrinters();
-
-    bool hostTriple = (state->cli.targetTriple == NULL);
-    char *triple    = targetTriple(state);
-
-    ZMIRTargetRef target;
-    char *errmsg = NULL;
-    if (ZMIRGetTargetFromTriple(triple, &target, &errmsg)) {
-        zlog(state, NULL, Z4014, errmsg);
-        ZMIRDisposeMessage(errmsg);
-        return false;
-    }
-
-    const char *cpu         = state->cli.targetCPU      ? state->cli.targetCPU      : "generic";
-    const char *features    = state->cli.targetFeatures ? state->cli.targetFeatures : "";
-    ZMIRRelocMode reloc     = hostTriple                ? ZMIRRelocPIC          : ZMIRRelocStatic;
-
-    char optlvl = state->cli.optimizationLevel ? state->cli.optimizationLevel : '2';
-    ZMIRTargetMachineRef machine = ZMIRCreateTargetMachine(
-        target, triple, cpu, features,
-        toCodeGenLevel(optlvl),
-        reloc,
-        ZMIRCodeModelDefault
-    );
-
-    ZMIRTargetDataRef layout    = ZMIRCreateTargetDataLayout(machine);
-    state->pointerSize          = ZMIRPointerSize(layout);
-    state->targetMachine        = machine;
-    state->resolvedTriple       = triple;
-
-    /* Copied into the state arena, like the triple, so only the machine needs disposing. */
-    char *dataLayout            = ZMIRCopyStringRepOfTargetData(layout);
-    state->dataLayout           = zstrdup(state->allocator, dataLayout);
-    ZMIRDisposeMessage(dataLayout);
-
-    ZMIRDisposeTargetData(layout);
-    return true;
-}
-
-void disposeTargetMachine(ZState *state) {
-    if (!state->targetMachine) return;
-    ZMIRDisposeTargetMachine((ZMIRTargetMachineRef)state->targetMachine);
-    state->targetMachine = NULL;
-}
-
-static inline void printOptimizer(ZCodegen *ctx) {
-    if (!ctx->state->cli.verbose) return;
-    const char *format;
-    float elapsed = timer_elapsed(ctx->state->phaseTime, &format);
-    printf(COLOR_BOLD COLOR_CYAN "  Optimizer:" COLOR_RESET "  %.2f%s\n", elapsed, format);
-}
-static bool emitObjectFile(ZCodegen *ctx, const char *filename, ZMIRCodeGenFileType fileType) {
-    if (ctx->state->cli.verbose) timer_start(&ctx->state->phaseTime);
-    ZMIRInitializeAllTargetInfos();
-    ZMIRInitializeAllTargets();
-    ZMIRInitializeAllTargetMCs();
-    ZMIRInitializeAllAsmParsers();
-    ZMIRInitializeAllAsmPrinters();
-
-    bool hostTriple = (ctx->state->cli.targetTriple == NULL);
-    char *triple    = targetTriple(ctx->state);
-    ZMIRSetTarget(ctx->mod, triple);
-
-    ZMIRTargetRef target;
-    char *errmsg = NULL;
-    if (ZMIRGetTargetFromTriple(triple, &target, &errmsg)) {
-        zlog(ctx->state, NULL, Z4014, errmsg);
-        ZMIRDisposeMessage(errmsg);
-        return false;
-    }
-
-    const char *cpu      = ctx->state->cli.targetCPU      ? ctx->state->cli.targetCPU      : "generic";
-    const char *features = ctx->state->cli.targetFeatures ? ctx->state->cli.targetFeatures : "";
-
-    ZMIRRelocMode reloc = hostTriple ? ZMIRRelocPIC : ZMIRRelocStatic;
-
-    char optlvl = ctx->state->cli.optimizationLevel ? ctx->state->cli.optimizationLevel : '2';
-    ZMIRTargetMachineRef machine = ZMIRCreateTargetMachine(
-        target, triple, cpu, features,
-        toCodeGenLevel(optlvl),
-        reloc,
-        ZMIRCodeModelDefault
-    );
-
-    ZMIRTargetDataRef layout = ZMIRCreateTargetDataLayout(machine);
-
-    ctx->state->pointerSize = ZMIRPointerSize(layout);
-    char *layout_str = ZMIRCopyStringRepOfTargetData(layout);
-    ZMIRSetDataLayout(ctx->mod, layout_str);
-    ZMIRDisposeMessage(layout_str);
-    ZMIRDisposeTargetData(layout);
-
-    if (optlvl != '0') {
-        char pipeline[32];
-        buildOptPipeline(optlvl, pipeline, sizeof(pipeline));
-        ZMIRPassBuilderOptionsRef pb_opts = ZMIRCreatePassBuilderOptions();
-        ZMIRErrorRef err = ZMIRRunPasses(ctx->mod, pipeline, machine, pb_opts);
-        ZMIRDisposePassBuilderOptions(pb_opts);
-        if (err) {
-            char *msg = ZMIRGetErrorMessage(err);
-            zlog(ctx->state, NULL, Z4015, msg);
-            ZMIRDisposeErrorMessage(msg);
-            ZMIRDisposeTargetMachine(machine);
-            ZMIRDisposeMessage(triple);
-            return false;
-        }
-    }
-
-    bool ok;
-    if (ctx->state->cli.ltoMode != Z_LTO_OFF) {
-        ok = (ZMIRWriteBitcodeToFile(ctx->mod, filename) == 0);
-        if (!ok) zlog(ctx->state, NULL, Z4016, filename);
-    } else {
-        ok = !ZMIRTargetMachineEmitToFile(
-            machine, ctx->mod, (char *)filename, fileType, &errmsg);
-        if (!ok) {
-            zlog(ctx->state, NULL, Z4017, errmsg);
-            ZMIRDisposeMessage(errmsg);
-        }
-    }
-    ZMIRDisposeTargetMachine(machine);
-    printOptimizer(ctx);
-    return ok;
-}
-
-static void freeCodegen(ZCodegen *ctx) {
-    ZMIRDisposeBuilder(ctx->builder);
-    ZMIRDisposeModule(ctx->mod);
-    ZMIRContextDispose(ctx->ctx);
-}
-
 static void *compileModule(void *arg) {
     ZCodegen *ctx = (ZCodegen *)arg;
     useAllocator(ctx->module->allocator);
@@ -4913,59 +4735,7 @@ static void *compileModule(void *arg) {
     return NULL;
 }
 
-/* Verify one module's IR and link it into `module`. The caller frees `gen`. */
-static void linkModule(ZState *state, ZMIRModuleRef module, ZMIRContextRef ctx, ZCodegen *gen) {
-    if (!gen->mod) return;
-
-    usize namelen;
-    const char *name = ZMIRGetModuleIdentifier(gen->mod, &namelen);
-
-    if (!state->cli.skipZMIRValidation) {
-        char *verifyErr = NULL;
-        if (ZMIRVerifyModule(gen->mod, ZMIRReturnStatusAction, &verifyErr)) {
-            zlog(state, NULL, Z4018, name, verifyErr);
-            ZMIRDisposeMessage(verifyErr);
-            return;
-        }
-        ZMIRDisposeMessage(verifyErr);
-    }
-
-    ZMIRMemoryBufferRef buf = ZMIRWriteBitcodeToMemoryBuffer(gen->mod);
-    ZMIRModuleRef imported  = NULL;
-
-    bool parseFailed = ZMIRParseBitcodeInContext2(ctx, buf, &imported);
-    ZMIRDisposeMemoryBuffer(buf);
-    if (parseFailed) {
-        zlog(state, NULL, Z4019, name);
-        return;
-    }
-
-    if (ZMIRLinkModules2(module, imported)) {
-        zlog(state, NULL, Z401A, name);
-    }
-}
-
-static ZCodegen *mergeModules(ZState *state, ZCodegen **gens, const char *output) {
-    ZMIRContextRef ctx      = ZMIRContextCreate();
-    ZMIRModuleRef module    = ZMIRModuleCreateWithNameInContext(
-        output ? output : "a.out", ctx);
-
-    /* Every module's codegen is freed, including the ones skipped on error. */
-    for (usize i = 0; i < veclen(state->modules); i++) {
-        linkModule(state, module, ctx, gens[i]);
-        freeCodegen(gens[i]);
-    }
-
-    ZCodegen *merged    = zalloc(state->allocator, ZCodegen);
-    merged->state       = state;
-    merged->ctx         = ctx;
-    merged->mod         = module;
-    merged->builder     = ZMIRCreateBuilderInContext(ctx);
-
-    return merged;
-}
-
-static ZCodegen *compileModules(ZState *state) {
+ZMIRModuleRef *zgenModules(ZState *state) {
     usize len           = veclen(state->modules);
 
     ZCodegen **gens     = NULL;
@@ -4979,133 +4749,8 @@ static ZCodegen *compileModules(ZState *state) {
 
     for (usize i = 0; i < len; i++) pthread_join(threads[i], NULL);
 
-    return mergeModules(state, gens, state->cli.output);
-}
+    ZMIRModuleRef *modules = NULL;
+    for (usize i = 0; i < len; i++) vecpush(modules, gens[i]->mod);
 
-void zcompile(ZState *state, ZNode *root, const char *output) {
-    (void)root;
-
-    if (state->cli.verbose) timer_start(&state->phaseTime);
-
-    ZCodegen *ctx = compileModules(state);
-
-
-    const char *format;
-    double elapsed;
-
-    if (state->cli.verbose) {
-        elapsed = timer_elapsed(state->phaseTime, &format);
-        printf(COLOR_BOLD COLOR_CYAN "  ZMIR IR:    " COLOR_RESET "%.2f%s\n", elapsed, format);
-    }
-
-    if (!canAdvance(state)) {
-        freeCodegen(ctx);
-        return;
-    }
-
-
-    if (state->cli.emit == Z_EMIT_EXE && !state->cli.nostdlib &&
-        !ZMIRGetNamedFunction(ctx->mod, "main")) {
-        zlog(state, NULL, Z401B);
-    }
-
-    if (state->cli.verbose) timer_start(&state->phaseTime);
-    char *errmsg = NULL;
-
-    if (!state->cli.skipZMIRValidation && ZMIRVerifyModule(ctx->mod, ZMIRReturnStatusAction, &errmsg)) {
-        zlog(state, NULL, Z401C, errmsg);
-        ZMIRDisposeMessage(errmsg);
-        freeCodegen(ctx);
-        return;
-    }
-    ZMIRDisposeMessage(errmsg);
-
-    if (state->cli.verbose) {
-        elapsed = timer_elapsed(state->phaseTime, &format);
-        printf(COLOR_BOLD COLOR_CYAN "  Verify:     " COLOR_RESET "%.2f%s\n", elapsed, format);
-    }
-
-    switch (state->cli.emit) {
-    case Z_EMIT_IR:
-        if (!output) output = "output.ll";
-        if (ZMIRPrintModuleToFile(ctx->mod, output, &errmsg)) {
-            zlog(state, NULL, Z401D, errmsg);
-            ZMIRDisposeMessage(errmsg);
-            goto end;
-        }
-        goto success;
-    case Z_EMIT_ASM:
-        if (!output) output = "output.s";
-        if (emitObjectFile(ctx, output, ZMIRAssemblyFile)) goto success;
-        goto end;
-    case Z_EMIT_OBJ:
-        if (!output) output = "output.o";
-        if (emitObjectFile(ctx, output, ZMIRObjectFile)) goto success;
-        goto end;
-    default: break;
-    }
-
-    if (!output) output = "a.out";
-    const char *objext = (state->cli.ltoMode != Z_LTO_OFF) ? ".tmp.bc" : ".tmp.o";
-    size_t objnameLen = strlen(output) + strlen(objext) + 1;
-    char *objfileBuf = malloc(objnameLen);
-    if (!objfileBuf) {
-        zlog(state, NULL, Z401E);
-        freeCodegen(ctx);
-        return;
-    }
-    snprintf(objfileBuf, objnameLen, "%s%s", output, objext);
-    const char *objfile = objfileBuf;
-
-    if (!emitObjectFile(ctx, objfile, ZMIRObjectFile)) {
-        free(objfileBuf);
-        freeCodegen(ctx);
-        return;
-    }
-
-#ifdef _WIN32
-    /* The PE linker uses the exact name given; ensure .exe extension. */
-    char *outname_buf = NULL;
-    {
-        size_t n = strlen(output);
-        if (n < 4 || strcmp(output + n - 4, ".exe") != 0) {
-            outname_buf = (char *)malloc(n + 5);
-            memcpy(outname_buf, output, n);
-            memcpy(outname_buf + n, ".exe", 5);
-            output = outname_buf;
-        }
-    }
-#endif
-
-    if (state->cli.verbose) {
-        timer_start(&state->phaseTime);
-    }
-
-    int ret = zinc_lld_link(state->cli.nostdlib, objfile, output,
-            (const char**)state->cli.extraArgs, veclen(state->cli.extraArgs));
-
-    if (state->cli.verbose) {
-        elapsed = timer_elapsed(state->phaseTime, &format);
-        printf(COLOR_BOLD COLOR_CYAN "  LLD Linker: " COLOR_RESET "%.2f%s\n", elapsed, format);
-    }
-
-    remove(objfile);
-    free(objfileBuf);
-#ifdef _WIN32
-    free(outname_buf);
-#endif
-
-    if (ret != 0) {
-        zlog(state, NULL, Z401F, ret);
-        goto end;
-    }
-
-success:
-
-    // if (state->verbose) {
-        printf(COLOR_BLUE COLOR_BOLD "  Generated   " COLOR_RESET "%s\n", output);
-    // }
-
-end:
-    freeCodegen(ctx);
+    return modules;
 }

@@ -2,35 +2,35 @@
 #include "zgen.h"
 #include "zlink.h"
 
-extern _Thread_local LLVMTypeRef i0Type;
-extern _Thread_local LLVMTypeRef i1Type;
-extern _Thread_local LLVMTypeRef i8Type;
-extern _Thread_local LLVMTypeRef i16Type;
-extern _Thread_local LLVMTypeRef i32Type;
-extern _Thread_local LLVMTypeRef i64Type;
-extern _Thread_local LLVMTypeRef f32Type;
-extern _Thread_local LLVMTypeRef f64Type;
-extern _Thread_local LLVMTypeRef ptrType;
-extern _Thread_local LLVMTypeRef strType;
-extern _Thread_local LLVMTypeRef usizeType;
-extern _Thread_local LLVMTypeRef isizeType;
+extern _Thread_local ZMIRTypeRef i0Type;
+extern _Thread_local ZMIRTypeRef i1Type;
+extern _Thread_local ZMIRTypeRef i8Type;
+extern _Thread_local ZMIRTypeRef i16Type;
+extern _Thread_local ZMIRTypeRef i32Type;
+extern _Thread_local ZMIRTypeRef i64Type;
+extern _Thread_local ZMIRTypeRef f32Type;
+extern _Thread_local ZMIRTypeRef f64Type;
+extern _Thread_local ZMIRTypeRef ptrType;
+extern _Thread_local ZMIRTypeRef strType;
+extern _Thread_local ZMIRTypeRef usizeType;
+extern _Thread_local ZMIRTypeRef isizeType;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
-bool genBuiltin(ZCodegen *, ZNode *, LLVMValueRef *);
+bool genBuiltin(ZCodegen *, ZNode *, ZMIRValueRef *);
 
-typedef LLVMValueRef (*ZBuiltinFn) (ZCodegen *, ZNode *);
+typedef ZMIRValueRef (*ZBuiltinFn) (ZCodegen *, ZNode *);
 typedef ZType *(*ZValidateFn) (ZState *, ZNode *);
 
-static LLVMValueRef genPanic(ZCodegen *ctx, ZNode *call) {
+static ZMIRValueRef genPanic(ZCodegen *ctx, ZNode *call) {
     if (veclen(call->call.args) != 1) {
         zlog(ctx->state, call->tok, Z4020, veclen(call->call.args));
     }
 
-    LLVMValueRef msg = genExpr(ctx, call->call.args[0]);
+    ZMIRValueRef msg = genExpr(ctx, call->call.args[0]);
     emitRuntimePanic(ctx, call->tok, msg);
-    LLVMBuildTrap(ctx);
-    return LLVMConstNull(i0Type);
+    ZMIRBuildTrap(ctx->builder);
+    return ZMIRConstNull(i0Type);
 }
 
 typedef struct {
@@ -40,18 +40,18 @@ typedef struct {
     ZType       *typeStructField;
     ZType       *typeEnumVariant;
 
-    LLVMTypeRef llvmInfo;
-    LLVMTypeRef llvmStructField;
-    LLVMTypeRef llvmEnumVariant;
+    ZMIRTypeRef llvmInfo;
+    ZMIRTypeRef llvmStructField;
+    ZMIRTypeRef llvmEnumVariant;
 } ZLLVMGenTypeInfo;
 
-static LLVMValueRef _genTypeType(ZLLVMGenTypeInfo *, ZType *);
+static ZMIRValueRef _genTypeType(ZLLVMGenTypeInfo *, ZType *);
 
-static void putTypeInfo(ZCodegen *ctx, ZType *type, LLVMValueRef value) {
+static void putTypeInfo(ZCodegen *ctx, ZType *type, ZMIRValueRef value) {
     vecpush(ctx->typeInfos, ((ZLLVMTypeInfo){ type, value }));
 }
 
-static LLVMValueRef getTypeInfo(ZCodegen *ctx, ZType *type) {
+static ZMIRValueRef getTypeInfo(ZCodegen *ctx, ZType *type) {
     for (usize i = 0; i < veclen(ctx->typeInfos); i++) {
         if (typesEqual(ctx->typeInfos[i].type, type))
             return ctx->typeInfos[i].value;
@@ -59,7 +59,7 @@ static LLVMValueRef getTypeInfo(ZCodegen *ctx, ZType *type) {
     return NULL;
 }
 
-static LLVMTypeRef typeInfoEnumVariant(ZCodegen *ctx, ZType *enm, int index) {
+static ZMIRTypeRef typeInfoEnumVariant(ZCodegen *ctx, ZType *enm, int index) {
     return genType(ctx, enm->enm.fields[index]->resolved);
 }
 
@@ -85,7 +85,7 @@ static inline void genTypePrimitiveVariantName(ZType *type, const char **name) {
     }
 }
 
-static void genTypePrimitive(ZLLVMGenTypeInfo *ctx, LLVMValueRef **fields, LLVMTypeRef variant, ZType *type) {
+static void genTypePrimitive(ZLLVMGenTypeInfo *ctx, ZMIRValueRef **fields, ZMIRTypeRef variant, ZType *type) {
     ZToken *tok = type->primitive.token;
     switch (tok->type) {
     case TOK_VOID:
@@ -98,52 +98,52 @@ static void genTypePrimitive(ZLLVMGenTypeInfo *ctx, LLVMValueRef **fields, LLVMT
         bool isSigned = tokmask(tok, TOK_SIGNED);
         usize bits = typeSize(ctx->ctx->state, type) * 8;
 
-        vecpush(*fields, LLVMConstInt(LLVMStructGetTypeAtIndex(variant, 1), bits, false));
-        vecpush(*fields, LLVMConstInt(LLVMStructGetTypeAtIndex(variant, 2), isSigned, false));
+        vecpush(*fields, ZMIRConstInt(ZMIRStructGetTypeAtIndex(variant, 1), bits, false));
+        vecpush(*fields, ZMIRConstInt(ZMIRStructGetTypeAtIndex(variant, 2), isSigned, false));
         break;
     }
 }
 
-static LLVMValueRef genTypeInfoGlobal(ZLLVMGenTypeInfo *ctx, LLVMValueRef init, const char *name) {
-    LLVMValueRef g = LLVMAddGlobal(ctx->ctx->mod, LLVMTypeOf(init), name);
-    LLVMSetInitializer(g, init);
-    LLVMSetGlobalConstant(g, true);
-    LLVMSetLinkage(g, LLVMPrivateLinkage);
-    LLVMSetUnnamedAddr(g, LLVMGlobalUnnamedAddr);
+static ZMIRValueRef genTypeInfoGlobal(ZLLVMGenTypeInfo *ctx, ZMIRValueRef init, const char *name) {
+    ZMIRValueRef g = ZMIRAddGlobal(ctx->ctx->mod, ZMIRTypeOf(init), name);
+    ZMIRSetInitializer(g, init);
+    ZMIRSetGlobalConstant(g, true);
+    ZMIRSetLinkage(g, ZMIRPrivateLinkage);
+    ZMIRSetUnnamedAddr(g, ZMIRGlobalUnnamedAddr);
     return g;
 }
 
-static LLVMValueRef genTypeInfoStr(ZLLVMGenTypeInfo *ctx, ZToken *tok) {
-    return LLVMGetInitializer(genStrLitGlobal(ctx->ctx, tok));
+static ZMIRValueRef genTypeInfoStr(ZLLVMGenTypeInfo *ctx, ZToken *tok) {
+    return ZMIRGetInitializer(genStrLitGlobal(ctx->ctx, tok));
 }
 
-static LLVMValueRef genTypeInfoSlice(ZLLVMGenTypeInfo *ctx, LLVMTypeRef sliceT,
-                                     LLVMTypeRef elemT, LLVMValueRef *elems) {
+static ZMIRValueRef genTypeInfoSlice(ZLLVMGenTypeInfo *ctx, ZMIRTypeRef sliceT,
+                                     ZMIRTypeRef elemT, ZMIRValueRef *elems) {
     usize n = veclen(elems);
-    LLVMValueRef data;
-    if (n == 0) data = LLVMConstPointerNull(ptrType);
-    else        data = genTypeInfoGlobal(ctx, LLVMConstArray2(elemT, elems, n), "typeinfo.arr");
+    ZMIRValueRef data;
+    if (n == 0) data = ZMIRConstPointerNull(ptrType);
+    else        data = genTypeInfoGlobal(ctx, ZMIRConstArray2(elemT, elems, n), "typeinfo.arr");
 
-    LLVMValueRef parts[] = {
-        LLVMConstInt(usizeType, n, false),
+    ZMIRValueRef parts[] = {
+        ZMIRConstInt(usizeType, n, false),
         data
     };
-    return LLVMIsLiteralStruct(sliceT)
-        ? LLVMConstStructInContext(ctx->ctx->ctx, parts, 2, false)
-        : LLVMConstNamedStruct(sliceT, parts, 2);
+    return ZMIRIsLiteralStruct(sliceT)
+        ? ZMIRConstStructInContext(ctx->ctx->ctx, parts, 2, false)
+        : ZMIRConstNamedStruct(sliceT, parts, 2);
 }
 
-static LLVMValueRef genTypeInfoField(ZLLVMGenTypeInfo *ctx, ZToken *tok, ZType *type) {
-    LLVMValueRef parts[] = {
+static ZMIRValueRef genTypeInfoField(ZLLVMGenTypeInfo *ctx, ZToken *tok, ZType *type) {
+    ZMIRValueRef parts[] = {
         genTypeInfoStr(ctx, tok),
         _genTypeType(ctx, type)
     };
-    if (!parts[1]) parts[1] = LLVMConstPointerNull(ptrType);
-    return LLVMConstNamedStruct(ctx->llvmStructField, parts, 2);
+    if (!parts[1]) parts[1] = ZMIRConstPointerNull(ptrType);
+    return ZMIRConstNamedStruct(ctx->llvmStructField, parts, 2);
 }
 
-static LLVMValueRef genTypeInfoFields(ZLLVMGenTypeInfo *ctx, LLVMTypeRef sliceT, ZNode **fields, usize skip) {
-    LLVMValueRef *elems = NULL;
+static ZMIRValueRef genTypeInfoFields(ZLLVMGenTypeInfo *ctx, ZMIRTypeRef sliceT, ZNode **fields, usize skip) {
+    ZMIRValueRef *elems = NULL;
     for (usize i = skip; i < veclen(fields); i++) {
         ZNode *field = fields[i];
         vecpush(elems, genTypeInfoField(ctx, field->field.identifier, field->resolved));
@@ -153,11 +153,11 @@ static LLVMValueRef genTypeInfoFields(ZLLVMGenTypeInfo *ctx, LLVMTypeRef sliceT,
     );
 }
 
-static LLVMValueRef genTypeInfoTypes(ZLLVMGenTypeInfo *ctx, LLVMTypeRef sliceT, ZType **types) {
-    LLVMValueRef *elems = NULL;
+static ZMIRValueRef genTypeInfoTypes(ZLLVMGenTypeInfo *ctx, ZMIRTypeRef sliceT, ZType **types) {
+    ZMIRValueRef *elems = NULL;
     for (usize i = 0; i < veclen(types); i++) {
-        LLVMValueRef t = _genTypeType(ctx, types[i]);
-        if (!t) t = LLVMConstPointerNull(ptrType);
+        ZMIRValueRef t = _genTypeType(ctx, types[i]);
+        if (!t) t = ZMIRConstPointerNull(ptrType);
         vecpush(elems, t);
     }
     return genTypeInfoSlice(
@@ -165,27 +165,27 @@ static LLVMValueRef genTypeInfoTypes(ZLLVMGenTypeInfo *ctx, LLVMTypeRef sliceT, 
     );
 }
 
-static LLVMValueRef genTypeInfoVariants(ZLLVMGenTypeInfo *ctx, LLVMTypeRef sliceT, ZType *enm) {
-    LLVMTypeRef elemT   = LLVMStructGetTypeAtIndex(ctx->llvmEnumVariant, 1);
-    LLVMValueRef *elems = NULL;
+static ZMIRValueRef genTypeInfoVariants(ZLLVMGenTypeInfo *ctx, ZMIRTypeRef sliceT, ZType *enm) {
+    ZMIRTypeRef elemT   = ZMIRStructGetTypeAtIndex(ctx->llvmEnumVariant, 1);
+    ZMIRValueRef *elems = NULL;
     for (usize i = 0; i < veclen(enm->enm.fields); i++) {
         ZType *variant = enm->enm.fields[i]->resolved;
-        LLVMValueRef parts[] = {
+        ZMIRValueRef parts[] = {
             genTypeInfoStr(ctx, variant->strct.name),
             genTypeInfoFields(ctx, elemT, variant->strct.fields, 1)
         };
-        vecpush(elems, LLVMConstNamedStruct(ctx->llvmEnumVariant, parts, 2));
+        vecpush(elems, ZMIRConstNamedStruct(ctx->llvmEnumVariant, parts, 2));
     }
 
     return genTypeInfoSlice(ctx, sliceT, ctx->llvmEnumVariant, elems);
 }
 
-static LLVMValueRef genTypeInfoNodes(ZLLVMGenTypeInfo *ctx, LLVMTypeRef sliceT, ZNode **nodes) {
-    LLVMTypeRef elemT   = LLVMStructGetTypeAtIndex(ctx->llvmEnumVariant, 1);
-    LLVMValueRef *elems = NULL;
+static ZMIRValueRef genTypeInfoNodes(ZLLVMGenTypeInfo *ctx, ZMIRTypeRef sliceT, ZNode **nodes) {
+    ZMIRTypeRef elemT   = ZMIRStructGetTypeAtIndex(ctx->llvmEnumVariant, 1);
+    ZMIRValueRef *elems = NULL;
 
     for (usize i = 0; i < veclen(nodes); i++) {
-        LLVMValueRef field = genTypeInfoField(
+        ZMIRValueRef field = genTypeInfoField(
             ctx, nodes[i]->funcDef.name, nodes[i]->resolved
         );
         vecpush(elems, field);
@@ -194,8 +194,8 @@ static LLVMValueRef genTypeInfoNodes(ZLLVMGenTypeInfo *ctx, LLVMTypeRef sliceT, 
     return genTypeInfoSlice(ctx, sliceT, elemT, elems);
 }
 
-static void genTypePayload(ZLLVMGenTypeInfo *ctx, LLVMValueRef **fields, LLVMTypeRef variant, ZType *type) {
-    #define SLOT(i) LLVMStructGetTypeAtIndex(variant, (i) + 1)
+static void genTypePayload(ZLLVMGenTypeInfo *ctx, ZMIRValueRef **fields, ZMIRTypeRef variant, ZType *type) {
+    #define SLOT(i) ZMIRStructGetTypeAtIndex(variant, (i) + 1)
     switch (type->kind) {
     case Z_TYPE_NAMESPACE:
     case Z_TYPE_GENERIC:
@@ -244,8 +244,8 @@ static void genTypePayload(ZLLVMGenTypeInfo *ctx, LLVMValueRef **fields, LLVMTyp
     }
 }
 
-static LLVMValueRef _genTypeType(ZLLVMGenTypeInfo *ctx, ZType *type) {
-    LLVMValueRef cached     = getTypeInfo(ctx->ctx, type);
+static ZMIRValueRef _genTypeType(ZLLVMGenTypeInfo *ctx, ZType *type) {
+    ZMIRValueRef cached     = getTypeInfo(ctx->ctx, type);
     if (cached) return cached;
     const char *name        = NULL;
     switch (type->kind) {
@@ -279,47 +279,47 @@ static LLVMValueRef _genTypeType(ZLLVMGenTypeInfo *ctx, ZType *type) {
         return NULL;
     }
 
-    LLVMTypeRef variantT    = typeInfoEnumVariant(ctx->ctx, ctx->typeInfo, index);
-    LLVMTargetDataRef td    = LLVMGetModuleDataLayout(ctx->ctx->mod);
-    usize enumSize          = LLVMABISizeOfType(td, ctx->llvmInfo);
-    usize variantSize       = LLVMABISizeOfType(td, variantT);
+    ZMIRTypeRef variantT    = typeInfoEnumVariant(ctx->ctx, ctx->typeInfo, index);
+    ZMIRTargetDataRef td    = ZMIRGetModuleDataLayout(ctx->ctx->mod);
+    usize enumSize          = ZMIRABISizeOfType(td, ctx->llvmInfo);
+    usize variantSize       = ZMIRABISizeOfType(td, variantT);
     usize pad               = enumSize > variantSize ? enumSize - variantSize : 0;
-    LLVMTypeRef parts[2]    = { variantT, NULL };
+    ZMIRTypeRef parts[2]    = { variantT, NULL };
     int n                   = 1;
-    if (pad > 0) parts[n++] = LLVMArrayType2(i8Type, pad);
-    LLVMTypeRef wrapT       = LLVMStructTypeInContext(ctx->ctx->ctx, parts, n, false);
+    if (pad > 0) parts[n++] = ZMIRArrayType2(i8Type, pad);
+    ZMIRTypeRef wrapT       = ZMIRStructTypeInContext(ctx->ctx->ctx, parts, n, false);
 
-    LLVMValueRef global     = LLVMAddGlobal(ctx->ctx->mod, wrapT, "typeinfo.");
+    ZMIRValueRef global     = ZMIRAddGlobal(ctx->ctx->mod, wrapT, "typeinfo.");
     putTypeInfo(ctx->ctx, type, global);
 
-    LLVMTypeRef tagType     = LLVMStructGetTypeAtIndex(ctx->llvmInfo, 0);
-    LLVMValueRef tag        = LLVMConstInt(tagType, (unsigned)index, false);
-    LLVMValueRef *fields    = NULL;
+    ZMIRTypeRef tagType     = ZMIRStructGetTypeAtIndex(ctx->llvmInfo, 0);
+    ZMIRValueRef tag        = ZMIRConstInt(tagType, (unsigned)index, false);
+    ZMIRValueRef *fields    = NULL;
     vecpush(fields, tag);
 
     genTypePayload(ctx, &fields, variantT, type);
 
-    unsigned want           = LLVMCountStructElementTypes(variantT);
+    unsigned want           = ZMIRCountStructElementTypes(variantT);
     for (unsigned i = 0; i < want; i++) {
-        LLVMTypeRef ft = LLVMStructGetTypeAtIndex(variantT, i);
-        if (i >= veclen(fields))    vecpush(fields, LLVMConstNull(ft));
-        else if (!fields[i])        fields[i] = LLVMConstNull(ft);
+        ZMIRTypeRef ft = ZMIRStructGetTypeAtIndex(variantT, i);
+        if (i >= veclen(fields))    vecpush(fields, ZMIRConstNull(ft));
+        else if (!fields[i])        fields[i] = ZMIRConstNull(ft);
     }
 
-    LLVMValueRef value      = LLVMConstNamedStruct(variantT, fields, want);
-    LLVMValueRef partVal[2] = { value, NULL };
-    if (n == 2) partVal[1]  = LLVMConstNull(LLVMStructGetTypeAtIndex(wrapT, 1));
-    LLVMSetInitializer(global, LLVMConstStructInContext(ctx->ctx->ctx, partVal, n, false));
-    LLVMSetGlobalConstant(global, true);
-    LLVMSetLinkage(global, LLVMPrivateLinkage);
-    unsigned enumAlign      = LLVMABIAlignmentOfType(td, ctx->llvmInfo);
-    unsigned variantAlign   = LLVMABIAlignmentOfType(td, variantT);
-    LLVMSetAlignment(global, enumAlign > variantAlign ? enumAlign : variantAlign);
+    ZMIRValueRef value      = ZMIRConstNamedStruct(variantT, fields, want);
+    ZMIRValueRef partVal[2] = { value, NULL };
+    if (n == 2) partVal[1]  = ZMIRConstNull(ZMIRStructGetTypeAtIndex(wrapT, 1));
+    ZMIRSetInitializer(global, ZMIRConstStructInContext(ctx->ctx->ctx, partVal, n, false));
+    ZMIRSetGlobalConstant(global, true);
+    ZMIRSetLinkage(global, ZMIRPrivateLinkage);
+    unsigned enumAlign      = ZMIRABIAlignmentOfType(td, ctx->llvmInfo);
+    unsigned variantAlign   = ZMIRABIAlignmentOfType(td, variantT);
+    ZMIRSetAlignment(global, enumAlign > variantAlign ? enumAlign : variantAlign);
 
     return global;
 }
 
-LLVMValueRef genTypeType(ZCodegen *ctx, ZNode *node) {
+ZMIRValueRef genTypeType(ZCodegen *ctx, ZNode *node) {
     ZNode *info         = LangItems[Z_LANG_TYPE_INFO];
     ZNode *structField  = LangItems[Z_LANG_TYPE_INFO_STRUCT_FIELD];
     ZNode *enumVariant  = LangItems[Z_LANG_TYPE_INFO_ENUM_VARIANT];
@@ -337,13 +337,13 @@ LLVMValueRef genTypeType(ZCodegen *ctx, ZNode *node) {
     return _genTypeType(&gen, node->resolved->typeType);
 }
 
-static LLVMValueRef genReflect(ZCodegen *ctx, ZNode *node) {
+static ZMIRValueRef genReflect(ZCodegen *ctx, ZNode *node) {
     (void)ctx;
     (void)node;
     return NULL;
 }
 
-static LLVMValueRef genHere(ZCodegen *ctx, ZNode *node) {
+static ZMIRValueRef genHere(ZCodegen *ctx, ZNode *node) {
     ZNode *sourceLocType = LangItems[Z_LANG_SOURCE_LOCATION_TYPE];
     if (!sourceLocType) {
         zlog(ctx->state, node->tok, Z4021);
@@ -351,31 +351,31 @@ static LLVMValueRef genHere(ZCodegen *ctx, ZNode *node) {
     }
 
     ZType *type = sourceLocType->resolved;
-    return LLVMConstNull(genType(ctx, type));
+    return ZMIRConstNull(genType(ctx, type));
 }
 
-static LLVMValueRef genVolatileStore(ZCodegen *ctx, ZNode *node) {
+static ZMIRValueRef genVolatileStore(ZCodegen *ctx, ZNode *node) {
     ZNode *base = node->call.args[0];
     ZNode *val  = node->call.args[1];
-    LLVMValueRef store = LLVMBuildStore(
+    ZMIRValueRef store = ZMIRBuildStore(
         ctx->builder, genExpr(ctx, val), genExpr(ctx, base)
     );
-    LLVMSetVolatile(store, true);
+    ZMIRSetVolatile(store, true);
     return NULL;
 }
 
-static LLVMValueRef genVolatileLoad(ZCodegen *ctx, ZNode *node) {
-    LLVMTypeRef typeRef = genType(ctx, node->resolved);
-    LLVMValueRef load = LLVMBuildLoad2(
+static ZMIRValueRef genVolatileLoad(ZCodegen *ctx, ZNode *node) {
+    ZMIRTypeRef typeRef = genType(ctx, node->resolved);
+    ZMIRValueRef load = ZMIRBuildLoad2(
         ctx->builder, typeRef, genExpr(ctx, node->call.args[0]), label(ctx, "volatile.load")
     );
-    LLVMSetVolatile(load, true);
+    ZMIRSetVolatile(load, true);
     return load;
 }
 
-static LLVMValueRef genPtrOffset(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef ptr    = genExpr(ctx, node->call.args[0]);
-    LLVMValueRef offset = genExpr(ctx, node->call.args[1]);
+static ZMIRValueRef genPtrOffset(ZCodegen *ctx, ZNode *node) {
+    ZMIRValueRef ptr    = genExpr(ctx, node->call.args[0]);
+    ZMIRValueRef offset = genExpr(ctx, node->call.args[1]);
 
     ZType *ptrType      = node->call.args[0]->resolved;
     ZType *pointeeType  = ptrType;
@@ -383,45 +383,45 @@ static LLVMValueRef genPtrOffset(ZCodegen *ctx, ZNode *node) {
 
         pointeeType = ptrType->base;
     }
-    LLVMTypeRef type    = genType(ctx, pointeeType);
+    ZMIRTypeRef type    = genType(ctx, pointeeType);
 
-    return LLVMBuildGEP2(
+    return ZMIRBuildGEP2(
         ctx->builder, type, ptr, &offset, 1, label(ctx, "builtin.ptr_offset")
     );
 }
 
-static LLVMValueRef genPtrToInt(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef ptr = genExpr(ctx, node->call.args[0]);
-    return LLVMBuildPtrToInt(
+static ZMIRValueRef genPtrToInt(ZCodegen *ctx, ZNode *node) {
+    ZMIRValueRef ptr = genExpr(ctx, node->call.args[0]);
+    return ZMIRBuildPtrToInt(
         ctx->builder, ptr, i64Type, label(ctx, "builtin.ptr_to_int")
     );
 }
 
-static LLVMValueRef genPtrFromInt(ZCodegen *ctx, ZNode *node) {
-    LLVMValueRef ptr = genExpr(ctx, node->call.args[0]);
-    return LLVMBuildIntToPtr(
-        ctx->builder, ptr, LLVMPointerTypeInContext(ctx->ctx, 0), label(ctx, "builtin.ptr_from_int")
+static ZMIRValueRef genPtrFromInt(ZCodegen *ctx, ZNode *node) {
+    ZMIRValueRef ptr = genExpr(ctx, node->call.args[0]);
+    return ZMIRBuildIntToPtr(
+        ctx->builder, ptr, ZMIRPointerTypeInContext(ctx->ctx, 0), label(ctx, "builtin.ptr_from_int")
     );
 }
 
-static LLVMValueRef genEnumTagConst(ZCodegen *ctx, ZNode *enumNode, u64 tag) {
+static ZMIRValueRef genEnumTagConst(ZCodegen *ctx, ZNode *enumNode, u64 tag) {
     if (!enumNode) return NULL;
-    LLVMTypeRef enumType        = genType(ctx, enumNode->resolved);
-    unsigned count              = LLVMCountStructElementTypes(enumType);
-    LLVMValueRef fields[2]      = {
-        LLVMConstInt(LLVMStructGetTypeAtIndex(enumType, 0), tag, false),
-        count > 1 ? LLVMConstNull(LLVMStructGetTypeAtIndex(enumType, 1)) : NULL,
+    ZMIRTypeRef enumType        = genType(ctx, enumNode->resolved);
+    unsigned count              = ZMIRCountStructElementTypes(enumType);
+    ZMIRValueRef fields[2]      = {
+        ZMIRConstInt(ZMIRStructGetTypeAtIndex(enumType, 0), tag, false),
+        count > 1 ? ZMIRConstNull(ZMIRStructGetTypeAtIndex(enumType, 1)) : NULL,
     };
-    return LLVMConstNamedStruct(enumType, fields, count);
+    return ZMIRConstNamedStruct(enumType, fields, count);
 }
 
-static LLVMValueRef genTargetOS(ZCodegen *ctx, ZNode *node) {
+static ZMIRValueRef genTargetOS(ZCodegen *ctx, ZNode *node) {
     (void)node;
     ZBuiltinOS os               = ztripleOS(ctx->state->resolvedTriple);
     return genEnumTagConst(ctx, LangItems[Z_LANG_TARGET_OS_TYPE], os);
 }
 
-static LLVMValueRef genTargetArch(ZCodegen *ctx, ZNode *node) {
+static ZMIRValueRef genTargetArch(ZCodegen *ctx, ZNode *node) {
     (void)node;
     ZBuiltinArch arch           = ztripleArch(ctx->state->resolvedTriple);
     return genEnumTagConst(ctx, LangItems[Z_LANG_TARGET_ARCH_TYPE], arch);
@@ -446,14 +446,14 @@ ZValidateFn LangValidators[Z_LANG_COUNT] = {
     #undef LANG
 };
 
-bool genBuiltin(ZCodegen *ctx, ZNode *node, LLVMValueRef *out) {
+bool genBuiltin(ZCodegen *ctx, ZNode *node, ZMIRValueRef *out) {
     ZNode *langNode = node;
     if (node->type == NODE_CALL) langNode = node->call.callee;
 
     ZLangItemType li = getLangItemType(langNode);
     if (!li || !LangBuiltins[li]) return false;
 
-    LLVMValueRef result = LangBuiltins[li](ctx, node);
+    ZMIRValueRef result = LangBuiltins[li](ctx, node);
     if (out) *out = result;
     return true;
 }

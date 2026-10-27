@@ -128,7 +128,6 @@ typedef struct {
     hashset_t               seenModuleDecls;
     hashset_t               seenModuleDefs;
 
-    ZMIRTargetMachineRef    machine;
     ZLLVMTypeInfo           *typeInfos;
 } ZCodegen;
 
@@ -157,11 +156,15 @@ void emitNullCheck(ZCodegen *, ZMIRValueRef, ZToken *);
 void initializeMemoryToZero(ZCodegen *, ZMIRValueRef, ZMIRTypeRef);
 void checkUnsafeUnwrap(ZCodegen *, ZMIRValueRef, ZType *, ZToken *);
 void checkFacet(ZCodegen *, ZMIRValueRef, ZToken *);
-void LLVMBuildTrap(ZCodegen *);
 bool genBuiltin(ZCodegen *, ZNode *, ZMIRValueRef *out);
 
 ZMIRValueRef loadWithNullDeref(ZCodegen *, ZMIRTypeRef, ZMIRValueRef, ZToken *);
 ZMIRValueRef getFlagOptional(ZCodegen *, ZType *, ZMIRValueRef);
 ZMIRValueRef genTypeType(ZCodegen *, ZNode *);
+
+/* Lowers every module in state->modules to ZMIR, one module per thread.
+ * The result is parallel to state->modules: entry i is NULL when module i
+ * emitted nothing. */
+ZMIRModuleRef *zgenModules(ZState *);
 
 #endif //!Z_GEN

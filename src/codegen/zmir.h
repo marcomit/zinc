@@ -4,12 +4,17 @@
 #include "zinc.h"
 #include <iso646.h>
 
+typedef struct ZMIRType ZMIRType;
+typedef struct ZMIRValue ZMIRValue;
+typedef struct ZMIRContext ZMIRContext;
+
 typedef void * ZMIRModuleRef;
-typedef void * ZMIRValueRef;
-typedef void * ZMIRTypeRef;
-typedef void * ZMIRContextRef;
+typedef ZMIRValue *ZMIRValueRef;
+typedef ZMIRType *ZMIRTypeRef;
+typedef ZMIRContext *ZMIRContextRef;
 typedef void * ZMIRBasicBlockRef;
 typedef void * ZMIRTargetMachineRef;
+typedef void * ZMIRTargetDataRef;
 
 typedef struct {
 
@@ -204,11 +209,15 @@ ZMIRValueRef ZMIRBuildSIToFP(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const ch
 ZMIRValueRef ZMIRBuildTrunc(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
 ZMIRValueRef ZMIRBuildSExt(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
 ZMIRValueRef ZMIRBuildZExt(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildZExtOrBitCast(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
 ZMIRValueRef ZMIRBuildPhi(ZMIRBuilderRef, ZMIRTypeRef, const char *);
 void ZMIRAddIncoming(ZMIRValueRef, ZMIRValueRef *, ZMIRBasicBlockRef *, usize);
 ZMIRValueRef ZMIRBuildExtractValue(ZMIRBuilderRef, ZMIRValueRef, usize, const char *);
 void ZMIRBuildRetVoid(ZMIRBuilderRef);
 void ZMIRBuildRet(ZMIRBuilderRef, ZMIRValueRef);
+void ZMIRBuildUnreachable(ZMIRBuilderRef);
+void ZMIRBuildTrap(ZMIRBuilderRef);
+void ZMIRBuildMemSet(ZMIRBuilderRef, ZMIRValueRef, ZMIRValueRef, usize, usize);
 
 void ZMIRPositionBuilderAtEnd(ZMIRBuilderRef, ZMIRBasicBlockRef);
 
@@ -219,21 +228,34 @@ ZMIRValueRef ZMIRConstNull(ZMIRTypeRef);
 ZMIRValueRef ZMIRConstStringInContext(ZMIRContextRef, const char *, usize, bool);
 ZMIRValueRef ZMIRConstStructInContext(ZMIRContextRef, ZMIRValueRef *, usize, bool);
 ZMIRValueRef ZMIRConstAllOnes(ZMIRTypeRef);
+ZMIRValueRef ZMIRConstNamedStruct(ZMIRTypeRef, ZMIRValueRef *, usize);
+ZMIRValueRef ZMIRConstArray2(ZMIRValueRef, ZMIRValueRef *, usize);
 
 ZMIRValueRef ZMIRAddFunction(ZMIRModuleRef, const char *, ZMIRTypeRef);
 ZMIRValueRef ZMIRAddGlobal(ZMIRModuleRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildGlobalString(ZMIRBuilderRef, const char *, const char *);
+void ZMIRSetAlignment(ZMIRValueRef, usize);
 void ZMIRSetGlobalConstant(ZMIRValueRef, bool);
 void ZMIRSetLinkage(ZMIRValueRef, ZMIRLinkage);
 void ZMIRSetUnnamedAddr(ZMIRValueRef, ZMIRUnnamedAddr);
 
 ZMIRValueRef ZMIRGetNamedFunction(ZMIRModuleRef, const char *);
+ZMIRValueRef ZMIRGetNamedGlobal(ZMIRModuleRef, const char *);
 ZMIRTypeRef ZMIRGetReturnType(ZMIRTypeRef);
 ZMIRValueRef ZMIRGetParam(ZMIRValueRef, usize);
+ZMIRTypeRef ZMIRStructGetTypeAtIndex(ZMIRTypeRef, usize);
 ZMIRValueKind ZMIRGetValueKind(ZMIRValueRef);
 usize ZMIRGetIntTypeWidth(ZMIRTypeRef);
+bool ZMIRIsLiteralStruct(ZMIRValueRef);
 bool ZMIRIsFunctionVarArg(ZMIRTypeRef);
+void ZMIRAddAttribute(ZMIRValueRef, const char *);
+char ** ZMIRGetAttribute(ZMIRValueRef);
+
+usize ZMIRSizeOf(ZMIRTypeRef);
+usize ZMIRGetAlignment(ZMIRValueRef);
 
 ZMIRTypeRef ZMIRTypeOf(ZMIRValueRef);
+usize ZMIRABIAlignmentOfType(ZMIRTargetDataRef, ZMIRTypeRef);
 ZMIRTypeKind ZMIRGetTypeKind(ZMIRTypeRef);
 ZMIRTypeRef ZMIRGlobalGetValueType(ZMIRValueRef);
 usize ZMIRCountParamTypes(ZMIRTypeRef);

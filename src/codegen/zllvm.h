@@ -12,4 +12,10 @@
 #include <llvm-c/BitReader.h>
 #include <llvm-c/Transforms/PassBuilder.h>
 
+#include "zmir.h"
+
+/* Translates one ZMIR module into a new LLVM module owned by `ctx`.
+ * Returns NULL when there is nothing to translate. */
+LLVMModuleRef zmir2llvm(LLVMContextRef ctx, ZMIRModuleRef mod);
+
 #endif
