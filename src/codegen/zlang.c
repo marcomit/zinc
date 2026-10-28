@@ -29,7 +29,7 @@ static ZMIRValueRef genPanic(ZCodegen *ctx, ZNode *call) {
 
     ZMIRValueRef msg = genExpr(ctx, call->call.args[0]);
     emitRuntimePanic(ctx, call->tok, msg);
-    ZMIRBuildTrap(ctx->builder);
+    ZMIRBuildTrap(ctx->mod, ctx->builder);
     return ZMIRConstNull(i0Type);
 }
 
