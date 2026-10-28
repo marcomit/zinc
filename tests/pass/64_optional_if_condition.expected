@@ -1,0 +1,12 @@
+if some
+if none
+not some
+not none
+if some ptr
+if none ptr
+not some ptr
+not none ptr
+if some bool
+if some struct
+if int
+not int

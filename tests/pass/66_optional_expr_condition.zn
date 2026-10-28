@@ -1,0 +1,30 @@
+printf :: foreign fn (*char, ..) u0
+
+main :: fn () i32 {
+    o: ?i32 = 5
+    n: ?i32 = none
+    x := 3
+    p: ?*i32 = x.&
+    q: ?*i32 = none
+
+    // Inline if on optionals
+    a: i32 = if o { break 1 } else { break 2 }
+    b: i32 = if n { break 1 } else { break 2 }
+    c: i32 = if p { break 1 } else { break 2 }
+    d: i32 = if q { break 1 } else { break 2 }
+    printf("inline: %d %d %d %d\n", a, b, c, d)
+
+    // `not` as a value
+    printf("not: %d %d\n", not o, not n)
+
+    // Logical operators with optional operands
+    t := true
+    if o and t      { printf("some and\n") }    else { printf("FAIL\n") }
+    if n and t      { printf("FAIL\n") }        else { printf("none and\n") }
+    if n or t       { printf("none or\n") }     else { printf("FAIL\n") }
+    if not o or t   { printf("not some or\n") } else { printf("FAIL\n") }
+    if p and o      { printf("ptr and some\n") } else { printf("FAIL\n") }
+    if q or n       { printf("FAIL\n") }        else { printf("none or none\n") }
+
+    return 0
+}
