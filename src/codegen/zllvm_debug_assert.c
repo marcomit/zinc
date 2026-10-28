@@ -21,8 +21,6 @@ extern _Thread_local ZMIRTypeRef f64Type;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
-#define ZMIR_UBSAN_TRAP     "llvm.ubsantrap"
-#define ZMIR_DEBUG_TRACE    "zn.debug.trace"
 
 void emitRuntimeDebugPrint(ZCodegen *ctx, ZToken *tok, const char *message) {
     ZMIRTypeRef ptrType         = ZMIRPointerTypeInContext(ctx->ctx, 0);
@@ -67,7 +65,7 @@ void emitRuntimeError(ZCodegen *ctx, ZToken *tok, const char *message) {
 
     ZMIRPositionBuilderAtEnd(ctx->builder, fail);
     emitRuntimeDebugPrint(ctx, tok, message);
-    ZMIRBuildTrap(ctx->builder);
+    ZMIRBuildTrap(ctx->mod, ctx->builder);
 }
 
 void emitBoundCheck(ZCodegen *ctx, ZToken *tok, ZMIRValueRef index,
@@ -120,7 +118,7 @@ void emitPanic(ZCodegen *ctx, ZToken *loc, ZMIRValueRef cond, const char *msg) {
 
     ZMIRPositionBuilderAtEnd(ctx->builder, fail);
     emitRuntimeDebugPrint(ctx, loc, msg);
-    ZMIRBuildTrap(ctx->builder);
+    ZMIRBuildTrap(ctx->mod, ctx->builder);
 
     ZMIRPositionBuilderAtEnd(ctx->builder, cont);
 }

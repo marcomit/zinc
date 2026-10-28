@@ -255,7 +255,6 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     printPhase(state, "ZMIR IR:");
 
     if (!canAdvance(state)) return;
-
     if (state->cli.verbose) timer_start(&state->phaseTime);
     LLVMContextRef ctx = LLVMContextCreate();
     LLVMModuleRef mod  = mergeModules(state, ctx, modules, state->cli.output);
