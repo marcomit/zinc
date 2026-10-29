@@ -1,6 +1,10 @@
 #include "zmir.h"
 #include "zmem.h"
 
+#define CHECK_KIND(t, k) ((t) && (t)->kind == (k))
+
+/* ==================Externs          ============*/
+
 extern _Thread_local ZMIRTypeRef i0Type;
 extern _Thread_local ZMIRTypeRef i1Type;
 extern _Thread_local ZMIRTypeRef i8Type;
@@ -16,19 +20,22 @@ extern _Thread_local ZMIRTypeRef isizeType;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
+/* ==================Data Structures  ============*/
+
 struct ZMIRContext {
     ZState      *state;
     Allocator   *allocator;
 };
 
 struct ZMIRModule {
-    ZMIRContextRef ctx;
-    ZMIRValueRef *decls;
+    ZMIRContextRef  ctx;
+    const char      *name;
+    ZMIRValueRef    *decls;
 };
 
 struct ZMIRBuilder {
-    ZMIRContextRef ctx;
-    ZMIRBasicBlockRef block;
+    ZMIRContextRef      ctx;
+    ZMIRBasicBlockRef   block;
 };
 
 typedef enum {
@@ -177,6 +184,8 @@ struct ZMIRValue {
             bool    signext;
         } cint;
 
+        double creal;
+
         ZMIRValueRef *aggregate;
 
         struct {
@@ -205,6 +214,26 @@ struct ZMIRValue {
     };
 };
 
+/* ==================Context          ============*/
+
+ZMIRContextRef ZMIRContextCreate(ZState *state, Allocator *a) {
+    return copy(a, ZMIRContext, ((ZMIRContext){ .state = state, .allocator = a}));
+}
+
+/* ==================Modules          ============*/
+
+ZMIRModuleRef ZMIRModuleCreateWithNameInContext(const char *name, ZMIRContextRef ctx) {
+    return copy(ctx->allocator, ZMIRModule, ((ZMIRModule){
+        .ctx    = ctx,
+        .name   = name,
+        .decls  = NULL,
+    }));
+}
+
+ZMIRTargetDataRef ZMIRGetModuleDataLayout(ZMIRModuleRef);
+
+/* ==================Types            ============*/
+
 static inline ZMIRTypeRef ZMIRTypeInContext(ZMIRContextRef ctx, ZMIRTypeKind kind) {
     return copy(ctx->allocator, ZMIRType, ((ZMIRType){ .kind = kind }));
 }
@@ -228,8 +257,9 @@ ZMIRTypeRef ZMIRPointerTypeInContext(ZMIRContextRef ctx, usize ptr) { return ZMI
 ZMIRTypeRef ZMIRStructTypeInContext (ZMIRContextRef ctx, ZMIRTypeRef *fields, usize len, bool packed) {
     ZMIRTypeRef *strctFields = NULL;
     vecreservewith(strctFields, len, ctx->allocator);
-    for (usize i = 0; i < len; i++)
-        strctFields[i] = fields[i];
+    memcpy(strctFields, fields, sizeof(ZMIRTypeRef) * len);
+    vecsetlen(strctFields, len);
+
     return copy(ctx->allocator, ZMIRType, ((ZMIRType) {
         .kind = ZMIRStructTypeKind,
         .strct = { strctFields, packed }
@@ -250,24 +280,10 @@ void ZMIRStructSetBody(ZMIRTypeRef structType, ZMIRTypeRef *fields, usize len, b
     ZMIRTypeRef  *structFields = NULL;
     vecreservewith(structFields, len, arenaAllocator);
     memcpy(structFields, fields, sizeof(ZMIRTypeRef) * len);
+    vecsetlen(structFields, len);
+
     structType->strct.fields = structFields;
     structType->strct.packed = packed;
-}
-
-ZMIRTypeRef ZMIRStructGetTypeAtIndex(ZMIRTypeRef strct, usize index) {
-    if (!strct || strct->kind != ZMIRStructTypeKind) return NULL;
-    if (index >= veclen(strct->strct.fields)) return NULL;
-    return strct->strct.fields[index];
-}
-
-ZMIRTypeRef ZMIRTypeOf(ZMIRValueRef val) {
-    return val ? val->type : NULL;
-}
-
-usize ZMIRSizeOf(ZMIRTypeRef type) {
-    switch (type->kind) {
-    default: return 8;
-    }
 }
 
 [[deprecated("Use ZMIRPointerTypeInContext instead")]]
@@ -289,30 +305,92 @@ ZMIRTypeRef ZMIRFunctionType        (ZMIRTypeRef ret, ZMIRTypeRef *args, usize l
     ZMIRTypeRef *fargs = NULL;
     vecreserve(fargs, len);
     memcpy(fargs, args, sizeof(ZMIRTypeRef) * len);
+    vecsetlen(fargs, len);
     return copy(arenaAllocator, ZMIRType, ((ZMIRType){
         .kind = ZMIRFunctionTypeKind,
         .func = { ret, fargs, vararg }
     }));
 }
 
-static ZMIRValueRef instr(ZMIRBuilderRef b, ZMIROpcode op, ZMIRTypeRef type, const char *name) {
-    ZMIRValueRef v = copy(b->ctx->allocator, ZMIRValue, ((ZMIRValue){
-        .kind   = ZMIRInstructionValueKind,
-        .type   = type,
-        .name   = name,
-        .instr  = { .op = op, .parent = b->block }
-    }));
-    vecpush(b->block->instrs, v);
-    return v;
+/* ==================Type Queries     ============*/
+
+ZMIRTypeRef ZMIRStructGetTypeAtIndex(ZMIRTypeRef strct, usize index) {
+
+    if (!strct || strct->kind != ZMIRStructTypeKind) return NULL;
+    if (index >= veclen(strct->strct.fields)) return NULL;
+    return strct->strct.fields[index];
 }
 
+usize ZMIRSizeOf(ZMIRTypeRef type) {
+    switch (type->kind) {
+    default: return 8;
+    }
+}
+
+ZMIRTypeKind ZMIRGetTypeKind(ZMIRTypeRef type) {
+    return type->kind;
+}
+
+bool ZMIRIsFunctionVarArg(ZMIRTypeRef func) {
+    return CHECK_KIND(func, ZMIRFunctionTypeKind) ? func->func.vararg : false;
+}
+
+bool ZMIRIsLiteralStruct(ZMIRTypeRef type) {
+    return CHECK_KIND(type, ZMIRStructTypeKind) && type->name != NULL;
+}
+
+ZMIRTypeRef ZMIRGetReturnType(ZMIRTypeRef t) {
+    return CHECK_KIND(t, ZMIRFunctionTypeKind) ? t->func.ret : NULL;
+}
+
+usize ZMIRCountParamTypes(ZMIRTypeRef type) {
+    return CHECK_KIND(type, ZMIRFunctionTypeKind) ? veclen(type->func.args) : 0;
+}
+
+void ZMIRGetParamTypes(ZMIRTypeRef, ZMIRTypeRef *);
+usize ZMIRGetIntTypeWidth(ZMIRTypeRef t) {
+    return CHECK_KIND(t, ZMIRIntegerTypeKind) ? t->width : 0;
+}
+
+usize ZMIRCountStructElementTypes(ZMIRTypeRef t) {
+    return CHECK_KIND(t, ZMIRStructTypeKind) ? veclen(t->strct.fields) : 0;
+}
+
+usize ZMIRABISizeOfType(ZMIRTargetDataRef, ZMIRTypeRef);
+usize ZMIRABIAlignmentOfType(ZMIRTargetDataRef, ZMIRTypeRef);
+
+/* ==================Value Queries    ============*/
+
+ZMIRTypeRef ZMIRTypeOf(ZMIRValueRef val) {
+    return val ? val->type : NULL;
+}
+
+ZMIRValueKind ZMIRGetValueKind(ZMIRValueRef val) {
+    return val->kind;
+}
+
+bool ZMIRIsConstant(ZMIRValueRef global) {
+    return global->global.isConst;
+}
+
+ZMIRValueRef ZMIRGetParam(ZMIRValueRef f, usize i) {
+
+}
+
+char ** ZMIRGetAttribute(ZMIRValueRef);
+usize ZMIRGetAlignment(ZMIRValueRef);
+ZMIRValueRef ZMIRGetInitializer(ZMIRValueRef);
+ZMIRTypeRef ZMIRGlobalGetValueType(ZMIRValueRef);
+
+/* ==================Value Attributes ============*/
+
 void ZMIRSetAlignment(ZMIRValueRef instruction, usize alignment) {
-    if (!instruction || instruction->kind != ZMIRInstructionValueKind) return;
+    if (!CHECK_KIND(instruction, ZMIRInstructionValueKind)) return;
     instruction->instr.align = alignment;
 }
 
 void ZMIRSetLinkage(ZMIRValueRef val, ZMIRLinkage linkage) {
-    if (!val || val->kind != ZMIRGlobalVariableValueKind) return;
+    if (!CHECK_KIND(val, ZMIRGlobalVariableValueKind)) return;
     switch (val->kind) {
     case ZMIRGlobalVariableValueKind:
         val->global.linkage = linkage;
@@ -326,56 +404,120 @@ void ZMIRSetLinkage(ZMIRValueRef val, ZMIRLinkage linkage) {
 }
 
 void ZMIRSetUnnamedAddr(ZMIRValueRef value, ZMIRUnnamedAddr addr) {
-    if (!value || value->kind != ZMIRGlobalVariableValueKind) return;
+    if (!CHECK_KIND(value, ZMIRGlobalVariableValueKind)) return;
     value->global.unnamedAddr = addr;
 }
 
 void ZMIRSetVolatile(ZMIRValueRef val, bool vol) {
-    if (!val || val->kind != ZMIRInstructionValueKind) return;
+    if (!CHECK_KIND(val, ZMIRInstructionValueKind)) return;
     val->instr.isVolatile = vol;
 }
 
 void ZMIRSetGlobalConstant(ZMIRValueRef val, bool isConst) {
-    if (!val || val->kind != ZMIRGlobalVariableValueKind) return;
+    if (!CHECK_KIND(val, ZMIRGlobalVariableValueKind)) return;
     val->global.isConst = isConst;
 }
 
 void ZMIRSetInitializer(ZMIRValueRef globalRef, ZMIRValueRef initializer) {
-    if (!globalRef || globalRef->kind != ZMIRGlobalVariableValueKind) return;
+    if (!CHECK_KIND(globalRef, ZMIRGlobalVariableValueKind)) return;
     globalRef->global.init = initializer;
 }
 
-ZMIRValueKind ZMIRGetValueKind(ZMIRValueRef val) {
-    return val->kind;
+/* ==================Constants        ============*/
+
+ZMIRValueRef ZMIRConstInt(ZMIRTypeRef t, isize val, bool signext) {
+    ZMIRValueRef v  = zalloc(arenaAllocator, ZMIRValue);
+    v->type         = t;
+    v->kind         = ZMIRConstantIntValueKind;
+    v->cint.value   = val;
+    v->cint.signext = signext;
+    return v;
 }
 
-ZMIRTypeKind ZMIRGetTypeKind(ZMIRTypeRef type) {
-    return type->kind;
+ZMIRValueRef ZMIRConstReal(ZMIRTypeRef t, double creal) {
+    ZMIRValueRef v  = zalloc(arenaAllocator, ZMIRValue);
+    v->type         = t;
+    v->kind         = ZMIRConstantFPValueKind;
+    v->creal        = creal;
+    return v;
 }
+
+ZMIRValueRef ZMIRConstPointerNull(ZMIRTypeRef) {
+
+}
+ZMIRValueRef ZMIRConstNull(ZMIRTypeRef);
+ZMIRValueRef ZMIRConstAllOnes(ZMIRTypeRef);
+ZMIRValueRef ZMIRConstStringInContext(ZMIRContextRef, const char *, usize, bool);
+ZMIRValueRef ZMIRConstStructInContext(ZMIRContextRef, ZMIRValueRef *, usize, bool);
+ZMIRValueRef ZMIRConstNamedStruct(ZMIRTypeRef, ZMIRValueRef *, usize);
+ZMIRValueRef ZMIRConstArray2(ZMIRTypeRef, ZMIRValueRef *, usize);
+
+/* ==================Globals          ============*/
+
+ZMIRValueRef ZMIRAddGlobal(ZMIRModuleRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRGetNamedGlobal(ZMIRModuleRef, const char *);
+ZMIRValueRef ZMIRBuildGlobalString(ZMIRBuilderRef, const char *, const char *);
+
+/* ==================Functions        ============*/
+
+void ZMIRAddAttribute(ZMIRValueRef v, const char *name) {
+    if (!CHECK_KIND(v, ZMIRFunctionValueKind)) return;
+    vecpush(v->fn.attrs, name);
+}
+
+#define ZMIRValueNew(a, ...) copy(a, ZMIRValue, ((ZMIRValue) { __VA_ARGS__ }))
+
+ZMIRValueRef ZMIRAddFunction(ZMIRModuleRef mod, const char *name, ZMIRTypeRef type) {
+    Allocator *a = mod->ctx->allocator;
+    ZMIRValueRef func = ZMIRValueNew(a,
+        .kind = ZMIRFunctionValueKind,
+        .fn = {
+            .fnType     = type,
+            .linkage    = ZMIRLinkOnceODRLinkage,
+            .attrs      = NULL,
+            .blocks     = NULL
+        }
+    );
+    vecpushwith(mod->decls, func, a);
+    return func;
+}
+
+ZMIRValueRef ZMIRGetNamedFunction(ZMIRModuleRef, const char *);
+
+/* ==================Basic Blocks     ============*/
 
 ZMIRBasicBlockRef ZMIRAppendBasicBlockInContext(ZMIRContextRef ctx, ZMIRValueRef val, const char *name) {
     return NULL;
 }
 
-bool ZMIRIsConstant(ZMIRValueRef global) {
-    return global->global.isConst;
+bool ZMIRGetBasicBlockTerminator(ZMIRBasicBlockRef b) {
+    return false;
 }
 
-bool ZMIRIsFunctionVarArg(ZMIRTypeRef func) {
-    return (func && func->kind == ZMIRFunctionTypeKind) ? func->func.vararg : false;
-}
-
-bool ZMIRIsLiteralStruct(ZMIRTypeRef type) {
-    return type && type->kind == ZMIRStructTypeKind && type->name != NULL;
-}
+/* ==================Builder          ============*/
 
 void ZMIRPositionBuilderAtEnd(ZMIRBuilderRef b, ZMIRBasicBlockRef block) {
     b->block = block;
 }
 
-u32 ZMIRLookupIntrinsicID(const char *name, usize len) {
-    return 0;
+ZMIRBasicBlockRef ZMIRGetInsertBlock(ZMIRBuilderRef b) {
+    return b ? b->block : NULL;
 }
+
+static ZMIRValueRef instr(ZMIRBuilderRef b, ZMIROpcode op, ZMIRTypeRef type, const char *name) {
+    ZMIRValueRef v = copy(b->ctx->allocator, ZMIRValue, ((ZMIRValue){
+        .kind   = ZMIRInstructionValueKind,
+        .type   = type,
+        .name   = name,
+        .instr  = { .op = op, .parent = b->block }
+    }));
+    vecpush(b->block->instrs, v);
+    return v;
+}
+
+ZMIRBuilderRef ZMIRCreateBuilderInContext(ZMIRContextRef);
+
+/* ==================Instructions     ============*/
 
 void ZMIRBuildBr(ZMIRBuilderRef b, ZMIRBasicBlockRef block) {
     ZMIRValueRef br = instr(b, ZMIRBr, NULL, NULL);
@@ -447,38 +589,41 @@ ZMIRBuildBinary(URem)
 ZMIRBuildBinary(SRem)
 ZMIRBuildBinary(AShr)
 ZMIRBuildBinary(LShr)
+ZMIRBuildBinary(Shl)
 ZMIRBuildBinary(Or)
 ZMIRBuildBinary(Xor)
 ZMIRBuildBinary(And)
 
-void ZMIRAddAttribute(ZMIRValueRef v, const char *name) {
-    if (!v || v->kind != ZMIRFunctionValueKind) return;
-    vecpush(v->fn.attrs, name);
-}
+#undef ZMIRBuildBinary
 
-#define ZMIRValueNew(a, ...) copy(a, ZMIRValue, ((ZMIRValue) { __VA_ARGS__ }))
+ZMIRValueRef ZMIRBuildTrunc(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildZExt(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildSExt(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildFPTrunc(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildFPExt(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildFPToUI(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildFPToSI(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildUIToFP(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildSIToFP(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildPtrToInt(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildIntToPtr(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildBitCast(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildZExtOrBitCast(ZMIRBuilderRef, ZMIRValueRef, ZMIRTypeRef, const char *);
+ZMIRValueRef ZMIRBuildGEP2(ZMIRBuilderRef, ZMIRTypeRef, ZMIRValueRef, ZMIRValueRef *, usize, const char *);
+ZMIRValueRef ZMIRBuildStructGEP2(ZMIRBuilderRef, ZMIRTypeRef, ZMIRValueRef, usize, const char *);
+ZMIRValueRef ZMIRBuildExtractValue(ZMIRBuilderRef, ZMIRValueRef, usize, const char *);
+void ZMIRBuildMemSet(ZMIRBuilderRef, ZMIRValueRef, ZMIRValueRef, usize, usize);
+ZMIRValueRef ZMIRBuildCall2(ZMIRBuilderRef, ZMIRTypeRef, ZMIRValueRef, ZMIRValueRef *, usize, const char *);
+ZMIRValueRef ZMIRBuildPhi(ZMIRBuilderRef, ZMIRTypeRef, const char *);
+void ZMIRAddIncoming(ZMIRValueRef, ZMIRValueRef *, ZMIRBasicBlockRef *, usize);
+void ZMIRBuildRet(ZMIRBuilderRef, ZMIRValueRef);
+void ZMIRBuildRetVoid(ZMIRBuilderRef);
+void ZMIRBuildUnreachable(ZMIRBuilderRef);
 
-ZMIRValueRef ZMIRAddFunction(ZMIRModuleRef mod, const char *name, ZMIRTypeRef type) {
-    Allocator *a = mod->ctx->allocator;
-    ZMIRValueRef func = ZMIRValueNew(a,
-        .kind = ZMIRFunctionValueKind,
-        .fn = {
-            .fnType     = type,
-            .linkage    = ZMIRLinkOnceODRLinkage,
-            .attrs      = NULL,
-            .blocks     = NULL
-        }
-    );
-    vecpushwith(mod->decls, func, a);
-    return func;
-}
+/* ==================Intrinsics       ============*/
 
-ZMIRBasicBlockRef ZMIRGetInsertBlock(ZMIRBuilderRef b) {
-    return b ? b->block : NULL;
-}
-
-bool ZMIRGetBasicBlockTerminator(ZMIRBasicBlockRef b) {
-    return false;
+u32 ZMIRLookupIntrinsicID(const char *name, usize len) {
+    return 0;
 }
 
 #define ZMIR_UBSAN_TRAP     "llvm.ubsantrap"
@@ -501,3 +646,5 @@ void ZMIRBuildTrap(ZMIRModuleRef mod, ZMIRBuilderRef builder) {
     );
     ZMIRBuildUnreachable(builder);
 }
+
+ZMIRValueRef ZMIRGetIntrinsicDeclaration(ZMIRModuleRef, u32, ZMIRTypeRef *, usize);

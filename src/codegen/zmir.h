@@ -157,7 +157,7 @@ ZMIRTypeRef ZMIRArrayType2          (ZMIRTypeRef, usize);
 ZMIRTypeRef ZMIRFunctionType        (ZMIRTypeRef, ZMIRTypeRef *, usize, bool);
 
 ZMIRModuleRef   ZMIRModuleCreateWithNameInContext(const char *name, ZMIRContextRef);
-ZMIRContextRef  ZMIRContextCreate();
+ZMIRContextRef  ZMIRContextCreate(ZState *, Allocator *);
 ZMIRBuilderRef  ZMIRCreateBuilderInContext(ZMIRContextRef);
 
 void ZMIRStructSetBody(ZMIRTypeRef structType, ZMIRTypeRef *, usize, bool);
