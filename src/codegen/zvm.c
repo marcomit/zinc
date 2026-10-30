@@ -9,10 +9,13 @@
 
 #define DEFAULT_STACK_SIZE MiB(64)
 
-typedef struct ZStack ZStack;
-typedef ZStack *ZStackRef;
+typedef struct ZVMStack ZVMStack;
+typedef ZVMStack *ZVMStackRef;
 
-struct ZStack {
+typedef struct ZVMThread ZVMThread;
+typedef ZVMThread *ZVMThreadRef;
+
+struct ZVMStack {
     /* Stack pointer. */
     usize sp;
 
@@ -24,11 +27,16 @@ struct ZStack {
 };
 
 struct ZVirtualMachine {
-    ZMIRModuleRef *modules;
-    ZStack *stack;
+    ZMIRModuleRef   *modules;
+    ZVMStackRef     stack;
 };
 
-static ZStackRef makestack(Allocator *a) {
+struct ZVMThread {
+    ZVMRef      vm;
+    ZVMStackRef stack;
+};
+
+static ZVMStackRef makestack(Allocator *a) {
     void *buffer = NULL;
     usize size = DEFAULT_STACK_SIZE;
     #if defined(_WIN32)
@@ -37,7 +45,7 @@ static ZStackRef makestack(Allocator *a) {
     buffer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     #endif
     if (!buffer) return NULL;
-    return copy(a, ZStack, ((ZStack){
+    return copy(a, ZVMStack, ((ZVMStack){
         .buffer = buffer,
         .size   = DEFAULT_STACK_SIZE,
         .sp     = 0
