@@ -207,7 +207,7 @@ static void endModule(ZCodegen *ctx) {
 
 ZCodegen *makecodegen(ZState *state, ZModuleAllocator *module) {
     ZCodegen *self      = zalloc(state->allocator, ZCodegen);
-    self->ctx           = ZMIRContextCreate();
+    self->ctx           = ZMIRContextCreate(state, module->allocator);
     self->builder       = ZMIRCreateBuilderInContext(self->ctx);
 
     self->mod           = NULL;
