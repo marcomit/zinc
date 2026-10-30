@@ -70,7 +70,7 @@ ZMIRTypeRef ZMIRPointerTypeInContext(ZMIRContextRef ctx, usize as) { (void)as; r
 ZMIRTypeRef ZMIRStructTypeInContext (ZMIRContextRef ctx, ZMIRTypeRef *fields, usize len, bool packed) {
     ZMIRTypeRef *strctFields = NULL;
     vecreservewith(strctFields, len, ctx->allocator);
-    memcpy(strctFields, fields, sizeof(ZMIRTypeRef) * len);
+    if (len) memcpy(strctFields, fields, sizeof(ZMIRTypeRef) * len);
     vecsetlen(strctFields, len);
 
     return copy(ctx->allocator, ZMIRType, ((ZMIRType) {
@@ -92,7 +92,7 @@ void ZMIRStructSetBody(ZMIRTypeRef structType, ZMIRTypeRef *fields, usize len, b
     if (structType->strct.fields != NULL) return;
     ZMIRTypeRef  *structFields = NULL;
     vecreservewith(structFields, len, arenaAllocator);
-    memcpy(structFields, fields, sizeof(ZMIRTypeRef) * len);
+    if (len) memcpy(structFields, fields, sizeof(ZMIRTypeRef) * len);
     vecsetlen(structFields, len);
 
     structType->strct.fields = structFields;
@@ -129,7 +129,7 @@ ZMIRTypeRef ZMIRArrayType2          (ZMIRTypeRef type, usize len) {
 ZMIRTypeRef ZMIRFunctionType        (ZMIRTypeRef ret, ZMIRTypeRef *args, usize len, bool vararg) {
     ZMIRTypeRef *fargs = NULL;
     vecreserve(fargs, len);
-    memcpy(fargs, args, sizeof(ZMIRTypeRef) * len);
+    if (len) memcpy(fargs, args, sizeof(ZMIRTypeRef) * len);
     vecsetlen(fargs, len);
     return copy(arenaAllocator, ZMIRType, ((ZMIRType){
         .kind = ZMIRFunctionTypeKind,
@@ -271,7 +271,8 @@ usize ZMIRCountParamTypes(ZMIRTypeRef type) {
 
 void ZMIRGetParamTypes(ZMIRTypeRef t, ZMIRTypeRef *dest) {
     if (!CHECK_KIND(t, ZMIRFunctionTypeKind)) return;
-    memcpy(dest, t->func.args, sizeof(ZMIRTypeRef) * veclen(t->func.args));
+    usize len = veclen(t->func.args);
+    if (len) memcpy(dest, t->func.args, sizeof(ZMIRTypeRef) * len);
 }
 
 usize ZMIRGetIntTypeWidth(ZMIRTypeRef t) {
@@ -397,7 +398,7 @@ static inline ZMIRValueRef constant(Allocator *a, ZMIRValueKind kind, ZMIRTypeRe
 static ZMIRValueRef *copyValues(Allocator *a, ZMIRValueRef *vals, usize len) {
     ZMIRValueRef *out = NULL;
     vecreservewith(out, len, a);
-    memcpy(out, vals, sizeof(ZMIRValueRef) * len);
+    if (len) memcpy(out, vals, sizeof(ZMIRValueRef) * len);
     vecsetlen(out, len);
     return out;
 }
@@ -445,7 +446,7 @@ ZMIRValueRef ZMIRConstStringInContext(ZMIRContextRef ctx, const char *s, usize l
     Allocator *a    = ctx->allocator;
     usize n         = len + (dontNullTerminate ? 0 : 1);
     char *data      = znalloc(a, char, n);
-    memcpy(data, s, len);
+    if (len) memcpy(data, s, len);
     if (!dontNullTerminate) data[len] = '\0';
 
     ZMIRValueRef v  = constant(

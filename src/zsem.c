@@ -1799,9 +1799,11 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->tok, Z305C);
     }
 
-    if (veclen(curr->structlit.fields) != veclen(symType->strct.fields)) {
+    usize expectedLen   = veclen(symType->strct.fields);
+    usize gotLen        = veclen(curr->structlit.fields);
+    if (expectedLen != gotLen) {
         if (!query(curr->annotations, "partial")) {
-            zlog(ctx->state, curr->tok, Z3010);
+            zlog(ctx->state, curr->tok, Z3010, expectedLen, gotLen);
         }
     }
 
