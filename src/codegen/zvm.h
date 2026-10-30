@@ -6,9 +6,11 @@
 
 typedef struct ZVirtualMachine ZVirtualMachine;
 
-ZVirtualMachine *ZVMInit(Allocator *, ZState *);
-void ZRun(ZVirtualMachine, ZMIRModuleRef);
-void ZVMReset(ZVirtualMachine *);
-void ZVMDispose(ZVirtualMachine *);
+typedef ZVirtualMachine *ZVMRef;
+
+ZVMRef ZVMInit(Allocator *, ZState *, ZMIRModuleRef *);
+void ZVMRun(ZVMRef , ZMIRModuleRef);
+void ZVMReset(ZVMRef );
+void ZVMDispose(ZVMRef );
 
 #endif //!ZVM_H
