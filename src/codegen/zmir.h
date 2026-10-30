@@ -139,6 +139,202 @@ typedef enum {
   ZMIRRealPredicateTrue
 } ZMIRRealPredicate;
 
+struct ZMIRContext {
+    ZState      *state;
+    Allocator   *allocator;
+};
+
+struct ZMIRModule {
+    ZMIRContextRef  ctx;
+    const char      *name;
+    ZMIRValueRef    *decls;
+};
+
+struct ZMIRBuilder {
+    ZMIRContextRef      ctx;
+    ZMIRBasicBlockRef   block;
+};
+
+typedef enum {
+  ZMIRRet            = 1,
+  ZMIRBr             = 2,
+  ZMIRSwitch         = 3,
+  ZMIRIndirectBr     = 4,
+  ZMIRInvoke         = 5,
+  /* removed 6 due to API changes */
+  ZMIRUnreachable    = 7,
+  ZMIRCallBr         = 67,
+
+  /* Standard Unary Operators */
+  ZMIRFNeg           = 66,
+
+  /* Standard Binary Operators */
+  ZMIRAdd            = 8,
+  ZMIRFAdd           = 9,
+  ZMIRSub            = 10,
+  ZMIRFSub           = 11,
+  ZMIRMul            = 12,
+  ZMIRFMul           = 13,
+  ZMIRUDiv           = 14,
+  ZMIRSDiv           = 15,
+  ZMIRFDiv           = 16,
+  ZMIRURem           = 17,
+  ZMIRSRem           = 18,
+  ZMIRFRem           = 19,
+
+  /* Logical Operators */
+  ZMIRShl            = 20,
+  ZMIRLShr           = 21,
+  ZMIRAShr           = 22,
+  ZMIRAnd            = 23,
+  ZMIROr             = 24,
+  ZMIRXor            = 25,
+
+  /* Memory Operators */
+  ZMIRAlloca         = 26,
+  ZMIRLoad           = 27,
+  ZMIRStore          = 28,
+  ZMIRGetElementPtr  = 29,
+
+  /* Cast Operators */
+  ZMIRTrunc          = 30,
+  ZMIRZExt           = 31,
+  ZMIRSExt           = 32,
+  ZMIRFPToUI         = 33,
+  ZMIRFPToSI         = 34,
+  ZMIRUIToFP         = 35,
+  ZMIRSIToFP         = 36,
+  ZMIRFPTrunc        = 37,
+  ZMIRFPExt          = 38,
+  ZMIRPtrToInt       = 39,
+  ZMIRPtrToAddr      = 69,
+  ZMIRIntToPtr       = 40,
+  ZMIRBitCast        = 41,
+  ZMIRAddrSpaceCast  = 60,
+
+  /* Other Operators */
+  ZMIRICmp           = 42,
+  ZMIRFCmp           = 43,
+  ZMIRPHI            = 44,
+  ZMIRCall           = 45,
+  ZMIRSelect         = 46,
+  ZMIRUserOp1        = 47,
+  ZMIRUserOp2        = 48,
+  ZMIRVAArg          = 49,
+  ZMIRExtractElement = 50,
+  ZMIRInsertElement  = 51,
+  ZMIRShuffleVector  = 52,
+  ZMIRExtractValue   = 53,
+  ZMIRInsertValue    = 54,
+  ZMIRFreeze         = 68,
+
+  /* zmir-only: lowered to llvm.memset */
+  ZMIRMemSet         = 70,
+
+  /* Atomic operators */
+  ZMIRFence          = 55,
+  ZMIRAtomicCmpXchg  = 56,
+  ZMIRAtomicRMW      = 57,
+
+  /* Exception Handling Operators */
+  ZMIRResume         = 58,
+  ZMIRLandingPad     = 59,
+  ZMIRCleanupRet     = 61,
+  ZMIRCatchRet       = 62,
+  ZMIRCatchPad       = 63,
+  ZMIRCleanupPad     = 64,
+  ZMIRCatchSwitch    = 65
+} ZMIROpcode;
+
+struct ZMIRType {
+    ZMIRTypeKind        kind;
+    const char          *name;
+    union {
+        u32             width; // integer
+
+        struct {
+            ZMIRTypeRef *fields;
+            bool        packed;
+        } strct;
+
+        struct {
+            ZMIRTypeRef elem;
+            usize       len;
+        } array;
+
+        struct {
+            ZMIRTypeRef ret;
+            ZMIRTypeRef *args;
+            bool        vararg;
+        } func;
+    };
+};
+
+struct ZMIRBasicBlock {
+    const char      *name;
+    ZMIRValueRef    parent;
+    ZMIRValueRef    *instrs;
+};
+
+struct ZMIRValue {
+    ZMIRValueKind   kind;
+    ZMIRTypeRef     type;
+    const char      *name;
+    union {
+        struct { ZMIRValueRef fn; u32 index; } arg;
+        struct {
+            ZMIRTypeRef         fnType;
+            ZMIRValueRef        *params;
+            ZMIRBasicBlockRef   *blocks;
+            ZMIRLinkage         linkage;
+            const char          **attrs;
+            ZMIRModuleRef       mod;
+        } fn;
+
+        struct {
+            ZMIRTypeRef     valueType;
+            ZMIRValueRef    init;
+            ZMIRLinkage     linkage;
+            ZMIRUnnamedAddr unnamedAddr;
+            usize           align;
+            bool            isConst;
+        } global;
+
+        struct {
+            u64     value;
+            bool    signext;
+        } cint;
+
+        double creal;
+
+        ZMIRValueRef *aggregate;
+
+        struct {
+            const char  *data;
+            usize       len;
+        } str;
+
+        struct {
+            ZMIROpcode          op;
+            ZMIRBasicBlockRef   parent;
+            ZMIRValueRef        *ops;
+            ZMIRBasicBlockRef   *blocks;
+
+            ZMIRTypeRef         auxType;
+            union {
+                ZMIRIntPredicate    ipred;
+                ZMIRRealPredicate   fpred;
+                u32                 index;
+                struct {
+                    usize len, align;
+                } builtin_memset;
+            };
+            usize align;
+            bool isVolatile;
+        } instr;
+    };
+};
+
 ZMIRTypeRef ZMIRVoidTypeInContext   (ZMIRContextRef);
 ZMIRTypeRef ZMIRInt1TypeInContext   (ZMIRContextRef);
 ZMIRTypeRef ZMIRInt8TypeInContext   (ZMIRContextRef);

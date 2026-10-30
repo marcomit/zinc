@@ -88,7 +88,7 @@ void emitBoundCheck(ZCodegen *ctx, ZToken *tok, ZMIRValueRef index,
     );
 
     ZMIRValueRef cond = ZMIRBuildICmp(
-        ctx->builder, ZMIRIntULT, idx, len, label(ctx, "bound.cond")
+        ctx->builder, ZMIRIntUGE, idx, len, label(ctx, "bound.cond")
     );
 
     emitPanic(ctx, tok, cond, "Index out of range");

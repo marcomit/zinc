@@ -1,4 +1,4 @@
-printf :: foreign fn (*char, ..) u0
+printf :: foreign fn (*char, ..) void
 
 main :: fn () i32 {
     o: ?i32 = 5

@@ -60,6 +60,9 @@ static ZAnnotationSpec Annotations[] = {
     { "print_ast",      Z_ANN_IDENT,                0,              Z_TRG_ANY,      0, 0, true, NULL            },
     { "maybe_unused",   Z_ANN_IDENT,                0,              Z_TRG_STMT,     0, 0, true, NULL,           },
     { "sealed",         Z_ANN_IDENT,                0, Z_TRG_ENUM | Z_TRG_STRUCT,   0, 0, true, NULL            },
+    { "deprecated",     Z_ANN_NESTED,               0,              Z_TRG_FUNC,     1, 1, true,
+        (ZAnnotationSpec[]){ Literal, None }
+    },
 
     None
 };
