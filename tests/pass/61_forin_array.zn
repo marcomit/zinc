@@ -1,4 +1,4 @@
-printf :: foreign fn (*char, ..) u0
+printf :: foreign fn (*char, ..) void
 
 sumAll :: fn (s: []i32) i32 {
     total := 0

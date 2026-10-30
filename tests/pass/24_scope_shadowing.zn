@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 outer_fn :: fn () i32 -> 100

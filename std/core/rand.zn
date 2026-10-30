@@ -6,7 +6,7 @@ pub Random :: struct {
 }
 
 c :: foreign {
-    printf: fn (*char, ..) u0
+    printf: fn (*char, ..) void
 }
 
 Random :: impl {
@@ -23,7 +23,7 @@ Random :: impl {
 }
 
 *Random self :: impl {
-    pub seed :: fn (new_seed: u64) u0 {
+    pub seed :: fn (new_seed: u64) void {
         self.state = new_seed + self.inc as u64
     }
 

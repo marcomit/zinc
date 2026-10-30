@@ -1,0 +1,149 @@
+// XFAIL: string interpolation is not feature-complete.
+//
+// One consolidated regression test for every open interpolation defect. It
+// does not compile today. Each numbered section below names the bug it covers
+// and what its expected output line proves. When all of them are fixed this
+// test XPASSes and should be promoted to tests/pass/.
+//
+// [1] Facets are pointer-only, so no primitive and no temporary can ever be a
+//     hole. satisfyFacet (src/zsem.c) opens with
+//       if (type->kind != Z_TYPE_POINTER) return false;
+//     and an impl block on a value receiver is rejected outright with
+//       Z303C: Facets must be implemented only for pointer types
+//     Both holes in the design doc's own example -- "hello from {name}, i'm
+//     {age} years old" -- are unreachable because of this; only {expr.&} on a
+//     struct pointer works. Sections 3 and 4 cover the two sub-cases: a named
+//     value, and an rvalue, which additionally needs an implicit stack temp to
+//     have an address at all.
+//
+// [2] `{{` / `}}` escapes are not implemented, though
+//     docs/string-interpolation.md section 4.5 says they are. `#"a{{b}}c"`
+//     currently tries to resolve `b` as an identifier -> Z3014. There is at
+//     present no way to write a literal `{` in an interpolated string.
+//     Section 5.
+//
+// [3] A plain string literal does not coerce to []InterpolatedString, so
+//       print("done\n")
+//     fails with Z0009: Expected '[]enum InterpolatedString', got '[6]char'.
+//     Every call site is forced to spell the `#`, which makes `print` a
+//     strictly worse printf. Section 6.
+//
+// [4] Empty literal runs between adjacent holes are emitted rather than
+//     dropped (docs section 4.3 says they are dropped). `#"{a}{b}"` lowers to
+//     four entries -- Lit(len 0), Obj, Lit(len 0), Obj -- costing two
+//     `[1 x i8] zeroinitializer` globals and two zero-length write() calls at
+//     run time. Section 7 counts the writes: 4 today, 2 once fixed.
+//
+// [5] Enum payload layout is wrong, and interpolation is what makes it
+//     load-bearing -- it is the first feature to put payload enums in arrays
+//     as core machinery. genEnumType (src/codegen/zgen.c) sets the body to
+//     { flag, [typeSize - 1 x i8] }, but typeSize measures the variant types,
+//     which already carry their own tag, so the tag is counted twice. The
+//     [N x i8] buffer also gives the enum align 1 while every payload access
+//     GEPs through an align-8 variant type:
+//       %InterpolatedString = type { i8, [24 x i8] }    ; size 25, align 1
+//       %Literal            = type { i8, { i64, ptr } } ; payload at +8, align 8
+//     So the array stride is 25, element 1's payload lands at byte 33, and it
+//     is stored with an 8-byte store declared `align 8` at an address that is
+//     1 mod 8. It survives on arm64 today; it is UB the optimizer is free to
+//     act on. The correct size is tag(1) + pad(7) + payload(16) = 24.
+//     Section 8. Reproduces without interpolation:
+//       E :: enum { A(i64) B(*char) }
+//     gives %E = { i8, [16 x i8] } against %A = { i8, i64 }.
+//
+// Two further defects cannot live in this file:
+//   - Errors raised inside a hole report `:0:0` with no line, column or source
+//     snippet, because the re-lexed sub-token stream built by
+//     parseInterpolatedString (src/zlex.c) drops positions. Asserting that
+//     needs stderr matching; run_tests.sh only compares the binary's stdout.
+//   - Writer.write returns void, so I/O errors and byte counts are discarded,
+//     and Obj(Writable) has no FmtSpec field, so `{age:x}` cannot be added
+//     without breaking every impl. Both are API shape, not behaviour.
+//
+// Fixed since first triage, kept below as regression cover: a hole whose type
+// has no `sink` used to compile silently and produce a binary that crashed on
+// a garbage vtable, and `#"a{}b"` used to SIGSEGV the compiler in resolveType.
+//
+// The two `sink` impls below are written against `sink : fn (Writer) void`. They
+// track std.lib's Writable facet, so if FmtSpec lands they each need the
+// second parameter. Nothing else here depends on that signature.
+
+use <std.lib>
+
+printf :: foreign fn (*char, ..) void
+
+// A sink that echoes to stdout and counts how many write() calls the lowering
+// actually produced, so section 7 can observe empty literal runs.
+Probe :: struct {
+    writes: i32
+}
+
+*Probe self :: impl(Writer) {
+    write :: fn (buff: *u8, size: usize) {
+        self.writes = self.writes + 1
+        printf("%.*s", size as i32, buff as *char)
+    }
+}
+
+User :: struct {
+    id: i32
+}
+
+*User self :: impl(Writable) {
+    sink :: fn (w: Writer) {
+        w.write("U" as *u8, 1)
+    }
+}
+
+// Bug [1]: rejected today with Z303C. A hole is an ordinary expression, so
+// every type that can appear in one needs a Writable impl -- and the types
+// that appear in practice are values, not pointers.
+i32 self :: impl(Writable) {
+    sink :: fn (w: Writer) {
+        d := (48 + self) as char
+        w.write(d.& as *u8, 1)
+    }
+}
+
+main :: fn () i32 {
+    p   := Probe{writes=0}
+    w   := Writer(p.&)
+    u   := User{id=1}
+    age := 7
+
+    // 1. Literal-only interpolation. Works today; regression cover.
+    interpolate(w, #"one\n")
+
+    // 2. Literal / hole alternation through a pointer receiver. Works today;
+    //    this is currently the only shape of hole the compiler accepts.
+    interpolate(w, #"a{u.&}b\n")
+
+    // 3. Bug [1]: a named value as a hole. `age` is an i32, not a pointer, so
+    //    satisfyFacet rejects it no matter what impls exist.
+    interpolate(w, #"age={age}\n")
+
+    // 4. Bug [1]: an rvalue as a hole. Beyond auto-ref, this needs the
+    //    lowering to materialise a stack temp -- `1 + 2` has no address.
+    interpolate(w, #"sum={1 + 2}\n")
+
+    // 5. Bug [2]: `{{` and `}}` are escapes and stay inside the literal run,
+    //    so this is one literal and prints a{b}c.
+    interpolate(w, #"a{{b}}c\n")
+
+    // 6. Bug [3]: a plain literal is a one-element interpolation.
+    interpolate(w, "plain\n")
+
+    // 7. Bug [4]: two adjacent holes, no literal text between or around them.
+    //    That is exactly two writes. Today the lowering emits a zero-length
+    //    Literal before each hole and reports 4.
+    p2 := Probe{writes=0}
+    interpolate(Writer(p2.&), #"{u.&}{u.&}")
+    printf("\nadjacent writes=%d\n", p2.writes)
+
+    // 8. Bug [5]: tag(1) + padding(7) + largest payload(16) = 24.
+    //    Today 25, because the variant's own tag is counted a second time and
+    //    the payload is a byte array with no alignment of its own.
+    printf("sizeof=%d\n", sizeof InterpolatedString)
+
+    return 0
+}

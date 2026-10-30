@@ -1,8 +1,8 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
-sumAndPrint :: fn (s: []i32) u0 {
+sumAndPrint :: fn (s: []i32) void {
     total: i32 = 0
     i := 0
     for i < s.len {
@@ -12,7 +12,7 @@ sumAndPrint :: fn (s: []i32) u0 {
     c.printf("%d\n", total)
 }
 
-printSlice :: fn (s: []i32) u0 {
+printSlice :: fn (s: []i32) void {
     i := 0
     for i < s.len {
         c.printf("%d\n", s[i])

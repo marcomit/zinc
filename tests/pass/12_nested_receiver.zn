@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 Inner :: struct {
@@ -23,7 +23,7 @@ Outer self :: impl {
 }
 
 i32 self :: impl {
-    print :: fn () u0 -> c.printf("%d\n", self)
+    print :: fn () void -> c.printf("%d\n", self)
 }
 addInner :: fn (val: i32) i32 -> val
 

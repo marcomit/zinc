@@ -7,109 +7,88 @@
  * @copyright Copyright (c) 2025, Marco Menegazzi
  *            SPDX-License-Identifier: BSD-3-Clause
  */
-#include "base.h"
 #include "zgen.h"
 #include "zinc.h"
 
-extern _Thread_local LLVMTypeRef i0Type;
-extern _Thread_local LLVMTypeRef i1Type;
-extern _Thread_local LLVMTypeRef i8Type;
-extern _Thread_local LLVMTypeRef i16Type;
-extern _Thread_local LLVMTypeRef i32Type;
-extern _Thread_local LLVMTypeRef i64Type;
-extern _Thread_local LLVMTypeRef f32Type;
-extern _Thread_local LLVMTypeRef f64Type;
+extern _Thread_local ZMIRTypeRef i0Type;
+extern _Thread_local ZMIRTypeRef i1Type;
+extern _Thread_local ZMIRTypeRef i8Type;
+extern _Thread_local ZMIRTypeRef i16Type;
+extern _Thread_local ZMIRTypeRef i32Type;
+extern _Thread_local ZMIRTypeRef i64Type;
+extern _Thread_local ZMIRTypeRef f32Type;
+extern _Thread_local ZMIRTypeRef f64Type;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
-#define LLVM_UBSAN_TRAP     "llvm.ubsantrap"
-#define LLVM_DEBUG_TRACE    "zn.debug.trace"
-
-void LLVMBuildTrap(ZCodegen *ctx) {
-    u32 ubsanId                 = LLVMLookupIntrinsicID(
-        LLVM_UBSAN_TRAP, strlen(LLVM_UBSAN_TRAP));
-
-    LLVMValueRef ubsanFunc      = LLVMGetIntrinsicDeclaration(
-        ctx->mod, ubsanId, NULL, 0);
-
-    LLVMTypeRef funcType        = LLVMFunctionType(
-        i0Type, (LLVMTypeRef[]){i8Type}, 1, 0);
-
-    LLVMBuildCall2(
-        ctx->builder, funcType, ubsanFunc, (LLVMValueRef[]){
-            LLVMConstInt(i8Type, 0, 0),
-        }, 1, ""
-    );
-    LLVMBuildUnreachable(ctx->builder);
-}
 
 void emitRuntimeDebugPrint(ZCodegen *ctx, ZToken *tok, const char *message) {
-    LLVMTypeRef ptrType         = LLVMPointerTypeInContext(ctx->ctx, 0);
-    LLVMTypeRef funcType        = LLVMFunctionType(i32Type, &ptrType, 1, true);
+    ZMIRTypeRef ptrType         = ZMIRPointerTypeInContext(ctx->ctx, 0);
+    ZMIRTypeRef funcType        = ZMIRFunctionType(i32Type, &ptrType, 1, true);
 
-    LLVMValueRef func           = LLVMGetNamedFunction(ctx->mod, "printf");
-    if (!func) func             = LLVMAddFunction(ctx->mod, "printf", funcType);
+    ZMIRValueRef func           = ZMIRGetNamedFunction(ctx->mod, "printf");
+    if (!func) func             = ZMIRAddFunction(ctx->mod, "printf", funcType);
 
     const char *fmt = "%s:%llu:%llu: %s\n";
-    LLVMBuildCall2(
-        ctx->builder, funcType, func, (LLVMValueRef[]){
-            LLVMBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
-            LLVMBuildGlobalString(ctx->builder, tok->filename, label(ctx, "file")),
-            LLVMConstInt(i64Type, tok->row, 0),
-            LLVMConstInt(i64Type, tok->col, 0),
-            LLVMBuildGlobalString(ctx->builder, message, label(ctx, "msg")),
+    ZMIRBuildCall2(
+        ctx->builder, funcType, func, (ZMIRValueRef[]){
+            ZMIRBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
+            ZMIRBuildGlobalString(ctx->builder, tok->filename, label(ctx, "file")),
+            ZMIRConstInt(i64Type, tok->row, 0),
+            ZMIRConstInt(i64Type, tok->col, 0),
+            ZMIRBuildGlobalString(ctx->builder, message, label(ctx, "msg")),
         }, 5, ""
     );
 }
 
-void emitRuntimePanic(ZCodegen *ctx, ZToken *tok, LLVMValueRef msg) {
-    LLVMTypeRef ptrType         = LLVMPointerTypeInContext(ctx->ctx, 0);
-    LLVMTypeRef funcType        = LLVMFunctionType(i32Type, &ptrType, 1, true);
+void emitRuntimePanic(ZCodegen *ctx, ZToken *tok, ZMIRValueRef msg) {
+    ZMIRTypeRef ptrType         = ZMIRPointerTypeInContext(ctx->ctx, 0);
+    ZMIRTypeRef funcType        = ZMIRFunctionType(i32Type, &ptrType, 1, true);
 
-    LLVMValueRef func           = LLVMGetNamedFunction(ctx->mod, "printf");
-    if (!func) func             = LLVMAddFunction(ctx->mod, "printf", funcType);
+    ZMIRValueRef func           = ZMIRGetNamedFunction(ctx->mod, "printf");
+    if (!func) func             = ZMIRAddFunction(ctx->mod, "printf", funcType);
 
     const char *fmt = "%s:%llu:%llu: %s\n";
-    LLVMBuildCall2(
-        ctx->builder, funcType, func, (LLVMValueRef[]){
-            LLVMBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
-            LLVMBuildGlobalString(ctx->builder, tok->filename, label(ctx, "file")),
-            LLVMConstInt(i64Type, tok->row, 0),
-            LLVMConstInt(i64Type, tok->col, 0),
+    ZMIRBuildCall2(
+        ctx->builder, funcType, func, (ZMIRValueRef[]){
+            ZMIRBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
+            ZMIRBuildGlobalString(ctx->builder, tok->filename, label(ctx, "file")),
+            ZMIRConstInt(i64Type, tok->row, 0),
+            ZMIRConstInt(i64Type, tok->col, 0),
             msg,
         }, 5, ""
     );
 }
 
 void emitRuntimeError(ZCodegen *ctx, ZToken *tok, const char *message) {
-    LLVMBasicBlockRef fail = makeblock(ctx, "fail");
+    ZMIRBasicBlockRef fail = makeblock(ctx, "fail");
 
-    LLVMPositionBuilderAtEnd(ctx->builder, fail);
+    ZMIRPositionBuilderAtEnd(ctx->builder, fail);
     emitRuntimeDebugPrint(ctx, tok, message);
-    LLVMBuildTrap(ctx);
+    ZMIRBuildTrap(ctx->mod, ctx->builder);
 }
 
-void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
-        LLVMTypeRef arrType,
-        LLVMValueRef ptr) {
+void emitBoundCheck(ZCodegen *ctx, ZToken *tok, ZMIRValueRef index,
+        ZMIRTypeRef arrType,
+        ZMIRValueRef ptr) {
     if (ctx->state->cli.mode != Z_MODE_DEBUG) return;
 
 
-    LLVMValueRef lenPtr = LLVMBuildStructGEP2(
+    ZMIRValueRef lenPtr = ZMIRBuildStructGEP2(
         ctx->builder, arrType, ptr,
         0, label(ctx, "len.ptr")
     );
-    LLVMValueRef len = LLVMBuildLoad2(
+    ZMIRValueRef len = ZMIRBuildLoad2(
         ctx->builder, i64Type, lenPtr, label(ctx, "bound.check")
     );
 
     /* The index may be narrower than the u64 length field. */
-    LLVMValueRef idx = LLVMBuildZExtOrBitCast(
+    ZMIRValueRef idx = ZMIRBuildZExtOrBitCast(
         ctx->builder, index, i64Type, label(ctx, "bound.idx")
     );
 
-    LLVMValueRef cond = LLVMBuildICmp(
-        ctx->builder, LLVMIntULT, idx, len, label(ctx, "bound.cond")
+    ZMIRValueRef cond = ZMIRBuildICmp(
+        ctx->builder, ZMIRIntUGE, idx, len, label(ctx, "bound.cond")
     );
 
     emitPanic(ctx, tok, cond, "Index out of range");
@@ -121,27 +100,27 @@ void emitBoundCheck(ZCodegen *ctx, ZToken *tok, LLVMValueRef index,
  *
  * The memory will be zeroed only in debug mode.
  * */
-void initializeMemoryToZero(ZCodegen *ctx, LLVMValueRef value, LLVMTypeRef type) {
+void initializeMemoryToZero(ZCodegen *ctx, ZMIRValueRef value, ZMIRTypeRef type) {
     if (ctx->state->cli.mode != Z_MODE_DEBUG) return;
-    LLVMBuildMemSet(
+    ZMIRBuildMemSet(
         ctx->builder, value,
-        LLVMConstInt(i8Type, 0, 0),
-        LLVMSizeOf(type),
-        LLVMGetAlignment(value)
+        ZMIRConstInt(i8Type, 0, 0),
+        ZMIRSizeOf(type),
+        ZMIRGetAlignment(value)
     );
 }
 
-void emitPanic(ZCodegen *ctx, ZToken *loc, LLVMValueRef cond, const char *msg) {
-    LLVMBasicBlockRef fail = makeblock(ctx, "fail");
-    LLVMBasicBlockRef cont = makeblock(ctx, "continue");
+void emitPanic(ZCodegen *ctx, ZToken *loc, ZMIRValueRef cond, const char *msg) {
+    ZMIRBasicBlockRef fail = makeblock(ctx, "fail");
+    ZMIRBasicBlockRef cont = makeblock(ctx, "continue");
 
     makecondbr(ctx->builder, cond, fail, cont);
 
-    LLVMPositionBuilderAtEnd(ctx->builder, fail);
+    ZMIRPositionBuilderAtEnd(ctx->builder, fail);
     emitRuntimeDebugPrint(ctx, loc, msg);
-    LLVMBuildTrap(ctx);
+    ZMIRBuildTrap(ctx->mod, ctx->builder);
 
-    LLVMPositionBuilderAtEnd(ctx->builder, cont);
+    ZMIRPositionBuilderAtEnd(ctx->builder, cont);
 }
 
 
@@ -152,13 +131,13 @@ void emitPanic(ZCodegen *ctx, ZToken *loc, LLVMValueRef cond, const char *msg) {
  * Both of these fields are pointers and could be null.
  * So this function checks whether these fields are not null and emit a runtime panic.
  * */
-void checkFacet(ZCodegen *ctx, LLVMValueRef facet, ZToken *tok) {
-    LLVMValueRef vtable = LLVMBuildExtractValue(
+void checkFacet(ZCodegen *ctx, ZMIRValueRef facet, ZToken *tok) {
+    ZMIRValueRef vtable = ZMIRBuildExtractValue(
         ctx->builder, facet, 1, label(ctx, "facet.vtable"));
 
-    LLVMValueRef vtableObj  = LLVMBuildICmp(
-        ctx->builder, LLVMIntEQ, vtable,
-        LLVMConstPointerNull(i8Type), label(ctx, "vtable.cond")
+    ZMIRValueRef vtableObj  = ZMIRBuildICmp(
+        ctx->builder, ZMIRIntEQ, vtable,
+        ZMIRConstPointerNull(i8Type), label(ctx, "vtable.cond")
     );
 
     emitPanic(ctx, tok, vtableObj,  "Facet vtable pointer is null");
@@ -174,10 +153,10 @@ void checkFacet(ZCodegen *ctx, LLVMValueRef facet, ZToken *tok) {
  *
  * */
 void checkUnsafeUnwrap(ZCodegen *ctx,
-    LLVMValueRef value, ZType *type, ZToken *loc) {
+    ZMIRValueRef value, ZType *type, ZToken *loc) {
     // if (ctx->state->mode != Z_MODE_DEBUG) return;
     if (!type) return;
-    LLVMValueRef cond = NULL;
+    ZMIRValueRef cond = NULL;
     if (type->kind == Z_TYPE_OPTIONAL) {
         cond = getFlagOptional(ctx, type, value);
     }
@@ -187,17 +166,17 @@ void checkUnsafeUnwrap(ZCodegen *ctx,
     emitPanic(ctx, loc, cond, "Unwrap a none value");
 }
 
-void emitNullCheck(ZCodegen *ctx, LLVMValueRef value, ZToken *tok) {
-    LLVMValueRef cond = LLVMBuildICmp(
-        ctx->builder, LLVMIntEQ, value,
-        LLVMConstNull(LLVMPointerTypeInContext(ctx->ctx, 0)),
+void emitNullCheck(ZCodegen *ctx, ZMIRValueRef value, ZToken *tok) {
+    ZMIRValueRef cond = ZMIRBuildICmp(
+        ctx->builder, ZMIRIntEQ, value,
+        ZMIRConstNull(ZMIRPointerTypeInContext(ctx->ctx, 0)),
         label(ctx, "null.check")
     );
 
     emitPanic(ctx, tok, cond, "Trying to read null value, maybe uninitialized or freed memory");
 }
 
-LLVMValueRef loadWithNullDeref(ZCodegen *ctx, LLVMTypeRef type, LLVMValueRef value, ZToken *tok) {
+ZMIRValueRef loadWithNullDeref(ZCodegen *ctx, ZMIRTypeRef type, ZMIRValueRef value, ZToken *tok) {
     emitNullCheck(ctx, value, tok);
-    return LLVMBuildLoad2(ctx->builder, type, value, stoken(tok));
+    return ZMIRBuildLoad2(ctx->builder, type, value, stoken(tok));
 }

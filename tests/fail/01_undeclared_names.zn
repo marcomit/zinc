@@ -1,4 +1,4 @@
-foreign u0 printf(*char)
+foreign void printf(*char)
 
 u32 main() {
     printf(undeclared)

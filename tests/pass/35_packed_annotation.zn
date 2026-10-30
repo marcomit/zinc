@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 #[packed]
@@ -17,7 +17,7 @@ Color :: impl {
 }
 
 Color self :: impl {
-    print :: fn () u0 {
+    print :: fn () void {
         c.printf("Color{r: %d, g: %d, b: %d, a: %d}\n", self.r, self.g, self.b, self.a)
     }
 }

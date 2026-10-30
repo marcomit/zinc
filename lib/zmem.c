@@ -8,6 +8,7 @@ Allocator *heapAllocator           = NULL;
 Allocator *arenaAllocator          = NULL;
 _Thread_local Allocator *vecDefaultAllocator     = NULL;
 _Thread_local Allocator *hashsetDefaultAllocator = NULL;
+_Thread_local Allocator *mapDefaultAllocator     = NULL;
 
 inline void *aalloc(Allocator *allocator, usize size) {
     return allocator->alloc(allocator->ctx, size);
@@ -43,6 +44,7 @@ Allocator *useAllocator(Allocator *allocator) {
     Allocator *prev         = vecDefaultAllocator;
     vecDefaultAllocator     = allocator;
     hashsetDefaultAllocator = allocator;
+    mapDefaultAllocator     = allocator;
     return prev;
 }
 
@@ -104,6 +106,8 @@ void init_allocators() {
         vecDefaultAllocator = heapAllocator;
     if (!hashsetDefaultAllocator)
         hashsetDefaultAllocator = heapAllocator;
+    if (!mapDefaultAllocator)
+        mapDefaultAllocator = heapAllocator;
 }
 
 inline char *zstrndup(Allocator *allocator, char *str, usize len) {

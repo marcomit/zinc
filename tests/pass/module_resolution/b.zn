@@ -1,7 +1,7 @@
 #import "a"
 
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
-pub printB :: fn (a: A) u0 -> c.printf("%s\n", a.name)
+pub printB :: fn (a: A) void -> c.printf("%s\n", a.name)

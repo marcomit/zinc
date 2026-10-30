@@ -1,8 +1,8 @@
-printf :: foreign fn (*char, ..) u0
+printf :: foreign fn (*char, ..) void
 
 Shape :: facet {
     area : fn () i32
-    name : fn () u0
+    name : fn () void
 }
 
 Circle :: struct {
@@ -16,15 +16,15 @@ Rect :: struct {
 
 *Circle self :: impl(Shape) {
     area :: fn () i32 -> self.radius * self.radius
-    name :: fn () u0 -> printf("circle\n")
+    name :: fn () void -> printf("circle\n")
 }
 
 *Rect self :: impl(Shape) {
     area :: fn () i32 -> self.width * self.height
-    name :: fn () u0 -> printf("rect\n")
+    name :: fn () void -> printf("rect\n")
 }
 
-report :: fn (s: Shape) u0 {
+report :: fn (s: Shape) void {
     s.name()
     printf("area=%d\n", s.area())
 }

@@ -1,0 +1,42 @@
+printf :: foreign fn (*char, ..) void
+
+main :: fn () i32 {
+    // Loop while a value optional is present
+    o: ?i32 = 5
+    k := 0
+    for o {
+        k += 1
+        if k == 3 { o = none }
+    }
+    printf("for some: %d\n", k)
+
+    // Loop while a value optional is absent
+    n: ?i32 = none
+    k = 0
+    for not n {
+        k += 1
+        if k == 3 { n = 7 }
+    }
+    printf("for not none: %d\n", k)
+
+    // Loop while a pointer optional is present
+    x := 3
+    p: ?*i32 = x.&
+    k = 0
+    for p {
+        k += 1
+        if k == 3 { p = none }
+    }
+    printf("for some ptr: %d\n", k)
+
+    // Loop while a pointer optional is absent
+    q: ?*i32 = none
+    k = 0
+    for not q {
+        k += 1
+        if k == 3 { q = x.& }
+    }
+    printf("for not none ptr: %d\n", k)
+
+    return 0
+}

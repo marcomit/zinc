@@ -1,6 +1,6 @@
 #import "std/mem"
 
-RcDrop :: type fn (*u8) u0
+RcDrop :: type fn (*u8) void
 
 pub Rc :: struct {
     ref: u32

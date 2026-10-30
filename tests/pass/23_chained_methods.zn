@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 Vec2 :: struct  {
@@ -23,7 +23,7 @@ Vec2 self :: impl {
     len2 :: fn () i32  -> self.x * self.x + self.y * self.y
     scale :: fn (s: i32) Vec2 -> Vec2 { x = self.x * s, y = self.y * s }
     add :: fn (other: Vec2) Vec2 -> Vec2 { x = self.x + other.x, y = self.y + other.y }
-    print :: fn () u0 -> c.printf("(%d,%d)\n", self.x, self.y)
+    print :: fn () void -> c.printf("(%d,%d)\n", self.x, self.y)
     sum :: fn () i32   -> self.x + self.y
 }
 
@@ -34,11 +34,11 @@ Rect :: impl  {
 Rect self :: impl {
     area :: fn () i32    -> self.w * self.h
     perimeter :: fn () i32 -> 2 * (self.w + self.h)
-    contains :: fn (px: i32, py: i32) u1 {
+    contains :: fn (px: i32, py: i32) bool {
         return px >= self.x and px < self.x + self.w and
                py >= self.y and py < self.y + self.h
     }
-    print :: fn () u0 -> c.printf("Rect(%d,%d,%d,%d)\n", self.x, self.y, self.w, self.h)
+    print :: fn () void -> c.printf("Rect(%d,%d,%d,%d)\n", self.x, self.y, self.w, self.h)
 }
 
 i32 self :: impl {
@@ -51,7 +51,7 @@ i32 self :: impl {
         if self > hi { return hi }
         return self
     }
-    print :: fn () u0 -> c.printf("%d\n", self)
+    print :: fn () void -> c.printf("%d\n", self)
 }
 
 main :: fn () i32 {

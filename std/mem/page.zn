@@ -54,7 +54,7 @@ PageAllocator :: impl {
         return fresh
     }
 
-    destroy :: fn (ptr: *u8) u0 {
+    destroy :: fn (ptr: *u8) void {
         if not ptr { return }
         off: i64 = 0 - (sizeof u64) as i64
         base := &(ptr[off])
@@ -67,7 +67,7 @@ PageAllocator :: impl {
 *PageAllocator self :: impl {
     pub allocator :: fn () Allocator -> self as Allocator
 
-    unmap :: fn (base: *u8, mapped: u64) u0 {
+    unmap :: fn (base: *u8, mapped: u64) void {
         c::munmap(base, mapped)
         if self.mappings > 0 { self.mappings :- 1 }
     }

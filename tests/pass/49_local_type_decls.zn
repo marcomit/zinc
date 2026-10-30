@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 main :: fn () i32 {
@@ -16,7 +16,7 @@ main :: fn () i32 {
     myint :: type i32
 
     libc :: foreign {
-        puts : fn (*char) u0
+        puts : fn (*char) void
     }
 
     p := Point { x = 3, y = 4 }

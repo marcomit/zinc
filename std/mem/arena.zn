@@ -21,7 +21,7 @@ Block :: impl {
 
 *Block self :: impl {
     #inline(always)
-    has_size :: fn (size: usize) u1 -> self.used + size < self.cap
+    has_size :: fn (size: usize) bool -> self.used + size < self.cap
 
     #inline(always)
     current_ptr :: fn (size: usize) ?*u8 {

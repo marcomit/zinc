@@ -1,0 +1,41 @@
+printf :: foreign fn (*char, ..) void
+
+P :: struct {
+    a: i32
+    b: i64
+}
+
+main :: fn () i32 {
+    // Value optionals: {T, flag}
+    some: ?i32 = 5
+    none_: ?i32 = none
+    if some     { printf("if some\n") }     else { printf("FAIL\n") }
+    if none_    { printf("FAIL\n") }        else { printf("if none\n") }
+    if not some { printf("FAIL\n") }        else { printf("not some\n") }
+    if not none_ { printf("not none\n") }   else { printf("FAIL\n") }
+
+    // Pointer optionals: null niche
+    x := 3
+    sp: ?*i32 = x.&
+    np: ?*i32 = none
+    if sp     { printf("if some ptr\n") }   else { printf("FAIL\n") }
+    if np     { printf("FAIL\n") }          else { printf("if none ptr\n") }
+    if not sp { printf("FAIL\n") }          else { printf("not some ptr\n") }
+    if not np { printf("not none ptr\n") }  else { printf("FAIL\n") }
+
+    // ?bool tests presence, not the payload
+    ob: ?bool = false
+    if ob { printf("if some bool\n") } else { printf("FAIL\n") }
+
+    // Optional struct payload
+    p: P = .{ a = 1, b = 2 }
+    os: ?P = p
+    if os { printf("if some struct\n") } else { printf("FAIL\n") }
+
+    // Plain integer condition
+    i := 5
+    if i     { printf("if int\n") }         else { printf("FAIL\n") }
+    if not i { printf("FAIL\n") }           else { printf("not int\n") }
+
+    return 0
+}

@@ -4,14 +4,14 @@ LinkedList :: struct {
 }
 LinkedList :: impl {
     new :: fn (next: ?*LinkedList, val: i32) *LinkedList with Allocator {
-        self: *LinkedList = alloc(sizeof LinkedList)
+        self: *LinkedList = alloc(sizeof LinkedList) as *LinkedList
         self.next = next
         self.val = val
         return self
     }
 }
 *LinkedList self :: impl {
-    print :: fn () u0 {
+    print :: fn () void {
         io.printf("%d\n", self.val)
         if not self.next return
 
@@ -23,7 +23,7 @@ main :: fn () i32 {
     gpa := GeneralPurposeAllocator.init()
     with _ := gpa.&.allocator() {
         i := 0
-        root := LinkedList.new(none, 0)
+        root: ?*LinkedList = LinkedList.new(none, 0)
 
         for i < 10 {
             root = LinkedList.new(root, i)
@@ -31,8 +31,8 @@ main :: fn () i32 {
         }
 
         for root {
-            io.printf("%d\n", root.val)
-            root <- .next
+            io.printf("%d\n", root!.val)
+            root = root!.next
         }
 
         flag := false

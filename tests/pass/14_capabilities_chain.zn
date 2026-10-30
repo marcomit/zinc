@@ -1,4 +1,4 @@
-allocInner :: fn (size: u64) *u8 with Allocator -> alloc(size)
+allocInner :: fn (size: u64) *u8 with Allocator -> alloc(size) as *u8
 
 allocOuter :: fn (size: u64) i32 with Allocator {
     buf := allocInner(size)

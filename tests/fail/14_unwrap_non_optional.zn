@@ -1,0 +1,7 @@
+// `or do` (and the whole unwrap family) requires an optional/result base.
+// Unwrapping a plain i32 must be rejected by the semantic analyzer.
+main :: fn (argc: i32) i32 {
+    x: i32 = 5
+    y := x or do 0
+    return y
+}

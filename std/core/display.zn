@@ -12,7 +12,7 @@ pub Reader :: facet {
 
 #lang(writable)
 pub Writable :: facet {
-    sink: fn (Writer) u0
+    sink: fn (Writer) void
 }
 
 Writer self :: impl {
@@ -70,7 +70,7 @@ pub sink_int :: fn (w: Writer, num: i64) {
     w.write(buff.ptr, bytes)
 }
 
-pub sink_bool :: fn (w: Writer, b: u1) {
+pub sink_bool :: fn (w: Writer, b: bool) {
     buff: [32]char
     bytes := io.snprintf(buff.ptr, 31, "%s", if b do "true".ptr else "false".ptr)
     w.write(buff.ptr, bytes)

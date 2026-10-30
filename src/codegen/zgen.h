@@ -10,18 +10,7 @@
 #include "zinc.h"
 #include "zlink.h"
 #include "zvec.h"
-
-#include <llvm-c/Core.h>
-#include <llvm-c/Target.h>
-#include <llvm-c/TargetMachine.h>
-#include <llvm-c/Analysis.h>
-#include <llvm-c/BitWriter.h>
-#include <llvm-c/Error.h>
-#include <llvm-c/Linker.h>
-#include <llvm-c/IRReader.h>
-#include <llvm-c/BitReader.h>
-#include <llvm-c/Transforms/PassBuilder.h>
-#include <stdio.h>
+#include "zmir.h"
 
 #define LABEL_RESET(c) do {                                                     \
     memset(ctx->str, 0, veclen(ctx->str));                                      \
@@ -35,27 +24,27 @@
 
 
 
-typedef struct ZLLVMSymbol {
+typedef struct ZMIRSymbol {
     ZToken *token;
     char *name;
     ZNode *node;
-    LLVMValueRef value;
-    LLVMTypeRef type;
+    ZMIRValueRef value;
+    ZMIRTypeRef type;
     bool isValue;
-} ZLLVMSymbol;
+} ZMIRSymbol;
 
 typedef struct {
     /* The variable stored in the stack. */
-    LLVMValueRef    stack;
+    ZMIRValueRef    stack;
 
     /* the data stored in the stack.
      * It differs from the stack field only for prefixed types like arrays.
      * */
-    LLVMValueRef    elem;
-    LLVMTypeRef     stackType;
-    LLVMTypeRef     elemType;
+    ZMIRValueRef    elem;
+    ZMIRTypeRef     stackType;
+    ZMIRTypeRef     elemType;
     ZNode           *node;
-} ZLLVMStack;
+} ZMIRStack;
 
 typedef enum {
     Z_SCOPE_BLOCK,
@@ -70,58 +59,58 @@ typedef enum {
     Z_PREDICATE_NE,
 } ZPredicate;
 
-typedef struct ZLLVMCapability {
+typedef struct ZMIRCapability {
     ZType           *capability;
-    LLVMValueRef    ref;
-} ZLLVMCapability;
+    ZMIRValueRef    ref;
+} ZMIRCapability;
 
-typedef struct ZLLVMScope {
-    struct ZLLVMScope   *parent;
+typedef struct ZMIRScope {
+    struct ZMIRScope   *parent;
 
-    ZLLVMCapability     **capabilities;
+    ZMIRCapability     **capabilities;
 
-    ZLLVMSymbol         **symbols;
+    ZMIRSymbol         **symbols;
 
     /* Capture the start label of the loop (used by the continue statement). */
-    LLVMBasicBlockRef   startLoop;
+    ZMIRBasicBlockRef   startLoop;
 
     /* Capture the end label of the loop (used by the break statement). */
-    LLVMBasicBlockRef   endLoop;
+    ZMIRBasicBlockRef   endLoop;
 
     /* Capture the block's label. */
-    LLVMBasicBlockRef   breakBlock;
+    ZMIRBasicBlockRef   breakBlock;
 
     /* Capture all stack allocated variables (it is allocated only at function-level). */
-    ZLLVMStack          **stackAlloca;
+    ZMIRStack          **stackAlloca;
 
     /* Captures all defer statements of the current block. */
     ZNode               **defers;
 
     int                 type;
-} ZLLVMScope;
+} ZMIRScope;
 
-typedef struct {
+typedef struct  {
     ZType *type;
-    LLVMValueRef value;
+    ZMIRValueRef value;
 } ZLLVMTypeInfo;
 
 typedef struct {
     ZState                  *state;
     ZModuleAllocator        *module;
-    LLVMContextRef          ctx;
+    ZMIRContextRef          ctx;
 
-    LLVMModuleRef           *modules;
-    LLVMModuleRef           mod;
+    ZMIRModuleRef           *modules;
+    ZMIRModuleRef           mod;
 
-    LLVMBuilderRef          builder;
+    ZMIRBuilderRef          builder;
 
-    ZLLVMScope              *scope;
+    ZMIRScope              *scope;
 
     /* Struct type cache - parallel arrays keyed by name */
     const char              **structNames;
-    LLVMTypeRef             *structTypes;
+    ZMIRTypeRef             *structTypes;
 
-    LLVMValueRef            currentFunc;
+    ZMIRValueRef            currentFunc;
     ZNode                   *currentFuncNode;
 
     /* all operations are named with an incremental number
@@ -139,39 +128,43 @@ typedef struct {
     hashset_t               seenModuleDecls;
     hashset_t               seenModuleDefs;
 
-    LLVMTargetMachineRef    machine;
     ZLLVMTypeInfo           *typeInfos;
 } ZCodegen;
 
-void LLVMAddFuncAttribute(ZCodegen *ctx, LLVMValueRef func, const char *llvmAttr);
 
-LLVMTypeRef genType             (ZCodegen *, ZType *);
-LLVMValueRef genExpr            (ZCodegen *, ZNode *);
-LLVMValueRef genLValue          (ZCodegen *, ZNode *);
-LLVMValueRef genStrLitGlobal    (ZCodegen *, ZToken *);
+void LLVMAddFuncAttribute(ZCodegen *ctx, ZMIRValueRef func, const char *llvmAttr);
 
-LLVMBasicBlockRef makeblock(ZCodegen *, char *);
-void makebr(LLVMBuilderRef, LLVMBasicBlockRef);
-void makecondbr(LLVMBuilderRef, LLVMValueRef, LLVMBasicBlockRef, LLVMBasicBlockRef);
+ZMIRTypeRef genType             (ZCodegen *, ZType *);
+ZMIRValueRef genExpr            (ZCodegen *, ZNode *);
+ZMIRValueRef genLValue          (ZCodegen *, ZNode *);
+ZMIRValueRef genStrLitGlobal    (ZCodegen *, ZToken *);
+
+ZMIRBasicBlockRef makeblock(ZCodegen *, char *);
+void makebr(ZMIRBuilderRef, ZMIRBasicBlockRef);
+void makecondbr(ZMIRBuilderRef, ZMIRValueRef, ZMIRBasicBlockRef, ZMIRBasicBlockRef);
 
 void labelCnt   (ZCodegen *);
 char *labelTok  (ZCodegen *, ZToken *);
 char *labelStr  (ZCodegen *, char *);
 
-void emitPanic(ZCodegen *, ZToken *, LLVMValueRef, const char *);
+void emitPanic(ZCodegen *, ZToken *, ZMIRValueRef, const char *);
 void emitRuntimeError(ZCodegen *, ZToken *, const char *);
 void emitRuntimeDebugPrint(ZCodegen *, ZToken *, const char *);
-void emitRuntimePanic(ZCodegen *, ZToken *, LLVMValueRef);
-void emitBoundCheck(ZCodegen *, ZToken *, LLVMValueRef, LLVMTypeRef, LLVMValueRef);
-void emitNullCheck(ZCodegen *, LLVMValueRef, ZToken *);
-void initializeMemoryToZero(ZCodegen *, LLVMValueRef, LLVMTypeRef);
-void checkUnsafeUnwrap(ZCodegen *, LLVMValueRef, ZType *, ZToken *);
-void checkFacet(ZCodegen *, LLVMValueRef, ZToken *);
-void LLVMBuildTrap(ZCodegen *);
-bool genBuiltin(ZCodegen *, ZNode *, LLVMValueRef *out);
+void emitRuntimePanic(ZCodegen *, ZToken *, ZMIRValueRef);
+void emitBoundCheck(ZCodegen *, ZToken *, ZMIRValueRef, ZMIRTypeRef, ZMIRValueRef);
+void emitNullCheck(ZCodegen *, ZMIRValueRef, ZToken *);
+void initializeMemoryToZero(ZCodegen *, ZMIRValueRef, ZMIRTypeRef);
+void checkUnsafeUnwrap(ZCodegen *, ZMIRValueRef, ZType *, ZToken *);
+void checkFacet(ZCodegen *, ZMIRValueRef, ZToken *);
+bool genBuiltin(ZCodegen *, ZNode *, ZMIRValueRef *out);
 
-LLVMValueRef loadWithNullDeref(ZCodegen *, LLVMTypeRef, LLVMValueRef, ZToken *);
-LLVMValueRef getFlagOptional(ZCodegen *, ZType *, LLVMValueRef);
-LLVMValueRef genTypeType(ZCodegen *, ZNode *);
+ZMIRValueRef loadWithNullDeref(ZCodegen *, ZMIRTypeRef, ZMIRValueRef, ZToken *);
+ZMIRValueRef getFlagOptional(ZCodegen *, ZType *, ZMIRValueRef);
+ZMIRValueRef genTypeType(ZCodegen *, ZNode *);
+
+/* Lowers every module in state->modules to ZMIR, one module per thread.
+ * The result is parallel to state->modules: entry i is NULL when module i
+ * emitted nothing. */
+ZMIRModuleRef *zgenModules(ZState *);
 
 #endif //!Z_GEN

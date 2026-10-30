@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 add :: fn (a: i32, b: i32) i32 -> a + b
@@ -14,7 +14,7 @@ BinOp :: struct  {
 
 BinOp self :: impl {
     invoke :: fn (x: i32, y: i32) i32 -> self.func(x, y)
-    print :: fn (x: i32, y: i32) u0 -> c.printf("%s(%d,%d)=%d\n", self.name.ptr, x, y, self.func(x, y))
+    print :: fn (x: i32, y: i32) void -> c.printf("%s(%d,%d)=%d\n", self.name.ptr, x, y, self.func(x, y))
 }
 
 one     :: fn () i32 -> 1

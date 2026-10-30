@@ -716,14 +716,21 @@ static u8 typeRank(ZTokenType t) {
     }
 }
 
+static inline bool isTypeKind(ZType *t, ZTypeKind kind) {
+    return t && t->kind == kind;
+}
 static inline bool isUnsigned(ZToken *t) { return tokmask(t, TOK_UNSIGNED);  }
 static inline bool isSigned  (ZToken *t) { return tokmask(t, TOK_SIGNED);    }
 static inline bool isFloat   (ZToken *t) { return tokmask(t, TOK_FLOAT);     }
-static inline bool isInteger (ZToken *t) { return isSigned(t) || isUnsigned(t);  }
-static inline bool isPrimitive(ZType *t)    { return t->kind == Z_TYPE_PRIMITIVE;   }
+static inline bool isInteger (ZToken *t) { return isSigned(t) || isUnsigned(t);     }
+static inline bool isPrimitive(ZType *t) { return isTypeKind(t, Z_TYPE_PRIMITIVE);  }
 static inline bool isNumeric(ZType *t) {
     if (!t || !isPrimitive(t)) return false;
     return tokmask(t->primitive.token, (TOK_SIGNED | TOK_UNSIGNED | TOK_FLOAT));
+}
+static inline bool isOptionalPointer(ZType *t) {
+    return  isTypeKind(t,           Z_TYPE_OPTIONAL) &&
+            isTypeKind(t->optional, Z_TYPE_POINTER);
 }
 
 static ZTokenType toSigned(u8 rank) {
@@ -813,10 +820,11 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
     if (typesEqual(from, to)) return to;
 
     if (from->kind == Z_TYPE_OPTIONAL) {
-        return typesCompatible(ctx, from->optional, to);
+        if (isOptionalPointer(from) && isOptionalPointer(to)) return from;
     } else if (to->kind == Z_TYPE_OPTIONAL) {
         return typesCompatible(ctx, from, to->optional);
     }
+
     ZType *interpType   = consts(ctx->state, interpType);
     ZType *strType      = consts(ctx->state, strType);
 
@@ -1791,9 +1799,11 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->tok, Z305C);
     }
 
-    if (veclen(curr->structlit.fields) != veclen(symType->strct.fields)) {
+    usize expectedLen   = veclen(symType->strct.fields);
+    usize gotLen        = veclen(curr->structlit.fields);
+    if (expectedLen != gotLen) {
         if (!query(curr->annotations, "partial")) {
-            zlog(ctx->state, curr->tok, Z3010);
+            zlog(ctx->state, curr->tok, Z3010, expectedLen, gotLen);
         }
     }
 
@@ -1928,6 +1938,9 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 
     ZType *promoted     = typesCompatible(ctx, left, right);
+
+    if (!promoted && tokmask(tok, TOK_BOOL_MASK))
+        promoted        = typesCompatible(ctx, right, left);
 
     if (tok->type == TOK_AND || tok->type == TOK_OR) {
         if (!isComparable(ctx, left))
@@ -2511,7 +2524,11 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             // result->array.size = expr->array.size;
         }
 
-        if (!typesCompatible(ctx, expr, result)) {
+        ZType *castFrom = expr;
+        if (isOptionalPointer(castFrom) && result && result->kind == Z_TYPE_POINTER)
+            castFrom = castFrom->optional;
+
+        if (!typesCompatible(ctx, castFrom, result)) {
             zlog(ctx->state, curr->tok, Z302B, stype(expr), stype(result));
         }
 

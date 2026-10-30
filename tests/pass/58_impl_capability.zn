@@ -5,7 +5,7 @@ Vec :: struct {
 
 Vec :: impl with Allocator {
     new :: fn () *Vec {
-        return alloc(sizeof Vec)
+        return alloc(sizeof Vec) as *Vec
     }
 }
 

@@ -1,0 +1,8 @@
+inline: 1 2 1 2
+not: 0 1
+some and
+none and
+none or
+not some or
+ptr and some
+none or none

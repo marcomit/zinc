@@ -2,10 +2,10 @@
 // `Local` is declared in `foo`, so referencing it from `main` is an error.
 
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
-foo :: fn () u0 {
+foo :: fn () void {
     Local :: struct { a: i32 }
     l := Local { a = 1 }
     c::printf("%d\n", l.a)

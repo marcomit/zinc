@@ -1,7 +1,7 @@
 #import "std/mem"
 
 c :: foreign {
-    pthread_mutex_init      : fn (*u8, ?*u0) i32
+    pthread_mutex_init      : fn (*u8, ?*void) i32
     pthread_mutex_lock      : fn (*u8) i32
     pthread_mutex_unlock    : fn (*u8) i32
     pthread_mutex_destroy   : fn (*u8) i32
@@ -13,14 +13,14 @@ pub Mutex :: struct {
 
 Mutex :: impl {
     pub new :: fn () Mutex with Allocator {
-        handle := alloc(64)
+        handle := alloc(64)!
         c.pthread_mutex_init(handle, none)
         return .{ handle }
     }
 }
 
 Mutex self :: impl {
-    pub lock    :: fn () u0 { c.pthread_mutex_lock(self.handle)   }
-    pub unlock  :: fn () u0 { c.pthread_mutex_unlock(self.handle) }
-    pub destroy :: fn () u0 { c.pthread_mutex_destroy(self.handle)}
+    pub lock    :: fn () void { c.pthread_mutex_lock(self.handle)   }
+    pub unlock  :: fn () void { c.pthread_mutex_unlock(self.handle) }
+    pub destroy :: fn () void { c.pthread_mutex_destroy(self.handle)}
 }

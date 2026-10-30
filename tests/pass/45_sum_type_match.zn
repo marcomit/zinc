@@ -1,5 +1,5 @@
 c :: foreign {
-    printf : fn (*char, ..) u0
+    printf : fn (*char, ..) void
 }
 
 pick :: fn (n: i32) i32 | ([]char) | f32 {
@@ -8,7 +8,7 @@ pick :: fn (n: i32) i32 | ([]char) | f32 {
                 else n
 }
 
-show :: fn (val: i32 | ([]char) | f32) u0 {
+show :: fn (val: i32 | ([]char) | f32) void {
     match val {
         i32(num)    -> c.printf("i32:%d\n", num),
         []char(msg) -> c.printf("str:%s\n", msg.ptr),
