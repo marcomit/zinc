@@ -3655,6 +3655,12 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
         case NODE_TYPEDEF:      putTypedef  (ctx, node);       break;
         case NODE_FACET:        putFacet    (ctx, node);       break;
         case NODE_IMPL:         putImpl     (ctx, node);       break;
+        case NODE_VAR_DECL:
+            putRawSymbol(
+                ctx, Z_SYM_VAR, node->varDecl.pattern->ident,
+                node->resolved, node, true
+            );
+            break;
 
         case NODE_FOREIGN: {
             ZSymType kind = node->resolved->kind == Z_TYPE_FUNCTION ? Z_SYM_FUNC : Z_SYM_VAR;

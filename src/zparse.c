@@ -1097,12 +1097,9 @@ static ZType *parseAtom(ZParser *parser) {
 
 static ZType *parseBaseType(ZParser *parser) {
     ZToken *start   = peek(parser);
-    bool constant   = match(parser, TOK_CONST);
 
     ZType *base     = tryParse(parser, parseAtom(parser));
     ensure(base, "Failed to parse atom type");
-
-    base->constant  = constant;
 
     if (check(parser, TOK_LSBRACKET)) {
         // Generic type instantiation like List[int] or Map[str, int]
@@ -3402,7 +3399,7 @@ static ZNode *parseFacet(ZParser *parser, ZAnnotation **annotations, bool public
     return setspan(parser, facet, start);
 }
 
-static ZNode *parseConst(ZParser *parser) {
+static ZNode *parseConst(ZParser *parser, bool public) {
     ZToken *start = peek(parser);
 
     expect(parser, TOK_IDENT);
@@ -3411,7 +3408,9 @@ static ZNode *parseConst(ZParser *parser) {
     ZNode *expr = parseExpr(parser);
 
     ZVarDestructPattern *pattern = makeDestructIdent(parser->allocator, start);
-    return setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
+    ZNode *var = setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
+    var->varDecl.pub = public;
+    return var;
 }
 
 static ZNode *parseImport(ZParser *parser, bool public) {
@@ -3494,7 +3493,7 @@ static ZNode *parse(ZParser *parser) {
         res = tryParse(parser, parseImport(parser, public));
         if (res) break;
 
-        res = parseConst(parser);
+        res = parseConst(parser, public);
         if (res) break;
 
         zlog(parser->state, peek(parser), Z203B, stoken(peek(parser)));
