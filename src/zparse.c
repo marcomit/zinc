@@ -1473,13 +1473,12 @@ static ZNode *parseStructField(ZParser *parser) {
 
     ZToken *start = peek(parser);
     if (match(parser, TOK_DOUBLE_DOT)) {
-        if (!check(parser, TOK_IDENT)) {
+        ZType *type = parseType(parser);
+        if (!type) {
             zlog(parser->state, peek(parser), Z2017);
             return NULL;
         }
         ZNode *node             = makenode(parser->allocator, NODE_EMBED_FIELD);
-        ZType *type             = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
-        type->primitive.token   = consume(parser);
         node->resolved          = type;
         return setspan(parser, node, start);
     } else {

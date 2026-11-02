@@ -14,8 +14,6 @@
 #include "zinc.h"
 #include "zlink.h"
 
-#include "zmap.h"
-
 #include <stdarg.h>
 
 /* ========== ZMIR -> LLVM ========== */

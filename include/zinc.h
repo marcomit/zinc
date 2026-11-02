@@ -8,6 +8,7 @@
 #include "zarena.h"
 #include "zvec.h"
 #include "zhset.h"
+#include "zmap.h"
 #include "zmem.h"
 
 #include <stdatomic.h>
@@ -623,6 +624,7 @@ struct ZNode {
             // ZNode   *ident; // It is a NODE_IDENTIFIER
             ZNode   *rvalue; // Null if not initialized (zero-initialized unless 'uninit')
             bool    uninit;  // 'x: T = ?' - explicitly left uninitialized, no zero-init
+            bool    pub;
         } varDecl;
 
         struct {
