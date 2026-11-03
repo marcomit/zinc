@@ -57,7 +57,7 @@ static void checkFunctionUsedAsValue(ZThreadSem *, ZNode *);
 static ZFuncTable *resolveFuncTable (ZThreadSem *, ZType *);
 static ZType *resolveType           (ZThreadSem *, ZNode *, ZType *);
 static ZSymbol *resolve             (ZThreadSem *, ZToken *);
-static ZType *typesCompatible       (ZThreadSem *, ZType *, ZType *);
+static ZCastInfo typesCompatible    (ZThreadSem *, ZType *, ZType *);
 static ZType *resolveLiteralType    (ZThreadSem *, ZToken *, ZType *);
 static ZType *resolveEnumLit        (ZThreadSem *, ZNode *, ZType *);
 static ZSymbol *resolveModuleChain (ZThreadSem *, ZToken **, usize *);
@@ -784,6 +784,22 @@ static bool isZeroable(ZThreadSem *ctx, ZType *type) {
     }
 }
 
+static ZType *implicitStructFieldCast(ZThreadSem *ctx, ZType *strct, ZType *to) {
+    if (!strct || strct->kind != Z_TYPE_STRUCT) return NULL;
+    if (typesEqual(strct, to)) return strct;
+    for (usize i = 0; i < veclen(strct->strct.fields); i++) {
+        ZNode *field = strct->strct.fields[i];
+        if (!field) continue;
+        if (!query(field->annotations, "as")) continue;
+        if (typesEqual(field->resolved, to)) return field->resolved;
+        if (field->type == NODE_EMBED_FIELD) {
+            ZType *res = implicitStructFieldCast(ctx, field->resolved, to);
+            if (res) return res;
+        }
+    }
+    return NULL;
+}
+
 /* An implementation note:
  * if a and b are pointers the returned type is a (used for implicit casting).
  * if a or b is a float the return type is always a float.
@@ -793,36 +809,44 @@ static bool isZeroable(ZThreadSem *ctx, ZType *type) {
  *
  * Note: this function does not work if a primitive type is aliased.
  * */
-static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
-    if (!from || !to) return NULL;
+static ZCastInfo typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
+    #define CAST(k, p) (ZCastInfo) { .from=from, .to=to, .kind=k, .promoted=p }
+
+    return (ZCastInfo){
+        .from=from, .to=to, .kind=Z_CAST_INVALID, .promoted=NULL
+    };
+
+    if (!from || !to) return CAST(Z_CAST_INVALID, NULL);
 
     if (to->kind == Z_TYPE_NONE && isZeroable(ctx, from)) {
-        return from;
+        return CAST(Z_CAST_NONE, from);
     } else if (from->kind == Z_TYPE_NONE && isZeroable(ctx, to)) {
-        return to;
+        return CAST(Z_CAST_NONE, to);
     }
 
     if (to->kind == Z_TYPE_FACET        &&
         from->kind == Z_TYPE_POINTER    &&
         satisfyFacet(ctx, from, to)     )
-        return from;
+        return CAST(Z_CAST_FACET, from);
 
     if (to->kind == Z_TYPE_POINTER      &&
         from->kind == Z_TYPE_ARRAY      )
-        return to;
+        return CAST(Z_CAST_ARRAY_PTR, to);
 
     if (from->kind == Z_TYPE_POINTER && to->kind == Z_TYPE_POINTER)
-        return from;
+        return CAST(Z_CAST_POINTER, from);
 
     if (from->kind == Z_TYPE_TYPE && to->kind == Z_TYPE_TYPE)
-        return from;
+        return CAST(Z_CAST_NOOP, from);
 
-    if (typesEqual(from, to)) return to;
+    if (typesEqual(from, to)) return CAST(Z_CAST_NOOP, to);
 
     if (from->kind == Z_TYPE_OPTIONAL) {
-        if (isOptionalPointer(from) && isOptionalPointer(to)) return from;
+        if (isOptionalPointer(from) && isOptionalPointer(to))
+            return CAST(Z_CAST_OPTIONAL, from);
     } else if (to->kind == Z_TYPE_OPTIONAL) {
-        return typesCompatible(ctx, from, to->optional);
+        ZCastInfo c = typesCompatible(ctx, from, to->optional);
+        return CAST(Z_CAST_OPTIONAL, c.promoted);
     }
 
     ZType *interpType   = consts(ctx->state, interpType);
@@ -842,53 +866,62 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
     if (typesEqual(to, interpType)) {
         ZNode *writable = LangItems[Z_LANG_WRITABLE];
         if (typesEqual(from, strType)) {
-            return interpType;
+            return CAST(Z_CAST_INTERP, interpType);
         } else if (writable && satisfyFacet(ctx, from, writable->resolved)) {
-            return interpType;
+            return CAST(Z_CAST_INTERP, interpType);
         }
     }
     if (typesEqual(from, strType)) {
         if (typesEqual(to, interpType)) {
-            return interpType;
+            return CAST(Z_CAST_INTERP, interpType);
         }
     }
 
     if (to->kind == Z_TYPE_SUM) {
         for (usize i = 0; i < veclen(to->sumType); i++)
-            if (typesEqual(from, to->sumType[i])) return to;
+            if (typesEqual(from, to->sumType[i]))
+                return CAST(Z_CAST_SUM, to);
     }
     if (from->kind == Z_TYPE_SUM) {
         for (usize i = 0; i < veclen(from->sumType); i++)
-            if (typesEqual(to, from->sumType[i])) return from;
+            if (typesEqual(to, from->sumType[i]))
+                return CAST(Z_CAST_SUM, from);
+    }
+
+    if (from->kind == Z_TYPE_STRUCT) {
+        ZType *field = implicitStructFieldCast(ctx, from, to);
+        return CAST(Z_CAST_FIELD, field);
     }
 
     if (from->kind != Z_TYPE_PRIMITIVE || to->kind != Z_TYPE_PRIMITIVE)
-        return NULL;
+        return CAST(Z_CAST_INVALID, NULL);
 
     ZToken *tokA    = from->primitive.token;
     ZToken *tokB    = to->primitive.token;
     ZTokenType ta   = tokA->type;
     ZTokenType tb   = tokB->type;
 
-    if (ta == TOK_VOID || tb == TOK_VOID) return NULL;
+    if (ta == TOK_VOID || tb == TOK_VOID)
+        return CAST(Z_CAST_INVALID, NULL);
 
     u8 ra = typeRank(ta);
     u8 rb = typeRank(tb);
 
     if (isFloat(tokA) || isFloat(tokB)) {
-        return ra > rb ? from : to;
+        return CAST(Z_CAST_NUMERIC, ra > rb ? from : to);
     }
 
     if ((isSigned(tokA) && isSigned(tokB)) ||
         (isUnsigned(tokA) && isUnsigned(tokB)))
-        return ra > rb ? from : to;
+        return CAST(Z_CAST_NUMERIC, ra > rb ? from : to);
 
     /* signed vs unsigned */
     u8    signedRank   = isSigned(tokA) ? ra : rb;
     u8    unsignedRank = isSigned(tokA) ? rb : ra;
     ZType *signedType  = isSigned(tokA) ? from  : to;
 
-    if (signedRank > unsignedRank) return signedType;
+    if (signedRank > unsignedRank)
+        return CAST(Z_CAST_NUMERIC, signedType);
 
     // if (signedRank == 4) {
     //     zlog(ctx->state, signedType->tok,
@@ -898,7 +931,7 @@ static ZType *typesCompatible(ZThreadSem *ctx, ZType *from, ZType *to) {
     ZType *promoted             = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
     promoted->primitive.token   = makeTokenThread(ctx, toSigned(signedRank + 1), NULL);
     promoted->tok               = from->tok;
-    return promoted;
+    return CAST(Z_CAST_NUMERIC, promoted);
 }
 
 bool isVoid(ZType *t) {
@@ -1058,17 +1091,17 @@ i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
     return -1;
 }
 
-static ZNode *implicitCast(ZThreadSem *ctx, ZNode *node, ZType *type) {
+static ZNode *implicitCast(ZThreadSem *ctx, ZNode *node, ZCastInfo info) {
     (void)ctx;
     if (!node) return node;
-    if (node->resolved && typesEqual(node->resolved, type)) {
+    if (node->resolved && typesEqual(node->resolved, info.promoted)) {
         return node;
     }
 
     ZNode *cast             = makeNodeThread(ctx, NODE_CAST);
     cast->castExpr.expr     = node;
-    cast->castExpr.toType   = type;
-    cast->resolved          = type;
+    cast->resolved          = info.promoted;
+    cast->castExpr.info     = info;
     cast->tok               = node->tok;
     return cast;
 }
@@ -1581,17 +1614,17 @@ static void resolveFuncArgs(
         /* if they are equal they don't need implicit casting. */
         if (typesEqual(args[i]->resolved, expected)) continue;
 
-        ZType *promoted = typesCompatible(
+        ZCastInfo cast = typesCompatible(
             ctx, args[i]->resolved, expected);
 
-        if (!promoted) {
+        if (!cast.promoted) {
             zlog(ctx->state, args[i]->tok,
                 Z0009,
                 stype(expected),
                 stype(args[i]->resolved)
             );
         }
-        args[i] = implicitCast(ctx, args[i], expected);
+        args[i] = implicitCast(ctx, args[i], cast);
     }
 
     for (usize i = expectedArgsLen; i < veclen(args); i++) {
@@ -1818,7 +1851,6 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
 
         ZType *expectedType = resolveTypeRef(ctx, structField->field.type);
         ZType *type         = resolveType(ctx, field->varDecl.rvalue, expectedType);
-        ZType *promoted     = NULL;
 
         if (!type) {
             zlog(ctx->state, field->varDecl.rvalue->tok, Z00A2);
@@ -1835,8 +1867,8 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             return NULL;
         }
         structField->field.type = expectedType;
-        promoted = typesCompatible(ctx, type, expectedType);
-        if (!promoted) {
+        ZCastInfo cast = typesCompatible(ctx, type, expectedType);
+        if (!cast.promoted) {
             zlog(ctx->state,
                 field->tok,
                 Z0009,
@@ -1913,13 +1945,14 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->binary.left->tok, Z3018);
             return NULL;
         }
-        if (!typesCompatible(ctx, left, right)) {
+        ZCastInfo cast = typesCompatible(ctx, left, right);
+        if (!cast.promoted) {
             zlog(ctx->state, curr->binary.op, Z3019, stype(left), stype(right));
             return NULL;
         }
         /* The result and the stored value keep the type of the lhs:
          * only the rhs is coerced, the lhs must stay a plain lvalue. */
-        curr->binary.right = implicitCast(ctx, curr->binary.right, left);
+        curr->binary.right = implicitCast(ctx, curr->binary.right, cast);
         return left;
     }
 
@@ -1929,18 +1962,18 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         if (!isLvalue(curr->binary.left)) {
             zlog(ctx->state, curr->binary.left->tok, Z3018);
         }
-        if (!typesCompatible(ctx, right, left)) {
+        ZCastInfo cast = typesCompatible(ctx, right, left);
+        if (!cast.promoted) {
             zlog(ctx->state, curr->binary.op, Z3019, stype(left), stype(right));
         }
         /* Assignment yields the type of the left-hand side. */
-        curr->binary.right = implicitCast(ctx, curr->binary.right, left);
+        curr->binary.right = implicitCast(ctx, curr->binary.right, cast);
         return left;
     }
 
-    ZType *promoted     = typesCompatible(ctx, left, right);
-
-    if (!promoted && tokmask(tok, TOK_BOOL_MASK))
-        promoted        = typesCompatible(ctx, right, left);
+    ZCastInfo info  = typesCompatible(ctx, left, right);
+    if (!info.promoted && tokmask(tok, TOK_BOOL_MASK))
+        info        = typesCompatible(ctx, right, left);
 
     if (tok->type == TOK_AND || tok->type == TOK_OR) {
         if (!isComparable(ctx, left))
@@ -1950,11 +1983,11 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return consts(ctx->state, u1Type);
     }
 
-    if (!promoted) {
+    if (!info.promoted) {
         zlog(ctx->state, curr->binary.op, Z3019, stype(left), stype(right));
     }
-    curr->binary.left = implicitCast(ctx, curr->binary.left, promoted);
-    curr->binary.right = implicitCast(ctx, curr->binary.right, promoted);
+    curr->binary.left = implicitCast(ctx, curr->binary.left, info);
+    curr->binary.right = implicitCast(ctx, curr->binary.right, info);
 
     if (tokmask(tok, TOK_BOOL_MASK)) {
         return consts(ctx->state, u1Type);
@@ -1977,9 +2010,9 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             !isNumeric(curr->binary.right->resolved)) {
             zlog(ctx->state, curr->tok, Z301A);
         }
-        return promoted;
+        return info.promoted;
     }
-    default: return promoted;
+    default: return info.promoted;
     }
 }
 
@@ -1999,8 +2032,8 @@ static ZType *resolveArrayLiteral(ZThreadSem *ctx, ZNode *curr, ZType *inferred)
         if (!arrType) {
             arrType = fieldType;
         } else {
-            arrType = typesCompatible(ctx, arrType, fieldType);
-
+            ZCastInfo info = typesCompatible(ctx, arrType, fieldType);
+            arrType = info.promoted;
             if (!arrType) {
                 ZToken *tok = fieldType ? fieldType->tok : NULL;
                 zlog(ctx->state, tok, Z301B);
@@ -2317,13 +2350,13 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     switch (curr->unwrap.kind) {
     case UNWRAP_DO: {
         ZType *orelse = resolveType(ctx, curr->unwrap.orExpr, inferred);
-        ZType *promoted = typesCompatible(ctx, orelse, success);
-        if (!promoted) {
+        ZCastInfo info = typesCompatible(ctx, orelse, success);
+        if (!info.promoted) {
             zlog(ctx->state, curr->unwrap.orExpr->tok,
                 Z0009, stype(success), stype(orelse));
             return NULL;
         }
-        curr->unwrap.orExpr = implicitCast(ctx, curr->unwrap.orExpr, success);
+        curr->unwrap.orExpr = implicitCast(ctx, curr->unwrap.orExpr, info);
         return success;
         break;
     }
@@ -2334,9 +2367,10 @@ static ZType *resolveUnwrap(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->tok, Z3026);
             return success;
         } else if (ctx->currentFuncRet->kind == Z_TYPE_RESULT && isResult) {
-            if (!typesCompatible(ctx,
+            ZCastInfo info = typesCompatible(ctx,
                     base->result.error,
-                    ctx->currentFuncRet->result.error)) {
+                    ctx->currentFuncRet->result.error);
+            if (!info.promoted) {
                 zlog(ctx->state, curr->tok,
                     Z3027,
                     stype(ctx->currentFuncRet->result.error),
@@ -2494,13 +2528,13 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->binary.right->tok, Z3029);
         }
 
-        ZType *promoted = typesCompatible(ctx, left, right);
-        if (!promoted) {
+        ZCastInfo info = typesCompatible(ctx, left, right);
+        if (!info.promoted) {
             zlog(ctx->state, curr->tok, Z302A, stype(left), stype(right));
         } else {
-            result = promoted;
-            curr->binary.left = implicitCast(ctx, curr->binary.left, promoted);
-            curr->binary.right = implicitCast(ctx, curr->binary.right, promoted);
+            result = info.promoted;
+            curr->binary.left = implicitCast(ctx, curr->binary.left, info);
+            curr->binary.right = implicitCast(ctx, curr->binary.right, info);
         }
         break;
     }
@@ -2517,7 +2551,7 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     case NODE_CAST: {
         /* Resolve the inner expression type (for side-effects / validation). */
         ZType *expr = resolveType(ctx, curr->castExpr.expr, inferred);
-        result = resolveTypeRef(ctx, curr->castExpr.toType);
+        result = resolveTypeRef(ctx, curr->castExpr.info.to);
 
         if (expr && expr->kind == Z_TYPE_ARRAY &&
             result->kind == Z_TYPE_ARRAY) {
@@ -2528,11 +2562,12 @@ static ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         if (isOptionalPointer(castFrom) && result && result->kind == Z_TYPE_POINTER)
             castFrom = castFrom->optional;
 
-        if (!typesCompatible(ctx, castFrom, result)) {
+        ZCastInfo cast = typesCompatible(ctx, castFrom, result);
+        if (!cast.promoted) {
             zlog(ctx->state, curr->tok, Z302B, stype(expr), stype(result));
         }
 
-        curr->castExpr.toType = result;
+        curr->castExpr.info = cast;
         break;
     }
 
@@ -3254,7 +3289,6 @@ static bool isType(ZType *type, ZTokenType tok) {
 
 static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
     ZType *retType  = NULL;
-    ZType *promoted = NULL;
 
     if (curr->returnStmt.expr) {
         retType     = resolveType(ctx, curr->returnStmt.expr, ctx->currentFuncRet);
@@ -3280,16 +3314,17 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
     } else if (!isVoid && !sumAcceptVoid && isVoidRet) {
         zlog(ctx->state, ctx->currentFunc->tok, Z3045, ctx->currentFuncRet);
     } else if (!isVoid && !sumAcceptVoid && !isVoidRet) {
-        promoted = typesCompatible(
+        ZCastInfo cast = typesCompatible(
             ctx, retType, ctx->currentFuncRet
         );
 
         if (ctx->currentFuncRet->kind == Z_TYPE_OPTIONAL) {
             curr->returnStmt.expr = implicitCast(ctx,
                 curr->returnStmt.expr,
-                ctx->currentFuncRet
+                cast
             );
             curr->resolved = ctx->currentFuncRet;
+
             if (retType->kind == Z_TYPE_NONE ||
                 typesCompatible(ctx, retType, ctx->currentFuncRet->optional))
                 return;
@@ -3297,7 +3332,7 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
 
         }
 
-        if (!promoted) {
+        if (!cast.promoted) {
             zlog(ctx->state, curr->tok,
                 Z0009,
                 stype(ctx->currentFuncRet),

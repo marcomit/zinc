@@ -2610,6 +2610,13 @@ static ZMIRValueRef castToOptional(ZCodegen *ctx, ZNode *node) {
     );
 }
 
+static ZMIRValueRef castStructField(ZCodegen *ctx, ZMIRValueRef val, ZType *from, ZType *to) {
+    if (!from || from->kind != Z_TYPE_STRUCT) return NULL;
+    if (typesEqual(from, to)) return val;
+
+    return NULL;
+}
+
 static ZMIRValueRef genCast(ZCodegen *ctx, ZNode *node) {
     ZType *from = node->castExpr.expr->resolved;
     ZType *to   = node->castExpr.toType;
@@ -2705,6 +2712,10 @@ static ZMIRValueRef genCast(ZCodegen *ctx, ZNode *node) {
     }
 
     ZMIRValueRef val = genExpr(ctx, node->castExpr.expr);
+    if (from->kind == Z_TYPE_STRUCT) {
+        return castStructField(ctx, val, from, to);
+    }
+
     return castValue(ctx, val, from, to);
 }
 

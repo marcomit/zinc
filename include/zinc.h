@@ -553,6 +553,28 @@ struct ZAnnotation {
     bool                used;
 };
 
+typedef enum {
+    Z_CAST_INVALID,
+    Z_CAST_NOOP,
+    Z_CAST_NUMERIC,
+    Z_CAST_POINTER,
+    Z_CAST_NONE,
+    Z_CAST_ARRAY_PTR,
+    Z_CAST_ARRAY_LIT,
+    Z_CAST_OPTIONAL,
+    Z_CAST_SUM,
+    Z_CAST_FACET,
+    Z_CAST_INTERP,
+    Z_CAST_FIELD
+} ZCastKind;
+
+typedef struct {
+    ZType       *from;
+    ZType       *to;
+    ZType       *promoted;
+    ZCastKind   kind;
+} ZCastInfo;
+
 struct ZNode {
     ZNodeType       type;
     ZType           *resolved;
@@ -811,8 +833,9 @@ struct ZNode {
         } identNode;
 
         struct {
-            ZType           *toType;
             ZNode           *expr;
+            u32             *fieldPath;
+            ZCastInfo       info;
         } castExpr;
 
         struct {
