@@ -599,7 +599,7 @@ static ZNode *parseCast(ZParser *parser, ZNode *previous) {
 
     ZNode *node = makenode(parser->allocator, NODE_CAST);
     node->castExpr.expr = previous;
-    node->castExpr.toType = type;
+    node->castExpr.info.to = type;
     node->tok = previous->tok;
     return setspanfrom(parser, node, previous);
 }
