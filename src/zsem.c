@@ -735,11 +735,11 @@ static inline bool isOptionalPointer(ZType *t) {
 
 static ZTokenType toSigned(u8 rank) {
     switch (rank) {
-    case 1: return TOK_I8;
-    case 2: return TOK_I16;
-    case 3: return TOK_I32;
-    case 4: return TOK_I64;
-    default: return TOK_I32;
+    case 1:     return TOK_I8;
+    case 2:     return TOK_I16;
+    case 3:     return TOK_I32;
+    case 4:
+    default:    return TOK_I64;
     }
 }
 
@@ -1997,6 +1997,13 @@ static ZType *resolveBinary(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
             zlog(ctx->state, curr->binary.op, Z3019, stype(left), stype(right));
         }
         /* Assignment yields the type of the left-hand side. */
+        curr->binary.right = implicitCast(ctx, curr->binary.right, left);
+        return left;
+    }
+
+    if (op == TOK_BITL || op == TOK_BITR) {
+        /* A shift keeps the type of the shifted value: the amount must not
+         * widen it or change its signedness. conn4 aaaaaaaaaaaaa */
         curr->binary.right = implicitCast(ctx, curr->binary.right, left);
         return left;
     }
