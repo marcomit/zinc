@@ -1,0 +1,372 @@
+WIN_SCORE :: 100000
+
+bitboard :: type u64
+
+GameStatus :: enum {
+    Playing
+    Draw
+    Win(Cell)
+}
+
+Cell :: enum {
+    White
+    Black
+    Empty
+}
+
+Board :: struct {
+    white: bitboard
+    black: bitboard
+    turn: Cell
+}
+
+Player :: facet {
+    move: fn (*Board) i32
+}
+
+Board :: impl {
+    new :: fn () *Board with Allocator {
+        self: *Board = alloc(sizeof Board)!
+        self.white = 0
+        self.black = 0
+        self.turn = .White
+        return self
+    }
+}
+
+#inline(always)
+shift :: fn (bit: u64) u64 -> (1 as u64) << bit
+
+#inline is_draw :: fn () bool with b: *Board {
+    full: u64 = shift(42) - 1
+    return (b.white | b.black) == full
+}
+
+check_win :: fn (b: bitboard) bool {
+    // Built from pieces: literals wider than 32 bits are currently truncated.
+    files_0_3: u64 = ((0x78F1E3 as u64) << 16) | 0xC78F
+    files_3_6: u64 = files_0_3 << 3
+
+    v := b & (b >> 7)
+    if v & (v >> 14) return true
+
+    h := b & (b >> 1)
+    if h & (h >> 2) & files_0_3 return true
+
+    d1 := b & (b >> 6)
+    if d1 & (d1 >> 12) & files_3_6 return true
+
+    d2 := b & (b >> 8)
+    if d2 & (d2 >> 16) & files_0_3 return true
+
+    return false
+}
+
+get_cell :: fn (p: i32) Cell with b: *Board {
+    if b.white & (shift(p)) return .White
+    if b.black & (shift(p)) return .Black
+    return .Empty
+}
+
+get_col :: fn (col: i32) i32 with b: *Board {
+    if col < 0 or col > 6 return -1
+    merged: u64 = b.white | b.black
+    for i in 0..6 {
+        if (merged & (shift(i * 7 + col))) == 0 return i
+    }
+    return -1
+}
+
+set_cell :: fn (p: i32, val: Cell) with b: *Board {
+    match val {
+        .White {
+            b.white |= shift(p)
+        },
+        .Black {
+            b.black |= shift(p)
+        },
+        .Empty {
+            b.white &= ~shift(p)
+            b.black &= ~shift(p)
+        }
+    }
+}
+
+toggle_cell :: fn (player: Cell) Cell {
+    match player {
+        .White { return .Black },
+        .Black { return .White },
+        .Empty { return .Empty }
+    }
+    return .Empty
+}
+
+make_move :: fn (c: i32) i32 with b: *Board {
+    r := get_col(c)
+    if r == -1 return -1
+
+    m := r * 7 + c
+    if .White := b.turn {
+        b.white |= shift(m)
+    } else {
+        b.black |= shift(m)
+    }
+    b.turn = toggle_cell(b.turn)
+    return m
+}
+
+unmake_move :: fn (p: i32) with b: *Board {
+    b.white &= ~shift(p)
+    b.black &= ~shift(p)
+    b.turn = toggle_cell(b.turn)
+}
+
+get_status :: fn () GameStatus with b: *Board {
+    if check_win(b.white) return .Win(.White)
+    if check_win(b.black) return .Win(.Black)
+    if is_draw() return .Draw
+
+    return .Playing
+}
+
+is_valid_move :: fn (m: i32) bool {
+    return m >= 0 and m < 42
+}
+
+#inline eval_window :: fn (window: []Cell, player: Cell, opponent: Cell) i64 {
+    current: u8 = 0
+    opp: u8 = 0
+    empty: u8 = 0
+    score: i64 = 0
+
+    for cell in window {
+        if cell.tag == player.tag {
+            current += 1
+        } else if cell.tag == opponent.tag {
+            opp += 1
+        } else {
+            empty += 1
+        }
+    }
+
+    if current == 4 {
+        score += 10000
+    } else if (current == 3 and empty == 1) {
+        score += 5
+    } else if (current == 2 and empty == 2) {
+        score += 2
+    }
+
+    if opp == 3 and empty == 1 {
+        score -= 80
+    }
+    return score
+}
+
+eval_score :: fn (player: Cell) i64 with *Board {
+    opponent := toggle_cell(player)
+
+    center_cnt := 0
+    for i in 0..6 {
+        if get_cell(i * 7 + 3).tag == player.tag {
+            center_cnt += 1
+        }
+    }
+    score: i64 = center_cnt * 3
+
+    window: [4]Cell
+    for r in 0..6 {
+        for c in 0..4 {
+            window[0] = get_cell(r * 7 + c)
+            window[1] = get_cell(r * 7 + c + 1)
+            window[2] = get_cell(r * 7 + c + 2)
+            window[3] = get_cell(r * 7 + c + 3)
+            score += eval_window(window, player, opponent)
+        }
+    }
+
+    for c in 0..7 {
+        for r in 0..3 {
+            window[0] = get_cell(r * 7 + c)
+            window[1] = get_cell(r * 7 + c + 7)
+            window[2] = get_cell(r * 7 + c + 14)
+            window[3] = get_cell(r * 7 + c + 21)
+            score += eval_window(window, player, opponent)
+        }
+    }
+
+    for r in 0..3 {
+        for c in 0..4 {
+            window[0] = get_cell(r * 7 + c)
+            window[1] = get_cell(r * 7 + c + 8)
+            window[2] = get_cell(r * 7 + c + 16)
+            window[3] = get_cell(r * 7 + c + 24)
+            score += eval_window(window, player, opponent)
+        }
+    }
+
+    for r in 3..6 {
+        for c in 0..4 {
+            window[0] = get_cell(r * 7 + c)
+            window[1] = get_cell(r * 7 + c - 6)
+            window[2] = get_cell(r * 7 + c - 12)
+            window[3] = get_cell(r * 7 + c - 18)
+            score += eval_window(window, player, opponent)
+        }
+    }
+    return score
+}
+
+eval_terminal :: fn (score: *i64, player: Cell, depth: i32) bool with *Board {
+    match get_status() {
+        .Draw { *score = 0 return true },
+        .Win(c) {
+            if player.tag == c.tag {
+                *score = WIN_SCORE + depth
+            } else {
+                *score = -WIN_SCORE - depth
+            }
+            return true
+        },
+        .Playing {
+            if depth != 0 return false
+        }
+    }
+    *score = eval_score(player)
+    return true
+}
+
+#inline(always)
+max :: fn (a: i64, b: i64) i64 {
+    return if a > b do a else b
+}
+
+#inline(always)
+min :: fn (a: i64, b: i64) i64 {
+    if a < b { return a } else { return b }
+}
+
+eval_min :: fn (player: Cell, depth: i32, alpha: i64, beta: i64) i64 with *Board {
+    score: i64
+    if eval_terminal(&score, player, depth) return score
+
+    score = 2 * WIN_SCORE
+
+    for i in 0..7 {
+        pos := make_move(i)
+        if not is_valid_move(pos) continue
+        child := eval_max(player, depth - 1, alpha, beta)
+        unmake_move(pos)
+
+        score = min(score, child)
+        if score <= alpha return score
+        beta = min(beta, score)
+    }
+    return score
+}
+
+eval_max :: fn (player: Cell, depth: i32, alpha: i64, beta: i64) i64 with *Board {
+    score: i64
+    if eval_terminal(&score, player, depth) return score
+
+    score = -2 * WIN_SCORE
+
+    for i in 0..7 {
+        pos := make_move(i)
+        if not is_valid_move(pos) continue
+        child := eval_min(player, depth - 1, alpha, beta)
+        unmake_move(pos)
+
+        score = max(score, child)
+        if score >= beta return score
+        alpha = max(alpha, score)
+    }
+    return score
+}
+
+OptimalPlayer :: struct { depth: i32 }
+*OptimalPlayer self :: impl(Player) {
+    move :: fn (b: *Board) i32 {
+        player := b.turn
+        col: i32 = -1
+        max_score := -2 * WIN_SCORE
+        with b {
+            for i in 0..7 {
+                pos := make_move(i)
+                if not is_valid_move(pos) continue
+                child := eval_min(player, self.depth, max_score, 2 * WIN_SCORE)
+                unmake_move(pos)
+
+                if child > max_score {
+                    col = i
+                    max_score = child
+                }
+            }
+        }
+        return col
+    }
+}
+
+scanf :: foreign fn (*char, ..) i32
+printf :: foreign fn (*char, ..) void
+HumanPlayer :: struct { }
+*HumanPlayer self :: impl(Player) {
+    move :: fn (_: *Board) i32 {
+        col: i32 = ?
+        printf("user: ")
+        if scanf("%d", &col) != 1 return -1
+        return col
+    }
+}
+
+print_board :: fn () with *Board {
+    for r in 0..6 {
+        row := 5 - r
+        for col in 0..7 {
+            match get_cell(row * 7 + col) {
+                .White { printf("X ") },
+                .Black { printf("O ") },
+                .Empty { printf(". ") }
+            }
+        }
+        printf("\n")
+    }
+}
+
+game_loop :: fn (white: Player, black: Player) with Allocator, b: *Board {
+    players: [2]Player = [white, black]
+    current := 0
+
+    for .Playing := get_status() {
+        col := players[current].move(b)
+        if col < 0 {
+            printf("No input, quitting\n")
+            return
+        }
+        if make_move(col) == -1 {
+            printf("Invalid column %d\n", col)
+            continue
+        }
+        printf("col: %d\n", col)
+        print_board()
+        current = (current + 1) % players.len
+    }
+
+    status := get_status()
+    if .Win(c) := status {
+        if .White := c { printf("X wins\n") } else { printf("O wins\n") }
+    } else {
+        printf("Draw\n")
+    }
+}
+
+main :: fn () i32 {
+    ai := OptimalPlayer{ depth = 10 }
+    human := HumanPlayer{}
+    with GeneralPurposeAllocator.new() {
+        with Board.new() {
+            game_loop(&human, &ai)
+        }
+    }
+    return 0
+}

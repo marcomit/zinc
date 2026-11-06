@@ -40,7 +40,7 @@ static ZVMStackRef makestack(Allocator *a) {
     void *buffer = NULL;
     usize size = DEFAULT_STACK_SIZE;
     #if defined(_WIN32)
-    buffer = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE | PAGE_READWRITE);
+    buffer = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     #else
     buffer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     #endif
