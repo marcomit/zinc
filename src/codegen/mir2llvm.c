@@ -8,13 +8,11 @@
  * @copyright Copyright (c) 2025, Marco Menegazzi
  *            SPDX-License-Identifier: BSD-3-Clause
  */
-#include "zllvm.h"
+#include "mir2llvm.h"
 #include "zcolors.h"
 #include "zgen.h"
 #include "zinc.h"
 #include "zlink.h"
-
-#include "zmap.h"
 
 #include <stdarg.h>
 

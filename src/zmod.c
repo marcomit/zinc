@@ -674,7 +674,7 @@ void printNode(ZNode *node, u8 depth) {
         printf("\n");
         printNode(node->castExpr.expr, depth);
         indent(depth + 1);
-        printf("as %s", stype(node->castExpr.toType));
+        printf("as %s", stype(node->castExpr.info.to));
         break;
     case NODE_SIZEOF:
         printf("%s", stype(node->sizeofExpr.type));

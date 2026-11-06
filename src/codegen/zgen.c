@@ -2578,8 +2578,8 @@ static ZMIRValueRef genFacetConstruct(ZCodegen *ctx,
 }
 
 static ZMIRValueRef castToOptional(ZCodegen *ctx, ZNode *node) {
-    ZType *from         = node->castExpr.expr->resolved;
-    ZType *to           = node->castExpr.toType;
+    ZType *from         = node->castExpr.info.from;
+    ZType *to           = node->castExpr.info.to;
     ZMIRTypeRef toRef   = genType(ctx, to);
 
     if (from->kind == Z_TYPE_NONE) return ZMIRConstNull(toRef);
@@ -2610,102 +2610,155 @@ static ZMIRValueRef castToOptional(ZCodegen *ctx, ZNode *node) {
     );
 }
 
-static ZMIRValueRef genCast(ZCodegen *ctx, ZNode *node) {
-    ZType *from = node->castExpr.expr->resolved;
-    ZType *to   = node->castExpr.toType;
-
-    if (to->kind == Z_TYPE_SUM && from->kind != Z_TYPE_SUM) {
-        ZMIRStack *stack = getStackValue(ctx, node);
-        if (!stack) {
-            zlog(ctx->state, node->tok, Z9031);
-            return NULL;
-        }
-        ZMIRValueRef val = genExpr(ctx, node->castExpr.expr);
-        i32 tag = sumTypeIndexOf(to, from);
-        if (tag == -1) {
-            zlog(ctx->state, node->tok, Z400C);
-            return NULL;
-        }
-        ZMIRTypeRef sumZMIRType = genType(ctx, to);
-        storeSumVariant(ctx, stack->stack, sumZMIRType, tag, val, from);
-        return ZMIRBuildLoad2(ctx->builder, sumZMIRType, stack->stack, label(ctx, node->tok));
-    }
-
-    if (to->kind == Z_TYPE_OPTIONAL) return castToOptional(ctx, node);
-
-    if (to->kind == Z_TYPE_FACET && from->kind != Z_TYPE_FACET) {
-        ZMIRStack *stack = getStackValue(ctx, node);
-        return genFacetConstruct(ctx, stack, to, node->castExpr.expr);
-    }
-
-    if (typesEqual(from,    consts(ctx->state, strType)) &&
-        typesEqual(to,      consts(ctx->state, interpType))) {
-        ZMIRStack *stack = getStackValue(ctx, node);
-        if (!stack) {
-            zlog(ctx->state, node->tok, Z901B);
-            return NULL;
-        }
-        storeArray(ctx, stack, ZMIRConstInt(i64Type, 1, false));
-
-        ZMIRValueRef zero = ZMIRConstInt(i64Type, 0, false);
-        ZMIRValueRef slot = ZMIRBuildGEP2(
-            ctx->builder,
-            genType(ctx, LangItems[Z_LANG_INTERPOLATED_STRING]->resolved),
-            stack->elem, &zero, 1, label(ctx, "interp.slot")
-        );
-        storeInterpolation(ctx, slot, &(ZInterpolation){
-            .type       = Z_INTERP_LIT,
-            .literal    = node->castExpr.expr->tok
-        });
-        return ZMIRBuildLoad2(
-            ctx->builder,
-            genType(ctx, to), stack->stack, label(ctx, "interp.load")
-        );
-    }
-
-    if (from->kind == Z_TYPE_ARRAY && to->kind == Z_TYPE_POINTER) {
-        ZMIRValueRef desc = genLValue(ctx, node->castExpr.expr);
-        if (!desc) {
-            zlog(ctx->state, node->tok, Z9028);
-            return NULL;
-        }
-        ZMIRValueRef field = ZMIRBuildStructGEP2(
-            ctx->builder, genType(ctx, from), desc, 1, label(ctx, "array.ptr")
-        );
-        return ZMIRBuildLoad2(
-            ctx->builder, genType(ctx, to), field, label(ctx, "array.data")
-        );
-    }
-
-    /* Array-literal cast: [n]T as []U - write each element directly into
-     * the pre-allocated slot with per-element casting.
-     * genArrayLit can't be used here because the stack slot is keyed on
-     * this cast node, not on the inner array-literal node. */
-    if (from->kind == Z_TYPE_ARRAY && to->kind == Z_TYPE_ARRAY &&
-        node->castExpr.expr->type == NODE_ARRAY_LIT) {
-        ZMIRStack *stack = getStackValue(ctx, node);
-        if (!stack) {
-            zlog(ctx->state, node->tok, Z9032);
-            return NULL;
-        }
-        ZNode *lit = node->castExpr.expr;
-        for (usize i = 0; i < veclen(lit->arraylit); i++) {
-            ZMIRValueRef indices[] = {
-                ZMIRConstInt(i32Type, 0, false),
-                ZMIRConstInt(i32Type, i, false)
-            };
-            ZMIRValueRef gep = ZMIRBuildGEP2(
-                ctx->builder, stack->stackType,
-                stack->stack, indices, 2, label(ctx, "cast"));
-            ZMIRValueRef elem = genExpr(ctx, lit->arraylit[i]);
-            elem = castValue(ctx, elem, from->array.base, to->array.base);
-            ZMIRBuildStore(ctx->builder, elem, gep);
-        }
-        return stack->stack;
-    }
-
+/*
+ * Extract the '#as' field of a struct following the path computed by the
+ * semantic analyzer (embedded fields are nested structs).
+ */
+static ZMIRValueRef castStructField(ZCodegen *ctx, ZNode *node) {
     ZMIRValueRef val = genExpr(ctx, node->castExpr.expr);
-    return castValue(ctx, val, from, to);
+    u32 *path        = node->castExpr.fieldPath;
+    for (usize i = 0; val && i < veclen(path); i++) {
+        val = ZMIRBuildExtractValue(
+            ctx->builder, val, path[i], label(ctx, "cast.field"));
+    }
+    return val;
+}
+
+static ZMIRValueRef castToSum(ZCodegen *ctx, ZNode *node) {
+    ZType *from = node->castExpr.info.from;
+    ZType *to   = node->castExpr.info.to;
+
+    ZMIRStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        zlog(ctx->state, node->tok, Z9031);
+        return NULL;
+    }
+    ZMIRValueRef val = genExpr(ctx, node->castExpr.expr);
+    i32 tag = sumTypeIndexOf(to, from);
+    if (tag == -1) {
+        zlog(ctx->state, node->tok, Z400C);
+        return NULL;
+    }
+    ZMIRTypeRef sumZMIRType = genType(ctx, to);
+    storeSumVariant(ctx, stack->stack, sumZMIRType, tag, val, from);
+    return ZMIRBuildLoad2(ctx->builder, sumZMIRType, stack->stack, label(ctx, node->tok));
+}
+
+/* A string literal becomes a single literal interpolation. */
+static ZMIRValueRef castToInterp(ZCodegen *ctx, ZNode *node) {
+    ZMIRStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        zlog(ctx->state, node->tok, Z901B);
+        return NULL;
+    }
+    storeArray(ctx, stack, ZMIRConstInt(i64Type, 1, false));
+
+    ZMIRValueRef zero = ZMIRConstInt(i64Type, 0, false);
+    ZMIRValueRef slot = ZMIRBuildGEP2(
+        ctx->builder,
+        genType(ctx, LangItems[Z_LANG_INTERPOLATED_STRING]->resolved),
+        stack->elem, &zero, 1, label(ctx, "interp.slot")
+    );
+    storeInterpolation(ctx, slot, &(ZInterpolation){
+        .type       = Z_INTERP_LIT,
+        .literal    = node->castExpr.expr->tok
+    });
+    return ZMIRBuildLoad2(
+        ctx->builder,
+        genType(ctx, node->castExpr.info.to), stack->stack, label(ctx, "interp.load")
+    );
+}
+
+static ZMIRValueRef castArrayToPtr(ZCodegen *ctx, ZNode *node) {
+    ZMIRValueRef desc = genLValue(ctx, node->castExpr.expr);
+    if (!desc) {
+        zlog(ctx->state, node->tok, Z9028);
+        return NULL;
+    }
+    ZMIRValueRef field = ZMIRBuildStructGEP2(
+        ctx->builder, genType(ctx, node->castExpr.info.from),
+        desc, 1, label(ctx, "array.ptr")
+    );
+    return ZMIRBuildLoad2(
+        ctx->builder, genType(ctx, node->castExpr.info.to),
+        field, label(ctx, "array.data")
+    );
+}
+
+/* Array-literal cast: [n]T as [m]U - write each element directly into
+ * the pre-allocated slot with per-element casting.
+ * genArrayLit can't be used here because the stack slot is keyed on
+ * this cast node, not on the inner array-literal node. */
+static ZMIRValueRef castArrayLit(ZCodegen *ctx, ZNode *node) {
+    ZType *from = node->castExpr.info.from;
+    ZType *to   = node->castExpr.info.to;
+
+    ZMIRStack *stack = getStackValue(ctx, node);
+    if (!stack) {
+        zlog(ctx->state, node->tok, Z9032);
+        return NULL;
+    } else if (!stack->elem) {
+        zlog(ctx->state, node->tok, Z901C);
+        return NULL;
+    }
+
+    ZNode *lit = node->castExpr.expr;
+    if (to->array.size > veclen(lit->arraylit)) {
+        ZMIRBuildStore(ctx->builder, ZMIRConstNull(stack->elemType), stack->elem);
+    }
+
+    for (usize i = 0; i < veclen(lit->arraylit); i++) {
+        ZMIRValueRef indices[] = {
+            ZMIRConstInt(i32Type, 0, false),
+            ZMIRConstInt(i32Type, i, false)
+        };
+        ZMIRValueRef gep = ZMIRBuildGEP2(
+            ctx->builder, stack->elemType,
+            stack->elem, indices, 2, label(ctx, "cast"));
+        ZMIRValueRef elem = genExpr(ctx, lit->arraylit[i]);
+        elem = castValue(ctx, elem, from->array.base, to->array.base);
+        ZMIRBuildStore(ctx->builder, elem, gep);
+    }
+
+    storeArray(ctx, stack, ZMIRConstInt(usizeType, to->array.size, false));
+    return stack->stack;
+}
+
+static ZMIRValueRef genCast(ZCodegen *ctx, ZNode *node) {
+    ZCastInfo info = node->castExpr.info;
+    ZNode *expr    = node->castExpr.expr;
+
+    switch (info.kind) {
+    case Z_CAST_NOOP:       return genExpr(ctx, expr);
+    case Z_CAST_OPTIONAL:   return castToOptional(ctx, node);
+    case Z_CAST_FACET:
+        return genFacetConstruct(ctx, getStackValue(ctx, node), info.to, expr);
+    case Z_CAST_ARRAY_PTR:  return castArrayToPtr(ctx, node);
+    case Z_CAST_ARRAY_LIT:  return castArrayLit(ctx, node);
+    case Z_CAST_FIELD:      return castStructField(ctx, node);
+
+    case Z_CAST_NONE:
+        if (info.to->kind == Z_TYPE_OPTIONAL) return castToOptional(ctx, node);
+        break;
+
+    case Z_CAST_SUM:
+        /* sum -> variant is a plain reinterpretation. */
+        if (info.to->kind == Z_TYPE_SUM) return castToSum(ctx, node);
+        break;
+
+    case Z_CAST_INTERP:
+        if (typesEqual(info.from, consts(ctx->state, strType)))
+            return castToInterp(ctx, node);
+        break;
+
+    case Z_CAST_NUMERIC:
+    case Z_CAST_POINTER:
+    case Z_CAST_INVALID:
+        break;
+    }
+
+    ZMIRValueRef val = genExpr(ctx, expr);
+    return castValue(ctx, val, info.from, info.to);
 }
 
 /* dest: optional pre-allocated slot to write into (e.g. an array element GEP).
