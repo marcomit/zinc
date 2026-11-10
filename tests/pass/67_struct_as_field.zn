@@ -1,0 +1,73 @@
+printf :: foreign fn (*char, ..) void
+
+Meters :: struct {
+    #as value: i32
+    unit: char
+}
+
+Named :: struct {
+    id: i32
+    #as name: []char
+}
+
+Vec2 :: struct {
+    x: i32
+    y: i32
+}
+
+Body :: struct {
+    mass: i32
+    #as pos: Vec2
+}
+
+Pair :: struct {
+    #as a: i32
+    #as b: f64
+    tag: u8
+}
+
+Handle :: struct {
+    id: i32
+    #as ptr: *i32
+}
+
+Wrap :: struct {
+    pad: u8
+    #as inner: Pair
+}
+
+twice   :: fn (v: i32) i32 { return v * 2 }
+half    :: fn (v: f64) f64 { return v / 2.0 }
+nameLen :: fn (s: []char) i64 { return s.len }
+sumVec  :: fn (v: Vec2) i32 { return v.x + v.y }
+deref   :: fn (p: *i32) i32 { return p.* }
+asRet   :: fn (p: Pair) i32 { return p }
+
+main :: fn () i32 {
+    m: Meters = .{ value = 21, unit = 'm' }
+    printf("argument: %d\n", twice(m))
+    x: i32 = m
+    printf("assignment: %d\n", x)
+    e: i32 = m as i32
+    printf("explicit cast: %d\n", e)
+
+    n: Named = .{ id = 7, name = "zinc" }
+    printf("slice field: %lld\n", nameLen(n))
+
+    b: Body = .{ mass = 10, pos = .{ x = 3, y = 4 } }
+    printf("struct field: %d\n", sumVec(b))
+
+    p: Pair = .{ a = 5, b = 9.0, tag = 1 }
+    printf("pick i32: %d\n", twice(p))
+    printf("pick f64: %.1f\n", half(p))
+    printf("return: %d\n", asRet(p))
+
+    v: i32 = 42
+    h: Handle = .{ id = 1, ptr = v.& }
+    printf("pointer field: %d\n", deref(h))
+
+    w: Wrap = .{ pad = 0, inner = p }
+    q: Pair = w
+    printf("struct to struct: %d %.1f %d\n", q.a, q.b, q.tag)
+    return 0
+}

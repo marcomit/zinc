@@ -1469,9 +1469,12 @@ static ZNode *parseFieldOptName(ZParser *parser) {
 }
 
 static ZNode *parseStructField(ZParser *parser) {
-    guard(canPeek(parser));
+    ZAnnotation **annotations = NULL;
+    if (check(parser, TOK_HASHTAG))
+        annotations = parseAnnotations(parser);
 
     ZToken *start = peek(parser);
+    ZNode *result = NULL;
     if (match(parser, TOK_DOUBLE_DOT)) {
         ZType *type = parseType(parser);
         if (!type) {
@@ -1480,10 +1483,12 @@ static ZNode *parseStructField(ZParser *parser) {
         }
         ZNode *node             = makenode(parser->allocator, NODE_EMBED_FIELD);
         node->resolved          = type;
-        return setspan(parser, node, start);
+        result = setspan(parser, node, start);
     } else {
-        return parseField(parser);
+        result = parseField(parser);
     }
+    if (result) result->annotations = annotations;
+    return result;
 }
 
 static ZNode *parseEnumVariantField(ZParser *parser) {

@@ -1,0 +1,10 @@
+// The `#as` field is i32, so converting to []char must be rejected.
+Meters :: struct {
+    #as value: i32
+}
+take :: fn (v: []char) i64 { return v.len }
+main :: fn () i32 {
+    m: Meters = .{ value = 1 }
+    take(m)
+    return 0
+}

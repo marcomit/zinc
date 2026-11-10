@@ -1,0 +1,21 @@
+printf :: foreign fn (*char, ..) void
+
+Base :: struct {
+    #as hp: i64
+    mp: i32
+}
+
+Hero :: struct {
+    #as ..Base
+    level: i32
+}
+
+takeBase :: fn (b: Base) i32 { return b.mp }
+takeHp   :: fn (v: i64) i64 { return v + 1 }
+
+main :: fn () i32 {
+    h: Hero = .{ hp = 99, mp = 5, level = 3 }
+    printf("base: %d\n", takeBase(h))
+    printf("hp: %lld\n", takeHp(h))
+    return 0
+}

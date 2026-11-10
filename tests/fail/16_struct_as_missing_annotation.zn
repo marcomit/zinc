@@ -1,0 +1,9 @@
+// Without `#as` a struct must not convert to its field's type.
+Plain :: struct {
+    value: i32
+}
+take :: fn (v: i32) i32 { return v }
+main :: fn () i32 {
+    p: Plain = .{ value = 1 }
+    return take(p)
+}
