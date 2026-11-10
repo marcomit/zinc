@@ -298,6 +298,24 @@ static void putImpl(ZThreadSem *ctx, ZNode *node) {
     char **facetNames = NULL;
     hashset_t funcs = NULL;
     usize funcLen = veclen(node->impl.funcs);
+
+    ZType *recv = NULL;
+    for (usize i = 0; i < funcLen; i++) {
+        ZNode *f = node->impl.funcs[i];
+        if (!f->funcDef.receiver) { // static function
+            zlog(ctx->state, f->tok, Z3061, stoken(f->funcDef.name));
+            continue;
+        }
+        ZType *t = f->funcDef.receiver->resolved;
+        if (t->kind != Z_TYPE_POINTER) { // must be *self
+            zlog(ctx->state, t->tok, Z303C);
+        } else if (!recv) {
+            recv = t;
+        } else if (!typesEqual(recv, t)) {
+            zlog(ctx->state, t->tok, Z3061, stype(recv), stype(t));
+        }
+    }
+
     for (usize i = 0; i < funcLen; i++) {
         ZNode *func = node->impl.funcs[i];
         putFunc(ctx, func);
@@ -3215,6 +3233,7 @@ static void analyzeForeign(ZThreadSem *ctx, ZNode *curr) {
 static void analyzeFuncArgs(ZThreadSem *ctx, ZType **types, ZNode **fields, ZType **inferred) {
     for (usize i = 0; i < veclen(fields); i++) {
         ZNode *field        = fields[i];
+        if (!field || field->type == NODE_FUNC_FIELD) continue;
         ZType *fieldType    = resolveTypeRef(ctx, field->resolved);
 
         if (!fieldType) {

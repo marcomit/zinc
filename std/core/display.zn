@@ -15,12 +15,12 @@ pub Writable :: facet {
     sink: fn (Writer) void
 }
 
-Writer self :: impl {
-    pub fmt :: fn (items: []InterpolatedString) {
+Writer :: impl {
+    pub fmt :: fn (self, items: []InterpolatedString) {
         interpolate(self, items)
     }
 
-    pub write_all :: fn (buff: *u8, len: usize) {
+    pub write_all :: fn (self, buff: *u8, len: usize) {
         wrote: isize = 0
 
         for wrote = self.write(buff[wrote].&, len) #allow_empty {
@@ -44,8 +44,8 @@ pub FDWriter :: struct {
     fd: i32
 }
 
-*FDWriter self :: impl(Writer) {
-    pub write :: fn (buff: *u8, size: usize) isize {
+FDWriter :: impl(Writer) {
+    pub write :: fn (*self, buff: *u8, size: usize) isize {
         return sys.write(self.fd, buff, size)
     }
 }
@@ -101,8 +101,8 @@ pub sink_cstr :: fn (w: Writer, str: *char) {
     stdout.write("\n", 1)
 }
 
-*char self :: impl(Writable) {
-    pub sink :: fn (w: Writer) {
+char :: impl(Writable) {
+    pub sink :: fn (*self, w: Writer) {
         w.write(self, mem.strlen(self))
     }
 }

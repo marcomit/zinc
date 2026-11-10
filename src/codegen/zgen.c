@@ -2196,7 +2196,7 @@ static ZMIRValueRef genNumericOperator(ZCodegen *ctx,
 
     let div         = bothUnsigned ? ZMIRBuildUDiv : ZMIRBuildSDiv;
     let mod         = bothUnsigned ? ZMIRBuildURem : ZMIRBuildSRem;
-    let rightShift  = bothUnsigned ? ZMIRBuildLShr : ZMIRBuildAShr;
+    let rightShift  = typeIsUnsigned(leftType) ? ZMIRBuildLShr : ZMIRBuildAShr;
     let lt          = bothUnsigned ? ZMIRIntULT : ZMIRIntSLT;
     let gt          = bothUnsigned ? ZMIRIntUGT : ZMIRIntSGT;
     let lte         = bothUnsigned ? ZMIRIntULE : ZMIRIntSLE;
@@ -2217,7 +2217,7 @@ static ZMIRValueRef genNumericOperator(ZCodegen *ctx,
     case TOK_BITL:  return ZMIRBuildShl (ctx->builder, left, right, l);
     case TOK_BITR:  return rightShift   (ctx->builder, left, right, l);
     case TOK_BITOR: return ZMIRBuildOr  (ctx->builder, left, right, l);
-    case TOK_BITXOR:return ZMIRBuildXor (ctx->builder, left, right, l);
+    case TOK_BITNOT:return ZMIRBuildXor (ctx->builder, left, right, l);
     case TOK_REF:   return ZMIRBuildAnd (ctx->builder, left, right, l);
     default:        zlog(ctx->state, tok, Z902B); return NULL;
     }
@@ -2240,7 +2240,7 @@ static ZMIRValueRef genCompoundOperator(ZCodegen *ctx, ZNode *root) {
     case TOK_SELF_BITL:     op = TOK_BITL;      break;
     case TOK_SELF_BITR:     op = TOK_BITR;      break;
     case TOK_SELF_BITOR:    op = TOK_BITOR;     break;
-    case TOK_SELF_BITXOR:   op = TOK_BITXOR;    break;
+    case TOK_SELF_BITXOR:   op = TOK_BITNOT;    break;
     case TOK_SELF_PLUS:     op = TOK_PLUS;      break;
     case TOK_SELF_MINUS:    op = TOK_MINUS;     break;
     case TOK_SELF_MUL:      op = TOK_STAR;      break;

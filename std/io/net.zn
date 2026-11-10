@@ -76,24 +76,24 @@ TcpStream :: impl {
     pub fromFd :: fn (fd: i32) TcpStream -> . { fd }
 }
 
-*TcpStream self :: impl(Writer) {
-    write :: fn (buff: *u8, size: usize) {
+TcpStream :: impl(Writer) {
+    write :: fn (*self, buff: *u8, size: usize) {
         self.*.send(buff, size)
     }
 }
 
-*TcpStream self :: impl {
-    pub into_writer :: fn () Writer -> Writer(self)
+TcpStream :: impl {
+    pub into_writer :: fn (*self) Writer -> Writer(self)
 }
 
-TcpStream self :: impl {
-    pub send   :: fn (buf: *u8, n: u64) i64 -> c.send(self.fd, buf, n, 0)
-    pub recv   :: fn (buf: *u8, n: u64) i64 -> c.recv(self.fd, buf, n, 0)
+TcpStream :: impl {
+    pub send   :: fn (self, buf: *u8, n: u64) i64 -> c.send(self.fd, buf, n, 0)
+    pub recv   :: fn (self, buf: *u8, n: u64) i64 -> c.recv(self.fd, buf, n, 0)
 
-    pub send_string :: fn (message: string) i64 {
+    pub send_string :: fn (self, message: string) i64 {
         return c.send(self.fd, message.ptr, message.len as u64, 0)
     }
-    pub close  :: fn () void {
+    pub close  :: fn (self) void {
         c.close(self.fd)
     }
 }
@@ -132,10 +132,8 @@ TcpListener :: impl {
 
         return .{ fd }
     }
-}
 
-TcpListener self :: impl {
-    pub accept :: fn () ?TcpStream {
+    pub accept :: fn (self) ?TcpStream {
         addr := SockAddrIn {
             sin_len= 0,
             sin_family= 0,
@@ -152,7 +150,7 @@ TcpListener self :: impl {
         return .{ fd }
     }
 
-    pub close :: fn () void {
+    pub close :: fn (self) void {
         c.close(self.fd)
     }
 }
@@ -191,8 +189,8 @@ UdpSocket :: impl {
     }
 }
 
-UdpSocket self :: impl {
-    pub sendTo :: fn (buf: *u8, n: u64, host: *char, port: u16) i64 {
+UdpSocket :: impl {
+    pub sendTo :: fn (self, buf: *u8, n: u64, host: *char, port: u16) i64 {
         addr := SockAddrIn {
             sin_len=    16,
             sin_family= 2,
@@ -204,7 +202,7 @@ UdpSocket self :: impl {
         return c.sendto(self.fd, buf, n, 0, &addr, 16)
     }
 
-    pub recvFrom :: fn (buf: *u8, n: u64) i64 {
+    pub recvFrom :: fn (self, buf: *u8, n: u64) i64 {
         addr := SockAddrIn {
             sin_len= 0,
             sin_family= 0,
@@ -216,7 +214,7 @@ UdpSocket self :: impl {
         return c.recvfrom(self.fd, buf, n, 0, &addr, &addrlen)
     }
 
-    pub close :: fn () void {
+    pub close :: fn (self) void {
         c.close(self.fd)
     }
 }

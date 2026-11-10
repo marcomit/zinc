@@ -227,7 +227,7 @@ do {                                                                            
  */
 #define vecpop(v) ({                                                            \
     if ((v) && veclen(v) > 0) {                                                 \
-            vecsetlen((v), veclen(v) - 1);                                      \
+        vecsetlen((v), veclen(v) - 1);                                          \
     }                                                                           \
     (v)[veclen(v)];                                                             \
 })
@@ -300,9 +300,9 @@ do {                                                                            
  * It stores the vector's capacity and current length.
  */
 typedef struct vec_metadata {
+    Allocator   *allocator; /**< Allocator the vector was created with, used for every growth and free */
     usize       capacity;   /**< Maximum number of elements before reallocation */
     usize       length;     /**< Current number of elements in the vector */
-    Allocator   *allocator; /**< Allocator the vector was created with, used for every growth and free */
 } vec_metadata;
 
 /* ============================================================================

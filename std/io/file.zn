@@ -21,18 +21,14 @@ File :: impl {
         file := c.fopen(path, mode) or return none
         return .{ file, path, mode }
     }
-}
 
-File self :: impl {
-    close :: fn () {
+    close :: fn (self) {
         if not self.file return
         c.fclose(self.file!)
         self.file = none
     }
-}
 
-File self :: impl {
-    pub readAll :: fn () ?*char with Allocator {
+    pub readAll :: fn (self) ?*char with Allocator {
         c.fseek(self.file!, 0, 2)
         size: i64 = c.ftell(self.file!)
         c.rewind(self.file!)

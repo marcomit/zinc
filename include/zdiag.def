@@ -209,6 +209,8 @@ DIAG(Z305D, Z_ERROR,    "'%s' must implement the writable facet", NULL)
 DIAG(Z305E, Z_ERROR,    "Expected a concrete type here", NULL)
 DIAG(Z305F, Z_ERROR,    "Expected a module identifier", NULL)
 DIAG(Z3060, Z_ERROR,    "'%s' not found in the module", NULL)
+DIAG(Z3061, Z_ERROR,    "'%' is a static function, facet implementation rejects it", NULL)
+DIAG(Z3062, Z_ERROR,    "Expected '%s', got '%s'", "Inside a facet impl, all methods must have the same receiver type")
 
 /* ---------------- Code generation (src/codegen/) ---------------- */
 DIAG(Z4001, Z_ERROR,    "unknown primitive type '%s'", NULL)

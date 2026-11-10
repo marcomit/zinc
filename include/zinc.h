@@ -862,7 +862,7 @@ struct ZNode {
             ZType       **facets;
             ZType       **generics;
             ZType       *base;
-            ZToken      *self;
+            // ZToken      *self;
             ZNode       **funcs;
             ZNode       **capabilities;
         } impl;
@@ -941,6 +941,11 @@ typedef struct ZParser {
      * anonymous structs. But anonymous structs can be parsed only inside a struct/enum
      * declaration and not everywhere (e.g. inside a function or as a return type). */
     bool            declAsType;
+
+    /* When true, parseFuncDecl tries to parse the first parameter as a type.
+     * It will be set true by parseImpl before calling parseFuncDecl and reset at the end.
+     */
+    bool            inImplBlock;
 
     /* Last consumed token: where the node being parsed ends (see setspan). */
     ZToken          *last;

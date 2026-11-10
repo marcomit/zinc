@@ -14,23 +14,23 @@ GeneralPurposeAllocator :: impl {
     pub new :: fn () Allocator -> Allocator(&GeneralPurposeAllocator{})
 }
 
-*GeneralPurposeAllocator self :: impl(Allocator) {
-    alloc :: fn (size: u64) ?*u8 {
+GeneralPurposeAllocator :: impl(Allocator) {
+    alloc :: fn (*self, size: u64) ?*u8 {
         p := c.malloc(size)
         return p
     }
 
-    resize :: fn (ptr: ?*u8, size: u64) ?*u8 {
+    resize :: fn (*self, ptr: ?*u8, size: u64) ?*u8 {
         return c.realloc(ptr, size)
     }
 
-    destroy :: fn (ptr: *u8) void {
+    destroy :: fn (*self, ptr: *u8) void {
         c.free(ptr)
     }
     #allow_empty init ::     fn () void {  }
     #allow_empty deinit ::   fn () void {  }
 }
 
-*GeneralPurposeAllocator self :: impl {
-    pub allocator :: fn () Allocator -> Allocator(self)
+GeneralPurposeAllocator :: impl {
+    pub allocator :: fn (*self) Allocator -> Allocator(self)
 }
