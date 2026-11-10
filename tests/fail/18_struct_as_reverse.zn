@@ -1,0 +1,9 @@
+// `#as` is one-way: the field type does not convert back into the struct.
+Meters :: struct {
+    #as value: i32
+}
+take :: fn (m: Meters) i32 { return m.value }
+main :: fn () i32 {
+    x: i32 = 5
+    return take(x)
+}

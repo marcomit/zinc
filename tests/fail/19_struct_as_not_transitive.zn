@@ -1,0 +1,13 @@
+// `#as` only recurses through embedded fields: Outer -> Inner is allowed,
+// but Outer -> Inner -> i32 is not.
+Inner :: struct {
+    #as v: i32
+}
+Outer :: struct {
+    #as inner: Inner
+}
+take :: fn (v: i32) i32 { return v }
+main :: fn () i32 {
+    o: Outer = .{ inner = .{ v = 3 } }
+    return take(o)
+}

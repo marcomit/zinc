@@ -1,0 +1,10 @@
+argument: 42
+assignment: 21
+explicit cast: 21
+slice field: 4
+struct field: 7
+pick i32: 10
+pick f64: 4.5
+return: 5
+pointer field: 42
+struct to struct: 5 9.0 1
