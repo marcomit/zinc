@@ -113,6 +113,8 @@ DIAG(Z203A, Z_ERROR,    "Expected at least one function", NULL)
 DIAG(Z203B, Z_ERROR,    "Unexpected token '%s', expected a top-level declaration", NULL)
 DIAG(Z203C, Z_ERROR,    "Module '%s' not found", "looked for '<module>/lib.zn' and '<module>.zn' next to this file and in ~/.zinc/packages")
 DIAG(Z203D, Z_ERROR,    "Expected an identifier after '@', got '%s'", NULL)
+DIAG(Z203F, Z_ERROR,    "'%s' is not a valid receiver type", NULL)
+DIAG(Z2040, Z_ERROR,    "Non-optional fields must go at the start", NULL)
 
 /* ---------------- Semantic analysis (src/zsem.c) ---------------- */
 DIAG(Z3001, Z_ERROR,    "'%s' already defined in the same scope", "rename one of the definitions")
@@ -209,7 +211,7 @@ DIAG(Z305D, Z_ERROR,    "'%s' must implement the writable facet", NULL)
 DIAG(Z305E, Z_ERROR,    "Expected a concrete type here", NULL)
 DIAG(Z305F, Z_ERROR,    "Expected a module identifier", NULL)
 DIAG(Z3060, Z_ERROR,    "'%s' not found in the module", NULL)
-DIAG(Z3061, Z_ERROR,    "'%' is a static function, facet implementation rejects it", NULL)
+DIAG(Z3061, Z_ERROR,    "'%s' is a static function, facet implementation rejects it", NULL)
 DIAG(Z3062, Z_ERROR,    "Expected '%s', got '%s'", "Inside a facet impl, all methods must have the same receiver type")
 
 /* ---------------- Code generation (src/codegen/) ---------------- */

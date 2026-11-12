@@ -665,6 +665,7 @@ struct ZNode {
         struct {
             ZType   *type;
             ZToken  *identifier;
+            ZNode   *defaultValue;
         } field;
 
         union {

@@ -15,6 +15,12 @@ typedef struct {
     ZClientData clientData;
 } ZVisitor;
 
+typedef struct {
+    ZVisitorState (*visit)(ZType *, ZClientData);
+    ZClientData clientData;
+} ZTypeVisitor;
+
 bool visitNode(ZVisitor *, ZNode *);
+bool visitType(ZTypeVisitor *, ZType *);
 
 #endif //! ZVISIT_H
