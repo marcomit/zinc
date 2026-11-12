@@ -610,17 +610,12 @@ static ZCastInfo checkCapability(ZThreadSem *ctx, ZType *capability, ZType *requ
     return typesCompatible(ctx, capability, requested);
 }
 
-typedef struct {
-    ZCastInfo cast;
-    i32 index;
-} ZCapabilityCast;
-
 static ZCapabilityCast lookupCapabilityByType(ZThreadSem *ctx, ZScope *scope, ZType *capability) {
     for (usize i = 0; i < veclen(scope->capabilities); i++) {
         ZCastInfo c = checkCapability(ctx, scope->capabilities[i]->type, capability);
-        if (c.promoted) return (ZCapabilityCast){ c, i };
+        if (c.promoted) return (ZCapabilityCast){ NULL, c, i };
     }
-    return (ZCapabilityCast){ .cast = (ZCastInfo){ 0 }, .index = -1 };
+    return (ZCapabilityCast){ NULL, { 0 }, -1 };
 }
 
 static ZCapability *putCapability(ZThreadSem *ctx, ZNode *var) {
@@ -1615,7 +1610,7 @@ static ZNode *resolveFuncCallEmbedded(ZThreadSem *ctx,
     return ptr;
 }
 
-static ZNode *lookupScopedCapability(ZThreadSem *ctx, ZType *required) {
+static ZCapabilityCast lookupScopedCapability(ZThreadSem *ctx, ZType *required) {
     ZScope *curr = ctx->current;
     ZCapabilityCast c;
     while (curr) {
@@ -1626,14 +1621,16 @@ static ZNode *lookupScopedCapability(ZThreadSem *ctx, ZType *required) {
     }
 
     ZCapability **cc = curr->capabilities;
-    if (c.index == -1 || veclen(cc[c.index]->nodes) == 0) return NULL;
+
+    if (c.index == -1 || veclen(cc[c.index]->nodes) == 0) return c;
 
     ZNode *node = veclast(cc[c.index]->nodes);
-    return implicitCast(ctx, node, c.cast.promoted);
+    c.node = implicitCast(ctx, node, c.cast.promoted);
+    return c;
 }
 
-static ZNode **analyzeCapabilities(ZThreadSem *ctx, ZToken *start, ZType **capabilities) {
-    ZNode **capabilityRefs = NULL;
+static ZCapabilityCast *analyzeCapabilities(ZThreadSem *ctx, ZToken *start, ZType **capabilities) {
+    ZCapabilityCast *capabilityRefs = NULL;
     for (usize i = 0; i < veclen(capabilities); i++) {
         ZType *old = capabilities[i];
         capabilities[i] = resolveTypeRef(ctx, old);
@@ -1642,10 +1639,10 @@ static ZNode **analyzeCapabilities(ZThreadSem *ctx, ZToken *start, ZType **capab
             zlog(ctx->state, start, Z00A4, stype(old));
             continue;
         }
-        ZNode *reference = lookupScopedCapability(
+        ZCapabilityCast reference = lookupScopedCapability(
             ctx, capabilities[i]
         );
-        if (!reference) {
+        if (!reference.node) {
             zlog(ctx->state, start, Z00A4, stype(capabilities[i]));
         }
         vecpush(capabilityRefs, reference);

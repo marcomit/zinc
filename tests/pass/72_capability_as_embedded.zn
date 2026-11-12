@@ -1,0 +1,34 @@
+// An embedded `#as ..Base` field lets the outer struct satisfy a `Base`
+// capability, and a `#as` field inside Base still converts Base itself.
+
+c :: foreign {
+    printf: fn (*char, ..) void
+}
+
+Level :: struct {
+    n: i32
+}
+
+Base :: struct {
+    #as level: Level
+    mp: i32
+}
+
+Hero :: struct {
+    #as ..Base
+    hp: i32
+}
+
+getMp    :: fn () i32 with b: Base -> b.mp
+getLevel :: fn () i32 with l: Level -> l.n
+
+main :: fn () i32 {
+    with hero := Hero { level = .{ n = 9 }, mp = 5, hp = 100 } {
+        c.printf("base: %d\n", getMp())
+    }
+
+    with base := Base { level = .{ n = 9 }, mp = 5 } {
+        c.printf("level: %d\n", getLevel())
+    }
+    return 0
+}

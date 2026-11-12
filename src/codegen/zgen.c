@@ -128,12 +128,12 @@ static ZMIRValueRef getZMIRValueRef(ZCodegen *ctx, const char *key) {
     return sym ? sym->value : NULL;
 }
 
-static ZMIRValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
+static ZMIRValueRef getCapabilityRef(ZCodegen *ctx, ZCapabilityCast cast) {
     ZMIRScope *cur = ctx->scope;
     while (cur) {
         usize len = veclen(cur->capabilities);
         for (usize i = len; i-- > 0;) {
-            if (typesEqual(cur->capabilities[i]->capability, capability)) {
+            if (typesEqual(cur->capabilities[i]->capability, cast.cast.from)) {
                 return cur->capabilities[i]->ref;
             }
         }
@@ -1822,28 +1822,26 @@ static ZMIRValueRef genCall(ZCodegen *ctx, ZNode *node) {
     }
 
     for (usize i = 0; i < veclen(node->call.capabilities); i++) {
-        ZNode *cap = node->call.capabilities[i];
-        if (!cap) {
+        ZCapabilityCast cap = node->call.capabilities[i];
+        if (!cap.node) {
             zlog(ctx->state, node->tok, Z9025);
             continue;
-        } else if (!cap->tok) {
+        } else if (!cap.node->tok) {
             zlog(ctx->state, node->tok, Z9026);
             continue;
-        } else if (!cap->resolved) {
+        } else if (!cap.node->resolved) {
             zlog(ctx->state, node->tok, Z9027);
             continue;
         }
-        if (!isRuntimeParam(ctx->state, cap->resolved)) continue;
-        ZMIRValueRef capability = getCapabilityRef(
-            ctx, cap->resolved
-        );
+        if (!isRuntimeParam(ctx->state, cap.node->resolved)) continue;
+        ZMIRValueRef capability = getCapabilityRef(ctx, cap);
         if (!capability) {
-            zlog(ctx->state, cap->tok, Z00A4, stoken(cap->tok));
+            zlog(ctx->state, cap.node->tok, Z00A4, stoken(cap.node->tok));
         } else {
             capability = ZMIRBuildLoad2(
                 ctx->builder,
-                genType(ctx, cap->resolved),
-                capability, label(ctx, cap->tok)
+                genType(ctx, cap.node->resolved),
+                capability, label(ctx, cap.node->tok)
             );
         }
         vecpush(args, capability);

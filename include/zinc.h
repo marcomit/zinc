@@ -90,6 +90,7 @@ typedef struct ZThreadSem   ZThreadSem;
 typedef struct ZAnnotation  ZAnnotation;
 typedef struct ZRegion      ZRegion;
 typedef struct ZCapability  ZCapability;
+typedef struct ZCapabilityCast  ZCapabilityCast;
 
 typedef enum {
     Z_ERROR,
@@ -703,7 +704,7 @@ struct ZNode {
 
             /* It is a list of references to the capabilites' definition.
              * This list MUST be set in the semantic analysis. */
-            ZNode   **capabilities;
+            ZCapabilityCast *capabilities;
 
             /* The semantic analyzer attach the reference to the called function
              */
@@ -981,6 +982,12 @@ struct ZSymbol {
 struct ZCapability {
     ZType *type;
     ZNode **nodes;
+};
+
+struct ZCapabilityCast {
+    ZNode *node;
+    ZCastInfo cast;
+    i32 index;
 };
 
 struct ZRegion {
