@@ -1,0 +1,9 @@
+
+tab:[	] quote:["] apos:['] backslash:[\]
+first
+second
+[q]
+[é][€][😀]
+[é€😀]
+// not a comment /* nor this */ 'x'
+#hash

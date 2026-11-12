@@ -272,7 +272,7 @@ static u32 decodeHexCode(ZLexer *l, char **src, int len) {
     return cp;
 }
 
-static u32 parseEscapeChar(ZLexer *l, char **src) {
+static u32 scanEscapeChar(ZLexer *l, char **src) {
     switch (**src) {
     case 'n':  (*src)++; return '\n';
     case 't':  (*src)++; return '\t';
@@ -309,7 +309,7 @@ static void pushCodepointUtf8(char **buff, u32 cp) {
     }
 }
 
-static ZToken **parseInterpolatedString(ZLexer *l) {
+static ZToken **scanInterpolatedString(ZLexer *l) {
     if (*l->current != '{') return NULL;
     ZToken **list = NULL;
     i64 baseDepth = l->depth;
@@ -335,42 +335,52 @@ static ZToken **parseInterpolatedString(ZLexer *l) {
     return list;
 }
 
-static ZToken *parseString(ZLexer *l) {
+static ZToken *_scanString(ZLexer *l, const char *begin, const char *end, bool nl_check) {
     Allocator *a = l->state->allocator;
+    usize blen = strlen(begin), elen = strlen(end);
     bool interpolated = *l->current == '#';
     if (interpolated) next(l);
-    if (*l->current != '"') return NULL;
-    next(l);
+    if (strncmp(l->current, begin, blen) != 0) return NULL;
+    for (usize i = 0; i < blen; i++) next(l);
 
     char *start = l->current;
-    char *buff = NULL;
-    char *src = l->current;
+    ZLexer src  = *l;
+    char *buff  = NULL;
 
     ZToken **list = NULL;
-    while (*src && *src != '"') {
+    while (*src.current && strncmp(src.current, end, elen) != 0) {
         u32 cp;
-        if (*src == '\\' && *(src + 1)) {
-            src++;
-            cp = parseEscapeChar(l, &src);
-        } else if (interpolated && *src == '{') {
+        if (*src.current == '\n') {
+            src.col = 0;
+            src.row++;
+            src.sawNewline = true;
+            src.line = src.current + 1;
+            if (nl_check) printf("Unterminated string literal\n");
+        }
+        if (*src.current == '\\' && *(src.current + 1)) {
+            next(&src);
+            cp = scanEscapeChar(l, &src.current);
+        } else if (interpolated && *src.current == '{') {
             vecpush(buff, '\0');
             ZToken *lit = makestring(a, zstrdup(a, buff), start, l->current);
             setSourceLoc(l, lit);
             vecpush(list, lit);
-            l->col += src - l->current;
-            l->current = src;
-            ZToken **stream = parseInterpolatedString(l);
+            l->col += src.col;
+            l->current = src.current;
+            ZToken **stream = scanInterpolatedString(l);
             vecunion(list, stream, veclen(stream));
-            src = l->current;
+            src = *l;
             vecsetlen(buff, 0);
             continue;
         } else {
-            cp = decodeUtf8(&src);
+            cp = decodeUtf8(&src.current);
         }
         pushCodepointUtf8(&buff, cp);
     }
 
-    if (*src == '"') src++;
+    if (strncmp(src.current, end, elen) == 0) {
+        for (usize i = 0; i < elen; i++) next(&src);
+    }
     else {
         ZToken *tok = maketoken(a, TOK_STR_LIT, start - 1, l->current);
         tok->row    = l->row;
@@ -382,8 +392,7 @@ static ZToken *parseString(ZLexer *l) {
         return NULL;
     }
     vecpush(buff, '\0');
-    l->col += src - l->current;
-    l->current = src;
+    *l = src;
 
     ZToken *lit = makestring(a, buff, start, l->current);
     if (interpolated) {
@@ -394,6 +403,16 @@ static ZToken *parseString(ZLexer *l) {
         stream->stream = list;
         return stream;
     } else return lit;
+
+    return NULL;
+}
+
+static inline ZToken *scanString(ZLexer *l) {
+    return _scanString(l, "\"", "\"", false);
+}
+
+static inline ZToken *scanMultiLineString(ZLexer *l) {
+    return _scanString(l, "\"\"\"", "\"\"\"", false);
 }
 
 static ZToken *makeRune(Allocator *a, u32 codepoint, char *start, char *end) {
@@ -402,7 +421,7 @@ static ZToken *makeRune(Allocator *a, u32 codepoint, char *start, char *end) {
     return self;
 }
 
-static ZToken *parseRune(ZLexer *l) {
+static ZToken *scanRune(ZLexer *l) {
     if (*l->current != '\'') return NULL;
     char *start = l->current;
     char *src = l->current + 1;
@@ -412,7 +431,7 @@ static ZToken *parseRune(ZLexer *l) {
     u32 cp;
     if (*src == '\\' && *(src + 1)) {
         src++;
-        cp = parseEscapeChar(l, &src);
+        cp = scanEscapeChar(l, &src);
     } else {
         cp = decodeUtf8(&src);
     }
@@ -425,7 +444,7 @@ static ZToken *parseRune(ZLexer *l) {
 }
 
 /*TODO: Replace the else-if chain with the trie. */
-static ZToken *parseSymbol(ZLexer *l) {
+static ZToken *scanSymbol(ZLexer *l) {
     Allocator *a = l->state->allocator;
     ZToken *sym = NULL;
     if (false) { /* Empty if statement only for macro definition. */ }
@@ -459,7 +478,7 @@ static ZToken *parseSymbol(ZLexer *l) {
     return sym;
 }
 
-static ZToken *parseHexNumber(ZLexer *l) {
+static ZToken *scanHexNumber(ZLexer *l) {
     if (strncmp(l->current, "0x", 2) != 0) return NULL;
     next(l); next(l);
     char *start = l->current;
@@ -474,7 +493,7 @@ static ZToken *parseHexNumber(ZLexer *l) {
     return makeinteger(l->state->allocator, (i64)value, start, l->current);
 }
 
-static ZToken *parseBinNumber(ZLexer *l) {
+static ZToken *scanBinNumber(ZLexer *l) {
     if (strncmp(l->current, "0b", 2) != 0) return NULL;
     next(l); next(l);
     char *start = l->current;
@@ -501,12 +520,12 @@ static ZToken *parseBinNumber(ZLexer *l) {
     return makeinteger(a, (i64)value, start, l->current);
 }
 
-static ZToken *parseNumber(ZLexer *l) {
+static ZToken *scanNumber(ZLexer *l) {
     char *start = l->current;
     if (strncmp(start, "0x", 2) == 0) {
-        return parseHexNumber(l);
+        return scanHexNumber(l);
     } else if (strncmp(start, "0b", 2) == 0) {
-        return parseBinNumber(l);
+        return scanBinNumber(l);
     }
 
     if (!isdigit(*l->current)) return NULL;
@@ -546,7 +565,7 @@ static ZToken *parseNumber(ZLexer *l) {
     return makeinteger(l->state->allocator, value, start, l->current);
 }
 
-static ZToken *parseLiteral(ZLexer *l) {
+static ZToken *scanLiteral(ZLexer *l) {
     if (!isalpha(*l->current) && *l->current != '_') return NULL;
 
     char *start = l->current;
@@ -634,17 +653,22 @@ static bool emitNextToken(ZLexer *l, ZToken **curr) {
 
     char *sourcePtr = l->current;
     char *sourceLinePtr = l->line;
-    if (*l->current == '"' || (*l->current == '#' && l->current[1] == '"')) {
-        *curr = parseString(l);
+
+    char *s = l->current;
+    if (*s == '#') s++;
+    if (strncmp(s, "\"\"\"", 3) == 0) {
+        *curr = scanMultiLineString(l);
+    } else if (*s == '"') {
+        *curr = scanString(l);
     } else if (*l->current == '\'') {
-        *curr = parseRune(l);
-        if (!*curr) *curr = parseSymbol(l);
+        *curr = scanRune(l);
+        if (!*curr) *curr = scanSymbol(l);
     } else if (isalpha(*l->current) || *l->current == '_') {
-        *curr = parseLiteral(l);
+        *curr = scanLiteral(l);
     } else if (isdigit(*l->current)) {
-        *curr = parseNumber(l);
+        *curr = scanNumber(l);
     } else {
-        *curr = parseSymbol(l);
+        *curr = scanSymbol(l);
     }
 
     if (*curr) {

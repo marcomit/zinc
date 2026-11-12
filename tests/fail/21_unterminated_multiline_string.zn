@@ -1,0 +1,5 @@
+main :: fn () u32 {
+    s := """never
+    closed
+    return 0
+}
