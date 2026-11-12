@@ -152,3 +152,55 @@ bool visitNode(ZVisitor *ctx, ZNode *node) {
     }
     return true;
 }
+
+bool visitType(ZTypeVisitor *ctx, ZType *type) {
+    if (!type) return true;
+
+    ZVisitorState state = ctx->visit(type, ctx->clientData);
+
+    if (state == Z_STOP)    return false;
+    if (state == Z_BREAK)   return true;
+
+    switch (type->kind) {
+    case Z_TYPE_POINTER:
+        visitType(ctx, type->base);
+        break;
+    case Z_TYPE_ARRAY:
+        visitType(ctx, type->array.base);
+        break;
+    case Z_TYPE_FUNCTION:
+        visitType(ctx, type->func.ret);
+        for (usize i = 0; i < veclen(type->func.args); i++)
+            visitType(ctx, type->func.args[i]);
+        for (usize i = 0; i < veclen(type->func.capabilities); i++)
+            visitType(ctx, type->func.capabilities[i]);
+        break;
+    case Z_TYPE_TUPLE:
+        for (usize i = 0; i < veclen(type->tuple); i++)
+            visitType(ctx, type->tuple[i]);
+        break;
+    case Z_TYPE_SUM:
+        for (usize i = 0; i < veclen(type->sumType); i++)
+            visitType(ctx, type->sumType[i]);
+        break;
+    case Z_TYPE_OPTIONAL:
+        visitType(ctx, type->optional);
+        break;
+    case Z_TYPE_RESULT:
+        visitType(ctx, type->result.success);
+        visitType(ctx, type->result.error);
+        break;
+
+    case Z_TYPE_NAMESPACE:
+    case Z_TYPE_PRIMITIVE:
+    case Z_TYPE_STRUCT:
+    case Z_TYPE_TYPE:
+    case Z_TYPE_FACET:
+    case Z_TYPE_ENUM:
+    case Z_TYPE_GENERIC:
+    case Z_TYPE_NONE:
+    case Z_TYPE_COUNT:
+        break;
+    }
+    return true;
+}

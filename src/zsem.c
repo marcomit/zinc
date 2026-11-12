@@ -299,22 +299,22 @@ static void putImpl(ZThreadSem *ctx, ZNode *node) {
     hashset_t funcs = NULL;
     usize funcLen = veclen(node->impl.funcs);
 
-    ZType *recv = NULL;
-    for (usize i = 0; i < funcLen; i++) {
-        ZNode *f = node->impl.funcs[i];
-        if (!f->funcDef.receiver) { // static function
-            zlog(ctx->state, f->tok, Z3061, stoken(f->funcDef.name));
-            continue;
-        }
-        ZType *t = f->funcDef.receiver->resolved;
-        if (t->kind != Z_TYPE_POINTER) { // must be *self
-            zlog(ctx->state, t->tok, Z303C);
-        } else if (!recv) {
-            recv = t;
-        } else if (!typesEqual(recv, t)) {
-            zlog(ctx->state, t->tok, Z3061, stype(recv), stype(t));
-        }
-    }
+    // ZType *recv = NULL;
+    // for (usize i = 0; i < funcLen; i++) {
+    //     ZNode *f = node->impl.funcs[i];
+    //     if (!f->funcDef.receiver) { // static function
+    //         zlog(ctx->state, f->tok, Z3061, stoken(f->funcDef.name));
+    //         continue;
+    //     }
+    //     ZType *t = f->funcDef.receiver->resolved;
+    //     if (t->kind != Z_TYPE_POINTER) { // must be *self
+    //         zlog(ctx->state, t->tok, Z303C);
+    //     } else if (!recv) {
+    //         recv = t;
+    //     } else if (!typesEqual(recv, t)) {
+    //         zlog(ctx->state, t->tok, Z3061, stype(recv), stype(t));
+    //     }
+    // }
 
     for (usize i = 0; i < funcLen; i++) {
         ZNode *func = node->impl.funcs[i];
@@ -600,13 +600,27 @@ static void putNamespace(ZThreadSem *ctx, ZNode *node) {
     );
 }
 
-static i32 lookupCapabilityByType(ZScope *scope, ZType *capability) {
+static ZCastInfo checkCapability(ZThreadSem *ctx, ZType *capability, ZType *requested) {
+    if (!capability || !requested) return (ZCastInfo){ 0 };
+
+    if (typesEqual(capability, requested)) return (ZCastInfo){
+        capability, requested, requested, Z_CAST_NOOP
+    };
+
+    return typesCompatible(ctx, capability, requested);
+}
+
+typedef struct {
+    ZCastInfo cast;
+    i32 index;
+} ZCapabilityCast;
+
+static ZCapabilityCast lookupCapabilityByType(ZThreadSem *ctx, ZScope *scope, ZType *capability) {
     for (usize i = 0; i < veclen(scope->capabilities); i++) {
-        if (typesEqual(scope->capabilities[i]->type, capability)) {
-            return i;
-        }
+        ZCastInfo c = checkCapability(ctx, scope->capabilities[i]->type, capability);
+        if (c.promoted) return (ZCapabilityCast){ c, i };
     }
-    return -1;
+    return (ZCapabilityCast){ .cast = (ZCastInfo){ 0 }, .index = -1 };
 }
 
 static ZCapability *putCapability(ZThreadSem *ctx, ZNode *var) {
@@ -617,17 +631,18 @@ static ZCapability *putCapability(ZThreadSem *ctx, ZNode *var) {
 
     ZScope *cur = ctx->current;
 
-    i32 i = lookupCapabilityByType(cur, var->resolved);
+    ZCapabilityCast c = lookupCapabilityByType(ctx, cur, var->resolved);
+
     ZCapability *capability = NULL;
-    if (i == -1) {
+    if (c.index == -1) {
         capability          = zalloc(ctx->allocator, ZCapability);
         capability->nodes   = NULL;
         capability->type    = var->resolved;
         vecpush(cur->capabilities, capability);
     } else {
-        capability = cur->capabilities[i];
+        capability = cur->capabilities[c.index];
     }
-    vecpush(capability->nodes, var);
+    vecpush(capability->nodes, (var));
     return capability;
 }
 
@@ -1602,15 +1617,19 @@ static ZNode *resolveFuncCallEmbedded(ZThreadSem *ctx,
 
 static ZNode *lookupScopedCapability(ZThreadSem *ctx, ZType *required) {
     ZScope *curr = ctx->current;
-    i32 i = -1;
+    ZCapabilityCast c;
     while (curr) {
-        i = lookupCapabilityByType(curr, required);
-        if (i != -1) break;
+        c = lookupCapabilityByType(ctx, curr, required);
+        if (c.index != -1) break;
         if (curr->node->type == NODE_FUNC) break;
         curr = curr->parent;
     }
-    if (i == -1 || veclen(curr->capabilities[i]->nodes) == 0) return NULL;
-    return veclast(curr->capabilities[i]->nodes);
+
+    ZCapability **cc = curr->capabilities;
+    if (c.index == -1 || veclen(cc[c.index]->nodes) == 0) return NULL;
+
+    ZNode *node = veclast(cc[c.index]->nodes);
+    return implicitCast(ctx, node, c.cast.promoted);
 }
 
 static ZNode **analyzeCapabilities(ZThreadSem *ctx, ZToken *start, ZType **capabilities) {
@@ -1632,6 +1651,14 @@ static ZNode **analyzeCapabilities(ZThreadSem *ctx, ZToken *start, ZType **capab
         vecpush(capabilityRefs, reference);
     }
     return capabilityRefs;
+}
+
+static inline usize countOptionalFields(ZNode **args) {
+    usize res = 0;
+    for (usize i = 0; i < veclen(args); i++) {
+        if (args[i]->field.defaultValue) res++;
+    }
+    return res;
 }
 
 static void resolveFuncArgs(
@@ -1881,8 +1908,9 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     }
 
     usize expectedLen   = veclen(symType->strct.fields);
+    usize optionals     = countOptionalFields(symType->strct.fields);
     usize gotLen        = veclen(curr->structlit.fields);
-    if (expectedLen != gotLen) {
+    if (expectedLen - optionals != gotLen) {
         if (!query(curr->annotations, "partial")) {
             zlog(ctx->state, curr->tok, Z3010, expectedLen, gotLen);
         }
@@ -3306,9 +3334,8 @@ static void analyzeFunc(ZThreadSem *ctx, ZNode *curr) {
 
     if (curr->funcDef.receiver) {
         ZNode *receiver = curr->funcDef.receiver;
-        ZType *recType  = resolveTypeRef(ctx, receiver->field.type);
-        curr->funcDef.receiver->resolved = recType;
-        receiver->field.type = recType;
+        ZType *recType  = resolveTypeRef(ctx, receiver->resolved);
+        receiver->resolved = recType;
 
         ZSymbol *sym = makesymbol(ctx->allocator, Z_SYM_VAR);
         sym->name       = receiver->field.identifier;

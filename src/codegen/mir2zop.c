@@ -1,9 +1,6 @@
 #include "_zvm.h"
 #include "zmir.h"
 
-typedef ZMap(ZMIRBasicBlockRef, u32) BlockMap;
-typedef ZMap(ZMIRValueRef, u32) SlotMap;
-
 typedef struct {
     Allocator   *allocator;
     ZVMStatus   status;
@@ -90,11 +87,11 @@ static u16 walkLeaves(ZLower *ctx, ZMIRTypeRef t, u32 offset, MemOp *m) {
 }
 
 static u16 slotOf(ZLower *ctx, ZMIRValueRef v) {
-    u32 *slot = mapget(ctx->slots, v);
-    if (slot) return (u16)*slot;
+    // u32 *slot = mapget(ctx->slots, v);
+    // if (slot) return (u16)*slot;
     u16 base = ctx->nslots;
     ctx->nslots += walkLeaves(ctx, v->type, 0, NULL);
-    mapput(ctx->slots, v, base);
+    // mapput(ctx->slots, v, base);
     return base;
 }
 
@@ -214,7 +211,7 @@ ZVMFunction lowerFunc(ZLower *ctx, ZMIRValueRef func) {
 
     for (usize i = 0; i < veclen(func->fn.blocks); i++) {
         ZMIRBasicBlockRef blk = func->fn.blocks[i];
-        mapput(ctx->blocks, blk, ctx->pc + 1);
+        // mapput(ctx->blocks, blk, ctx->pc + 1);
         for (usize j = 0; j < veclen(blk->instrs); j++) {
             lowerValue(ctx, blk->instrs[j]);
         }
