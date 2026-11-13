@@ -1288,10 +1288,16 @@ static ZNode *parseCapabilityBlock(ZParser *parser) {
              !check(parser, TOK_DO)         &&
               match(parser, TOK_SEMICOLON)  );
 
-    ZNode *block                                = parseBlockOrInline(parser, false);
+    ZToken *cur = peek(parser);
+    ZNode *block = NULL;
+    if (!cur->newlineBefore) {
+        block = parseBlockOrInline(parser, false);
+    }
+
     ZNode *capabilityBlock                      = makenode(parser->allocator, NODE_CAPABILITY);
     capabilityBlock->capability.capabilities    = capabilities;
     capabilityBlock->capability.block           = block;
+    capabilityBlock->capability.isInline        = block == NULL ? true : false;
     return setspan(parser, capabilityBlock, start);
 }
 
@@ -2396,6 +2402,13 @@ static ZNode *parseFuncDecl(ZParser *parser,
         TOK_LPAREN,         TOK_RPAREN,
         parseFuncField,  true
     );
+
+
+    if (veclen(args) && args[0]->type == NODE_FUNC_FIELD) {
+        for (usize i = 0; i < veclen(args) - 1; i++) {
+            args[i] = args[i + 1];
+        }
+    }
 
     checkOptFieldsAtEnd(parser, args);
 

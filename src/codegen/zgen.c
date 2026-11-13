@@ -3953,7 +3953,8 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
  * Capabilities are compiled like normal variables.
  */
 static void genCapability(ZCodegen *ctx, ZNode *node) {
-    beginScope(Z_SCOPE_BLOCK, ctx);
+    bool isInline = node->capability.isInline;
+    if (!isInline) beginScope(Z_SCOPE_BLOCK, ctx);
 
     for (usize i = 0; i < veclen(node->capability.capabilities); i++) {
         ZNode *decl = node->capability.capabilities[i];
@@ -3985,8 +3986,10 @@ static void genCapability(ZCodegen *ctx, ZNode *node) {
         vecpush(ctx->scope->capabilities, capability);
     }
 
-    genStmt(ctx, node->capability.block);
-    endScope(ctx);
+    if (!isInline) {
+        genStmt(ctx, node->capability.block);
+        endScope(ctx);
+    }
 }
 
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {

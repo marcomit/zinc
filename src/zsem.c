@@ -222,6 +222,12 @@ static void addStaticFunc(ZThreadSem *ctx, ZNode *func) {
 
 static void addReceiverFunc(ZThreadSem *ctx, ZNode *node) {
     ZNode *receiver         = node->funcDef.receiver;
+
+    // if (!receiver->field.type) {
+    //     zlog(ctx->state, node->tok, Z9041);
+    //     return;
+    // }
+
     ZFuncTable *table       = putOrInsertFuncTable(ctx, receiver->field.type);
 
     if (!hashset_insert(&table->seenReceiverFuncs, node->funcDef.name->str)) {
@@ -3456,14 +3462,20 @@ static void analyzeReturn(ZThreadSem *ctx, ZNode *curr) {
 }
 
 static void analyzeCapability(ZThreadSem *ctx, ZNode *curr) {
-    beginScope(ctx, curr);
+    bool isInline = curr->capability.isInline;
+
+    if (!isInline) beginScope(ctx, curr);
+
     ZNode **capabilities = curr->capability.capabilities;
     for (usize i = 0; i < veclen(capabilities); i++) {
         resolveType(ctx, capabilities[i], NULL);
         putCapability(ctx, capabilities[i]);
     }
-    analyzeStmt(ctx, curr->capability.block);
-    endScope(ctx);
+
+    if (!isInline) {
+        analyzeStmt(ctx, curr->capability.block);
+        endScope(ctx);
+    }
 }
 
 static bool patternEq(ZState *state, ZVarDestructPattern *a, ZVarDestructPattern *b) {

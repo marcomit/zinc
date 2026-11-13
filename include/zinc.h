@@ -845,8 +845,9 @@ struct ZNode {
         } sizeofExpr;
 
         struct {
-            ZNode **capabilities;
-            ZNode *block;
+            ZNode   **capabilities;
+            ZNode   *block;
+            bool    isInline;
         } capability;
 
         struct {
