@@ -2680,14 +2680,19 @@ static ZNode *parseVarInferred(ZParser *parser) {
     ZToken *start = peek(parser);
     ZVarDestructPattern *pattern = parseMultiDestructVar(parser);
 
-    expect(parser, TOK_ASSIGN);
+    bool constant = false;
+    if (match(parser, TOK_DOUBLE_COLON)) constant = true;
+    else if (!match(parser, TOK_ASSIGN)) return NULL;
+
     ZNode *expr = parseMultiExpr(parser);
 
     if (!expr) {
         zlog(parser->state, peek(parser), Z202B);
     }
 
-    return setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
+    ZNode *var = makenodevar(parser->allocator, pattern, NULL, expr);
+    var->varDecl.constant = constant;
+    return setspan(parser, var, start);
 }
 
 static ZNode *parseVarDefTyped(ZParser *parser) {
