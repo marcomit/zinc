@@ -1,9 +1,14 @@
-/*
- * zbuild.h - a tiny build system for C. Public API.
+/**
+ * @file zbuild.h
+ * @brief A tiny build system for C. Public API.
  *
  * Bootstrap once:  cc -o build build.c
  * Then just run:   ./build
+ *
+ * @copyright Copyright (c) 2025, Marco Menegazzi
+ *            SPDX-License-Identifier: BSD-3-Clause
  */
+
 #ifndef ZBUILD_H
 #define ZBUILD_H
 
@@ -72,43 +77,18 @@ typedef enum {
 } ZCmdState;
 
 struct ZCmd {
-    vec(const char *)   argv;
-    vec(const char *)   inputs;
-    vec(const char *)   outputs;
-    vec(ZCmd *)         after;
-    size_t               remaining;
-    ZCmdState           state;
+    vec(zstr)   argv;
+    vec(zstr)   inputs;
+    vec(zstr)   outputs;
+    vec(ZCmd *) after;
+    size_t      remaining;
+    ZCmdState   state;
 };
 
 static inline void zb_cmd_free(ZCmd *);
 static inline int zb_is_out_of_date(ZCmd *);
 static inline char *zb_get_cmd(ZCmd *);
 static inline const char *zb_mkdir(const char *);
-
-static inline bool zb_starts_with(const char *src, const char *prefix) {
-    return strncmp(src, prefix, strlen(prefix)) == 0;
-}
-
-static inline bool zb_ends_with(const char *src, const char *suffix) {
-    size_t suffix_len   = strlen(suffix);
-    size_t src_len      = strlen(src);
-    if (suffix_len > src_len) return false;
-    return strcmp(src + (src_len - suffix_len), suffix) == 0;
-}
-
-static inline char *zb__strndup(const char *src, size_t len) {
-#ifdef strndup
-    return strndup(src, len);
-#else
-    size_t n = 0;
-    while (n < len && src[n]) n++;
-    char *res = (char *)malloc(n + 1);
-    if (!res) return NULL;
-    memcpy(res, src, n);
-    res[n] = '\0';
-    return res;
-#endif
-}
 
 static inline int cpu_count() {
 #if defined(_WIN32)

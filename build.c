@@ -1,4 +1,5 @@
 #include "lib/zvec.h"
+#include "lib/zstr.h"
 #include "lib/zbuild.h"
 
 #define BUILD_DIR "build"
