@@ -9,7 +9,6 @@
 #include "zvec.h"
 #include "zhset.h"
 #include "zmap.h"
-#include "zmem.h"
 
 #include <stdatomic.h>
 #include <stdatomic.h>
