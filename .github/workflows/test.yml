@@ -24,12 +24,12 @@ jobs:
       - name: Build zinc (Linux / macOS)
         if: runner.os != 'Windows'
         shell: bash
-        run: make clean && make
+        run: clang -o zb build.c && ./zb clean && ./zb
 
       - name: Build zinc (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: make clean && make
+        run: clang -o zb build.c && ./zb clean && ./zb
 
       - name: Run tests (Linux / macOS)
         if: runner.os != 'Windows'
@@ -73,7 +73,7 @@ jobs:
 
       - name: Build zinc (${{ matrix.san }})
         shell: bash
-        run: make clean && make ${{ matrix.san }}
+        run: clang -o zb build.c && ./zb clean && ./zb ${{ matrix.san }}
 
       - name: Run tests under ${{ matrix.san }}
         shell: bash

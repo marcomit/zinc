@@ -1,7 +1,6 @@
 #include "lib/zvec.h"
-#include "zbuild.h"
+#include "lib/zbuild.h"
 
-#define TARGET "zinc"
 #define BUILD_DIR "build"
 #define LLVM_VERSION "22"
 
@@ -15,6 +14,7 @@ typedef struct {
     CommandFn fn;
 } Command;
 
+static const char *TARGET               = "zinc";
 static const char *ZMODE_FLAGS          = "-DZMODE=ZMODE_COMPILER";
 static const char *SANITIZE             = NULL;
 static vec(const char *) CFLAGS         = NULL;
@@ -31,9 +31,6 @@ static void build_link(ZBuild *b, vec(ZCmd *) cmds) {
     zb_arg(l, "-o");
     zb_out(l, TARGET);
 
-    zb_argsv(l, LLD_LIBS);
-    zb_argsv(l, LLVM_LDFLAGS);
-
     for (size_t i = 0; i < veclen(cmds); i++) {
         ZCmd *c = cmds[i];
         zb_after(l, c);
@@ -41,6 +38,10 @@ static void build_link(ZBuild *b, vec(ZCmd *) cmds) {
             zb_in(l, c->outputs[j]);
         }
     }
+
+    zb_argsv(l, LLD_LIBS);
+    zb_argsv(l, LLVM_LDFLAGS);
+    if (SANITIZE) zb_arg(l, SANITIZE);
 }
 
 static ZCmd *build_cpp(ZBuild *b, const char *input) {
@@ -78,12 +79,12 @@ static ZCmd *build_c(ZBuild *b, const char *input) {
     zb_argsv(c, WIN_DEFS);
     zb_argsv(c, LLVM_CFLAGS);
     zb_argsv(c, LLD_INCLUDES);
-    zb_arg(c, ZMODE_FLAGS);
-
-    zb_arg(c, "-c");
-    zb_in(c, input);
-    zb_arg(c, "-o");
-    zb_out(c, output);
+    zb_arg  (c, SANITIZE);
+    zb_arg  (c, ZMODE_FLAGS);
+    zb_arg  (c, "-c");
+    zb_in   (c, input);
+    zb_arg  (c, "-o");
+    zb_out  (c, output);
 
     return c;
 }
@@ -154,16 +155,25 @@ static void build_clean(ZBuild *b, int argc, char *argv[]) {
 
 static void build_debug(ZBuild *b, int argc, char *argv[]) {
     SANITIZE = "-fsanitize=address,undefined";
+    TARGET = "zinc-debug";
+    build_all(b, argc, argv);
+}
+
+static void build_asan(ZBuild *b, int argc, char *argv[]) {
+    SANITIZE = "-fsanitize=address,undefined";
+    TARGET = "zinc-asan";
     build_all(b, argc, argv);
 }
 
 static void build_ubsan(ZBuild *b, int argc, char *argv[]) {
     SANITIZE = "-fsanitize=undefined,local-bounds";
+    TARGET = "zinc-ubsan";
     build_all(b, argc, argv);
 }
 
 static void build_ubsan_int(ZBuild *b, int argc, char *argv[]) {
     SANITIZE = "-fsanitize=undefined,integer,implicit-conversion,local-bounds";
+    TARGET = "zinc-ubsan-int";
     build_all(b, argc, argv);
 }
 
@@ -203,7 +213,6 @@ static void build_install(ZBuild *b, int argc, char *argv[]) {
 }
 
 static void build_test(ZBuild *b, int argc, char *argv[]) {
-    build_all(b, argc, argv);
     zb_cmd(b, "./run_tests.sh");
 }
 
@@ -212,7 +221,7 @@ static const Command Commands[] = {
     { "clean",      build_clean     },
     { "lsp",        build_lsp       },
     { "debug",      build_debug     },
-    { "asan",       build_debug     },
+    { "asan",       build_asan      },
     { "ubsan",      build_ubsan     },
     { "ubsan-int",  build_ubsan_int },
     { "install",    build_install   },
@@ -264,15 +273,21 @@ static vec(const char *) shell_split(vec(char) *buf, const char *cmd) {
     return zb_split_any(*buf, " \n\r\t");
 }
 
-static void init_llvm_flags() {
-#if defined(_WIN32)
-#else
-    vec(char) out = NULL;
-    LLVM_CFLAGS = shell_split(&out, "llvm-config --cflags");
+static vec(const char *) llvm_flags(vec(char) *out, const char *env, const char *cmd) {
+    const char *v = getenv(env);
+    if (v && *v) return zb_split_any(v, " \r\t\n");
+    if (*out) vecsetlen(*out, 0);   // vecsetlen dereferences: the vec may still be NULL
+    return shell_split(out, cmd);
+}
 
-    vecsetlen(out, 0);
-    LLVM_LDFLAGS = shell_split(&out, "llvm-config --ldflags --libs core");
-#endif
+static void init_llvm_flags() {
+    vec(char) out   = NULL;
+    LLVM_CFLAGS     = llvm_flags(&out, "LLVM_CFLAGS", "llvm-config --cflags");
+    LLVM_LDFLAGS    = llvm_flags(&out, "LLVM_LDFLAGS", "llvm-config --ldflags --libs core");
+
+    if (out) vecsetlen(out, 0);
+    vec(const char *) libdir = shell_split(&out, "llvm-config --libdir");
+    if (veclen(libdir)) vecpush(LLVM_LDFLAGS, zb_sprint("-Wl,-rpath,%s", libdir[0]));
 }
 
 static void init_flags() {
