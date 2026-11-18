@@ -12,10 +12,6 @@
 #ifndef ZBUILD_H
 #define ZBUILD_H
 
-#if defined(__linux__) && !defined(_GNU_SOURCE)
-#   define _GNU_SOURCE
-#endif
-
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -35,9 +31,6 @@
 #   include <unistd.h>
 #   include <sys/wait.h>
 #   define MKDIR(path) mkdir(path, 0755)
-#endif
-#ifdef __linux__
-#   include <sched.h>
 #endif
 
 typedef struct ZCmd   ZCmd;     /* one command (argv + files + deps) */
@@ -85,14 +78,6 @@ static inline const char *zb_mkdir(const char *);
 static inline int cpu_count() {
 #if defined(_WIN32)
     DWORD n = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
-    return n > 0 ? (int)n : 1;
-#elif defined(__linux__)
-    cpu_set_t set;
-    if (sched_getaffinity(0, sizeof set, &set) == 0) {
-        int n = CPU_COUNT(&set);
-        if (n > 0) return n;
-    }
-    long n = sysconf(_SC_NPROCESSORS_ONLN);
     return n > 0 ? (int)n : 1;
 #else
     long n = sysconf(_SC_NPROCESSORS_ONLN);
