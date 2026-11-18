@@ -26,9 +26,9 @@ print_point :: fn (p: V2ptr) void {
 
 is_positive :: fn (n: int) bool -> n > 0
 
-V2 self :: impl {
-    len :: fn () float -> self.x * self.x + self.y * self.y
-    scale :: fn (factor: scalar) V2 -> V2{x = self.x * factor, y = self.y * factor}
+V2 :: impl {
+    len :: fn (self) float -> self.x * self.x + self.y * self.y
+    scale :: fn (self, factor: scalar) V2 -> V2{x = self.x * factor, y = self.y * factor}
 }
 
 main :: fn () int {

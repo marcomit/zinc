@@ -1,0 +1,20 @@
+outer: 10
+inner: 20
+restored: 10
+block: 30
+after block: 10
+parenthesized: 35
+shadowed: 40
+by name: 10
+loop 0: 0
+loop 1: 100
+loop 2: 200
+after loop: 40
+alias: 2
+copy: 2
+early: 99
+late: 100
+body: 3
+defer after: 3
+defer before
+allocator: 7

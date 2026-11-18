@@ -13,6 +13,7 @@
 #include "zgen.h"
 #include "zinc.h"
 #include "zmem.h"
+#include "zmir.h"
 
 static void         genStmt             (ZCodegen *, ZNode *);
 static void         genBlock            (ZCodegen *, ZNode *);
@@ -126,6 +127,17 @@ static ZMIRSymbol *getZMIRSymbol(ZCodegen *ctx, const char *key) {
 static ZMIRValueRef getZMIRValueRef(ZCodegen *ctx, const char *key) {
     ZMIRSymbol *sym = getZMIRSymbol(ctx, key);
     return sym ? sym->value : NULL;
+}
+
+static ZMIRValueRef capabilityFieldPtr(ZCodegen *ctx, ZNode *cast, ZMIRValueRef ptr) {
+    ZMIRTypeRef type    = genType(ctx, cast->castExpr.info.from);
+    u32 *path           = cast->castExpr.fieldPath;
+
+    for (usize i = 0; i < veclen(path); i++) {
+        ptr = ZMIRBuildStructGEP2(ctx->builder, type, ptr, path[i], label(ctx, "cap.field"));
+        type = ZMIRStructGetTypeAtIndex(type, path[i]);
+    }
+    return ptr;
 }
 
 static ZMIRValueRef getCapabilityRef(ZCodegen *ctx, ZCapabilityCast cast) {
@@ -1838,6 +1850,10 @@ static ZMIRValueRef genCall(ZCodegen *ctx, ZNode *node) {
         if (!capability) {
             zlog(ctx->state, cap.node->tok, Z00A4, stoken(cap.node->tok));
         } else {
+            if (cap.node->type == NODE_CAST &&
+                cap.node->castExpr.info.kind == Z_CAST_FIELD) {
+                capability = capabilityFieldPtr(ctx, cap.node, capability);
+            }
             capability = ZMIRBuildLoad2(
                 ctx->builder,
                 genType(ctx, cap.node->resolved),
@@ -3964,6 +3980,9 @@ static void genCapability(ZCodegen *ctx, ZNode *node) {
             if (decl->varDecl.pattern->type == Z_VAR_IDENT) {
                 ref = getZMIRValueRef(ctx, stoken(decl->tok));
             }
+        } else if ((decl->type == NODE_IDENTIFIER && !decl->identNode.li) ||
+            decl->type == NODE_MEMBER) {
+            ref = genLValue(ctx, decl);
         } else {
             ZMIRStack *stack = getStackValue(ctx, decl);
             if (!stack) {
@@ -4596,13 +4615,22 @@ static void genImpl(ZCodegen *ctx, ZNode *root) {
 }
 
 static void genFacetVtable(ZCodegen *ctx, ZNode *root, ZMIRValueRef *ptrs) {
+    ZType *recv = NULL;
+    for (usize k = 0; k < veclen(root->impl.funcs); k++) {
+        if (root->impl.funcs[k]->funcDef.receiver) {
+            recv = root->impl.funcs[k]->funcDef.receiver->resolved;
+            break;
+        }
+    }
+    if (!recv) return;
+
     for (usize i = 0; i < veclen(root->impl.facets); i++) {
         ZType *facet = root->impl.facets[i];
 
         if (!facet || facet->kind != Z_TYPE_FACET) {
             zlog(ctx->state, facet->tok, Z304D, stype(facet));
         }
-        char *buf = encodeFacetVTable(facet, root->impl.base);
+        char *buf = encodeFacetVTable(facet, recv);
 
         if (ZMIRGetNamedGlobal(ctx->mod, buf)) continue;
 

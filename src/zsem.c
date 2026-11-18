@@ -39,6 +39,7 @@
 #include "zinc.h"
 #include "zmem.h"
 #include "zvec.h"
+#include "zvisit.h"
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
@@ -310,34 +311,29 @@ static void putImpl(ZThreadSem *ctx, ZNode *node) {
     hashset_t funcs = NULL;
     usize funcLen = veclen(node->impl.funcs);
 
-    // ZType *recv = NULL;
-    // for (usize i = 0; i < funcLen; i++) {
-    //     ZNode *f = node->impl.funcs[i];
-    //     if (!f->funcDef.receiver) { // static function
-    //         zlog(ctx->state, f->tok, Z3061, stoken(f->funcDef.name));
-    //         continue;
-    //     }
-    //     ZType *t = f->funcDef.receiver->resolved;
-    //     if (t->kind != Z_TYPE_POINTER) { // must be *self
-    //         zlog(ctx->state, t->tok, Z303C);
-    //     } else if (!recv) {
-    //         recv = t;
-    //     } else if (!typesEqual(recv, t)) {
-    //         zlog(ctx->state, t->tok, Z3061, stype(recv), stype(t));
-    //     }
-    // }
+    ZType *recv = NULL;
+    for (usize i = 0; veclen(node->impl.facets) && i < funcLen; i++) {
+        ZNode *f = node->impl.funcs[i];
+        ZNode *r = f->funcDef.receiver;
+        if (!r) {
+            zlog(ctx->state, f->tok, Z3061, stoken(f->funcDef.name));
+            continue;
+        }
+        ZType *t = r->resolved;
+        if (!t) continue;
+        if (t->kind != Z_TYPE_POINTER) {
+            zlog(ctx->state, r->tok, Z303C);
+        } else if (!recv) {
+            recv = t;
+        } else if (!typesEqual(recv, t)) {
+            zlog(ctx->state, r->tok, Z3062, stype(recv), stype(t));
+        }
+    }
 
     for (usize i = 0; i < funcLen; i++) {
         ZNode *func = node->impl.funcs[i];
         putFunc(ctx, func);
         hashset_insert(&funcs, func->funcDef.name->str);
-    }
-
-    if (veclen(node->impl.facets) > 0 &&
-        node->impl.base->kind != Z_TYPE_POINTER) {
-        zlog(ctx->state, node->impl.base->tok, Z303C);
-        hashset_free(&funcs);
-        return;
     }
 
     ZType **facets = node->impl.facets;
@@ -1883,6 +1879,10 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ZToken **chain      = curr->structlit.chain;
     ZToken *ident       = veclast(curr->structlit.chain);
     if (veclen(chain) == 1 && ident->type == TOK_DOT) {
+        if (!inferred) {
+            zlog(ctx->state, curr->tok, Z3031);
+            return NULL;
+        }
         ZType *expected = inferred->kind == Z_TYPE_OPTIONAL ?
             inferred->optional : inferred;
         symType         = resolveTypeRef(ctx, expected);

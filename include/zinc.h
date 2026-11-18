@@ -950,6 +950,9 @@ typedef struct ZParser {
      */
     bool            inImplBlock;
 
+    /* Must set only inside an impl block, it captures the base of the the impl. */
+    ZType           *implBase;
+
     /* Last consumed token: where the node being parsed ends (see setspan). */
     ZToken          *last;
 } ZParser;
@@ -1139,6 +1142,7 @@ usize typeSize(ZState *, ZType *);
 void typesSort(ZType **);
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
+ZType *typeReplace(ZType *root, ZType *from, ZType *to);
 bool typesPrimitive(ZType *);
 
 /* ================== Zinc state ================== */

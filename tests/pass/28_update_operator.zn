@@ -9,9 +9,8 @@ LinkedList :: impl {
         self.val = val
         return self
     }
-}
-*LinkedList self :: impl {
-    print :: fn () void {
+
+    print :: fn (*self) void {
         io.printf("%d\n", self.val)
         if not self.next return
 
@@ -20,8 +19,7 @@ LinkedList :: impl {
 }
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator.init()
-    with _ := gpa.&.allocator() {
+    with _ := GeneralPurposeAllocator.new() {
         i := 0
         root: ?*LinkedList = LinkedList.new(none, 0)
 

@@ -9,8 +9,6 @@ c :: foreign {
 pub GeneralPurposeAllocator :: struct { }
 
 GeneralPurposeAllocator :: impl {
-    pub init :: fn () GeneralPurposeAllocator -> .{  }
-
     pub new :: fn () Allocator -> Allocator(&GeneralPurposeAllocator{})
 }
 
@@ -27,8 +25,8 @@ GeneralPurposeAllocator :: impl(Allocator) {
     destroy :: fn (*self, ptr: *u8) void {
         c.free(ptr)
     }
-    #allow_empty init ::     fn () void {  }
-    #allow_empty deinit ::   fn () void {  }
+    #allow_empty init ::     fn (*self) void {  }
+    #allow_empty deinit ::   fn (*self) void {  }
 }
 
 GeneralPurposeAllocator :: impl {

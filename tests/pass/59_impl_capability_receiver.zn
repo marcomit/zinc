@@ -18,23 +18,23 @@ Counter :: impl with s: Scale {
     make :: fn (start: i32) Counter -> Counter { value = start * s.factor }
 }
 
-*Counter self :: impl with s: Scale {
-    bump :: fn () void {
+Counter :: impl with s: Scale {
+    bump :: fn (*self) void {
         self.value += s.factor
     }
 
-    shift :: fn () void with o: Offset {
+    shift :: fn (*self) void with o: Offset {
         self.value += o.amount * s.factor
     }
 
-    twice :: fn () void {
+    twice :: fn (*self) void {
         self.bump()
         self.bump()
     }
 }
 
-Counter self :: impl {
-    print :: fn () void -> c.printf("%d\n", self.value)
+Counter :: impl {
+    print :: fn (self) void -> c.printf("%d\n", self.value)
 }
 
 main :: fn () i32 {

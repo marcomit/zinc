@@ -7,8 +7,8 @@ Range :: struct {
 
 range :: fn (start: i32, end: i32) Range -> .{end = end, current =start}
 
-*Range self :: impl {
-    next :: fn () ?i32 {
+Range :: impl {
+    next :: fn (*self) ?i32 {
         if self.current >= self.end return none
         defer self.current += 1
         return self.current
