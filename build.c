@@ -1,12 +1,15 @@
 #include "lib/zvec.h"
 #include "lib/zstr.h"
 #include "lib/zbuild.h"
+#include <ctype.h>
 
 #define BUILD_DIR "build"
 #define LLVM_VERSION "22"
 
 #ifdef _WIN32
+#   define NULLDEV "2>nul"
 #else
+#   define NULLDEV "2>/dev/null"
 #endif
 
 typedef void (*CommandFn)(ZBuild *, int , char *[]);
@@ -28,6 +31,8 @@ static vec(const char *) LLD_INCLUDES   = NULL;
 static vec(const char *) LLVM_CFLAGS    = NULL;
 static vec(const char *) LLVM_LDFLAGS   = NULL;
 static vec(const char *) LSP_LDFLAGS    = NULL;
+static zstr LLVM_CONFIG_PATH            = NULL;
+static zstr LLD_PREFIX                  = NULL;
 
 static void build_link(ZBuild *b, vec(ZCmd *) cmds) {
     ZCmd *l = zb_cmd(b, "clang++");
@@ -169,26 +174,30 @@ static void build_clean(ZBuild *b, int argc, char *argv[]) {
 }
 
 static void build_debug(ZBuild *b, int argc, char *argv[]) {
-    SANITIZE = "-fsanitize=address,undefined";
-    TARGET = "zinc-debug";
+    SANITIZE    = "-fsanitize=address,undefined";
+    TARGET      = "zinc-debug";
+    OBJ_DIR     = "build/debug/";
     build_all(b, argc, argv);
 }
 
 static void build_asan(ZBuild *b, int argc, char *argv[]) {
-    SANITIZE = "-fsanitize=address,undefined";
-    TARGET = "zinc-asan";
+    SANITIZE    = "-fsanitize=address,undefined";
+    TARGET      = "zinc-asan";
+    OBJ_DIR     = "build/asan/";
     build_all(b, argc, argv);
 }
 
 static void build_ubsan(ZBuild *b, int argc, char *argv[]) {
-    SANITIZE = "-fsanitize=undefined,local-bounds";
-    TARGET = "zinc-ubsan";
+    SANITIZE    = "-fsanitize=undefined,local-bounds";
+    TARGET      = "zinc-ubsan";
+    OBJ_DIR     = "build/ubsan/";
     build_all(b, argc, argv);
 }
 
 static void build_ubsan_int(ZBuild *b, int argc, char *argv[]) {
-    SANITIZE = "-fsanitize=undefined,integer,implicit-conversion,local-bounds";
-    TARGET = "zinc-ubsan-int";
+    SANITIZE    = "-fsanitize=undefined,integer,implicit-conversion,local-bounds";
+    TARGET      = "zinc-ubsan-int";
+    OBJ_DIR     = "build/ubsan-int/";
     build_all(b, argc, argv);
 }
 
@@ -260,15 +269,16 @@ static CommandFn get_cmd(int argc, char *argv[]) {
 }
 
 static void init_lld_flags() {
-#if defined(__APPLE__) && defined(__MACH__)
-    const char *lld_prefix = zs_fmt("/opt/homebrew/opt/lld@%s", LLVM_VERSION);
+    vecpush(LLD_INCLUDES, zs_fmt("-I%s/include", LLD_PREFIX));
+    vecpush(LLD_LIBS, zs_fmt("-L%s/lib", LLD_PREFIX));
+#ifndef _WIN32
+    vecpush(LLD_LIBS, zs_fmt("-Wl,-rpath,%s/lib", LLD_PREFIX));
+#endif
 
-    vecpush(LLD_INCLUDES, zs_fmt("-I%s/include", lld_prefix));
-    vecunion(LLD_LIBS, ((zstr[]){
-        zs_fmt("-L%s/lib", lld_prefix),
-        zs_fmt("-Wl,-rpath,%s/lib", lld_prefix),
+#if defined(__APPLE__) && defined(__MACH__)
+    vecunion(LLD_LIBS, ((const char *[]){
         "-llldMachO", "-llldCommon"
-    }), 4);
+    }), 2);
 #elif defined(__linux__)
     vecunion(LLD_LIBS, ((const char *[]){
         "-llldELF", "-llldCommon", "-lz", "-lzstd"
@@ -280,28 +290,153 @@ static void init_lld_flags() {
 #endif
 }
 
-static vec(zstr) shell_split(vec(char) *buf, const char *cmd) {
+static vec(zstr) shell_split(zstr *buf, const char *cmd) {
     if (zb_shell(buf, cmd) != 0) {
-        printf("Error with command: %s\n", cmd);
-        // exit(1);
+        fprintf(stderr, "Error with command: %s\n", cmd);
+        exit(1);
     }
     return zs_split_any(*buf, " \n\r\t");
 }
 
-static vec(zstr) llvm_flags(vec(char) *out, const char *env, const char *cmd) {
-    const char *v = getenv(env);
+static zstr shell_line(const char *cmd) {
+    zstr out    = NULL;
+    zstr line   = NULL;
+    if (zb_shell(&out, cmd) == 0 && out) {
+        size_t n = strcspn(out, "\r\n");
+        if (n) line = zs_newn(out, n);
+    }
+    zs_free(out);
+    return line;
+}
+
+static int version_major(const char *s) {
+    for (; *s; s++)
+        if (isdigit((unsigned char)s[0]) && (s[1] == '.' || isdigit((unsigned char)s[1])))
+            return atoi(s);
+    return -1;
+}
+
+static bool cmd_has_version(const char *exe, int version) {
+    zstr cmd = zs_fmt("\"%s\" --version " NULLDEV, exe);
+    zstr v = shell_line(cmd);
+    bool ok = v && version_major(v) == version;
+    zs_free(cmd);
+    if (v) zs_free(v);
+    return ok;
+}
+
+static zstr find_llvm_config() {
+    const char *env = getenv("LLVM_CONFIG");
+    int version = atoi(LLVM_VERSION);
+    if (env && *env) {
+        if (cmd_has_version(env, version)) return zs_new(env);
+        fprintf(stderr, "LLVM_CONFIG=%s is not LLVM %s\n", env, LLVM_VERSION);
+        exit(1);
+    }
+
+    vec(zstr) candidates = NULL;
+
+    zstr brew = shell_line("brew --prefix llvm@" LLVM_VERSION " " NULLDEV);
+    if (brew) {
+        vecpush(candidates, zs_fmt("%s/bin/llvm-config", brew));
+        zs_free(brew);
+    }
+    vecpush(candidates, zs_new("llvm-config-" LLVM_VERSION));
+    vecpush(candidates, zs_new("/usr/lib/llvm-" LLVM_VERSION "/bin/llvm-config"));
+    vecpush(candidates, zs_new("llvm-config"));
+
+    zstr found = NULL;
+
+    for (size_t i = 0; i < veclen(candidates) && !found; i++)
+        if (cmd_has_version(candidates[i], version))
+            found = zs_dup(candidates[i]);
+    zs_free_all(candidates);
+
+    if (!found) {
+        fprintf(stderr,
+            "LLVM %s not found.\n"
+            " - macOS: brew install llvm@%s lld@%s"
+            " - Linux: see .github/actions/setup-llvm/action.yml\n"
+            " - or set LLVM_CONFIG\n",
+            LLVM_VERSION, LLVM_VERSION, LLVM_VERSION
+        );
+        exit(1);
+    }
+    return found;
+}
+
+static bool is_lld_prefix(const char *p) {
+    zstr hdr = zs_fmt("%s/include/lld/Common/Driver.h", p);
+    zstr a   = zs_fmt("%s/lib/liblldCommon.a", p);
+    zstr so  = zs_fmt("%s/lib/liblldCommon.dylib", p);
+    bool ok  = zb_exists(hdr) && (zb_exists(a) || zb_exists(so));
+    zs_free(hdr); zs_free(a); zs_free(so);
+    if (!ok) return false;
+
+    /* If an lld binary ships with it, make sure it's the right major. */
+#ifdef _WIN32
+    const char *bins[] = { "ld.lld.exe", "lld.exe", NULL };
+#else
+    const char *bins[] = { "ld64.lld", "ld.lld", "lld", NULL };
+#endif
+    for (const char **b = bins; *b; b++) {
+        zstr exe = zs_fmt("%s/bin/%s", p, *b);
+        bool present = zb_exists(exe);
+        bool good    = present && cmd_has_version(exe, atoi(LLVM_VERSION));
+        zs_free(exe);
+        if (present) return good;
+    }
+    return true;
+}
+
+static zstr find_lld_prefix(const char *llvm_config) {
+    const char *env = getenv("LLD_PREFIX");
+    if (env && *env) return zs_new(env);
+
+    vec(zstr) candidates = NULL;
+    zstr cmd = zs_fmt("\"%s\" --prefix", llvm_config);
+    zstr llvm_prefix = shell_line(cmd); zs_free(cmd);
+    if (llvm_prefix) vecpush(candidates, llvm_prefix);
+#ifdef __APPLE__
+    zstr p;
+    if ((p = shell_line("brew --prefix lld@" LLVM_VERSION " " NULLDEV)))
+        vecpush(candidates, p);
+
+    if ((p = shell_line("brew --prefix lld " NULLDEV)))
+        vecpush(candidates, p);
+#endif
+
+    zstr found = NULL;
+    for (size_t i = 0; i < veclen(candidates) && !found; i++)
+        if (is_lld_prefix(candidates[i])) found = zs_dup(candidates[i]);
+    zs_free_all(candidates);
+
+    if (!found) {
+        fprintf(stderr,
+            "LLD %s not found (brew install lld@%s, or set LLD_PREFIX)\n",
+            LLVM_VERSION, LLVM_VERSION);
+
+        exit(1);
+    }
+    return found;
+}
+
+static vec(zstr) llvm_flags(const char *env, const char *args) {
+    const char *v = env ? getenv(env) : NULL;
     if (v && *v) return zs_split_any(v, " \r\t\n");
-    if (*out) vecsetlen(*out, 0);   // vecsetlen dereferences: the vec may still be NULL
-    return shell_split(out, cmd);
+
+    zstr cmd = zs_fmt("\"%s\" %s", LLVM_CONFIG_PATH, args);
+    zstr out = NULL;
+    vec(zstr) flags = shell_split(&out, cmd);
+    zs_free(out);
+    zs_free(cmd);
+    return flags;
 }
 
 static void init_llvm_flags() {
-    vec(char) out   = NULL;
-    LLVM_CFLAGS     = (vec(const char *))llvm_flags(&out, "LLVM_CFLAGS", "llvm-config --cflags");
-    LLVM_LDFLAGS    = (vec(const char *))llvm_flags(&out, "LLVM_LDFLAGS", "llvm-config --ldflags --libs core");
-
-    if (out) vecsetlen(out, 0);
-    vec(zstr) libdir = shell_split(&out, "llvm-config --libdir");
+    LLVM_CFLAGS      = (vec(const char *))llvm_flags("LLVM_CFLAGS", "--cflags");
+    LLVM_LDFLAGS     = (vec(const char *))llvm_flags("LLVM_LDFLAGS", "--ldflags --libs core");
+    vec(zstr) libdir = llvm_flags(NULL, "--libdir");
     vecpush(LLVM_LDFLAGS, "-lclang");
     vecpush(LSP_LDFLAGS, "-lclang");
     if (veclen(libdir)) {
@@ -310,7 +445,6 @@ static void init_llvm_flags() {
         vecpush(LSP_LDFLAGS, zs_fmt("-Wl,-rpath,%s", libdir[0]));
     }
     zs_free_all(libdir);
-    vecfree(out);
 }
 
 static void init_flags() {
@@ -333,6 +467,8 @@ static void init_flags() {
         "-D_CRT_SECURE_NO_WARNINGS", "-D_CRT_NONSTDC_NO_WARNINGS"
     }), 2);
 #endif
+    LLVM_CONFIG_PATH = find_llvm_config();
+    LLD_PREFIX       = find_lld_prefix(LLVM_CONFIG_PATH);
     init_lld_flags();
     init_llvm_flags();
 }

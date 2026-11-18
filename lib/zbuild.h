@@ -400,24 +400,14 @@ static inline void zb_after(ZCmd *c, ZCmd *dep) {
 
 /* ---- Utilities ------------------------------------------------------- */
 
-static inline int zb_shell(vec(char) *out, const char *cmd) {
+static inline int zb_shell(zstr *out, const char *cmd) {
     char line[512];
     FILE *f = popen(cmd, "r");
 
     if (!f) return -1;
 
-    if (out) {
-        while (fgets(line, sizeof line, f)) {
-            size_t linelen = strlen(line);
-            size_t outlen = veclen(*out);
-            vecreserve(*out, outlen + linelen);
-            vecsetlen(*out, outlen + linelen);
-            memcpy(*out + outlen, line, linelen);
-        }
-
-        vecpush(*out, '\0');
-        // vecsetlen(*out, veclen(*out) - 1);
-    }
+    if (out) while (fgets(line, sizeof line, f))
+        zs_catn(out, line, strlen(line));
 
     int status = pclose(f);
 #ifdef _WIN32
