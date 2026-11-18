@@ -18,6 +18,7 @@ typedef struct {
 static const char *TARGET               = "zinc";
 static const char *ZMODE_FLAGS          = "-DZMODE=ZMODE_COMPILER";
 static const char *SANITIZE             = NULL;
+static const char *OBJ_DIR              = "build/";
 static vec(const char *) CFLAGS         = NULL;
 static vec(const char *) CPPFLAGS       = NULL;
 static vec(const char *) INCLUDES       = NULL;
@@ -26,30 +27,31 @@ static vec(const char *) LLD_LIBS       = NULL;
 static vec(const char *) LLD_INCLUDES   = NULL;
 static vec(const char *) LLVM_CFLAGS    = NULL;
 static vec(const char *) LLVM_LDFLAGS   = NULL;
+static vec(const char *) LSP_LDFLAGS    = NULL;
 
 static void build_link(ZBuild *b, vec(ZCmd *) cmds) {
     ZCmd *l = zb_cmd(b, "clang++");
     zb_arg(l, "-o");
-    zb_out(l, TARGET);
+    zb_out(l, "%s", TARGET);
 
     for (size_t i = 0; i < veclen(cmds); i++) {
         ZCmd *c = cmds[i];
         zb_after(l, c);
         for (size_t j = 0; j < veclen(c->outputs); j++) {
-            zb_in(l, c->outputs[j]);
+            zb_in(l, "%s", c->outputs[j]);
         }
     }
 
     zb_argsv(l, LLD_LIBS);
     zb_argsv(l, LLVM_LDFLAGS);
-    if (SANITIZE) zb_arg(l, SANITIZE);
+    if (SANITIZE) zb_arg(l, "%s", SANITIZE);
 }
 
 static ZCmd *build_cpp(ZBuild *b, const char *input) {
-    const char *output = zb_path_map(
+    zstr output = zb_path_map(
         input,
-        zb_starts_with(input, "lib/") ? "lib/" : "src/",
-        "build/", ".o"
+        zs_starts(input, "lib/") ? "lib/" : "src/",
+        OBJ_DIR, ".o"
     );
     ZCmd *c = zb_cmd(b, "clang++");
     zb_argsv(c, CPPFLAGS);
@@ -57,21 +59,22 @@ static ZCmd *build_cpp(ZBuild *b, const char *input) {
     zb_argsv(c, WIN_DEFS);
     zb_argsv(c, LLVM_CFLAGS);
     zb_argsv(c, LLD_INCLUDES);
-    zb_arg  (c, SANITIZE);
-    zb_arg  (c, ZMODE_FLAGS);
+    zb_arg  (c, "%s", ZMODE_FLAGS);
     zb_arg  (c, "-c");
-    zb_in   (c, input);
+    zb_in   (c, "%s", input);
     zb_arg  (c, "-o");
-    zb_out  (c, output);
+    zb_out  (c, "%s", output);
+    if (SANITIZE) zb_arg  (c, "%s", SANITIZE);
 
+    zs_free(output);
     return c;
 }
 
 static ZCmd *build_c(ZBuild *b, const char *input) {
-    const char *output = zb_path_map(
+    zstr output = zb_path_map(
         input,
-        zb_starts_with(input, "lib/") ? "lib/" : "src/",
-        "build/", ".o"
+        zs_starts(input, "lib/") ? "lib/" : "src/",
+        OBJ_DIR, ".o"
     );
 
     ZCmd *c = zb_cmd(b, "clang");
@@ -80,13 +83,14 @@ static ZCmd *build_c(ZBuild *b, const char *input) {
     zb_argsv(c, WIN_DEFS);
     zb_argsv(c, LLVM_CFLAGS);
     zb_argsv(c, LLD_INCLUDES);
-    zb_arg  (c, SANITIZE);
-    zb_arg  (c, ZMODE_FLAGS);
+    zb_arg  (c, "%s", ZMODE_FLAGS);
     zb_arg  (c, "-c");
-    zb_in   (c, input);
+    zb_in   (c, "%s", input);
     zb_arg  (c, "-o");
-    zb_out  (c, output);
+    zb_out  (c, "%s", output);
+    if (SANITIZE) zb_arg(c, "%s", SANITIZE);
 
+    zs_free(output);
     return c;
 }
 
@@ -94,12 +98,12 @@ static void build_all(ZBuild *b, int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    vec(const char *) c_files = zb_walk("src", (ZBWalkFilter){
+    vec(zstr) c_files = zb_walk("src", (ZBWalkFilter){
         .skip = ZB_LIST("src/lsp"),
         .suffix = ZB_LIST(".c", ".cpp")
     });
 
-    vec(const char *) lib_files = zb_walk("lib", (ZBWalkFilter){
+    vec(zstr) lib_files = zb_walk("lib", (ZBWalkFilter){
         .skip = ZB_LIST("lib/json.c"),
         .suffix = ZB_LIST(".c")
     });
@@ -107,40 +111,50 @@ static void build_all(ZBuild *b, int argc, char *argv[]) {
     vecunion(c_files, lib_files, veclen(lib_files));
     vecfree(lib_files);
 
-    vec(char) llvm_flags = NULL;
-
-    if (zb_shell(&llvm_flags, "llvm-config --cflags") != 0) {
-        printf("Error llvm-config\n");
-    }
-
     vec(ZCmd *) outs = NULL;
     for (size_t i = 0; i < veclen(c_files); i++) {
-        ZCmd *c = zb_ends_with(c_files[i], ".cpp") ?
+        ZCmd *c = zs_ends(c_files[i], ".cpp") ?
             build_cpp(b, c_files[i]) : build_c(b, c_files[i]);
         vecpush(outs, c);
     }
 
     build_link(b, outs);
+    vecfree(outs);
+    zs_free_all(c_files);
 }
 
 static void build_lsp(ZBuild *b, int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    ZMODE_FLAGS = "-DZMODE=ZMODE_LSP";
-    vec(const char *) c_files = zb_walk("src", (ZBWalkFilter){
-        .skip = ZB_LIST("src/codegen"),
+    TARGET              = "zinc-lsp";
+    ZMODE_FLAGS         = "-DZMODE=ZMODE_LSP";
+    OBJ_DIR             = "build/lsp/";
+    vec(zstr) c_files   = zb_walk("src", (ZBWalkFilter){
+        .skip = ZB_LIST("src/codegen", "src/zinc.c", "src/zcli.c"),
+        .suffix = ZB_LIST(".c")
+    });
+    vec(zstr) lib_files = zb_walk("lib", (ZBWalkFilter){
         .suffix = ZB_LIST(".c")
     });
 
-    vec(ZCmd *) outs = NULL;
+    vecunion(c_files, lib_files, veclen(lib_files));
+    vecfree(lib_files);
+
+    ZCmd *l = zb_cmd(b, "clang");
+    zb_arg(l, "-o");
+    zb_out(l, "%s", TARGET);
+
     for (size_t i = 0; i < veclen(c_files); i++) {
-        ZCmd *c = zb_cmd(b, "clang");
-        zb_argsv(c, CFLAGS);
-        zb_argsv(c, INCLUDES);
-        zb_arg(c, ZMODE_FLAGS);
-        vecpush(outs, c);
+        ZCmd *c = build_c(b, c_files[i]);
+        zb_after(l, c);
+        for (size_t j = 0; j < veclen(c->outputs); j++)
+            zb_in(l, "%s", c->outputs[j]);
     }
+
+    zb_argsv(l, LSP_LDFLAGS);
+    if (SANITIZE) zb_arg(l, "%s", SANITIZE);
+    zs_free_all(c_files);
 }
 
 static void build_clean(ZBuild *b, int argc, char *argv[]) {
@@ -186,6 +200,10 @@ static void build_install(ZBuild *b, int argc, char *argv[]) {
 #ifdef _WIN32
     const char *home_var = "USERPROFILE";
     const char *home = getenv(home_var);
+    if (!home) {
+        printf("Error: %s not found\n", home_var);
+        return;
+    }
     snprintf(cmd, sizeof(cmd),
         "rmdir /s /q \"%s\\.zinc\\packages\\std\" 2>nul & "
         "xcopy /e /i /y /q \"std\" \"%s\\.zinc\\packages\\std\" >nul",
@@ -193,17 +211,16 @@ static void build_install(ZBuild *b, int argc, char *argv[]) {
 #else
     const char *home_var = "HOME";
     const char *home = getenv(home_var);
+    if (!home) {
+        printf("Error: %s not found\n", home_var);
+        return;
+    }
     snprintf(cmd, sizeof(cmd),
         "rm -rf \"%s/.zinc/packages/std\" && "
         "mkdir -p \"%s/.zinc/packages/std\" && "
         "cp -R std/. \"%s/.zinc/packages/std/\"",
         home, home, home);
 #endif
-
-    if (!home) {
-        printf("Error: %s not found\n", home_var);
-        return;
-    }
 
     if (system(cmd) != 0) return;
 #ifdef _WIN32
@@ -214,6 +231,8 @@ static void build_install(ZBuild *b, int argc, char *argv[]) {
 }
 
 static void build_test(ZBuild *b, int argc, char *argv[]) {
+    (void)argc;
+    (void)argv;
     zb_cmd(b, "./run_tests.sh");
 }
 
@@ -242,17 +261,12 @@ static CommandFn get_cmd(int argc, char *argv[]) {
 
 static void init_lld_flags() {
 #if defined(__APPLE__) && defined(__MACH__)
-    const char *lld_prefix = zb_sprint("/opt/homebrew/opt/lld@%s", LLVM_VERSION);
+    const char *lld_prefix = zs_fmt("/opt/homebrew/opt/lld@%s", LLVM_VERSION);
 
-    if (!lld_prefix) {
-        printf("LLD %s not found, Run brew install lld@%s\n", LLVM_VERSION, LLVM_VERSION);
-        return;
-    }
-
-    vecpush(LLD_INCLUDES, zb_sprint("-I%s/include", lld_prefix));
-    vecunion(LLD_LIBS, ((const char *[]){
-        zb_sprint("-L%s/lib", lld_prefix),
-        zb_sprint("-Wl,-rpath,%s/lib", lld_prefix),
+    vecpush(LLD_INCLUDES, zs_fmt("-I%s/include", lld_prefix));
+    vecunion(LLD_LIBS, ((zstr[]){
+        zs_fmt("-L%s/lib", lld_prefix),
+        zs_fmt("-Wl,-rpath,%s/lib", lld_prefix),
         "-llldMachO", "-llldCommon"
     }), 4);
 #elif defined(__linux__)
@@ -266,29 +280,37 @@ static void init_lld_flags() {
 #endif
 }
 
-static vec(const char *) shell_split(vec(char) *buf, const char *cmd) {
+static vec(zstr) shell_split(vec(char) *buf, const char *cmd) {
     if (zb_shell(buf, cmd) != 0) {
         printf("Error with command: %s\n", cmd);
         // exit(1);
     }
-    return zb_split_any(*buf, " \n\r\t");
+    return zs_split_any(*buf, " \n\r\t");
 }
 
-static vec(const char *) llvm_flags(vec(char) *out, const char *env, const char *cmd) {
+static vec(zstr) llvm_flags(vec(char) *out, const char *env, const char *cmd) {
     const char *v = getenv(env);
-    if (v && *v) return zb_split_any(v, " \r\t\n");
+    if (v && *v) return zs_split_any(v, " \r\t\n");
     if (*out) vecsetlen(*out, 0);   // vecsetlen dereferences: the vec may still be NULL
     return shell_split(out, cmd);
 }
 
 static void init_llvm_flags() {
     vec(char) out   = NULL;
-    LLVM_CFLAGS     = llvm_flags(&out, "LLVM_CFLAGS", "llvm-config --cflags");
-    LLVM_LDFLAGS    = llvm_flags(&out, "LLVM_LDFLAGS", "llvm-config --ldflags --libs core");
+    LLVM_CFLAGS     = (vec(const char *))llvm_flags(&out, "LLVM_CFLAGS", "llvm-config --cflags");
+    LLVM_LDFLAGS    = (vec(const char *))llvm_flags(&out, "LLVM_LDFLAGS", "llvm-config --ldflags --libs core");
 
     if (out) vecsetlen(out, 0);
-    vec(const char *) libdir = shell_split(&out, "llvm-config --libdir");
-    if (veclen(libdir)) vecpush(LLVM_LDFLAGS, zb_sprint("-Wl,-rpath,%s", libdir[0]));
+    vec(zstr) libdir = shell_split(&out, "llvm-config --libdir");
+    vecpush(LLVM_LDFLAGS, "-lclang");
+    vecpush(LSP_LDFLAGS, "-lclang");
+    if (veclen(libdir)) {
+        vecpush(LLVM_LDFLAGS, zs_fmt("-Wl,-rpath,%s", libdir[0]));
+        vecpush(LSP_LDFLAGS, zs_fmt("-L%s", libdir[0]));
+        vecpush(LSP_LDFLAGS, zs_fmt("-Wl,-rpath,%s", libdir[0]));
+    }
+    zs_free_all(libdir);
+    vecfree(out);
 }
 
 static void init_flags() {
@@ -322,6 +344,7 @@ int main(int argc, char *argv[]) {
     b->show_command = true;
 
     init_flags();
+
     CommandFn fn = get_cmd(argc, argv);
     if (!fn) {
         printf("Unknown command %s\n", argv[1]);

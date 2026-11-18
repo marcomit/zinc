@@ -191,16 +191,20 @@ static inline void zs_cat(zstr *s, const char *c_str) {
     zs_catn(s, c_str, strlen(c_str));
 }
 
+static inline void zs_catv(zstr *s, const char *fmt, va_list ap) {
+    zstr formatted = zs_vfmt(fmt, ap);
+    zs_cat(s, formatted);
+    zs_free(formatted);
+}
+
 /**
  * @brief Appends a format-string to the `zstr` s
  * */
 static inline void zs_catf(zstr *s, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    zstr formatted = zs_vfmt(fmt, ap);
+    zs_catv(s, fmt, ap);
     va_end(ap);
-    zs_cat(s, formatted);
-    zs_free(formatted);
 }
 
 static inline void zs_catsv(zstr *s, zsv sv) {
