@@ -139,6 +139,11 @@ static ZSemantic *makesemantic(ZState *state, ZNode *root) {
 static void putSymbol(ZThreadSem *ctx, ZSymbol *symbol) {
     ZScope *scope = symbol->isPublic ? ctx->global : ctx->current;
 
+    if (!symbol || !symbol->name) {
+        zlog(ctx->state, NULL, Z9001);
+        return;
+    }
+
     if (strcmp(symbol->name->str, "_") != 0 &&
         !hashset_insert(&scope->seen, symbol->name->str)) {
         /* Duplicate pub foreign declarations are valid: multiple modules

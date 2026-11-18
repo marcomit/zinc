@@ -31,12 +31,12 @@ jobs:
       - name: Build zinc (Linux / macOS)
         if: runner.os != 'Windows'
         shell: bash
-        run: clang -o zb build.c && ./zb clean && ./zb
+        run: clang -o build build.c && ./build clean && ./build
 
       - name: Build zinc (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: clang -o zb build.c && ./zb clean && ./zb
+        run: clang -o build build.c && ./build clean && ./build
 
       - name: Run tests (Linux / macOS)
         if: runner.os != 'Windows'

@@ -485,6 +485,14 @@ static inline void zb_out(ZCmd *c, const char *fmt, ...) {
     vecpush(c->outputs, zs_dup(s));
 }
 
+static inline void zb_inputs(ZCmd *c, vec(zstr) inputs) {
+    vecunion(c->inputs, inputs, veclen(inputs));
+}
+
+static inline void zb_outputs(ZCmd *c, vec(zstr) outputs) {
+    vecunion(c->outputs, outputs, veclen(outputs));
+}
+
 /* A gcc/clang depfile (-MMD -MF path); headers listed in it become inputs. */
 static inline void zb_depfile(ZCmd *c, const char *path) {
     (void)c;

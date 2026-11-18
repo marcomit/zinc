@@ -112,6 +112,12 @@ static void build_all(ZBuild *b, int argc, char *argv[]) {
         .suffix = ZB_LIST(".c")
     });
 
+    // not optimal, every header change will trigger a full rebuild
+    vec(zstr) hdr_files = zb_walk(".", (ZBWalkFilter){
+        .skip = ZB_LIST(".git", ".github", ".build", "tests", "std", "examples", "docs"),
+        .suffix = ZB_LIST(".h", ".def")
+    });
+
     vecunion(c_files, lib_files, veclen(lib_files));
     vecfree(lib_files);
 
@@ -119,7 +125,10 @@ static void build_all(ZBuild *b, int argc, char *argv[]) {
     for (size_t i = 0; i < veclen(c_files); i++) {
         ZCmd *c = zs_ends(c_files[i], ".cpp") ?
             build_cpp(b, c_files[i]) : build_c(b, c_files[i]);
+
         vecpush(outs, c);
+        vecunion(c->inputs, hdr_files, veclen(hdr_files));
+        zb_inputs(c, hdr_files);
     }
 
     build_link(b, outs);
