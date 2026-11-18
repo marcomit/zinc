@@ -45,7 +45,7 @@ typedef enum {
 
 struct ZBuild {
     vec(ZCmd *) cmds;
-    size_t max_jobs;
+    int max_jobs;
     bool show_command;
     bool show_output;
     bool show_skipped_command;
@@ -68,6 +68,12 @@ struct ZCmd {
     vec(ZCmd *) after;
     size_t      remaining;
     ZCmdState   state;
+
+#ifdef _WIN32
+#else
+    pid_t pid;
+#endif
+
 };
 
 static inline void zb_cmd_free(ZCmd *);
@@ -89,7 +95,7 @@ static inline int cpu_count() {
 static inline ZBuild *zb_new(int jobs) {
     ZBuild *self = (ZBuild *)malloc(sizeof(ZBuild));
     *self = (ZBuild){ 0 };
-    self->max_jobs = jobs == 0 ? cpu_count() : jobs;
+    self->max_jobs = jobs <= 0 ? cpu_count() : jobs;
     return self;
 }
 
@@ -115,63 +121,53 @@ static inline int zb_has_cycle(ZCmd *cmd) {
     return 0;
 }
 
-static inline int zb_run_command(ZBuild *b, ZCmd *c) {
-    const char *cmd = zb_get_cmd(c);
-    if (b->show_command) {
-        printf("[zb]: %s\n", cmd);
-    }
-
-    for (size_t i = 0; i < veclen(c->outputs); i++) {
-        const char *fwd  = strrchr(c->outputs[i], '/');
-        const char *back = strrchr(c->outputs[i], '\\');
-        const char *last_slash = !back || (fwd && fwd > back) ? fwd : back;
-        if (!last_slash) continue;
-        char *path = zs_newn(c->outputs[i], last_slash - c->outputs[i]);
-        zb_mkdir(path);
-        zs_free(path);
-    }
-
-    return system(cmd);
-}
-
-static inline int zb_walk_cmd(ZBuild *b, ZCmd *c) {
-    if (c->state & Z_CMD_END_MASK) return c->state == Z_CMD_DONE;
-    c->state = Z_CMD_RUNNING;
-
-    size_t i = 0;
-    for (; i < veclen(c->after); i++) {
-        if (!zb_is_out_of_date(c->after[i])) continue;
-        if (!zb_walk_cmd(b, c->after[i])) {
-            c->state = Z_CMD_SKIPPED;
-            break;
-        }
-    }
-
-    if (c->state == Z_CMD_SKIPPED) {
-        for (; i < veclen(c->after); i++) {
-            c->after[i]->state = Z_CMD_SKIPPED;
-        }
-    }
-
-    if (c->state != Z_CMD_RUNNING) {
-        if (b->show_skipped_command) {
-            printf("Command %s skipped\n", zb_get_cmd(c));
-        }
-        return 0;
-    }
-
-    int code = zb_run_command(b, c);
-    if (code != 0)  { c->state = Z_CMD_FAILED;  return 0; }
-    else            { c->state = Z_CMD_DONE;    return 1; }
-}
-
 static inline void zb_set_all_pendings(ZBuild *b) {
     for (size_t i = 0; i < veclen(b->cmds); i++)
         b->cmds[i]->state = Z_CMD_PENDING;
 }
 
-/* Run every out-of-date command, in parallel where dependencies allow.
- * Returns 0 on success, 1 if a command failed or there is a cycle. */
+static inline int zb__deps_ready(ZCmd *c) {
+    for (size_t i = 0; i < veclen(c->after); i++) switch (c->after[i]->state) {
+        case Z_CMD_FAILED:
+        case Z_CMD_SKIPPED: return -1;
+        case Z_CMD_DONE:    break;
+        default:            return 0;
+    }
+    return 1;
+}
+
+static inline pid_t zb_spawn(ZBuild *b, ZCmd *c) {
+    if (b->show_command) {
+        char *s = zb_get_cmd(c);
+        printf("[zb]: %s\n", s);
+        vecfree(s);
+    }
+
+    for (size_t i = 0; i < veclen(c->outputs); i++) {
+        const char *o = c->outputs[i];
+        char *fwdslash = strrchr(o, '/');
+        char *bckslash = strrchr(o, '\\');
+        char *slash = fwdslash > bckslash ? fwdslash : bckslash;
+        if (!slash) continue;
+        zb_mkdir(zs_newn(o, slash - o));
+    }
+
+    size_t n = veclen(c->argv);
+    char **argv = (char **)malloc(sizeof(char *) * (n + 1));
+    for (size_t i = 0; i < n; i++) argv[i] = c->argv[i];
+    argv[n] = NULL;
+
+    fflush(stdout);
+    pid_t p = fork();
+    if (p == 0) {
+        execvp(argv[0], argv);
+        perror(argv[0]);
+        _exit(127);
+    }
+    free(argv);
+    return p;
+}
+
 static inline ZBuildState zb_run(ZBuild *b) {
     zb_set_all_pendings(b);
 
@@ -181,19 +177,64 @@ static inline ZBuildState zb_run(ZBuild *b) {
 
     zb_set_all_pendings(b);
 
-    int flag = 0;
-    for (size_t i = 0; i < veclen(b->cmds); i++) {
-        if (zb_is_out_of_date(b->cmds[i])) {
-            if (!zb_walk_cmd(b, b->cmds[i])) {
-                return Z_BUILD_GENERIC_ERROR;
+    int running = 0;
+    bool failed = false, did_work = false;
+    for (;;) {
+        bool progress = true;
+        while (progress) {
+            progress = false;
+            for (size_t i = 0; i < veclen(b->cmds); i++) {
+                ZCmd *c = b->cmds[i];
+                if (c->state != Z_CMD_PENDING) continue;
+
+                int r = zb__deps_ready(c);
+                if (r < 0) {
+                    c->state = Z_CMD_SKIPPED;
+                    progress = true;
+                    continue;
+                } else if (r == 0) continue;
+
+                if (!zb_is_out_of_date(c)) {
+                    c->state = Z_CMD_DONE;
+                    progress = true;
+                    continue;
+                }
+
+                if (failed || running >= b->max_jobs) continue;
+
+                c->pid = zb_spawn(b, c);
+
+                if (c->pid < 0) {
+                    c->state = Z_CMD_FAILED;
+                    failed = true;
+                    continue;
+                }
+
+                c->state = Z_CMD_RUNNING;
+                running++;
+                did_work = true;
             }
-            flag = 1;
-        } else if (b->show_skipped_command) {
-            printf("Command %s is oup of date\n", zb_get_cmd(b->cmds[i]));
+        }
+
+        if (running == 0) break;
+
+        int status;
+        pid_t p = waitpid(-1, &status, 0);
+        if (p < 0) break;
+
+        for (size_t i = 0; i < veclen(b->cmds); i++) {
+            ZCmd *c = b->cmds[i];
+            if (c->state != Z_CMD_RUNNING || c->pid != p) continue;
+            running--;
+            bool ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+            c->state = ok ? Z_CMD_DONE : Z_CMD_FAILED;
+            if (!ok) failed = true;
+            break;
         }
     }
 
-    return flag ? Z_BUILD_DONE : Z_BUILD_NOOP;
+    if (failed) return Z_BUILD_GENERIC_ERROR;
+    return did_work ? Z_BUILD_DONE : Z_BUILD_NOOP;
 }
 
 /* Delete every output file and depfile. */

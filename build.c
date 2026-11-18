@@ -3,7 +3,6 @@
 #include "lib/zbuild.h"
 #include <ctype.h>
 
-#define BUILD_DIR "build"
 #define LLVM_VERSION "22"
 
 #ifdef _WIN32
@@ -21,7 +20,7 @@ typedef struct {
 static const char *TARGET               = "zinc";
 static const char *ZMODE_FLAGS          = "-DZMODE=ZMODE_COMPILER";
 static const char *SANITIZE             = NULL;
-static const char *OBJ_DIR              = "build/";
+static const char *OBJ_DIR              = ".build/default/";
 static vec(const char *) CFLAGS         = NULL;
 static vec(const char *) CPPFLAGS       = NULL;
 static vec(const char *) INCLUDES       = NULL;
@@ -134,7 +133,7 @@ static void build_lsp(ZBuild *b, int argc, char *argv[]) {
 
     TARGET              = "zinc-lsp";
     ZMODE_FLAGS         = "-DZMODE=ZMODE_LSP";
-    OBJ_DIR             = "build/lsp/";
+    OBJ_DIR             = ".build/lsp/";
     vec(zstr) c_files   = zb_walk("src", (ZBWalkFilter){
         .skip = ZB_LIST("src/codegen", "src/zinc.c", "src/zcli.c"),
         .suffix = ZB_LIST(".c")
@@ -170,34 +169,34 @@ static void build_clean(ZBuild *b, int argc, char *argv[]) {
     zb_args(rm_bin, "-f", "zinc", "zinc-lsp", "zinc-asan", "zinc-ubsan", "zinc-ubsan-int");
 
     ZCmd *rm_build = zb_cmd(b, "rm");
-    zb_args(rm_build, "-rf", "build");
+    zb_args(rm_build, "-rf", ".build");
 }
 
 static void build_debug(ZBuild *b, int argc, char *argv[]) {
     SANITIZE    = "-fsanitize=address,undefined";
     TARGET      = "zinc-debug";
-    OBJ_DIR     = "build/debug/";
+    OBJ_DIR     = ".build/debug/";
     build_all(b, argc, argv);
 }
 
 static void build_asan(ZBuild *b, int argc, char *argv[]) {
     SANITIZE    = "-fsanitize=address,undefined";
     TARGET      = "zinc-asan";
-    OBJ_DIR     = "build/asan/";
+    OBJ_DIR     = ".build/asan/";
     build_all(b, argc, argv);
 }
 
 static void build_ubsan(ZBuild *b, int argc, char *argv[]) {
     SANITIZE    = "-fsanitize=undefined,local-bounds";
     TARGET      = "zinc-ubsan";
-    OBJ_DIR     = "build/ubsan/";
+    OBJ_DIR     = ".build/ubsan/";
     build_all(b, argc, argv);
 }
 
 static void build_ubsan_int(ZBuild *b, int argc, char *argv[]) {
     SANITIZE    = "-fsanitize=undefined,integer,implicit-conversion,local-bounds";
     TARGET      = "zinc-ubsan-int";
-    OBJ_DIR     = "build/ubsan-int/";
+    OBJ_DIR     = ".build/ubsan-int/";
     build_all(b, argc, argv);
 }
 
