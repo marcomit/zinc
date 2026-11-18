@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/stat.h>
 
 #if defined(_WIN32)
@@ -31,6 +32,12 @@
 #   include <unistd.h>
 #   include <sys/wait.h>
 #   define MKDIR(path) mkdir(path, 0755)
+#endif
+
+#ifdef _WIN32
+typedef HANDLE ZProc;
+#else
+typedef pid_t  ZProc;
 #endif
 
 typedef struct ZCmd   ZCmd;     /* one command (argv + files + deps) */
@@ -68,12 +75,7 @@ struct ZCmd {
     vec(ZCmd *) after;
     size_t      remaining;
     ZCmdState   state;
-
-#ifdef _WIN32
-#else
-    pid_t pid;
-#endif
-
+    ZProc       proc;
 };
 
 static inline void zb_cmd_free(ZCmd *);
@@ -96,6 +98,9 @@ static inline ZBuild *zb_new(int jobs) {
     ZBuild *self = (ZBuild *)malloc(sizeof(ZBuild));
     *self = (ZBuild){ 0 };
     self->max_jobs = jobs <= 0 ? cpu_count() : jobs;
+#ifdef _WIN32
+    if (self->max_jobs > MAXIMUM_WAIT_OBJECTS) self->max_jobs = MAXIMUM_WAIT_OBJECTS;
+#endif
     return self;
 }
 
@@ -136,7 +141,7 @@ static inline int zb__deps_ready(ZCmd *c) {
     return 1;
 }
 
-static inline pid_t zb_spawn(ZBuild *b, ZCmd *c) {
+static inline void zb__print_and_mkdir(ZBuild *b, ZCmd *c) {
     if (b->show_command) {
         char *s = zb_get_cmd(c);
         printf("[zb]: %s\n", s);
@@ -145,19 +150,66 @@ static inline pid_t zb_spawn(ZBuild *b, ZCmd *c) {
 
     for (size_t i = 0; i < veclen(c->outputs); i++) {
         const char *o = c->outputs[i];
-        char *fwdslash = strrchr(o, '/');
-        char *bckslash = strrchr(o, '\\');
-        char *slash = fwdslash > bckslash ? fwdslash : bckslash;
+        const char *fwd = strrchr(o, '/');
+        const char *back = strrchr(o, '\\');
+        const char *slash = !back || (fwd && fwd > back) ? fwd : back;
         if (!slash) continue;
-        zb_mkdir(zs_newn(o, slash - o));
+        zstr dir = zs_newn(o, slash - o);
+        zb_mkdir(dir);
+        zs_free(dir);
     }
+}
 
+#ifdef _WIN32
+static inline void zb__win_quote(char **line, const char *arg) {
+    if (*arg && !strpbrk(arg, " \t\n\v\"")) {
+        vecunion(*line, arg, strlen(arg));
+        return;
+    }
+    vecpush(*line, '"');
+    for (const char *p = arg;; p++) {
+        size_t bs = 0;
+        while (*p == '\\') { bs++; p++; }
+        if (!*p) {
+            for (size_t i = 0; i < bs * 2; i++) vecpush(*line, '\\');
+            break;
+        }
+        if (*p == '"') {
+            for (size_t i = 0; i < bs * 2 + 1; i++) vecpush(*line, '\\');
+        } else {
+            for (size_t i = 0; i < bs; i++) vecpush(*line, '\\');
+        }
+        vecpush(*line, *p);
+    }
+    vecpush(*line, '"');
+}
+#endif
+
+static inline bool zb__spawn(ZCmd *c) {
+    fflush(stdout);
+    fflush(stderr);
+#ifdef _WIN32
+    char *line = NULL;
+    for (size_t i = 0; i < veclen(c->argv); i++) {
+        if (i) vecpush(line, ' ');
+        zb__win_quote(&line, c->argv[i]);
+    }
+    vecpush(line, '\0');
+
+    STARTUPINFOA si = { .cb = sizeof si };
+    PROCESS_INFORMATION pi;
+    BOOL ok = CreateProcessA(NULL, line, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    vecfree(line);
+    if (!ok) return false;
+    CloseHandle(pi.hThread);
+    c->proc = pi.hProcess;
+    return true;
+#else
     size_t n = veclen(c->argv);
     char **argv = (char **)malloc(sizeof(char *) * (n + 1));
     for (size_t i = 0; i < n; i++) argv[i] = c->argv[i];
     argv[n] = NULL;
 
-    fflush(stdout);
     pid_t p = fork();
     if (p == 0) {
         execvp(argv[0], argv);
@@ -165,7 +217,49 @@ static inline pid_t zb_spawn(ZBuild *b, ZCmd *c) {
         _exit(127);
     }
     free(argv);
-    return p;
+    if (p < 0) return false;
+    c->proc = p;
+    return true;
+#endif
+}
+
+static inline ZCmd *zb__wait_any(ZBuild *b, bool *ok) {
+#ifdef _WIN32
+    HANDLE hs[MAXIMUM_WAIT_OBJECTS];
+    ZCmd  *cs[MAXIMUM_WAIT_OBJECTS];
+    DWORD n = 0;
+    for (size_t i = 0; i < veclen(b->cmds) && n < MAXIMUM_WAIT_OBJECTS; i++)
+        if (b->cmds[i]->state == Z_CMD_RUNNING) {
+            hs[n] = b->cmds[i]->proc;
+            cs[n++] = b->cmds[i];
+        }
+
+    DWORD r = WaitForMultipleObjects(n, hs, FALSE, INFINITE);
+    if (r >= WAIT_OBJECT_0 + n) return NULL;
+
+    ZCmd *c = cs[r - WAIT_OBJECT_0];
+    DWORD code = 1;
+    GetExitCodeProcess(c->proc, &code);
+    CloseHandle(c->proc);
+    *ok = code == 0;
+    return c;
+#else
+    for (;;) {
+        int status;
+        pid_t p = waitpid(-1, &status, 0);
+        if (p < 0) {
+            if (errno == EINTR) continue;
+            return NULL;
+        }
+        for (size_t i = 0; i < veclen(b->cmds); i++) {
+            ZCmd *c = b->cmds[i];
+            if (c->state == Z_CMD_RUNNING && c->proc == p) {
+                *ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+                return c;
+            }
+        }
+    }
+#endif
 }
 
 static inline ZBuildState zb_run(ZBuild *b) {
@@ -202,9 +296,8 @@ static inline ZBuildState zb_run(ZBuild *b) {
 
                 if (failed || running >= b->max_jobs) continue;
 
-                c->pid = zb_spawn(b, c);
-
-                if (c->pid < 0) {
+                zb__print_and_mkdir(b, c);
+                if (!zb__spawn(c)) {
                     c->state = Z_CMD_FAILED;
                     failed = true;
                     continue;
@@ -218,19 +311,12 @@ static inline ZBuildState zb_run(ZBuild *b) {
 
         if (running == 0) break;
 
-        int status;
-        pid_t p = waitpid(-1, &status, 0);
-        if (p < 0) break;
-
-        for (size_t i = 0; i < veclen(b->cmds); i++) {
-            ZCmd *c = b->cmds[i];
-            if (c->state != Z_CMD_RUNNING || c->pid != p) continue;
-            running--;
-            bool ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
-            c->state = ok ? Z_CMD_DONE : Z_CMD_FAILED;
-            if (!ok) failed = true;
-            break;
-        }
+        bool ok = false;
+        ZCmd *c = zb__wait_any(b, &ok);
+        if (!c) break;
+        running--;
+        c->state = ok ? Z_CMD_DONE : Z_CMD_FAILED;
+        if (!ok) failed = true;
     }
 
     if (failed) return Z_BUILD_GENERIC_ERROR;
