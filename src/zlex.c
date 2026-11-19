@@ -351,7 +351,7 @@ static ZToken *_scanString(ZLexer *l, const char *begin, const char *end, bool n
     while (*src.current && strncmp(src.current, end, elen) != 0) {
         u32 cp;
         if (*src.current == '\r' && (src.current[1] == '\n')) {
-            next(l);
+            next(&src);
             continue;
         }
 
