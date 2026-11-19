@@ -17,10 +17,8 @@ Mutex :: impl {
         c.pthread_mutex_init(handle, none)
         return .{ handle }
     }
-}
 
-Mutex self :: impl {
-    pub lock    :: fn () void { c.pthread_mutex_lock(self.handle)   }
-    pub unlock  :: fn () void { c.pthread_mutex_unlock(self.handle) }
-    pub destroy :: fn () void { c.pthread_mutex_destroy(self.handle)}
+    pub lock    :: fn (self) void { c.pthread_mutex_lock(self.handle)   }
+    pub unlock  :: fn (self) void { c.pthread_mutex_unlock(self.handle) }
+    pub destroy :: fn (self) void { c.pthread_mutex_destroy(self.handle)}
 }

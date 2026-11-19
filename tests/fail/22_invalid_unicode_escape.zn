@@ -1,0 +1,4 @@
+main :: fn () u32 {
+    s := "\u12G4"
+    return 0
+}

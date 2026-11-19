@@ -12,11 +12,11 @@ Rect :: struct {
     h: i32
 }
 
-Counter self :: impl {
-    print :: fn () void -> c.printf("%d\n", self.count)
-    get :: fn () i32 -> self.count
-    add :: fn (n: i32) i32 -> self.count + n
-    between :: fn (lo: i32, hi: i32) i32 {
+Counter :: impl {
+    print :: fn (self) void -> c.printf("%d\n", self.count)
+    get :: fn (self) i32 -> self.count
+    add :: fn (self, n: i32) i32 -> self.count + n
+    between :: fn (self, lo: i32, hi: i32) i32 {
         if self.count > lo and self.count < hi {
             return 1
         }
@@ -24,15 +24,15 @@ Counter self :: impl {
     }
 }
 
-Rect self :: impl {
-    area :: fn () i32 -> self.w * self.h
-    describe :: fn () void -> c.printf("%d %d\n", self.w, self.h)
-    scaledArea :: fn (factor: i32) i32 -> self.w * self.h * factor
+Rect :: impl {
+    area :: fn (self) i32 -> self.w * self.h
+    describe :: fn (self) void -> c.printf("%d %d\n", self.w, self.h)
+    scaledArea :: fn (self, factor: i32) i32 -> self.w * self.h * factor
 }
 
-i32 self :: impl {
-    sum :: fn (other: i32) i32 -> other + self
-    print :: fn () void -> c.printf("%d\n", self)
+i32 :: impl {
+    sum :: fn (self, other: i32) i32 -> other + self
+    print :: fn (self, ) void -> c.printf("%d\n", self)
 }
 
 main :: fn () i32 {

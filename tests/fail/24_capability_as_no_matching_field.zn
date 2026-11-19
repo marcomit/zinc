@@ -1,0 +1,14 @@
+// The `#as` field is i32, so it must not satisfy a `Tag` capability.
+Tag :: struct {
+    val: i32
+}
+Ctx :: struct {
+    #as id: i32
+}
+getVal :: fn () i32 with t: Tag -> t.val
+main :: fn () i32 {
+    with ctx := Ctx { id = 1 } {
+        return getVal()
+    }
+    return 0
+}

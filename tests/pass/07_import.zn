@@ -1,6 +1,5 @@
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator.init()
-    with _ := gpa.&.allocator() {
+    with GeneralPurposeAllocator.new() {
         hello := string.new("Ciao")
         cap := string.with_capacity(64)
 

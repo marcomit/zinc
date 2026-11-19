@@ -9,7 +9,6 @@
 #include "zvec.h"
 #include "zhset.h"
 #include "zmap.h"
-#include "zmem.h"
 
 #include <stdatomic.h>
 #include <stdatomic.h>
@@ -90,6 +89,7 @@ typedef struct ZThreadSem   ZThreadSem;
 typedef struct ZAnnotation  ZAnnotation;
 typedef struct ZRegion      ZRegion;
 typedef struct ZCapability  ZCapability;
+typedef struct ZCapabilityCast  ZCapabilityCast;
 
 typedef enum {
     Z_ERROR,
@@ -647,6 +647,7 @@ struct ZNode {
             ZNode   *rvalue; // Null if not initialized (zero-initialized unless 'uninit')
             bool    uninit;  // 'x: T = ?' - explicitly left uninitialized, no zero-init
             bool    pub;
+            bool    constant;
         } varDecl;
 
         struct {
@@ -665,6 +666,7 @@ struct ZNode {
         struct {
             ZType   *type;
             ZToken  *identifier;
+            ZNode   *defaultValue;
         } field;
 
         union {
@@ -702,7 +704,7 @@ struct ZNode {
 
             /* It is a list of references to the capabilites' definition.
              * This list MUST be set in the semantic analysis. */
-            ZNode   **capabilities;
+            ZCapabilityCast *capabilities;
 
             /* The semantic analyzer attach the reference to the called function
              */
@@ -843,8 +845,9 @@ struct ZNode {
         } sizeofExpr;
 
         struct {
-            ZNode **capabilities;
-            ZNode *block;
+            ZNode   **capabilities;
+            ZNode   *block;
+            bool    isInline;
         } capability;
 
         struct {
@@ -862,7 +865,7 @@ struct ZNode {
             ZType       **facets;
             ZType       **generics;
             ZType       *base;
-            ZToken      *self;
+            // ZToken      *self;
             ZNode       **funcs;
             ZNode       **capabilities;
         } impl;
@@ -942,6 +945,14 @@ typedef struct ZParser {
      * declaration and not everywhere (e.g. inside a function or as a return type). */
     bool            declAsType;
 
+    /* When true, parseFuncDecl tries to parse the first parameter as a type.
+     * It will be set true by parseImpl before calling parseFuncDecl and reset at the end.
+     */
+    bool            inImplBlock;
+
+    /* Must set only inside an impl block, it captures the base of the the impl. */
+    ZType           *implBase;
+
     /* Last consumed token: where the node being parsed ends (see setspan). */
     ZToken          *last;
 } ZParser;
@@ -975,6 +986,12 @@ struct ZSymbol {
 struct ZCapability {
     ZType *type;
     ZNode **nodes;
+};
+
+struct ZCapabilityCast {
+    ZNode *node;
+    ZCastInfo cast;
+    i32 index;
 };
 
 struct ZRegion {
@@ -1125,6 +1142,7 @@ usize typeSize(ZState *, ZType *);
 void typesSort(ZType **);
 bool isVoid(ZType *);
 bool typesEqual(ZType *, ZType *);
+ZType *typeReplace(ZType *root, ZType *from, ZType *to);
 bool typesPrimitive(ZType *);
 
 /* ================== Zinc state ================== */

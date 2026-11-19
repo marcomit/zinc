@@ -4,8 +4,7 @@ fill :: fn (size: u64) i32 with alloc: Allocator {
 }
 
 main :: fn () i32 {
-    gpa := GeneralPurposeAllocator.init()
-    with _ := gpa.&.allocator() {
+    with GeneralPurposeAllocator.new() {
         result: i32 = fill(64)
         io.printf("%d\n", result)
     }

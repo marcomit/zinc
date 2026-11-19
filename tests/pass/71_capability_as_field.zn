@@ -1,0 +1,79 @@
+// A value in a `with` block satisfies a capability through its `#as` field:
+// a struct with `#as tag: Tag` can be provided where `Tag` is required.
+
+c :: foreign {
+    printf: fn (*char, ..) void
+}
+
+Tag :: struct {
+    val: i32
+}
+
+Scale :: struct {
+    factor: i32
+}
+
+Ctx :: struct {
+    id: i32
+    #as tag: Tag
+}
+
+Env :: struct {
+    #as tag: Tag
+    #as scale: Scale
+    pad: u8
+}
+
+Counter :: struct {
+    value: i32
+}
+
+Counter :: impl with s: Scale {
+    make :: fn (start: i32) Counter -> Counter { value = start * s.factor }
+}
+
+getVal   :: fn () i32 with t: Tag -> t.val
+getTwice :: fn () i32 with Tag -> getVal() * 2
+scaled   :: fn () i32 with t: Tag, s: Scale -> t.val * s.factor
+
+main :: fn () i32 {
+    // Basic: Ctx provides Tag through its `#as` field.
+    with ctx := Ctx { id = 1, tag = .{ val = 7 } } {
+        c.printf("basic: %d\n", getVal())
+        c.printf("chain: %d\n", getTwice())
+    }
+
+    // An `#as` capability in an inner block shadows an exact one outside.
+    with outer := Tag { val = 10 } {
+        c.printf("outer: %d\n", getVal())
+        with inner := Ctx { id = 2, tag = .{ val = 20 } } {
+            c.printf("inner: %d\n", getVal())
+        }
+        c.printf("restored: %d\n", getVal())
+    }
+
+    // An exact capability in an inner block shadows an `#as` one outside.
+    with ctx := Ctx { id = 3, tag = .{ val = 30 } } {
+        with t := Tag { val = 40 } {
+            c.printf("exact inner: %d\n", getVal())
+        }
+        c.printf("as outer: %d\n", getVal())
+    }
+
+    // One value with several `#as` fields provides several capabilities.
+    with env := Env { tag = .{ val = 5 }, scale = .{ factor = 3 }, pad = 0 } {
+        c.printf("multi: %d\n", scaled())
+
+        // Capabilities required by an impl block resolve the same way.
+        counter := Counter.make(4)
+        c.printf("impl: %d\n", counter.value)
+    }
+
+    // Mixing: Tag from an `#as` field, Scale provided directly.
+    with ctx := Ctx { id = 4, tag = .{ val = 6 } } {
+        with s := Scale { factor = 2 } {
+            c.printf("mixed: %d\n", scaled())
+        }
+    }
+    return 0
+}

@@ -20,33 +20,31 @@ Random :: impl {
         self.inc = 0xda3e39cb94b95bdb
         return self
     }
-}
 
-*Random self :: impl {
-    pub seed :: fn (new_seed: u64) void {
+    pub seed :: fn (*self, new_seed: u64) void {
         self.state = new_seed + self.inc as u64
     }
 
-    pub uint :: fn() u32 {
+    pub uint :: fn(*self) u32 {
         oldState := self.state
         self.state = oldState * 6364136223846793005 as u64 + (self.inc | (1 as u64))
 
-        xorshifted: u32 = ((oldState >> 18 as u32) ^ oldState) >> 27
+        xorshifted: u32 = ((oldState >> 18 as u32) ~ oldState) >> 27
 
         rot: u32 =  oldState >> 59
 
         return (xorshifted >> rot) | (xorshifted << ((-rot) & 31))
     }
 
-    pub int :: fn () i32 {
+    pub int :: fn (*self) i32 {
         return self.uint() as i32
     }
 
-    pub float :: fn () f32 {
+    pub float :: fn (*self) f32 {
         return self.uint() as f32 / ((0xFFFFFFFF as u32) as f32)
     }
 
-    pub range :: fn (start: i32, end: i32) i32 {
+    pub range :: fn (*self, start: i32, end: i32) i32 {
         span := (end - start + 1) as u32
         return start + (self.uint() % span) as i32
     }

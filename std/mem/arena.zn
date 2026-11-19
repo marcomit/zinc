@@ -17,14 +17,12 @@ Block :: impl {
         self.used = 0
         return self
     }
-}
-
-*Block self :: impl {
-    #inline(always)
-    has_size :: fn (size: usize) bool -> self.used + size < self.cap
 
     #inline(always)
-    current_ptr :: fn (size: usize) ?*u8 {
+    has_size :: fn (*self, size: usize) bool -> self.used + size < self.cap
+
+    #inline(always)
+    current_ptr :: fn (*self, size: usize) ?*u8 {
         if not self.has_size(size) return none
         defer self.used += size
 
@@ -32,7 +30,7 @@ Block :: impl {
         return buffer[self.used].&
     }
 
-    destroy :: fn () with Allocator {
+    destroy :: fn (*self) with Allocator {
         if self.next {
             self.next!.destroy()
         }
@@ -55,8 +53,8 @@ ArenaAllocator :: impl {
     }
 }
 
-*ArenaAllocator self :: impl {
-    grow :: fn () {
+ArenaAllocator :: impl {
+    grow :: fn (*self) {
         with _ := self.parent_allocator {
             block := Block.new(DEFAULT_ALLOCATOR)
             if not self.head {
@@ -68,20 +66,20 @@ ArenaAllocator :: impl {
         }
     }
 
-    pub scope :: fn () Allocator {
+    pub scope :: fn (*self) Allocator {
         temp: *TempAllocator = self.alloc(sizeof TempAllocator)
         temp.arena = self
         temp.block = self.tail!
         return Allocator(temp)
     }
 
-    end_scope :: fn (block: Block) {
+    end_scope :: fn (*self, block: Block) {
 
     }
 }
 
-*ArenaAllocator self :: impl(Allocator) {
-    alloc :: fn (size: usize) ?*u8 {
+ArenaAllocator :: impl(Allocator) {
+    alloc :: fn (*self, size: usize) ?*u8 {
         with _ := self.parent_allocator {
             if not self.head or not self.tail {
                     self.head = Block.new(DEFAULT_BLOCK)
@@ -97,20 +95,20 @@ ArenaAllocator :: impl {
         }
     }
 
-    realloc :: fn (#unused ptr: *u8, size: usize) ?*u8 {
+    realloc :: fn (*self, #unused ptr: *u8, size: usize) ?*u8 {
         return self.alloc(size)
     }
 
     #allow_empty
-    free :: fn (ptr: *u8) {
+    free :: fn (*self, ptr: *u8) {
 
     }
 
-    init :: fn () {
+    init :: fn (*self, ) {
 
     }
 
-    deinit :: fn () {
+    deinit :: fn (*self) {
         with _ := self.parent_allocator {
             self.head.destroy()
         }
@@ -122,13 +120,13 @@ pub TempAllocator :: struct {
     block: Block
 }
 
-*TempAllocator self :: impl(Allocator) {
-    alloc :: fn (size: usize) ?*u8 -> self.arena.alloc(size)
-    realloc :: fn (ptr: *u8, size: usize) ?*u8 -> self.arena.realloc(size)
-    free :: fn (ptr: *u8) -> self.arena.free(ptr)
+TempAllocator :: impl(Allocator) {
+    alloc :: fn (*self, size: usize) ?*u8 -> self.arena.alloc(size)
+    realloc :: fn (*self, ptr: *u8, size: usize) ?*u8 -> self.arena.realloc(size)
+    free :: fn (*self, ptr: *u8) -> self.arena.free(ptr)
 
     #allow_empty
-    init :: fn () { }
+    init :: fn (*self) { }
 
-    deinit :: fn () -> self.arena.end_scope()
+    deinit :: fn (*self) -> self.arena.end_scope()
 }

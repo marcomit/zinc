@@ -39,8 +39,8 @@ Player :: struct  {
     ..Stats
 }
 
-Player self :: impl {
-    update :: fn () void {
+Player :: impl {
+    update :: fn (self) void {
         self.vx = self.vx + self.ax
         self.vy = self.vy + self.ay
         self.vz = self.vz + self.az
@@ -50,7 +50,7 @@ Player self :: impl {
         self.z = self.z + self.vz
     }
 
-    print :: fn () void {
+    print :: fn (self) void {
         c.printf("%s\n", self.name.ptr)
         c.printf("Pos: %d %d %d\n", self.x, self.y, self.z)
         c.printf("Vel: %d %d %d\n", self.vx, self.vy, self.vz)

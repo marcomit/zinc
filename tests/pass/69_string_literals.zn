@@ -1,0 +1,21 @@
+// Single-line string literals: escapes, unicode, and edge cases.
+puts :: foreign fn (*char) i32
+
+main :: fn () u32 {
+    puts("")
+
+    puts("tab:[\t] quote:[\"] apos:[\'] backslash:[\\]")
+
+    puts("first\nsecond")
+
+    puts("[\q]")
+
+    puts("[é][€][\U0001F600]")
+
+    puts("[é€😀]")
+
+    puts("// not a comment /* nor this */ 'x'")
+
+    puts("#hash")
+    return 0
+}

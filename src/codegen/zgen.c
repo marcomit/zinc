@@ -13,6 +13,7 @@
 #include "zgen.h"
 #include "zinc.h"
 #include "zmem.h"
+#include "zmir.h"
 
 static void         genStmt             (ZCodegen *, ZNode *);
 static void         genBlock            (ZCodegen *, ZNode *);
@@ -128,12 +129,23 @@ static ZMIRValueRef getZMIRValueRef(ZCodegen *ctx, const char *key) {
     return sym ? sym->value : NULL;
 }
 
-static ZMIRValueRef getCapabilityRef(ZCodegen *ctx, ZType *capability) {
+static ZMIRValueRef capabilityFieldPtr(ZCodegen *ctx, ZNode *cast, ZMIRValueRef ptr) {
+    ZMIRTypeRef type    = genType(ctx, cast->castExpr.info.from);
+    u32 *path           = cast->castExpr.fieldPath;
+
+    for (usize i = 0; i < veclen(path); i++) {
+        ptr = ZMIRBuildStructGEP2(ctx->builder, type, ptr, path[i], label(ctx, "cap.field"));
+        type = ZMIRStructGetTypeAtIndex(type, path[i]);
+    }
+    return ptr;
+}
+
+static ZMIRValueRef getCapabilityRef(ZCodegen *ctx, ZCapabilityCast cast) {
     ZMIRScope *cur = ctx->scope;
     while (cur) {
         usize len = veclen(cur->capabilities);
         for (usize i = len; i-- > 0;) {
-            if (typesEqual(cur->capabilities[i]->capability, capability)) {
+            if (typesEqual(cur->capabilities[i]->capability, cast.cast.from)) {
                 return cur->capabilities[i]->ref;
             }
         }
@@ -1822,28 +1834,30 @@ static ZMIRValueRef genCall(ZCodegen *ctx, ZNode *node) {
     }
 
     for (usize i = 0; i < veclen(node->call.capabilities); i++) {
-        ZNode *cap = node->call.capabilities[i];
-        if (!cap) {
+        ZCapabilityCast cap = node->call.capabilities[i];
+        if (!cap.node) {
             zlog(ctx->state, node->tok, Z9025);
             continue;
-        } else if (!cap->tok) {
+        } else if (!cap.node->tok) {
             zlog(ctx->state, node->tok, Z9026);
             continue;
-        } else if (!cap->resolved) {
+        } else if (!cap.node->resolved) {
             zlog(ctx->state, node->tok, Z9027);
             continue;
         }
-        if (!isRuntimeParam(ctx->state, cap->resolved)) continue;
-        ZMIRValueRef capability = getCapabilityRef(
-            ctx, cap->resolved
-        );
+        if (!isRuntimeParam(ctx->state, cap.node->resolved)) continue;
+        ZMIRValueRef capability = getCapabilityRef(ctx, cap);
         if (!capability) {
-            zlog(ctx->state, cap->tok, Z00A4, stoken(cap->tok));
+            zlog(ctx->state, cap.node->tok, Z00A4, stoken(cap.node->tok));
         } else {
+            if (cap.node->type == NODE_CAST &&
+                cap.node->castExpr.info.kind == Z_CAST_FIELD) {
+                capability = capabilityFieldPtr(ctx, cap.node, capability);
+            }
             capability = ZMIRBuildLoad2(
                 ctx->builder,
-                genType(ctx, cap->resolved),
-                capability, label(ctx, cap->tok)
+                genType(ctx, cap.node->resolved),
+                capability, label(ctx, cap.node->tok)
             );
         }
         vecpush(args, capability);
@@ -2196,7 +2210,7 @@ static ZMIRValueRef genNumericOperator(ZCodegen *ctx,
 
     let div         = bothUnsigned ? ZMIRBuildUDiv : ZMIRBuildSDiv;
     let mod         = bothUnsigned ? ZMIRBuildURem : ZMIRBuildSRem;
-    let rightShift  = bothUnsigned ? ZMIRBuildLShr : ZMIRBuildAShr;
+    let rightShift  = typeIsUnsigned(leftType) ? ZMIRBuildLShr : ZMIRBuildAShr;
     let lt          = bothUnsigned ? ZMIRIntULT : ZMIRIntSLT;
     let gt          = bothUnsigned ? ZMIRIntUGT : ZMIRIntSGT;
     let lte         = bothUnsigned ? ZMIRIntULE : ZMIRIntSLE;
@@ -2217,7 +2231,7 @@ static ZMIRValueRef genNumericOperator(ZCodegen *ctx,
     case TOK_BITL:  return ZMIRBuildShl (ctx->builder, left, right, l);
     case TOK_BITR:  return rightShift   (ctx->builder, left, right, l);
     case TOK_BITOR: return ZMIRBuildOr  (ctx->builder, left, right, l);
-    case TOK_BITXOR:return ZMIRBuildXor (ctx->builder, left, right, l);
+    case TOK_BITNOT:return ZMIRBuildXor (ctx->builder, left, right, l);
     case TOK_REF:   return ZMIRBuildAnd (ctx->builder, left, right, l);
     default:        zlog(ctx->state, tok, Z902B); return NULL;
     }
@@ -2240,7 +2254,7 @@ static ZMIRValueRef genCompoundOperator(ZCodegen *ctx, ZNode *root) {
     case TOK_SELF_BITL:     op = TOK_BITL;      break;
     case TOK_SELF_BITR:     op = TOK_BITR;      break;
     case TOK_SELF_BITOR:    op = TOK_BITOR;     break;
-    case TOK_SELF_BITXOR:   op = TOK_BITXOR;    break;
+    case TOK_SELF_BITXOR:   op = TOK_BITNOT;    break;
     case TOK_SELF_PLUS:     op = TOK_PLUS;      break;
     case TOK_SELF_MINUS:    op = TOK_MINUS;     break;
     case TOK_SELF_MUL:      op = TOK_STAR;      break;
@@ -3955,7 +3969,8 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
  * Capabilities are compiled like normal variables.
  */
 static void genCapability(ZCodegen *ctx, ZNode *node) {
-    beginScope(Z_SCOPE_BLOCK, ctx);
+    bool isInline = node->capability.isInline;
+    if (!isInline) beginScope(Z_SCOPE_BLOCK, ctx);
 
     for (usize i = 0; i < veclen(node->capability.capabilities); i++) {
         ZNode *decl = node->capability.capabilities[i];
@@ -3965,6 +3980,9 @@ static void genCapability(ZCodegen *ctx, ZNode *node) {
             if (decl->varDecl.pattern->type == Z_VAR_IDENT) {
                 ref = getZMIRValueRef(ctx, stoken(decl->tok));
             }
+        } else if ((decl->type == NODE_IDENTIFIER && !decl->identNode.li) ||
+            decl->type == NODE_MEMBER) {
+            ref = genLValue(ctx, decl);
         } else {
             ZMIRStack *stack = getStackValue(ctx, decl);
             if (!stack) {
@@ -3987,8 +4005,10 @@ static void genCapability(ZCodegen *ctx, ZNode *node) {
         vecpush(ctx->scope->capabilities, capability);
     }
 
-    genStmt(ctx, node->capability.block);
-    endScope(ctx);
+    if (!isInline) {
+        genStmt(ctx, node->capability.block);
+        endScope(ctx);
+    }
 }
 
 static void genStmt(ZCodegen *ctx, ZNode *stmt) {
@@ -4595,13 +4615,22 @@ static void genImpl(ZCodegen *ctx, ZNode *root) {
 }
 
 static void genFacetVtable(ZCodegen *ctx, ZNode *root, ZMIRValueRef *ptrs) {
+    ZType *recv = NULL;
+    for (usize k = 0; k < veclen(root->impl.funcs); k++) {
+        if (root->impl.funcs[k]->funcDef.receiver) {
+            recv = root->impl.funcs[k]->funcDef.receiver->resolved;
+            break;
+        }
+    }
+    if (!recv) return;
+
     for (usize i = 0; i < veclen(root->impl.facets); i++) {
         ZType *facet = root->impl.facets[i];
 
         if (!facet || facet->kind != Z_TYPE_FACET) {
             zlog(ctx->state, facet->tok, Z304D, stype(facet));
         }
-        char *buf = encodeFacetVTable(facet, root->impl.base);
+        char *buf = encodeFacetVTable(facet, recv);
 
         if (ZMIRGetNamedGlobal(ctx->mod, buf)) continue;
 

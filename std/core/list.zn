@@ -9,8 +9,8 @@ RawDynamicArray :: struct {
     buff: ?*u8
 }
 
-*RawDynamicArray self :: impl {
-    make_room :: fn (n: usize, elem_size: usize) with Allocator {
+RawDynamicArray :: impl {
+    make_room :: fn (*self, n: usize, elem_size: usize) with Allocator {
         if not self return
 
         newcap := self.cap

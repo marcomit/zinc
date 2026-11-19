@@ -1,0 +1,26 @@
+// Multiline string literals delimited by """.
+puts :: foreign fn (*char) i32
+
+main :: fn () u32 {
+    puts("""""")
+
+    puts("""one line""")
+
+    puts("""first
+  second
+    third""")
+
+    puts("""she said "hi" and 'bye' "" end""")
+
+    puts("""tab:[\t] slash:[\\] triple:[\"""] euro:[€]""")
+
+    puts("""
+leading newline""")
+
+    x := 40
+    x += 2
+    if x == 42 {
+        puts("after: ok")
+    }
+    return 0
+}

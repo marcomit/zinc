@@ -12,18 +12,18 @@ Outer :: struct {
     b: Inner
 }
 
-Inner self :: impl {
-    get :: fn () i32 -> self.value
-    add :: fn (n: i32) i32 -> self.value + n
+Inner :: impl {
+    get :: fn (self, ) i32 -> self.value
+    add :: fn (self, n: i32) i32 -> self.value + n
 }
 
-Outer self :: impl {
-    sum :: fn () i32 -> self.a.get() + self.b.get()
-    addToA :: fn (n: i32) i32 -> self.a.add(n)
+Outer :: impl {
+    sum :: fn (self) i32 -> self.a.get() + self.b.get()
+    addToA :: fn (self, n: i32) i32 -> self.a.add(n)
 }
 
-i32 self :: impl {
-    print :: fn () void -> c.printf("%d\n", self)
+i32 :: impl {
+    print :: fn (self) void -> c.printf("%d\n", self)
 }
 addInner :: fn (val: i32) i32 -> val
 

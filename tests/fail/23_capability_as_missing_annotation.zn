@@ -1,0 +1,14 @@
+// Without `#as` a struct must not satisfy a capability of its field's type.
+Tag :: struct {
+    val: i32
+}
+Ctx :: struct {
+    tag: Tag
+}
+getVal :: fn () i32 with t: Tag -> t.val
+main :: fn () i32 {
+    with ctx := Ctx { tag = .{ val = 1 } } {
+        return getVal()
+    }
+    return 0
+}

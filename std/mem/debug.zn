@@ -17,35 +17,35 @@ DebugAllocator :: impl {
     }
 }
 
-*DebugAllocator self :: impl(Allocator) {
-    alloc :: fn (size: u64) *u8 {
+DebugAllocator :: impl(Allocator) {
+    alloc :: fn (*self, size: u64) *u8 {
         p := self.inner.alloc(size)
-        c::printf("[debug] alloc(%lu) -> %p\n", size, p)
+        c.printf("[debug] alloc(%lu) -> %p\n", size, p)
         if p { self.allocs :+ 1 }
         return p
     }
 
-    resize :: fn (ptr: *u8, size: u64) *u8 {
+    resize :: fn (*self, ptr: *u8, size: u64) *u8 {
         p := self.inner.resize(ptr, size)
-        c::printf("[debug] resize(%p, %lu) -> %p\n", ptr, size, p)
+        c.printf("[debug] resize(%p, %lu) -> %p\n", ptr, size, p)
         self.resizes :+ 1
         return p
     }
 
-    destroy :: fn (ptr: *u8) void {
-        c::printf("[debug] destroy(%p)\n", ptr)
+    destroy :: fn (*self, ptr: *u8) void {
+        c.printf("[debug] destroy(%p)\n", ptr)
         if ptr { self.frees :+ 1 }
         self.inner.destroy(ptr)
     }
 }
 
-*DebugAllocator self :: impl {
-    pub allocator :: fn () Allocator -> self as Allocator
+DebugAllocator :: impl {
+    pub allocator :: fn (*self) Allocator -> self as Allocator
 
-    pub live :: fn () u64 -> self.allocs - self.frees
+    pub live :: fn (*self) u64 -> self.allocs - self.frees
 
-    pub report :: fn () void {
-        c::printf(
+    pub report :: fn (*self) void {
+        c.printf(
             "[debug] allocs=%lu resizes=%lu frees=%lu live=%lu\n",
             self.allocs, self.resizes, self.frees, self.live()
         )

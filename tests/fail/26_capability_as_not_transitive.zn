@@ -1,0 +1,18 @@
+// `#as` only recurses through embedded fields: Outer satisfies Inner,
+// but Outer -> Inner -> Tag must not satisfy a `Tag` capability.
+Tag :: struct {
+    val: i32
+}
+Inner :: struct {
+    #as tag: Tag
+}
+Outer :: struct {
+    #as inner: Inner
+}
+getVal :: fn () i32 with t: Tag -> t.val
+main :: fn () i32 {
+    with o := Outer { inner = .{ tag = .{ val = 3 } } } {
+        return getVal()
+    }
+    return 0
+}

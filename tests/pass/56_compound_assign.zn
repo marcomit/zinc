@@ -18,7 +18,7 @@ main :: fn () i32 {
     b: u32 = 0b1010
     b |= 0b0101
     b &= 0b1101
-    b ^= 0b0001
+    b ~= 0b0001
     printf("b=%u\n", b)
 
     /* Shift compound operators. */

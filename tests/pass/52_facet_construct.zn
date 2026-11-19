@@ -14,14 +14,14 @@ Rect :: struct {
     height: i32
 }
 
-*Circle self :: impl(Shape) {
-    area :: fn () i32 -> self.radius * self.radius
-    name :: fn () void -> printf("circle\n")
+Circle :: impl(Shape) {
+    area :: fn (*self) i32 -> self.radius * self.radius
+    name :: fn (*self) void -> printf("circle\n")
 }
 
-*Rect self :: impl(Shape) {
-    area :: fn () i32 -> self.width * self.height
-    name :: fn () void -> printf("rect\n")
+Rect :: impl(Shape) {
+    area :: fn (*self) i32 -> self.width * self.height
+    name :: fn (*self) void -> printf("rect\n")
 }
 
 report :: fn (s: Shape) void {

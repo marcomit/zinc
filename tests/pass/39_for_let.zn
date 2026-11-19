@@ -15,8 +15,8 @@ range :: fn (start: i32, end: i32) Range {
     return Range{ start = start, end = end, current = 0 }
 }
 
-*Range self :: impl {
-    next :: fn () Option {
+Range :: impl {
+    next :: fn (*self) Option {
         if self.current >= self.end {
             return Option.None()
         }
@@ -32,8 +32,8 @@ ArrIter :: struct {
     data: []i32
 }
 
-*ArrIter self :: impl {
-    next :: fn () Option {
+ArrIter :: impl {
+    next :: fn (*self) Option {
         if self.current >= self.data.len {
             return Option.None()
         }

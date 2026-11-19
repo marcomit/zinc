@@ -2,6 +2,7 @@
 // Copyright (c) 2025, Marco Menegazzi
 
 #include "zinc.h"
+#include "zvisit.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -746,7 +747,7 @@ static ZNode *parseBitAnd(ZParser *parser) {
 }
 
 static ZNode *parseBitXor(ZParser *parser) {
-    ZTokenType valid = TOK_BITXOR;
+    ZTokenType valid = TOK_BITNOT;
     return parseGenericBinary(parser, parseBitAnd, parseBitAnd, &valid, 1);
 }
 
@@ -812,7 +813,7 @@ static ZNode *parseUpdateRhs(ZParser *parser, ZNode *lhs) {
     /* Binary op: x: + 1  ->  x + 1 */
     ZTokenType binOps[] = {
         TOK_PLUS, TOK_MINUS,  TOK_STAR, TOK_DIV, TOK_MOD,
-        TOK_BITL, TOK_BITR,   TOK_REF,  TOK_BITOR, TOK_BITXOR,
+        TOK_BITL, TOK_BITR,   TOK_REF,  TOK_BITOR, TOK_BITNOT,
         TOK_AND,  TOK_OR
     };
     if (isValidToken(parser, binOps, arrlen(binOps))) {
@@ -1037,8 +1038,12 @@ static ZType *parseIdentType(ZParser *parser) {
     while (check(parser, TOK_IDENT)) {
         base                    = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
         base->tok               = peek(parser);
-        base->primitive.token   = consume(parser);
+        ZToken *t               = consume(parser);
+        base->primitive.token   = t;
         base->primitive.base    = prev;
+
+        if (!prev && parser->implBase && strcmp(t->str, "Self") == 0)
+            base->primitive.token = parser->implBase->primitive.token;
 
         if (!match(parser, TOK_DOT)) break;
         prev = base;
@@ -1287,10 +1292,16 @@ static ZNode *parseCapabilityBlock(ZParser *parser) {
              !check(parser, TOK_DO)         &&
               match(parser, TOK_SEMICOLON)  );
 
-    ZNode *block                                = parseBlockOrInline(parser, false);
+    ZToken *cur = peek(parser);
+    ZNode *block = NULL;
+    if (!cur->newlineBefore) {
+        block = parseBlockOrInline(parser, false);
+    }
+
     ZNode *capabilityBlock                      = makenode(parser->allocator, NODE_CAPABILITY);
     capabilityBlock->capability.capabilities    = capabilities;
     capabilityBlock->capability.block           = block;
+    capabilityBlock->capability.isInline        = block == NULL ? true : false;
     return setspan(parser, capabilityBlock, start);
 }
 
@@ -1436,9 +1447,13 @@ static ZNode *parseField(ZParser *parser) {
     ZType *type = tryParse(parser, parseType(parser));
     guard(type);
 
+    ZNode *defaultValue = match(parser, TOK_EQ) ? parseExpr(parser) : NULL;
+
     ZNode *node             = makenode(parser->allocator, NODE_FIELD);
     node->field.type        = type;
     node->field.identifier  = ident;
+    node->field.defaultValue= defaultValue;
+
     node->resolved          = type;
     node->tok               = ident;
     node->annotations       = annotations;
@@ -1460,9 +1475,11 @@ static ZNode *parseFieldOptName(ZParser *parser) {
     ZType *type = tryParse(parser, parseType(parser));
     guard(type);
 
+    ZNode *defaultValue = match(parser, TOK_EQ) ? parseExpr(parser) : NULL;
     ZNode *node             = makenode(parser->allocator, NODE_FIELD);
     node->field.type        = type;
     node->field.identifier  = ident;
+    node->field.defaultValue= defaultValue;
     node->resolved          = type;
     node->tok               = ident;
     return setspan(parser, node, start);
@@ -1483,11 +1500,20 @@ static ZNode *parseStructField(ZParser *parser) {
         }
         ZNode *node             = makenode(parser->allocator, NODE_EMBED_FIELD);
         node->resolved          = type;
+        node->field.type        = type;
+        node->field.identifier  = NULL;
         result = setspan(parser, node, start);
     } else {
         result = parseField(parser);
     }
-    if (result) result->annotations = annotations;
+
+    if (result) {
+        result->annotations = annotations;
+
+        if (match(parser, TOK_EQ))
+            result->field.defaultValue = parseExpr(parser);
+    }
+
     return result;
 }
 
@@ -2304,6 +2330,80 @@ static ZNode **parseCapabilityList(ZParser *parser) {
     return capabilities;
 }
 
+static ZVisitorState checkReceiverType(ZType *type, ZClientData cd) {
+    switch (type->kind) {
+    case Z_TYPE_PRIMITIVE: {
+        const char *s = stoken(type->primitive.token);
+        return strcmp(s, (const char *)cd) == 0 ? Z_BREAK : Z_STOP;
+    }
+    case Z_TYPE_POINTER:
+    case Z_TYPE_ARRAY:
+    case Z_TYPE_OPTIONAL:
+        return Z_CONTINUE;
+    default: return Z_STOP;
+    }
+}
+
+static inline bool isImplicitSelfField(ZType *type) {
+    return visitType(&((ZTypeVisitor){ checkReceiverType, "self" }), type);
+}
+
+static inline bool isSelfField(ZParser *parser, ZType *type) {
+    if (!parser->implBase) return false;
+    return visitType(&((ZTypeVisitor){
+        checkReceiverType, parser->implBase->primitive.token
+    }), type);
+}
+
+static inline ZType *receiverLeaf(ZType *t) {
+    for (;;) switch (t->kind) {
+        case Z_TYPE_POINTER:    t = t->base;        break;
+        case Z_TYPE_OPTIONAL:   t = t->optional;    break;
+        case Z_TYPE_ARRAY:      t = t->array.base;  break;
+        default:                return t;
+    }
+}
+
+static ZNode *parseFuncField(ZParser *parser) {
+    if (check(parser, TOK_IDENT) && checkAhead(parser, TOK_COLON, 1)) {
+        ZToken *name = peek(parser);
+        ZNode *field = parseField(parser);
+
+        if (strcmp(stoken(name), "self") == 0 &&
+            isSelfField(parser, field->field.type))
+            field->type = NODE_FUNC_FIELD;
+
+        return field;
+    }
+
+    ZToken *start = peek(parser);
+    ZType *type = parseType(parser);
+
+    ZNode *node             = makenode(parser->allocator, NODE_FUNC_FIELD);
+
+    if (!isImplicitSelfField(type)) {
+        zlog(parser->state, start, Z203F, stype(type));
+    } else {
+        ZType *leaf = receiverLeaf(type);
+        node->field.identifier  = leaf->primitive.token;
+        leaf->primitive.token   = parser->implBase->primitive.token;
+    }
+
+    node->resolved          = type;
+    node->tok               = start;
+    node->field.type        = type;
+    return setspan(parser, node, start);
+}
+
+static inline void checkOptFieldsAtEnd(ZParser *parser, ZNode **fields) {
+    bool opt = false;
+    for (usize i = 0; i < veclen(fields); i++) {
+        ZNode *dv = fields[i]->field.defaultValue;
+        if (dv) opt = true;
+        else if (opt) zlog(parser->state, fields[i]->tok, Z2040);
+    }
+}
+
 /* The caller must handle:
  * - the mangling name.
  * - the receiver node if it is a receiver function.
@@ -2312,6 +2412,7 @@ static ZNode **parseCapabilityList(ZParser *parser) {
 static ZNode *parseFuncDecl(ZParser *parser,
     ZAnnotation **annotations, bool public) {
     ZToken *start = peek(parser);
+    ZNode *receiver = NULL;
 
     if (!check(parser, TOK_IDENT)) return NULL;
     ZToken *name = consume(parser);
@@ -2326,8 +2427,17 @@ static ZNode *parseFuncDecl(ZParser *parser,
 
     ZNode **args = parseGenericList(parser,
         TOK_LPAREN,         TOK_RPAREN,
-        parseField,  true
+        parseFuncField,  true
     );
+
+    if (veclen(args) && args[0]->type == NODE_FUNC_FIELD) {
+        receiver = args[0];
+        for (usize i = 0; i < veclen(args) - 1; i++)
+            args[i] = args[i + 1];
+        vecpop(args);
+    }
+
+    checkOptFieldsAtEnd(parser, args);
 
     ZType *ret = parseFuncMultiReturn(parser);
 
@@ -2400,7 +2510,7 @@ static ZNode *parseFuncDecl(ZParser *parser,
     node->funcDef.pub           = public;
     node->funcDef.generics      = generics;
     node->funcDef.base          = NULL;
-    node->funcDef.receiver      = NULL;
+    node->funcDef.receiver      = receiver;
     node->funcDef.mangled       = mangled;
     node->funcDef.annotations   = annotations;
     node->funcDef.capabilities  = capabilities;
@@ -2597,14 +2707,19 @@ static ZNode *parseVarInferred(ZParser *parser) {
     ZToken *start = peek(parser);
     ZVarDestructPattern *pattern = parseMultiDestructVar(parser);
 
-    expect(parser, TOK_ASSIGN);
+    bool constant = false;
+    if (match(parser, TOK_DOUBLE_COLON)) constant = true;
+    else if (!match(parser, TOK_ASSIGN)) return NULL;
+
     ZNode *expr = parseMultiExpr(parser);
 
     if (!expr) {
         zlog(parser->state, peek(parser), Z202B);
     }
 
-    return setspan(parser, makenodevar(parser->allocator, pattern, NULL, expr), start);
+    ZNode *var = makenodevar(parser->allocator, pattern, NULL, expr);
+    var->varDecl.constant = constant;
+    return setspan(parser, var, start);
 }
 
 static ZNode *parseVarDefTyped(ZParser *parser) {
@@ -3225,12 +3340,16 @@ static ZNode *parseModule(ZParser *parser) {
 
 static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool public) {
     ZToken *start = peek(parser);
-    ZType *type = parseType(parser);
-    ZToken *rec = NULL;
+    ZType *type = NULL;
 
-    guard(type);
+    if (!check(parser, TOK_IDENT) &&
+        !checkMask(parser, TOK_TYPES_MASK))
+        return NULL;
 
-    if (check(parser, TOK_IDENT)) rec = consume(parser);
+    type = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
+    type->tok = start;
+    type->primitive.token = consume(parser);
+
     expect(parser, TOK_DOUBLE_COLON);
     expect(parser, TOK_IMPL);
 
@@ -3264,8 +3383,8 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     ZNode *func                 = NULL;
 
     ZNode *block                = makenode(parser->allocator, NODE_IMPL);
-    block->impl.base            = NULL;
-    block->impl.self            = NULL;
+    block->impl.base            = type;
+    // block->impl.self            = NULL;
     block->impl.funcs           = NULL;
     block->impl.facets          = facets;
     block->impl.generics        = generics;
@@ -3274,6 +3393,8 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
     block->annotations          = implAnnotations;
 
     ZAnnotation **annotations   = NULL;
+    parser->inImplBlock         = true;
+    parser->implBase            = type;
     do {
         annotations = NULL;
         if (check(parser, TOK_HASHTAG)) {
@@ -3283,6 +3404,8 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
         func = parseFuncDecl(parser, annotations, public);
         if (!func) {
             if (public) {
+                parser->inImplBlock = false;
+                parser->implBase    = NULL;
                 zlog(parser->state, peek(parser), Z2039);
                 return NULL;
             }
@@ -3296,50 +3419,37 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
         vecpush(block->impl.funcs, func);
     } while (!check(parser, TOK_RBRACKET));
 
+    parser->inImplBlock = false;
     expect(parser, TOK_RBRACKET);
 
     setspan(parser, block, start);
-
-    block->impl.base = type;
-    block->impl.self = rec;
 
     usize len = veclen(block->impl.funcs);
 
     if (len == 0) return block;
 
     /* For static mangling we key on the primitive type name (matching what the
-     * call-site parser emits for `Type::method`). Strip pointer levels to get
+     * call-site parser emits for `Type.method`). Strip pointer levels to get
      * the base primitive token. */
     ZType *baseType = type;
     while (baseType->kind == Z_TYPE_POINTER) baseType = baseType->base;
     ZToken *typeNameTok = baseType->primitive.token;
 
-    if (rec) { // receiver functions
-        ZNode *receiver = makenode(parser->allocator, NODE_FIELD);
-        receiver->field.identifier = rec;
-        receiver->field.type = type;
+    for (usize i = 0; i < len; i++) {
+        ZNode *f = block->impl.funcs[i];
+        char *mangled = NULL;
+        if (f->funcDef.receiver) {
+            mangled = manglerM(type, f->funcDef.name);
 
-        for (usize i = 0; i < len; i++) {
-            /* manglerM encodes the full receiver type (pointer or not), so
-             * `for String self` and `for *String self` get distinct names. */
-            block->impl.funcs[i]->funcDef.mangled = manglerM(
-                type,
-                block->impl.funcs[i]->funcDef.name
-            );
-            block->impl.funcs[i]->funcDef.receiver = receiver;
-        }
-    } else { // static functions
-        for (usize i = 0; i < len; i++) {
-            block->impl.funcs[i]->funcDef.mangled = mangler((char *[]) {
+        } else {
+            mangled = mangler((char *[]) {
                 typeNameTok->str,
-                block->impl.funcs[i]->funcDef.name->str,
+                f->funcDef.name->str,
                 NULL
             });
-            block->impl.funcs[i]->funcDef.base = type;
-
-            vecunion(block->impl.funcs[i]->funcDef.generics,
-                    generics, veclen(generics));
+            f->funcDef.base = type;
         }
+        f->funcDef.mangled = mangled;
     }
 
     return block;
@@ -3435,81 +3545,72 @@ static ZNode *parseImport(ZParser *parser, bool public) {
     return setspan(parser, node, start);
 }
 
+static ZNode *parseDecl(ZParser *parser, ZAnnotation **a, bool p) {
+    ZToken *start   = peek(parser);
+    ZNode *res      = NULL;
+    if (checkMask(parser, TOK_TYPES_MASK)) {
+        res = parseImpl(parser, a, p);
+        goto end;
+    }
+
+    if (!check(parser, TOK_IDENT)) return NULL;
+    if (checkAhead(parser, TOK_COLON, 1)    ||
+        checkAhead(parser, TOK_ASSIGN, 1)   ||
+        checkAhead(parser, TOK_COMMA, 1)) {
+        res = parseVarDef(parser);
+        goto end;
+    }
+
+    if (!checkAhead(parser, TOK_DOUBLE_COLON, 1))
+        return NULL;
+
+    ZToken *kind = peekAhead(parser, 2);
+    switch (kind->type) {
+    case TOK_MACRO:     res = skipMacro(parser, p);             break;
+    case TOK_STRUCT:    res = parseStructDecl(parser, a, p);    break;
+    case TOK_ENUM:      res = parseEnumDecl(parser, a, p);      break;
+    case TOK_FOREIGN:   res = parseForeign(parser, a, p);       break;
+    case TOK_FACET:     res = parseFacet(parser, a, p);         break;
+    case TOK_IMPL:      res = parseImpl(parser, a, p);          break;
+    case TOK_FN:        res = parseFuncDecl(parser, a, p);      break;
+    case TOK_TYPEDEF:   res = parseTypedef(parser, a, p);       break;
+    case TOK_IMPORT:    res = parseImport(parser, p);           break;
+    default:            res = parseConst(parser, p);            break;
+    }
+
+end:
+    return setspan(parser, res, start);
+}
+
 static ZNode *parse(ZParser *parser) {
     guard(canPeek(parser));
-    ZNode *res                  = NULL;
-    ZToken *start               = peek(parser);
-    ZTokenType t                = start->type;
     ZAnnotation **annotations   = NULL;
 
-#if Z_LSP
-    ZToken *comment = NULL;
-    if (check(parser, TOK_COMMENT)) {
-        comment = consume(parser);
-        if (canPeek(parser)) t = peek(parser)->type;
-    }
-#endif
+// #if Z_LSP
+//     ZToken *comment = NULL;
+//     if (check(parser, TOK_COMMENT)) {
+//         comment = consume(parser);
+//     }
+// #endif
 
     annotations = parseAnnotations(parser);
     bool public = match(parser, TOK_PUB);
 
+    ZNode *res = NULL;
     if (check(parser, TOK_IMPORT)) {
         res = parseImport(parser, public);
-        goto success;
+    } else {
+        res = parseDecl(parser, annotations, public);
     }
 
-    ZParserSnapshot *snap = store(parser);
-
-    ZType *base = parseType(parser);
-    guard(base);
-    if (check(parser, TOK_IDENT)) {
-        undo(parser, snap);
-        res = parseImpl(parser, annotations, public);
-        goto success;
-    }
-
-    if (check(parser, TOK_COLON) || check(parser, TOK_ASSIGN) || check(parser, TOK_COMMA)) {
-        undo(parser, snap);
-        res = parseVarDef(parser);
-        goto success;
-    }
-
-    expect(parser, TOK_DOUBLE_COLON);
-    guard(canPeek(parser));
-    t = peek(parser)->type;
-
-    undo(parser, snap);
-
-    switch (t) {
-    case TOK_MACRO:     res = skipMacro        (parser, public);                break;
-    case TOK_IMPL:      res = parseImpl        (parser, annotations, public);   break;
-    case TOK_FACET:     res = parseFacet       (parser, annotations, public);   break;
-    case TOK_TYPEDEF:   res = parseTypedef     (parser, annotations, public);   break;
-    case TOK_FOREIGN:   res = parseForeign     (parser, annotations, public);   break;
-    case TOK_ENUM:      res = parseEnumDecl    (parser, annotations, public);   break;
-    case TOK_STRUCT:    res = parseStructDecl  (parser, annotations, public);   break;
-    default: {
-        res = tryParse(
-            parser, parseFuncDecl(parser, annotations, public)
-        );
-        if (res) break;
-
-        res = tryParse(parser, parseImport(parser, public));
-        if (res) break;
-
-        res = parseConst(parser, public);
-        if (res) break;
-
+    if (!res) {
         zlog(parser->state, peek(parser), Z203B, stoken(peek(parser)));
-
-            break;
-    }
+        consume(parser);
     }
 
-success:
-#if Z_LSP
-    if (res) res->comment = comment;
-#endif
+// #if Z_LSP
+//     if (res) res->comment = comment;
+// #endif
     return res;
 }
 

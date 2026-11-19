@@ -1,0 +1,10 @@
+basic: 7
+chain: 14
+outer: 10
+inner: 20
+restored: 10
+exact inner: 40
+as outer: 30
+multi: 15
+impl: 12
+mixed: 12

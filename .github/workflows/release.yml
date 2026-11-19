@@ -31,12 +31,12 @@ jobs:
       - name: Build zinc (Linux / macOS)
         if: runner.os != 'Windows'
         shell: bash
-        run: make clean && make
+        run: clang -o build build.c && ./build clean && ./build
 
       - name: Build zinc (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: make clean && make
+        run: clang -o build build.c && ./build clean && ./build
 
       - name: Run tests (Linux / macOS)
         if: runner.os != 'Windows'
@@ -60,7 +60,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         # MinGW's linker appends .exe to an extensionless -o name, so the
-        # Makefile's `-o zinc` yields zinc.exe; fall back to zinc just in case.
+        # build script's `-o zinc` yields zinc.exe; fall back to zinc just in case.
         run: |
           if [ -f "${{ matrix.bin }}" ]; then
             cp "${{ matrix.bin }}" "${{ matrix.asset }}"

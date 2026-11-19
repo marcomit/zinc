@@ -4,8 +4,8 @@ Range :: struct {
     current: i32
 }
 
-*Range self :: impl {
-    next :: fn () ?i32 {
+Range :: impl {
+    next :: fn (*self) ?i32 {
         if self.current >= self.end return none
         defer self.current += 1
         return self.current
@@ -21,14 +21,14 @@ ArrIter :: struct {
     current: i32
 }
 
-[]i32 self :: impl {
-    iter :: fn () ArrIter -> .{
+i32 :: impl {
+    iter :: fn ([]self) ArrIter -> .{
         data = self, current = 0
     }
 }
 
-*ArrIter self :: impl {
-    next :: fn () ?i32 {
+ArrIter :: impl {
+    next :: fn (*self) ?i32 {
         if self.current >= self.data.len return none
         defer self.current += 1
         return self.data[self.current]

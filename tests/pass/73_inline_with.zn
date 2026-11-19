@@ -1,0 +1,78 @@
+c :: foreign {
+    printf: fn (*char, ..) void
+}
+
+Tag :: struct {
+    val: i32
+}
+
+getVal :: fn () i32 with t: Tag -> t.val
+
+allocate :: fn (size: u64) i32 with a: Allocator {
+    _ := a.alloc(size)
+    return 7
+}
+
+withAllocator :: fn () i32 {
+    with GeneralPurposeAllocator.new()
+    return allocate(32)
+}
+
+earlyReturn :: fn (n: i32) i32 {
+    with t := Tag { val= 99 }
+    if n > 0 {
+        return getVal()
+    }
+    return getVal() + 1
+}
+
+deferOrder :: fn () void {
+    defer c.printf("defer before\n")
+    with t := Tag { val= 3 }
+    defer c.printf("defer after: %d\n", getVal())
+    c.printf("body: %d\n", getVal())
+}
+
+main :: fn () i32 {
+    with outer := Tag { val= 10 }
+    c.printf("outer: %d\n", getVal())
+
+    if outer.val == 10 {
+        with inner := Tag { val= 20 }
+        c.printf("inner: %d\n", getVal())
+    }
+    c.printf("restored: %d\n", getVal())
+
+    with b := Tag { val= 30 } {
+        c.printf("block: %d\n", getVal())
+    }
+    c.printf("after block: %d\n", getVal())
+
+    with p := (Tag { val= 35 })
+    c.printf("parenthesized: %d\n", getVal())
+
+    with again := Tag { val= 40 }
+    c.printf("shadowed: %d\n", getVal())
+    c.printf("by name: %d\n", outer.val)
+
+    for i in 0..3 {
+        with t := Tag { val= i * 100 }
+        c.printf("loop %d: %d\n", i, getVal())
+    }
+    c.printf("after loop: %d\n", getVal())
+
+    m := Tag { val= 1 }
+    with m
+    m.val = 2
+    c.printf("alias: %d\n", getVal())
+
+    with x := m
+    m.val = 3
+    c.printf("copy: %d\n", getVal())
+
+    c.printf("early: %d\n", earlyReturn(1))
+    c.printf("late: %d\n", earlyReturn(0))
+    deferOrder()
+    c.printf("allocator: %d\n", withAllocator())
+    return 0
+}

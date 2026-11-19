@@ -14,22 +14,22 @@ Rect :: struct {
     height: i32
 }
 
-*Circle self :: impl(Entity) {
-    draw :: fn () void {
+Circle :: impl(Entity) {
+    draw :: fn (*self) void {
         printf("Circle{radius: %d}\n", self.radius)
     }
 
-    update :: fn () void {
+    update :: fn (*self) void {
         self.radius += 1
     }
 }
 
-*Rect self :: impl(Entity) {
-    draw :: fn () void {
+Rect :: impl(Entity) {
+    draw :: fn (*self) void {
         printf("Rect{w:%d, h:%d}\n", self.width, self.height)
     }
 
-    update :: fn () void {
+    update :: fn (*self) void {
 
     }
 }
@@ -49,10 +49,8 @@ main :: fn () i32 {
         Entity(circle)
     ]
 
-    i := 0
-    for i < entities.len {
+    for i in 0..entities.len {
         draw(entities[i])
-        i += 1
     }
 
     return 0

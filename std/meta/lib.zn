@@ -34,8 +34,8 @@ pub TypeKeyValueField :: struct {
     type_info: *Type
 }
 
-*Type self :: impl(Writable) {
-    pub sink :: fn (w: Writer) {
+Type :: impl(Writable) {
+    pub sink :: fn (*self, w: Writer) {
         match *self {
             .Void -> sink_str(w, "void"),
             .Bool -> sink_str(w, "bool"),

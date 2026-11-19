@@ -57,10 +57,8 @@ Thread :: impl {
 
         c.nanosleep(&req, &rem)
     }
-}
 
-Thread self :: impl {
-    pub join :: fn () {
+    pub join :: fn (self) {
         c.pthread_join(self.handle, none)
     }
 }
@@ -76,8 +74,8 @@ ThreadScope :: impl {
     }
 }
 
-*ThreadScope self :: impl {
-    spawn :: fn (worker: fn(*u8) ?*u8, arg: ?*u8) with Allocator {
+ThreadScope :: impl {
+    spawn :: fn (*self, worker: fn(*u8) ?*u8, arg: ?*u8) with Allocator {
         make_room(&self.threads, 1, sizeof Thread)
         thread := Thread.spawn(worker, arg)
         self.threads.len += 1
