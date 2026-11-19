@@ -24,6 +24,7 @@ typedef ZMap(ZMIRBasicBlockRef, LLVMBasicBlockRef)  BlockMap;
 typedef ZMap(ZMIRBasicBlockRef, bool)               BlockSet;
 
 typedef struct {
+    ZState          *state;
     LLVMContextRef  ctx;
     LLVMModuleRef   mod;
     LLVMBuilderRef  builder;
@@ -40,7 +41,8 @@ typedef struct {
 static void lowerError(ZLower *l, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    fprintf(stderr, COLOR_RED "zmir2llvm: " COLOR_RESET);
+    fprintf(stderr, "%szmir2llvm:%s ",
+        COLOR_RED(l->state), COLOR_RESET(l->state));
     vfprintf(stderr, fmt, args);
     fputc('\n', stderr);
     va_end(args);
@@ -584,7 +586,10 @@ static inline void printPhase(ZState *state, const char *phase) {
     if (!state->cli.verbose) return;
     const char *format;
     float elapsed = timer_elapsed(state->phaseTime, &format);
-    printf(COLOR_BOLD COLOR_CYAN "  %-11s " COLOR_RESET "%.2f%s\n", phase, elapsed, format);
+    printf(
+        "  %s%s%-11s %s%.2f%s\n",
+        COLOR_BOLD(state), COLOR_CYAN(state),
+        COLOR_RESET(state), phase, elapsed, format);
 }
 
 static bool emitObjectFile(ZState *state, LLVMModuleRef mod,
@@ -777,7 +782,10 @@ void zcompile(ZState *state, ZNode *root, const char *output) {
     if (linkExecutable(state, mod, output) != 0) goto end;
 
 success:
-    printf(COLOR_BLUE COLOR_BOLD "  Generated   " COLOR_RESET "%s\n", output);
+    printf(
+        "  %s%sGenerated   %s%s\n",
+        COLOR_BLUE(state), COLOR_BOLD(state),
+        COLOR_RESET(state), output);
 
 end:
     LLVMDisposeModule(mod);

@@ -2,10 +2,10 @@
 // Copyright (c) 2025, Marco Menegazzi
 
 #include "base.h"
+#include "zcolors.h"
 #include "zinc.h"
 #include "zmem.h"
 #include "zvec.h"
-#include "zcolors.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -1210,7 +1210,11 @@ bool visit(ZState *state, char *filename) {
 #if Z_COMPILER
     char *packages = packagesDir(state);
     if (strncmp(filename, packages, strlen(packages)) != 0) {
-        printf("  " COLOR_BOLD COLOR_GREEN "Building" COLOR_RESET " %s\n", filename);
+        printf(
+            "  %s%sBuilding %s%s\n",
+            COLOR_BOLD(state),
+            COLOR_GREEN(state),
+            COLOR_RESET(state), filename);
     }
 #endif
     vecpush(state->visitedFiles,    filename);
@@ -1224,7 +1228,7 @@ void undoVisit(ZState *state) {
     state->filename = veclen(state->pathFiles) > 0 ? veclast(state->pathFiles) : NULL;
 }
 
-static void printLineHighlight(ZToken *tok, const char *color) {
+static void printLineHighlight(ZState *state, ZToken *tok, const char *color) {
     if (!tok || !tok->start || !tok->sourceLinePtr) return;
     char *lineStart = tok->sourceLinePtr;
 
@@ -1268,7 +1272,7 @@ static void printLineHighlight(ZToken *tok, const char *color) {
         putchar('~');
     }
 
-    printf("\033[0m\n");
+    printf("%s\n", COLOR_RESET(state));
 }
 
 ZDiagnostic get_diagnostics(ZDiagCode code) {
@@ -1284,22 +1288,36 @@ static void printLog(ZState *state, ZLog *log) {
 
     if (log->token) printf("%zu:%zu: ", log->token->row, log->token->col);
 
-    printf(COLOR_BOLD "\n  %s%s\033[0m", colors[log->level], levels[log->level]);
+    printf("\n  %s%s%s%s",
+        COLOR_BOLD(state),
+        state->cli.noColor ? "" : colors[log->level],
+        levels[log->level],
+        COLOR_RESET(state));
+
     if (log->code != Z_DIAG_NONE)
-        printf(COLOR_BOLD "[%s]\033[0m", ZDiagnostics[log->code].code);
+        printf(
+            "%s[%s]%s",
+            COLOR_BOLD(state),
+            ZDiagnostics[log->code].code,
+            COLOR_RESET(state));
     printf(": %s\n", log->message);
 
-    if (log->token) printLineHighlight(log->token, colors[log->level]);
+    if (log->token) printLineHighlight(state, log->token, state->cli.noColor ? "" : colors[log->level]);
 
     /* Cause chain: each note may point at its own span. */
     for (usize i = 0; i < veclen(log->notes); i++) {
         ZLogNote *note = log->notes[i];
-        printf(COLOR_BOLD "  note\033[0m: %s\n", note->message);
-        if (note->token) printLineHighlight(note->token, COLOR_BOLD);
+        printf("  %snote%s: %s\n",
+           COLOR_BOLD(state), COLOR_RESET(state), note->message
+        );
+        if (note->token) printLineHighlight(state, note->token, COLOR_BOLD(state));
     }
 
     if (log->hint)
-        printf(COLOR_BOLD "  hint\033[0m: %s\n", log->hint);
+        printf(
+            "  %shint%s: %s\n",
+            COLOR_BOLD(state), COLOR_RESET(state),
+            log->hint);
 }
 
 bool canAdvance(ZState *state) {

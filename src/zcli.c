@@ -34,7 +34,8 @@ enum {
     OPT_XLINKER,
     OPT_DUMP_AST,
     OPT_DUMP_TOKENS,
-    OPT_NOINJECT
+    OPT_NOINJECT,
+    OPT_NOCOLOR
 };
 
 #define EMPTY_COMMAND (ZCliCommand){ NULL, NULL, NULL, 0, 0, NULL, NULL, 0 }
@@ -60,6 +61,7 @@ static struct option long_options[] = {
     {"dump-ast",                no_argument,        NULL,   OPT_DUMP_AST            },
     {"dump-tokens",             no_argument,        NULL,   OPT_DUMP_TOKENS         },
     {"noinject",                no_argument,        NULL,   OPT_NOINJECT            },
+    {"nocolor",                 no_argument,        NULL,   OPT_NOCOLOR             },
     {NULL,                      0,                  NULL,   0                       }
 };
 
@@ -103,6 +105,7 @@ void usage(char *program) {
         "\t --dump-ast              Prints the AST\n"
         "\t --dump-tokens           Prints the list of tokens\n"
         "\t --noinject              Do not inject the zinc's pre-import\n"
+        "\t --nocolor               Prints the log without colors\n"
     );
 }
 
@@ -132,7 +135,12 @@ static void printAllocation(ZState *state) {
         label++;
     }
 
-    printf("  " COLOR_BOLD COLOR_CYAN "Memory:    " COLOR_RESET " %.1f/%.1f %s\n",
+    printf("  %s%s"
+       "Memory:    %s"
+       " %.1f/%.1f %s\n",
+       COLOR_BOLD(state),
+       COLOR_CYAN(state),
+       COLOR_RESET(state),
         used, allocated, labels[label]
     );
 }
@@ -176,7 +184,13 @@ static ZErrorCode pipeline(ZState *state) {
     if (state->cli.verbose) {
         const char *format;
         double elapsed = timer_elapsed(state->phaseTime, &format);
-        printf(COLOR_BOLD COLOR_CYAN "  Frontend:   " COLOR_RESET "%.2f%s\n", elapsed, format);
+        printf(
+            "%s%s  Frontend:   %s"
+            "%.2f%s\n",
+            COLOR_BOLD(state),
+            COLOR_CYAN(state),
+            COLOR_RESET(state),
+            elapsed, format);
     }
 
     zcompile(state, root, state->cli.output);
@@ -203,8 +217,13 @@ static ZErrorCode compile(ZState *state) {
     if (!res) {
         const char *format;
         double elapsed = timer_elapsed(start, &format);
-        printf("  " COLOR_BOLD COLOR_GREEN "Total:      " COLOR_RESET
-            "%.02f%s\n", elapsed, format);
+        printf(
+            "  %s%sTotal:      %s"
+            "%.02f%s\n",
+            COLOR_BOLD(state),
+            COLOR_GREEN(state),
+            COLOR_RESET(state),
+            elapsed, format);
     }
     return res;
 }
@@ -309,7 +328,8 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         case OPT_NOSTDLIB:              SET_FLAG(state->cli.nostdlib,           "No libc");                 break;
         case OPT_DUMP_AST:              SET_FLAG(state->cli.dumpAst,            "Dump ast");                break;
         case OPT_DUMP_TOKENS:           SET_FLAG(state->cli.dumpTokens,         "Dump tokens");             break;
-        case OPT_NOINJECT:              SET_FLAG(state->cli.noInject,           "No Inject");               break;
+        case OPT_NOINJECT:              SET_FLAG(state->cli.noInject,           "No inject");               break;
+        case OPT_NOCOLOR:               SET_FLAG(state->cli.noColor,            "No color");                break;
         case OPT_XLINKER:               vecpush(state->cli.extraArgs, zstrdup(state->allocator, optarg));   break;
         case OPT_RELEASE:               state->cli.optimizationLevel = '2';                                 break;
         case OPT_RELEASE_FAST:          state->cli.optimizationLevel = '3';                                 break;
@@ -330,6 +350,8 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         default: usage(argv[0]); return false;
         }
     }
+
+    if (getenv("NO_COLOR") || !isatty(STDOUT_FILENO)) state->cli.noColor = true;
 
     if ((int)veclen(state->cli.argv) < cmd->minArgs) {
         fprintf(
