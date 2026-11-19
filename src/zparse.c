@@ -3565,6 +3565,7 @@ static ZNode *parseDecl(ZParser *parser, ZAnnotation **a, bool p) {
         return NULL;
 
     ZToken *kind = peekAhead(parser, 2);
+    if (!kind) return NULL;
     switch (kind->type) {
     case TOK_MACRO:     res = skipMacro(parser, p);             break;
     case TOK_STRUCT:    res = parseStructDecl(parser, a, p);    break;

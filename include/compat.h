@@ -65,6 +65,17 @@ static inline void backtrace_symbols_fd(void **array, int size, int fd) {
 #define STDERR_FILENO 2
 #endif
 
+#ifndef STDIN_FILENO
+#define STDIN_FILENO 0
+#endif
+
+#ifndef STDOUT_FILENO
+#define STDOUT_FILENO 1
+#endif
+
+#undef isatty
+#define isatty(fd) _isatty(fd)
+
 static inline int _compat_write(int fd, const void *buf, unsigned n) {
     return _write(fd, buf, n);
 }

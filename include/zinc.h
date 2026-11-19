@@ -202,6 +202,7 @@ typedef struct {
     bool            unusedStruct;
 
     bool            noInject;
+    bool            noColor;
 
 #if Z_COMPILER
     char            *output;

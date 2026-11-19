@@ -499,12 +499,16 @@ int main(int argc, char *argv[]) {
 
     switch (zb_run(b)) {
     case Z_BUILD_NOOP:
-        printf("all done\n");
+        printf("nothing changed\n");
         return 0;
     case Z_BUILD_CYCLE:
         printf("detected cycle\n");
         return 1;
-    case Z_BUILD_GENERIC_ERROR: return 2;
-    case Z_BUILD_DONE:          return 0;
+    case Z_BUILD_GENERIC_ERROR:
+        printf("error\n");
+        return 2;
+    case Z_BUILD_DONE:
+        printf("all done!\n");
+        return 0;
     }
 }
