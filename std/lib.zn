@@ -7,3 +7,6 @@ pub #import "std/mem"
 pub #import "std/mem/gpa"
 pub #import "std/io"
 pub #import "std/meta"
+
+pub int :: type i32
+pub uint :: type u32

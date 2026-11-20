@@ -1,4 +1,5 @@
 #include "zvisit.h"
+#include "zvec.h"
 
 #define visitChild(n)      if (!visitNode(ctx, (n))) return false
 #define visitChildren(v)   if (!visitNodeList(ctx, (v), 0)) return false

@@ -4,7 +4,7 @@
 #ifndef Z_COLORS_H
 #define Z_COLORS_H
 
-#include "zinc.h"
+#include "zinc/zinc.h"
 
 #define COLOR_RESET(s)  ((s)->cli.noColor ? "" : "\033[0m")
 #define COLOR_RED(s)    ((s)->cli.noColor ? "" : "\033[1;31m")

@@ -1,7 +1,7 @@
 #ifndef ZCLI_H
 #define ZCLI_H
 
-#include "zinc.h"
+#include "zinc/zinc.h"
 
 typedef enum {
     Z_OK = 0,

@@ -8,7 +8,7 @@
 #include <time.h>
 #include <stdbool.h>
 
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zvisit.h"
 #include "json.c/json.h"
 

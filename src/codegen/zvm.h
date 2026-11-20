@@ -1,7 +1,7 @@
 #ifndef ZVM_H
 #define ZVM_H
 
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zmir.h"
 
 typedef struct ZVirtualMachine ZVirtualMachine;

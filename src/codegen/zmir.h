@@ -1,7 +1,7 @@
 #ifndef ZMIR_H
 #define ZMIR_H
 
-#include "zinc.h"
+#include "zinc/zinc.h"
 
 typedef struct ZMIRType         ZMIRType;
 typedef struct ZMIRValue        ZMIRValue;

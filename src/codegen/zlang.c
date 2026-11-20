@@ -1,4 +1,4 @@
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zgen.h"
 #include "zlink.h"
 

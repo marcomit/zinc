@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2025, Marco Menegazzi
 
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zmem.h"
 #include <ctype.h>
 #include <string.h>

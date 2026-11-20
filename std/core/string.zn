@@ -39,6 +39,13 @@ string :: impl {
     pub equals :: fn (self, other: string) bool {
         return mem.strcmp(self.ptr, other.ptr) == 0
     }
+
+    pub to_view :: fn (self) []char {
+        res: []char
+        res.len = self.len
+        res.ptr = self.ptr
+        return res
+    }
 }
 
 string :: impl(Writable) {
