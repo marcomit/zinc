@@ -8,6 +8,9 @@
 #include "zconfig.h"
 #include "ztok.h"
 #include "znode.h"
+#include "zmap.h"
+#include "zvec.h"
+#include "zstr.h"
 
 typedef enum {
     Z_LTO_OFF = 0,
@@ -97,8 +100,6 @@ typedef struct {
 
 #define consts(state, var) ((state)->consts.var)
 
-
-
 typedef struct {
     /* Options the frontend (lexer/parser/sem) reads: shared by every mode. */
     bool            debug;
@@ -147,8 +148,19 @@ typedef struct {
     Allocator   *allocator;
 } ZModuleAllocator;
 
+typedef ZMap(const char *, int) ZKeywordMap;
+
+typedef struct {
+    const char  *filename;
+    zstr        content;
+    ZKeywordMap words;
+} ZFile;
+
+typedef vec(ZFile) ZFileTable;
+
 struct ZState {
     Allocator       *allocator;
+    ZFileTable      fileTable;
     ZCliOptions     cli;
     ZConsts         consts;
     ZLog            **logs;

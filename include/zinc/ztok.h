@@ -25,6 +25,7 @@ typedef enum {
 } ZTokenType;
 
 typedef struct ZToken ZToken;
+
 struct ZToken {
     ZTokenType  type;
     union {
@@ -34,6 +35,16 @@ struct ZToken {
         bool    boolean;
         ZToken  **stream;
     };
+
+    /* The index in the FileTable, stored in the ZState object. */
+    // u32         fileId;
+    //
+    // u32         srcOffset;
+    // u32         srcLineOffset;
+    //
+    // u32         startOffset;
+    // u32         len;
+
     char        *filename;
     char        *sourcePtr;
     char        *sourceLinePtr;
