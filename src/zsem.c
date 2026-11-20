@@ -36,7 +36,7 @@
  */
 #include "base.h"
 #include "zhset.h"
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zmem.h"
 #include "zvec.h"
 #include "zvisit.h"

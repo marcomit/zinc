@@ -1,7 +1,7 @@
 #ifndef ZVISIT_H
 #define ZVISIT_H
 
-#include "zinc.h"
+#include "zinc/zinc.h"
 
 typedef void *ZClientData;
 typedef enum {

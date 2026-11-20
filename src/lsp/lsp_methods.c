@@ -1,6 +1,6 @@
 #include "json.c/json.h"
 #include "zlsp.h"
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zmem.h"
 #include "zvec.h"
 #include <stdio.h>

@@ -11,7 +11,7 @@
 #include "mir2llvm.h"
 #include "zcolors.h"
 #include "zgen.h"
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zlink.h"
 
 #include <stdarg.h>

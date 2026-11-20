@@ -3,7 +3,7 @@
 
 #include "base.h"
 #include "zcolors.h"
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zmem.h"
 #include "zvec.h"
 
@@ -415,47 +415,6 @@ void printDestructedVar(ZVarDestructPattern *pattern, u8 depth) {
     }
 }
 
-static void printMacroPattern(ZMacroPattern *pattern, u8 depth) {
-    indent(depth);
-    switch (pattern->kind) {
-    case Z_MACRO_IDENT:
-        printf("i(%s)\n", pattern->ident->str);
-        break;
-    case Z_MACRO_KEY:
-        printf("key(%s)\n", pattern->ident->str);
-        break;
-    case Z_MACRO_TYPE:
-        printf("type(%s)\n", pattern->ident->str);
-        break;
-    case Z_MACRO_EXPR:
-        printf("expr(%s)\n", pattern->ident->str);
-        break;
-    case Z_MACRO_ZM:
-        printf("$(\n");
-        printMacroPattern(pattern->zeroOrMore, depth + 1);
-        indent(depth);
-        printf(")*\n");
-        break;
-    case Z_MACRO_OM:
-        printf("$(\n");
-        printMacroPattern(pattern->oneOrMore, depth + 1);
-        indent(depth);
-        printf(")+\n");
-        break;
-    case Z_MACRO_SEQ:
-        printf("seq(\n");
-        for (usize i = 0; i < veclen(pattern->sequence); i++) {
-            printMacroPattern(pattern->sequence[i], depth + 1);
-        }
-        indent(depth);
-        printf(")\n");
-        break;
-    default:
-        printf("Invalid macro type\n");
-        break;
-    }
-}
-
 static void printAnnotation(ZAnnotation *arg) {
     switch (arg->kind) {
     case Z_ANN_IDENT:   printToken(arg->ident.tok); break;
@@ -649,10 +608,6 @@ void printNode(ZNode *node, u8 depth) {
         for (usize i = 0; i < veclen(node->structlit.fields); i++) {
             printNode(node->structlit.fields[i], depth);
         }
-        break;
-    case NODE_MACRO:
-        printf("PATTERN = \n");
-        printMacroPattern(node->macro.pattern, depth);
         break;
     case NODE_SUBSCRIPT:
         printf("\n");
@@ -1362,9 +1317,9 @@ void initPrimitiveTypes(ZState *state) {
     state->consts.strType->array.base   = state->consts.charType;
     state->consts.strType->array.size   = 0;
     state->consts.typeType      = maketype(allocator, Z_TYPE_TYPE);
-    state->consts.rawRegion     = copy(allocator, ZRegion, ((ZRegion){
-        .depth  = 0,
-        .name   = "raw",
-        .origin = NULL
-    }));
+    // state->consts.rawRegion     = copy(allocator, ZRegion, ((ZRegion){
+    //     .depth  = 0,
+    //     .name   = "raw",
+    //     .origin = NULL
+    // }));
 }

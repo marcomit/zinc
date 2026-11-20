@@ -1,5 +1,5 @@
 #include "zlsp.h"
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zvisit.h"
 
 #include <ctype.h>

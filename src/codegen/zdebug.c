@@ -8,7 +8,7 @@
  *            SPDX-License-Identifier: BSD-3-Clause
  */
 #include "zgen.h"
-#include "zinc.h"
+#include "zinc/zinc.h"
 
 extern _Thread_local ZMIRTypeRef i0Type;
 extern _Thread_local ZMIRTypeRef i1Type;

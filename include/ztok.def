@@ -144,4 +144,5 @@ DEF(TOK_QUOTE,          "'",            TOK_SYMBOLS_MASK)
 DEF(TOK_MOD,            "%",            TOK_SYMBOLS_MASK)
 DEF(TOK_OPT,            "?",            TOK_SYMBOLS_MASK)
 DEF(TOK_ESCL,           "!",            TOK_SYMBOLS_MASK)
+DEF(TOK_CAP,            "^",            TOK_SYMBOLS_MASK)
 #endif

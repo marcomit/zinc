@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2025, Marco Menegazzi
 
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zvisit.h"
 
 #include <stddef.h>
@@ -73,7 +73,6 @@ static ZNode *parseBlockOrInline            (ZParser *, bool);
 static ZNode *_parseStructLit               (ZParser *, ZToken **);
 
 /* File-level parsing functions */
-static ZNode *skipMacro                     (ZParser *, bool);
 static ZNode *parseImport                   (ZParser *, bool);
 static ZNode *parseTypedef                  (ZParser *, ZAnnotation **, bool);
 static ZNode *parseFacet                    (ZParser *, ZAnnotation **, bool);
@@ -86,7 +85,6 @@ static ZNode *parseForeignInlineDecl        (ZParser *, ZAnnotation **, bool);
 
 static ZNode                **parseCapabilityList   (ZParser *);
 static ZType                **parseGenericsDecl     (ZParser *);
-static ZMacroPattern        *parseMacroPattern      (ZParser *, ZNode *);
 static ZVarDestructPattern  *parseMultiDestructVar  (ZParser *);
 static ZVarDestructPattern  *parseDestructVar       (ZParser *, bool);
 static ZType                *parseAnonStruct        (ZParser *, ZAnnotation **);
@@ -146,6 +144,12 @@ ZType *maketype(Allocator *allocator, ZTypeKind kind) {
     ZType *self = zalloc(allocator, ZType);
     *self = (ZType){ 0 };
     self->kind = kind;
+    return self;
+}
+
+ZType *makePrimitiveType(Allocator *allocator, ZTokenType type) {
+    ZType *self = maketype(allocator, Z_TYPE_PRIMITIVE);
+    self->primitive.token = maketoken(allocator, type, NULL, NULL);
     return self;
 }
 
@@ -414,12 +418,7 @@ static ZNode *parsePrimary(ZParser *parser) {
     ZToken *start = peek(parser);
     guard(start);
 
-    if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_IDENT)) {
-        ensure(check(parser, TOK_IDENT), "Expected an identifier after @");
-
-        ZToken *tok = consume(parser);
-        return getMacroCapturedVar(parser->macroParser.currentMacro, tok);
-    } else if (match(parser, TOK_LPAREN)) {
+    if (match(parser, TOK_LPAREN)) {
         bool prevNoStructLit = parser->noStructLit;
         parser->noStructLit  = false;
         ZNode *node          = tryParse(parser, parseExpr(parser));
@@ -1056,7 +1055,7 @@ static ZType *parseAtom(ZParser *parser) {
     if (!start) return NULL;
 
     switch (start->type) {
-    // case TOK_BITXOR:
+    case TOK_CAP:
     case TOK_STAR: {
         consume(parser);
         ZType *type = maketype(parser->allocator, Z_TYPE_POINTER);
@@ -1170,11 +1169,11 @@ ZType *parseType(ZParser *parser) {
         } else region = consume(parser);
     }
 
-    if (region) {
-        type->region = makeregion(parser->allocator, stoken(region), 0);
-    } else {
-        type->region = consts(parser->state, rawRegion);
-    }
+    // if (region) {
+    //     type->region = makeregion(parser->allocator, stoken(region), 0);
+    // } else {
+    //     type->region = consts(parser->state, rawRegion);
+    // }
 
     return type;
 }
@@ -1247,30 +1246,6 @@ static ZNode *parseMatch(ZParser *parser, bool asExpr) {
     match->match.cond   = expr;
     match->match.arms   = arms;
     return setspan(parser, match, start);
-}
-
-/* Not handled yet. */
-ZNode *expandListMacro(ZParser *parser) {
-    if (!parser->macroParser.currentMacro) return NULL;
-
-    ZToken *start = peek(parser);
-    expect(parser, TOK_MACRO_EXPR);
-    expect(parser, TOK_LPAREN);
-
-    ZNode *stmt = parseStmt(parser);
-
-    // Failed to parse statement
-    if (!stmt) return NULL;
-
-    if (!match(parser, TOK_RPAREN)) {
-        zlog(parser->state, peek(parser), Z2012);
-        return NULL;
-    }
-
-    ZNode *node = makenode(parser->allocator, NODE_BLOCK);
-    node->block = NULL;
-
-    return setspan(parser, node, start);
 }
 
 static ZNode *parseCapabilityBlock(ZParser *parser) {
@@ -1747,22 +1722,6 @@ static ZNode *parseTypeAsExpr(ZParser *parser) {
 }
 
 ZNode *parseExpr(ZParser *parser) {
-    if (parser->macroParser.currentMacro && match(parser, TOK_MACRO_EXPR)) {
-        if (!check(parser, TOK_IDENT)) {
-            zlog(parser->state, peek(parser), Z2018);
-            return NULL;
-        }
-
-        ZToken *var         = consume(parser);
-        ZNode *currentMacro = parser->macroParser.currentMacro;
-        ZNode *placeholder  = getMacroCapturedVar(currentMacro, var);
-        if (!placeholder) {
-            zlog(parser->state, peek(parser), Z201C, var->str);
-            return NULL;
-        }
-        return placeholder;
-    }
-
     ZAnnotation **annotations = NULL;
     if (check(parser, TOK_HASHTAG)) {
         annotations = parseAnnotations(parser);
@@ -3102,208 +3061,6 @@ static ZNode *parseForeign(ZParser *parser, ZAnnotation **annotations, bool publ
     return parseForeignInlineDecl(parser, annotations, public);
 }
 
-/* Parse the pattern of the macro.
- * The pattern can be formed by a combination of these elements:
- * - ident: this captures an identifier (like a variable name or the name of a struct ...).
- * - key: tcaptures a keyword like if or for.
- * - expr: captures an expression (expressions is whatever you get a result).
- * - block: captures a block of code like function body or the body of a loop.
- * - stmt: captures a statement.
- *
- * These operations can compbined with each other into a list:
- * - a sequence: the pattern must follow all elements in the sequence.
- *   When the parser see elements separated by a space it parses elements like a sequence.
- * - optional [element]: an optional element wrapped by '[]' is an element not required.
- *   An example is the 'else' after the if block.
- * - zero or more (element)+: captures a list of zero or more elements.
- * - one or more (element)*: captures a list of at least one element.
- *
- * Note: you cannot define a pattern that can be accepted by an empty pattern.
- * */
-static ZMacroPattern *macroPatternElement(ZParser *parser, ZNode *macro) {
-    Allocator *allocator = parser->allocator;
-    ZMacroPattern *self = zalloc(allocator, ZMacroPattern);
-    ZMacroVar *var = zalloc(allocator, ZMacroVar);
-
-    // Arrows break the pattern parsing
-    if (match(parser, TOK_ARROW)) return NULL;
-
-    if (match(parser, TOK_MACRO_IDENT)) {
-        if (!check(parser, TOK_IDENT)) {
-            zlog(parser->state, peek(parser), Z2033);
-            return NULL;
-        }
-        self->kind = Z_MACRO_IDENT;
-        self->ident = consume(parser);
-        var->name = self->ident;
-        var->startIndex = 0;
-        var->endIndex = 0;
-        var->useCount = 0;
-        vecpush(macro->macro.captured, var);
-        return self;
-
-    } else if (match(parser, TOK_HASHTAG)) {
-        if (!check(parser, TOK_IDENT)) {
-            return NULL;
-        }
-        self->kind = Z_MACRO_TYPE;
-        self->ident = consume(parser);
-        var->name = self->ident;
-        var->startIndex = 0;
-        var->endIndex = 0;
-        vecpush(macro->macro.captured, var);
-        return self;
-    } else if (match(parser, TOK_MACRO_EXPR)) {
-        if (match(parser, TOK_LPAREN)) {
-            //TODO: handle properly sequences
-            ZMacroPattern *seq = parseMacroPattern(parser, macro);
-            if (!match(parser, TOK_RPAREN)) {
-                zlog(parser->state, peek(parser), Z2034);
-                return NULL;
-            }
-
-            if (match(parser, TOK_PLUS)) {
-                self->kind = Z_MACRO_OM;
-                self->oneOrMore = seq;
-            } else if (match(parser, TOK_STAR)) {
-                self->kind = Z_MACRO_ZM;
-                self->zeroOrMore = seq;
-            }
-            return self;
-        } else if (check(parser, TOK_IDENT)) {
-            self->kind = Z_MACRO_EXPR;
-            self->ident = consume(parser);
-            var->name = self->ident;
-            var->startIndex = 0;
-            var->endIndex = 0;
-            vecpush(macro->macro.captured, var);
-            return self;
-        }
-    } else if (match(parser, TOK_QUOTE)) {
-        // Treat next token as a literal keyword regardless of type
-        if (!canPeek(parser)) return NULL;
-        self->kind = Z_MACRO_KEY;
-        self->ident = consume(parser);
-        return self;
-    } else if (checkMask(parser, TOK_EXPANDABLE)) {
-        self->kind = Z_MACRO_KEY;
-        self->ident = consume(parser);
-        return self;
-    }
-    return NULL;
-}
-
-static ZMacroPattern *parseMacroPattern(ZParser *parser, ZNode *macro) {
-    ZMacroPattern *seq = zalloc(parser->allocator, ZMacroPattern);
-    seq->kind = Z_MACRO_SEQ;
-    seq->sequence = NULL;
-    ZMacroPattern *curr = NULL;
-    while (( curr = macroPatternElement(parser, macro) )) {
-        vecpush(seq->sequence, curr);
-    }
-    return seq;
-}
-
-static void skipBlock(ZParser *parser) {
-    i64 level = 1;  // Already inside { from caller
-
-    while (level > 0) {
-        if (check(parser, TOK_LBRACKET)) level++;
-        else if (check(parser, TOK_RBRACKET)) level--;
-        consume(parser);
-    }
-}
-
-static ZNode *parseMacro(ZParser *parser) {
-    ZToken *start = peek(parser);
-    bool public = match(parser, TOK_PUB);
-    expect(parser, TOK_MACRO);
-
-    if (!checkMask(parser, TOK_EXPANDABLE)) {
-        zlog(parser->state, peek(parser), Z2035, stoken(peek(parser)));
-        return NULL;
-    }
-
-    ZNode *node = makenode(parser->allocator, NODE_MACRO);
-    node->macro.captured = NULL;
-    node->macro.start = start;
-    node->macro.pub = public;
-
-    usize saved = parser->source->current;
-    ZMacroPattern *pattern = parseMacroPattern(parser, node);
-
-    if (!pattern || veclen(pattern->sequence) < 1) {
-        zlog(parser->state, peek(parser), Z2036);
-        return NULL;
-    }
-
-    node->macro.pattern = pattern;
-    node->macro.sourceTokens = parser->source->list;
-
-    // Arrow (->) is already consumed by macroPatternElement as the sentinel
-    expect(parser, TOK_LBRACKET);  // Consume opening '{'
-
-    node->macro.startBody = parser->source->current;  // First token after {
-    skipBlock(parser);
-    node->macro.endBody = parser->source->current - 1;  // Exclude closing }
-
-    if (node->macro.endBody - node->macro.startBody == 0) {
-        zlog(parser->state, start, Z2037);
-        return NULL;
-    }
-
-    node->macro.consumed = parser->source->current - saved;
-
-
-    vecpush(parser->macroParser.macros, node);
-
-    return setspan(parser, node, start);
-}
-
-/* Macros captured the start token. Skip over the macro declaration in pass 2. */
-static ZNode *skipMacro(ZParser *parser, bool public) {
-    (void)public;
-    ZToken *curr = peek(parser);
-
-    if (!match(parser, TOK_MACRO)) return NULL;
-
-    ZNode *macro = NULL;
-
-    for (usize i = 0; i < veclen(parser->macroParser.macros) && !macro; i++) {
-        if (parser->macroParser.macros[i]->macro.start == curr) {
-            macro = parser->macroParser.macros[i];
-        }
-    }
-
-    if (!macro) return NULL;
-
-    usize toConsume = macro->macro.consumed;
-    while (toConsume --> 0) {
-        consume(parser);
-    }
-    return macro;
-}
-
-
-static bool checkPubMacro(ZParser *parser) {
-    if (!check(parser, TOK_PUB)) return false;
-    if (parser->source->current + 1 >= parser->source->end) return false;
-    return parser->source->list[parser->source->current + 1]->type == TOK_MACRO;
-}
-
-static void discoverMacros(ZParser *parser) {
-    usize saved = parser->source->current;
-    while (canPeek(parser)) {
-        if (check(parser, TOK_MACRO) || checkPubMacro(parser)) {
-            parseMacro(parser);
-        } else {
-            consume(parser);
-        }
-    }
-    parser->source->current = saved;
-    parser->last            = NULL;
-}
-
 /* Parses a module by default and insert it at the first element in every module. */
 static  ZNode *injectPrelude(ZParser *parser) {
     /* Root of the std module: its span points into another file. */
@@ -3567,7 +3324,6 @@ static ZNode *parseDecl(ZParser *parser, ZAnnotation **a, bool p) {
     ZToken *kind = peekAhead(parser, 2);
     if (!kind) return NULL;
     switch (kind->type) {
-    case TOK_MACRO:     res = skipMacro(parser, p);             break;
     case TOK_STRUCT:    res = parseStructDecl(parser, a, p);    break;
     case TOK_ENUM:      res = parseEnumDecl(parser, a, p);      break;
     case TOK_FOREIGN:   res = parseForeign(parser, a, p);       break;
@@ -3619,7 +3375,6 @@ ZNode *zparse(ZState *state, ZToken **tokens) {
     state->currentPhase = Z_PHASE_SYNTAX;
     ZParser *parser = makeparser(state, tokens);
 
-    discoverMacros(parser);
 
     ZNode *root = parseModule(parser);
 

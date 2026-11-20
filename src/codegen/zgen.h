@@ -7,7 +7,7 @@
 
 #include "base.h"
 #include "zcolors.h"
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zlink.h"
 #include "zvec.h"
 #include "zmir.h"

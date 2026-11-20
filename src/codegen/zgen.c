@@ -11,7 +11,7 @@
  */
 
 #include "zgen.h"
-#include "zinc.h"
+#include "zinc/zinc.h"
 #include "zmem.h"
 #include "zmir.h"
 
