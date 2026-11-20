@@ -17,7 +17,6 @@
 #include "znode.h"
 #include "ztype.h"
 #include "zstate.h"
-#include "zparse.h"
 #include "zsem.h"
 #include "zcompile.h"
 
@@ -32,5 +31,7 @@
 #if Z_LSP
 #include "zlsp.h"
 #endif
+
+ZNode *zparse(ZState *, ZToken **);
 
 #endif // ZINC_H
