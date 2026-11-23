@@ -339,7 +339,7 @@ struct ZNode {
             ZToken *name;
 
             /* Full path. */
-            char        *filename;
+            const char  *filename;
 
             /* List of file-level declarations.
              * It is NULL if the module is already parsed

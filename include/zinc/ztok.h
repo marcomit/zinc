@@ -62,7 +62,7 @@ typedef struct ZTokenStream {
     struct ZTokenStream *prev;
 } ZTokenStream;
 
-ZToken **ztokenize(ZState *);
+ZToken **ztokenize(ZState *, ZFile *);
 ZToken **ztokenizeSource(ZState *, char *);
 ZToken *maketoken(Allocator *, ZTokenType, char *, char *);
 ZToken *makeident(Allocator *, char *, char *, char *);

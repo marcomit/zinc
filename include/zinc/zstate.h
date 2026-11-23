@@ -2,6 +2,7 @@
 #define ZSTATE_H
 
 #include "zforward.h"
+#include <pthread.h>
 #include <time.h>
 
 #include "zmem.h"
@@ -11,6 +12,8 @@
 #include "zmap.h"
 #include "zvec.h"
 #include "zstr.h"
+#include "zpool.h"
+#include "zfile.h"
 
 typedef enum {
     Z_LTO_OFF = 0,
@@ -134,6 +137,10 @@ typedef struct {
     /* Extra arguments should be passed in the linker. */
     char            **extraArgs;
 #endif
+
+    /* The number of concurrent jobs for the thread pool.
+     * if 0 the pool fetches the number of cpu. */
+    usize jobs;
 } ZCliOptions;
 
 typedef struct {
@@ -148,29 +155,18 @@ typedef struct {
     Allocator   *allocator;
 } ZModuleAllocator;
 
-typedef ZMap(const char *, int) ZKeywordMap;
-
-typedef struct {
-    const char  *filename;
-    zstr        content;
-    ZKeywordMap words;
-} ZFile;
-
-typedef vec(ZFile) ZFileTable;
-
 struct ZState {
     Allocator       *allocator;
-    ZFileTable      fileTable;
+    ZFileTable      *fileTable;
+    ZFile           *entryFile;
+    ZPool           *pool;
     ZCliOptions     cli;
     ZConsts         consts;
     ZLog            **logs;
     ZPhase          currentPhase;
     char            *currentPath;
-    char            *filename;
     char            *homePath;
 
-    char            **pathFiles;
-    char            **visitedFiles;
     bool            canAdvance;
 
 #if Z_COMPILER
@@ -229,9 +225,9 @@ char *zstrndup(Allocator *, char *, usize);
 char *mangler(char *[]);
 char *manglerA(char *[]);
 
-char *resolveImport(ZState *, const char *);
-bool visit(ZState *, char *);
-void undoVisit(ZState *);
+char *resolveImport(ZState *, char *, const char *);
+// bool visit(ZState *, char *);
+// void undoVisit(ZState *);
 
 void _error  (ZState *, ZToken *, const char *, int, const char *, ...);
 void _warning(ZState *, ZToken *, const char *, int, const char *, ...);

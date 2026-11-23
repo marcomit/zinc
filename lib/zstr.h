@@ -541,4 +541,14 @@ static inline uint64_t zs_hash(zsv sv) {
     return h;
 }
 
+static inline uint64_t zsv_map_hash(const void *key) {
+    return zs_hash(*(const zsv *)key);
+}
+
+static inline bool zsv_map_eq(const void *a, const void *b) {
+    return zsv_eq(*(const zsv *)a, *(const zsv *)b);
+}
+
+#define mapinitzsv(m, a) mapinit((m), (a), zsv_map_hash, zsv_map_eq)
+
 #endif

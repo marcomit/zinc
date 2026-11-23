@@ -918,7 +918,7 @@ extern ZNode *LangItems[Z_LANG_COUNT];
 /* Everything a compilation allocates lives in its own arena (plus one arena per
  * module, see ZModuleAllocator), so freestate releases it all at once. */
 ZState *makestate() {
-     memset(LangItems, 0, sizeof(LangItems));
+    memset(LangItems, 0, sizeof(LangItems));
     Allocator *allocator        = getArenaAllocator();
     if (!allocator) return NULL;
 
@@ -929,6 +929,7 @@ ZState *makestate() {
     self->homePath              = getHomePath(allocator);
     self->canAdvance            = true;
     self->allocator             = allocator;
+    self->fileTable             = ft_create(allocator);
 
 #if Z_COMPILER
     self->cli.emit              = Z_EMIT_EXE;
@@ -1140,47 +1141,18 @@ static char *resolveIn(ZState *state, const char *dir, const char *module) {
  *   3. ~/.zinc/packages/<module>/lib.zn or ~/.zinc/packages/<module>.zn
  * It returns null if none of them exists.
  * */
-char *resolveImport(ZState *state, const char *module) {
+char *resolveImport(ZState *state, char *filename, const char *module) {
     if (isAbsolutePath(module)) return resolveIn(state, "", module);
 
     char *dir = ".";
-    if (state->filename) {
-        dir = dirname(zstrdup(state->allocator, state->filename));
+    if (filename) {
+        dir = dirname(zstrdup(state->allocator, filename));
     }
 
     char *path = resolveIn(state, dir, module);
     if (path) return path;
 
     return resolveIn(state, packagesDir(state), module);
-}
-
-/* Stores the filename in the global state of visited files.
- * It returns false if the file was already visited.
- * */
-bool visit(ZState *state, char *filename) {
-    for (usize i = 0; i < veclen(state->visitedFiles); i++) {
-        if (strcmp(state->visitedFiles[i], filename) == 0) return false;
-    }
-
-#if Z_COMPILER
-    char *packages = packagesDir(state);
-    if (strncmp(filename, packages, strlen(packages)) != 0) {
-        printf(
-            "  %s%sBuilding %s%s\n",
-            COLOR_BOLD(state),
-            COLOR_GREEN(state),
-            COLOR_RESET(state), filename);
-    }
-#endif
-    vecpush(state->visitedFiles,    filename);
-    vecpush(state->pathFiles,       filename);
-    state->filename = filename;
-    return true;
-}
-
-void undoVisit(ZState *state) {
-    vecpop(state->pathFiles);
-    state->filename = veclen(state->pathFiles) > 0 ? veclast(state->pathFiles) : NULL;
 }
 
 static void printLineHighlight(ZState *state, ZToken *tok, const char *color) {

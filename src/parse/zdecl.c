@@ -412,15 +412,16 @@ static ZNode **getCachedModule(ZParser *parser, char *filename) {
 
 static ZNode *getModuleByName(
     ZParser *parser, char *module, ZToken *tok, bool public) {
-    char *filename = resolveImport(parser->state, module);
+    char *from = tok ? tok->filename : (char *)zfile_name(parser->file);
+    char *filename = resolveImport(parser->state, from, module);
     if (!filename) {
         zlog(parser->state, tok, Z203C, module);
         return NULL;
     }
 
-    bool canVisit               = visit(parser->state, filename);
+    ZFile *f                    = ft_get(parser->state->fileTable, filename);
     ZNode *node                 = makenode(parser->allocator, NODE_MODULE);
-    if (!canVisit) {
+    if (f) {
         node->module.filename   = filename;
         node->module.name       = NULL;
         node->module.root       = NULL;
@@ -429,9 +430,14 @@ static ZNode *getModuleByName(
         return node;
     }
 
-    ZToken **tokens = ztokenize(parser->state);
+    f = ft_insert(parser->allocator, parser->state->fileTable, filename);
+    if (!f) {
+        zlog(parser->state, tok, Z1009, filename, strerror(errno));
+        return NULL;
+    }
+    ZToken **tokens = ztokenize(parser->state, f);
 
-    node = zparse(parser->state, tokens);
+    node = zparse(parser->state, f, tokens);
     node->module.pub = public;
 
     ZParserModule *parserModule = zalloc(parser->allocator, ZParserModule);
@@ -443,7 +449,6 @@ static ZNode *getModuleByName(
     node->module.cached = node->module.root;
     vecpush(parser->state->cachedModules, parserModule);
 
-    undoVisit(parser->state);
     return node;
 }
 
@@ -820,8 +825,8 @@ static ZNode *parseModule(ZParser *parser) {
     ZToken *start = peek(parser);
     ZNode *root = makenode(parser->allocator, NODE_MODULE);
 
-    root->module.root = NULL;
-    root->module.filename = parser->state->filename;
+    root->module.root       = NULL;
+    root->module.filename   = (char *)zfile_name(parser->file);
 
     if (!parser->state->cli.noInject) {
         ZNode *prelude = injectPrelude(parser);
@@ -876,9 +881,10 @@ ZNode *parse(ZParser *parser) {
     return res;
 }
 
-ZNode *zparse(ZState *state, ZToken **tokens) {
+ZNode *zparse(ZState *state, ZFile *file, ZToken **tokens) {
     state->currentPhase = Z_PHASE_SYNTAX;
     ZParser *parser = makeparser(state, tokens);
+    parser->file = file;
 
     ZNode *root = parseModule(parser);
 
