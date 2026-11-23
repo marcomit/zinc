@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // Copyright (c) 2025, Marco Menegazzi
 
+#include "zinc/zfile.h"
 #include "zinc/zinc.h"
 #include "zmem.h"
 #include <ctype.h>
@@ -15,6 +16,7 @@
 typedef struct {
     ZState *state;
 
+    ZFile *file;
     /* Pointer to the entire file */
     char *program;
 
@@ -35,7 +37,6 @@ typedef struct {
 
     /* Track the depth of {} brackets, used for string interpolation. */
     i64 depth;
-
 } ZLexer;
 
 typedef struct {
@@ -185,7 +186,7 @@ bool tokeneq(ZToken *a, ZToken *b) {
 static inline void setSourceLoc(ZLexer *l, ZToken *tok) {
     tok->col = l->col;
     tok->row = l->row;
-    tok->filename = l->state->filename;
+    tok->filename = (char *)zfile_name(l->file);
 }
 
 static inline void addToken(ZLexer *l, ZToken *token) {
@@ -390,7 +391,7 @@ static ZToken *_scanString(ZLexer *l, const char *begin, const char *end, bool n
         ZToken *tok = maketoken(a, TOK_STR_LIT, start - 1, l->current);
         tok->row    = l->row;
         tok->col    = l->col;
-        tok->filename  = l->state->filename;
+        tok->filename  = (char *)zfile_name(l->file);
         tok->sourcePtr = start - 1;
         tok->sourceLinePtr = l->line;
         zlog(l->state, tok, Z1003);
@@ -507,7 +508,7 @@ static ZToken *scanBinNumber(ZLexer *l) {
     while (*l->current == '0' || *l->current == '1') next(l);
     if (start == l->current) {
         ZToken *tok = maketoken(a, TOK_INT_LIT, start, l->current);
-        tok->filename = l->state->filename;
+        tok->filename = (char *)zfile_name(l->file);
         tok->row = l->row;
         tok->col = l->col;
         tok->sourceLinePtr = l->line;
@@ -631,11 +632,13 @@ static void skipMultilineComments(ZLexer *l) {
     next(l); next(l);
 }
 
-ZLexer *makelexer(ZState *state, char *program) {
+ZLexer *makelexer(ZState *state, ZFile *file) {
     ZLexer *self = zalloc(state->allocator, ZLexer);
+    char *program = zfile_content(file);
     self->row           = 1;
     self->col           = 0;
     self->tokens        = NULL;
+    self->file          = file;
     self->program       = program;
     self->current       = program;
     self->line          = program;
@@ -686,12 +689,8 @@ static bool emitNextToken(ZLexer *l, ZToken **curr) {
     return true;
 }
 
-ZToken **ztokenizeSource(ZState *state, char *source) {
-    state->currentPhase = Z_PHASE_LEXICAL;
-    ZLexer *l = makelexer(state, source);
-
-    if (!l) return NULL;
-
+static ZToken **scanFile(ZState *state, ZFile *f) {
+    ZLexer *l = makelexer(state, f);
     ZToken *curr;
 
     initKeywords();
@@ -708,12 +707,12 @@ ZToken **ztokenizeSource(ZState *state, char *source) {
     return l->tokens;
 }
 
-ZToken **ztokenize(ZState *state) {
-    char *program = readfile(state->allocator, state->filename);
+ZToken **ztokenizeSource(ZState *state, char *source) {
+    state->currentPhase = Z_PHASE_LEXICAL;
+    ZFile *f = zfile_create(state->allocator, NULL, source);
+    return scanFile(state, f);
+}
 
-    if (!program) {
-        zlog(state, NULL, Z1009, state->filename, strerror(errno));
-        return NULL;
-    }
-    return ztokenizeSource(state, program);
+ZToken **ztokenize(ZState *state, ZFile *f) {
+    return scanFile(state, f);
 }

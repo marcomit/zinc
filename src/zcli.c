@@ -35,7 +35,8 @@ enum {
     OPT_DUMP_AST,
     OPT_DUMP_TOKENS,
     OPT_NOINJECT,
-    OPT_NOCOLOR
+    OPT_NOCOLOR,
+    OPT_JOBS
 };
 
 #define EMPTY_COMMAND (ZCliCommand){ NULL, NULL, NULL, 0, 0, NULL, NULL, 0 }
@@ -62,6 +63,7 @@ static struct option long_options[] = {
     {"dump-tokens",             no_argument,        NULL,   OPT_DUMP_TOKENS         },
     {"noinject",                no_argument,        NULL,   OPT_NOINJECT            },
     {"nocolor",                 no_argument,        NULL,   OPT_NOCOLOR             },
+    {"jobs",                    required_argument,  NULL,   OPT_JOBS                },
     {NULL,                      0,                  NULL,   0                       }
 };
 
@@ -106,6 +108,7 @@ void usage(char *program) {
         "\t --dump-tokens           Prints the list of tokens\n"
         "\t --noinject              Do not inject the zinc's pre-import\n"
         "\t --nocolor               Prints the log without colors\n"
+        "\t --jobs                  Change the number of parallel jobs\n"
     );
 }
 
@@ -156,14 +159,21 @@ static void initState(ZState *state) {
         state->cli.output = base;
     }
 
-    visit(state, filename);
+    state->entryFile = ft_insert(state->allocator, state->fileTable, filename);
 }
 
 static ZErrorCode pipeline(ZState *state) {
     initState(state);
     if (state->cli.verbose) timer_start(&state->phaseTime);
 
-    ZToken **tokens = ztokenize(state);
+    if (!state->entryFile) {
+        zlog(state, NULL, Z1009, state->cli.argv[0], strerror(errno));
+        return Z_LEXICAL_ERROR;
+    }
+
+    state->pool = pool_create(state->allocator, state->cli.jobs);
+    ZToken **tokens = ztokenize(state, state->entryFile);
+
     if (!tokens) return Z_LEXICAL_ERROR;
     if (state->cli.dumpTokens) printTokens(tokens);
 
@@ -172,7 +182,7 @@ static ZErrorCode pipeline(ZState *state) {
 
     if (!canAdvance(state)) return Z_LEXICAL_ERROR;
 
-    ZNode *root = zparse(state, tokens);
+    ZNode *root = zparse(state, state->entryFile, tokens);
 
     if (!canAdvance(state)) return Z_SYNTAX_ERROR;
     zanalyze(state, root);
@@ -309,7 +319,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
             if (optarg[1] != '\0' || ((lvl < '0' || lvl > '3') && lvl != 's' && lvl != 'z')) {
                 printf("Error: invalid optimization level '%s'\n", optarg);
                 usage(argv[0]);
-                return NULL;
+                return false;
             }
             state->cli.optimizationLevel = lvl;
             break;
@@ -337,6 +347,17 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         case OPT_TARGET:                state->cli.targetTriple = optarg;                                   break;
         case OPT_MCPU:                  state->cli.targetCPU = optarg;                                      break;
         case OPT_MFEATURES:             state->cli.targetFeatures = optarg;                                 break;
+        case OPT_JOBS: {
+            char *endptr = NULL;
+            long jobs       = strtol(optarg, &endptr, 10);
+            if (endptr == optarg || *endptr != '\0' || jobs < 0) {
+                printf("Error: --jobs expects a number, got '%s'\n", optarg);
+                usage(argv[0]);
+                return false;
+            }
+            state->cli.jobs = jobs;
+            break;
+        }
         case OPT_LTO:
             if      (strcmp(optarg, "off")  == 0) state->cli.ltoMode = Z_LTO_OFF;
             else if (strcmp(optarg, "thin") == 0) state->cli.ltoMode = Z_LTO_THIN;
@@ -344,7 +365,7 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
             else {
                 printf("Error: invalid lto mode '%s' (expected: off, thin, full)\n", optarg);
                 usage(argv[0]);
-                return NULL;
+                return false;
             }
             break;
         default: usage(argv[0]); return false;

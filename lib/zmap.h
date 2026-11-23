@@ -173,6 +173,9 @@
  * @note If the map is NULL, it will be created with mapDefaultAllocator.
  * @note On allocation failure, the operation fails silently and the map remains unchanged.
  */
+#define mapinit(m, a, hashfn, eqfn) \
+    ((m) = mapcreatefns((a), sizeof(*(m)), MAP_DEFAULT_SIZE, (hashfn), (eqfn)))
+
 #define mapput(m, k, v) mapputwith(m, k, v, mapDefaultAllocator ? mapDefaultAllocator : heapAllocator)
 
 #define mapputwith(m, k, v, a)                                                  \
@@ -258,11 +261,16 @@ do {                                                                            
 /**
  * @brief Metadata stored before the map slots
  */
+typedef u64  (*map_hash_fn)(const void *key);
+typedef bool (*map_eq_fn)(const void *a, const void *b);
+
 typedef struct map_metadata {
     usize       capacity;   /**< Number of slots, always a power of two */
     usize       length;     /**< Number of keys in the map */
     usize       deleted;    /**< Number of deleted slots, reclaimed on the next rehash */
     Allocator   *allocator; /**< Allocator the map was created with, used for every growth and free */
+    map_hash_fn hash;
+    map_eq_fn   eq;
 } map_metadata;
 
 /* ============================================================================
@@ -302,7 +310,7 @@ static inline u64 maphash(const void *key, usize key_size) {
  * @param capacity Minimum capacity; rounded up to a power of two, never less than MAP_DEFAULT_SIZE
  * @return Pointer to the first slot, or NULL on allocation failure
  */
-static inline void *mapcreatecap(Allocator *allocator, usize slot_size, usize capacity) {
+static inline void *mapcreatefns(Allocator *allocator, usize slot_size, usize capacity, map_hash_fn hash, map_eq_fn eq) {
     if (!allocator) return NULL;
     usize cap = MAP_DEFAULT_SIZE;
     while (cap < capacity) cap <<= 1;
@@ -315,10 +323,16 @@ static inline void *mapcreatecap(Allocator *allocator, usize slot_size, usize ca
     metadata->length    = 0;
     metadata->deleted   = 0;
     metadata->allocator = allocator;
+    metadata->hash      = hash;
+    metadata->eq        = eq;
 
     void *m = (void *)(metadata + 1);
     memset(mapstates(m, slot_size), MAP_SLOT_EMPTY, cap);
     return m;
+}
+
+static inline void *mapcreatecap(Allocator *allocator, usize slot_size, usize capacity) {
+    return mapcreatefns(allocator, slot_size, capacity, NULL, NULL);
 }
 
 /**
@@ -329,11 +343,13 @@ static inline void *mapcreatecap(Allocator *allocator, usize slot_size, usize ca
  * should be inserted (reusing the first deleted slot met on the way).
  */
 static inline usize mapslot(void *m, usize slot_size, const void *key, usize key_size, bool *found) {
-    usize mask      = MAP_METADATA(m)->capacity - 1;
-    u8 *states      = mapstates(m, slot_size);
-    usize deleted   = (usize)-1;
+    map_metadata *meta  = MAP_METADATA(m);
+    usize mask          = meta->capacity - 1;
+    u8 *states          = mapstates(m, slot_size);
+    usize deleted       = (usize)-1;
+    u64 hash            = meta->hash ? meta->hash(key) : maphash(key, key_size);
 
-    for (usize i = maphash(key, key_size) & mask;; i = (i + 1) & mask) {
+    for (usize i = hash & mask;; i = (i + 1) & mask) {
         switch (states[i]) {
         case MAP_SLOT_EMPTY:
             *found = false;
@@ -341,13 +357,17 @@ static inline usize mapslot(void *m, usize slot_size, const void *key, usize key
         case MAP_SLOT_DELETED:
             if (deleted == (usize)-1) deleted = i;
             break;
-        default:
+        default: {
             /* The key is always the first member of a slot. */
-            if (memcmp((u8 *)m + i * slot_size, key, key_size) == 0) {
+            void *slot_key = (u8 *)m + i * slot_size;
+            bool equal = meta->eq ? meta->eq(slot_key, key)
+                                  : memcmp(slot_key, key, key_size) == 0;
+            if (equal) {
                 *found = true;
                 return i;
             }
             break;
+        }
         }
     }
 }
@@ -383,7 +403,7 @@ static inline bool mapreserveone(void **m, Allocator *allocator, usize slot_size
     if ((old->length + old->deleted + 1) * 100 <= old->capacity * MAP_MAX_LOAD) return true;
 
     usize cap = (old->length + 1) * 2 > old->capacity ? old->capacity * 2 : old->capacity;
-    void *grown = mapcreatecap(old->allocator, slot_size, cap);
+    void *grown = mapcreatefns(old->allocator, slot_size, cap, old->hash, old->eq);
     if (!grown) return false;
 
     u8 *states = mapstates(*m, slot_size);
