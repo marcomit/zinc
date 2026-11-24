@@ -338,9 +338,6 @@ struct ZNode {
             /* Named imports. */
             ZToken *name;
 
-            /* Full path. */
-            const char  *filename;
-
             /* List of file-level declarations.
              * It is NULL if the module is already parsed
              * */
@@ -350,7 +347,7 @@ struct ZNode {
              * It'll be never NULL.
              * */
             ZNode       **cached;
-
+            ZFile       *file;
             bool        pub;
         } module;
 

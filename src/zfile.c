@@ -1,4 +1,6 @@
+#include "zinc/zforward.h"
 #include "zinc/zinc.h"
+#include "zmem.h"
 #include "zstr.h"
 
 typedef ZMap(zsv, zstr) ZKeywordMap;
@@ -11,6 +13,7 @@ struct ZFile {
     const char  *filename;
     zstr        content;
     ZKeywordMap words;
+    ZNode       *root;
     u32         id;
 };
 
@@ -44,6 +47,14 @@ u32 zfile_id(ZFile *file) {
     return file->id;
 }
 
+ZNode *zfile_root(ZFile *file) {
+    return file ? file->root : NULL;
+}
+
+Allocator *zfile_allocator(ZFile *file) {
+    return file ? file->allocator : NULL;
+}
+
 zstr zfile_get_keyword(ZFile *file, const char *word, usize len) {
     zstr *val = mapget(file->words, zsv_new(word, len));
     return val ? *val : NULL;
@@ -59,8 +70,8 @@ zstr zfile_insert_keyword(ZFile *file, const char *word, usize len) {
     return s;
 }
 
-ZFileTable *ft_create(Allocator *allocator) {
-    ZFileTable *self = copy(allocator, ZFileTable, ((ZFileTable){
+ZFileTable *ft_create() {
+    ZFileTable *self = copy(heapAllocator, ZFileTable, ((ZFileTable){
         .allocator = heapAllocator,
         .files = NULL
     }));
@@ -94,6 +105,10 @@ ZFile *ft_get(ZFileTable *ft, const char *filename) {
     return f;
 }
 
+void zfile_set_root(ZFile *file, ZNode *root) {
+    if (file) file->root = root;
+}
+
 ZFile *ft_insert(Allocator *a, ZFileTable *ft, const char *filename) {
     LOCK(ft);
     ZFile *res = NULL;
@@ -117,6 +132,8 @@ end:
     UNLOCK(ft);
     return res;
 }
+
+vec(ZFile *) ft_files(ZFileTable *ft) { return ft->files; }
 
 zstr zfile_str(ZFile *f, u32 offset, u32 len) {
     zstr s = zs_with(f->allocator);

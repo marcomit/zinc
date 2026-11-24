@@ -1,3 +1,4 @@
+#include "zinc/zstate.h"
 #include "zparse.h"
 
 static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool public) {
@@ -402,12 +403,11 @@ static ZNode *parseConst(ZParser *parser, bool public) {
 }
 
 static ZNode **getCachedModule(ZParser *parser, char *filename) {
-    for (usize i = 0; i < veclen(parser->state->cachedModules); i++) {
-        if (strcmp(parser->state->cachedModules[i]->name, filename) == 0) {
-            return parser->state->cachedModules[i]->node;
-        }
-    }
-    return NULL;
+    ZFile *f = ft_get(parser->state->fileTable, filename);
+    if (!f) return NULL;
+
+    ZNode *root = zfile_root(f);
+    return root ? root->module.root : NULL;
 }
 
 static ZNode *getModuleByName(
@@ -422,11 +422,11 @@ static ZNode *getModuleByName(
     ZFile *f                    = ft_get(parser->state->fileTable, filename);
     ZNode *node                 = makenode(parser->allocator, NODE_MODULE);
     if (f) {
-        node->module.filename   = filename;
         node->module.name       = NULL;
         node->module.root       = NULL;
         node->module.cached     = getCachedModule(parser, filename);
         node->module.pub        = public;
+        node->module.file       = f;
         return node;
     }
 
@@ -435,19 +435,11 @@ static ZNode *getModuleByName(
         zlog(parser->state, tok, Z1009, filename, strerror(errno));
         return NULL;
     }
-    ZToken **tokens = ztokenize(parser->state, f);
-
-    node = zparse(parser->state, f, tokens);
+    node = zparse(parser->state, f);
     node->module.pub = public;
 
-    ZParserModule *parserModule = zalloc(parser->allocator, ZParserModule);
-    *parserModule = (ZParserModule){
-        .node = node->module.root,
-        .name = filename,
-    };
-
+    zfile_set_root(f, node);
     node->module.cached = node->module.root;
-    vecpush(parser->state->cachedModules, parserModule);
 
     return node;
 }
@@ -826,7 +818,7 @@ static ZNode *parseModule(ZParser *parser) {
     ZNode *root = makenode(parser->allocator, NODE_MODULE);
 
     root->module.root       = NULL;
-    root->module.filename   = (char *)zfile_name(parser->file);
+    root->module.file       = parser->file;
 
     if (!parser->state->cli.noInject) {
         ZNode *prelude = injectPrelude(parser);
@@ -881,16 +873,30 @@ ZNode *parse(ZParser *parser) {
     return res;
 }
 
-ZNode *zparse(ZState *state, ZFile *file, ZToken **tokens) {
-    state->currentPhase = Z_PHASE_SYNTAX;
+static ZNode *parseFile(ZState *state, ZFile *file) {
+    // if (ft_get(state->fileTable, zfile_name(file)))
+    //     return NULL;
+
+    ZToken **tokens = ztokenize(state, file);
+    if (!canAdvance(state)) return NULL;
+
+    if (!tokens) return NULL;
+    if (state->cli.dumpTokens) printTokens(tokens);
+
+
     ZParser *parser = makeparser(state, tokens);
     parser->file = file;
-
     ZNode *root = parseModule(parser);
 
-    if (canPeek(parser)) {
+    if (canPeek(parser))
         zlog(state, peek(parser), Z203B, stoken(peek(parser)));
-    }
 
+    return root;
+}
+
+ZNode *zparse(ZState *state, ZFile *file) {
+    state->currentPhase = Z_PHASE_SYNTAX;
+    ZNode *root = parseFile(state, file);
+    zfile_set_root(file, root);
     return root;
 }

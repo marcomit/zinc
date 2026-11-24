@@ -1,5 +1,6 @@
 #include "zcli.h"
 #include "zcolors.h"
+#include "zinc/zpool.h"
 
 #define CHECK_FLAG(flag, name) if (flag) {                                  \
     printf("Error %s already set\n", name);                                 \
@@ -117,10 +118,12 @@ static void printAllocation(ZState *state) {
 
     double used = arenaLength(state->allocator->ctx);
     double allocated = arenaSize(state->allocator->ctx);
-    for (usize i = 0; i < veclen(state->modules); i++) {
-        used += arenaLength(state->modules[i]->allocator->ctx);
-        allocated += arenaSize(state->modules[i]->allocator->ctx);
-    }
+
+    usize pool_used = 0, pool_size = 0;
+    pool_allocator_stats(state->pool, &pool_used, &pool_size);
+
+    used += (double)pool_used;
+    allocated += (double)pool_size;
 
     static const char *labels[] = {
         "b",
@@ -172,17 +175,10 @@ static ZErrorCode pipeline(ZState *state) {
     }
 
     state->pool = pool_create(state->allocator, state->cli.jobs);
-    ZToken **tokens = ztokenize(state, state->entryFile);
-
-    if (!tokens) return Z_LEXICAL_ERROR;
-    if (state->cli.dumpTokens) printTokens(tokens);
-
     if (!initTargetMachine(state)) return Z_CODEGEN_ERROR;
     initPrimitiveTypes(state);
 
-    if (!canAdvance(state)) return Z_LEXICAL_ERROR;
-
-    ZNode *root = zparse(state, state->entryFile, tokens);
+    ZNode *root = zparse(state, state->entryFile);
 
     if (!canAdvance(state)) return Z_SYNTAX_ERROR;
     zanalyze(state, root);

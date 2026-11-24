@@ -95,8 +95,9 @@ typedef struct  {
 } ZLLVMTypeInfo;
 
 typedef struct {
+    Allocator               *allocator;
     ZState                  *state;
-    ZModuleAllocator        *module;
+    ZFile                   *module;
     ZMIRContextRef          ctx;
 
     ZMIRModuleRef           *modules;

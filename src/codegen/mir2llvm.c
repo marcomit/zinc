@@ -587,9 +587,9 @@ static inline void printPhase(ZState *state, const char *phase) {
     const char *format;
     float elapsed = timer_elapsed(state->phaseTime, &format);
     printf(
-        "  %s%s%-11s %s%.2f%s\n",
+        "  %s%s%s%s%.2f%s\n",
         COLOR_BOLD(state), COLOR_CYAN(state),
-        COLOR_RESET(state), phase, elapsed, format);
+        phase, COLOR_RESET(state), elapsed, format);
 }
 
 static bool emitObjectFile(ZState *state, LLVMModuleRef mod,

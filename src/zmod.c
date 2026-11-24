@@ -568,7 +568,7 @@ void printNode(ZNode *node, u8 depth) {
         printNode(node->unary.operand, depth);
         break;
     case NODE_MODULE:
-        printf("Name: %s: %s\n", stoken(node->module.name), node->module.filename);
+        printf("Name: %s: %s\n", stoken(node->module.name), zfile_name(node->module.file));
         for (usize i = 0; i < veclen(node->module.root); i++) {
             printNode(node->module.root[i], depth);
         }
@@ -951,10 +951,7 @@ void freestate(ZState *state) {
     disposeTargetMachine(state);
 #endif
 
-    /* state->modules lives in the state arena, so the modules go first. */
-    for (usize i = 0; i < veclen(state->modules); i++) {
-        adestroy(state->modules[i]->allocator);
-    }
+    ft_destroy(state->fileTable);
     adestroy(state->allocator);
     afree(heapAllocator, state);
 }

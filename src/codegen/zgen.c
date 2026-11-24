@@ -11,6 +11,7 @@
  */
 
 #include "zgen.h"
+#include "zinc/zfile.h"
 #include "zinc/zinc.h"
 #include "zmem.h"
 #include "zmir.h"
@@ -49,13 +50,17 @@ _Thread_local ZMIRTypeRef f64Type       = NULL;
 
 extern ZNode *LangItems[Z_LANG_COUNT];
 
+static inline Allocator *get_allocator(ZCodegen *ctx) {
+    return ctx->allocator;
+}
+
 static ZMIRSymbol *makesymbol(ZCodegen *ctx) {
-    ZMIRSymbol *self = aalloc(ctx->module->allocator, sizeof(ZMIRSymbol));
+    ZMIRSymbol *self = aalloc(get_allocator(ctx), sizeof(ZMIRSymbol));
     return self;
 }
 
 static ZMIRScope *makescope(ZCodegen *ctx, int type, ZMIRScope *parent) {
-    ZMIRScope *self    = aalloc(ctx->module->allocator, sizeof(ZMIRScope));
+    ZMIRScope *self    = aalloc(get_allocator(ctx), sizeof(ZMIRScope));
     *self               = (ZMIRScope){ 0 };
     self->parent        = parent;
     self->startLoop     = parent ? parent->startLoop : NULL;
@@ -200,7 +205,7 @@ static void beginModule(ZCodegen *ctx, ZNode *node) {
     ZMIRModuleRef prev = ctx->mod;
     if (!ctx->mod) {
         ctx->mod = ZMIRModuleCreateWithNameInContext(
-            node->module.filename, ctx->ctx
+            zfile_name(node->module.file), ctx->ctx
         );
     }
     vecpush(ctx->modules, prev);
@@ -217,11 +222,13 @@ static void endModule(ZCodegen *ctx) {
     if (prev) ctx->mod = prev;
 }
 
-ZCodegen *makecodegen(ZState *state, ZModuleAllocator *module) {
+ZCodegen *makecodegen(ZState *state, ZFile *module) {
     ZCodegen *self      = zalloc(state->allocator, ZCodegen);
-    self->ctx           = ZMIRContextCreate(state, module->allocator);
-    self->builder       = ZMIRCreateBuilderInContext(self->ctx);
 
+    /* This is a temporary allocator
+     * The real allocator is set inside compileModule
+     * */
+    self->allocator     = state->allocator;
     self->mod           = NULL;
     self->modules       = NULL;
     self->structNames   = NULL;
@@ -643,7 +650,7 @@ static ZMIRTypeRef genStructType(ZCodegen *ctx, ZType *type, char *enumName) {
 
     usize nfields           = veclen(type->strct.fields);
     ZMIRTypeRef *ftypes     = aalloc(
-        ctx->module->allocator,
+        get_allocator(ctx),
         sizeof(ZMIRTypeRef) * nfields
     );
 
@@ -717,7 +724,7 @@ static ZMIRTypeRef genFacetDecl(ZCodegen *ctx, ZType *type) {
     putStructInCache(ctx, name, facet);
 
     usize len = veclen(type->facet.funcs);
-    ZMIRTypeRef *funcs = aalloc(ctx->module->allocator, sizeof(ZMIRTypeRef) * len);
+    ZMIRTypeRef *funcs = aalloc(get_allocator(ctx), sizeof(ZMIRTypeRef) * len);
 
     for (usize i = 0; i < len; i++) {
         funcs[i] = genType(ctx, type->facet.funcs[i]->resolved);
@@ -818,7 +825,7 @@ ZMIRTypeRef genType(ZCodegen *ctx, ZType *type) {
 
     case Z_TYPE_TUPLE: {
         usize len = veclen(type->tuple);
-        ZMIRTypeRef *elems = aalloc(ctx->module->allocator, sizeof(ZMIRTypeRef) * (len ? len : 1));
+        ZMIRTypeRef *elems = aalloc(get_allocator(ctx), sizeof(ZMIRTypeRef) * (len ? len : 1));
         for (usize i = 0; i < len; i++) {
             elems[i] = genType(ctx, type->tuple[i]);
             if (!elems[i]) return NULL;
@@ -1637,7 +1644,7 @@ static ZMIRValueRef genEnumLitPtr(ZCodegen *ctx, ZNode *node) {
 static ZMIRTypeRef buildFuncType(ZCodegen *ctx, ZType *type) {
     usize args = veclen(type->func.args);
     usize argc = veclen(type->func.capabilities);
-    ZMIRTypeRef *params = aalloc(ctx->module->allocator, sizeof(ZMIRTypeRef) * ((argc + args) ? (argc + args) : 1));
+    ZMIRTypeRef *params = aalloc(get_allocator(ctx), sizeof(ZMIRTypeRef) * ((argc + args) ? (argc + args) : 1));
     usize len = 0;
     for (usize i = 0; i < argc; i++) {
         if (!isRuntimeParam(ctx->state, type->func.capabilities[i])) continue;
@@ -1656,7 +1663,7 @@ static ZMIRTypeRef buildFuncType(ZCodegen *ctx, ZType *type) {
  * matching the impl function whose first parameter is the receiver. */
 static ZMIRTypeRef buildFacetFuncType(ZCodegen *ctx, ZType *type) {
     usize argc = veclen(type->func.args);
-    ZMIRTypeRef *params = aalloc(ctx->module->allocator, sizeof(ZMIRTypeRef) * (argc + 1));
+    ZMIRTypeRef *params = aalloc(get_allocator(ctx), sizeof(ZMIRTypeRef) * (argc + 1));
 
     params[0] = ZMIRPointerType(i8Type, 0);
 
@@ -1829,7 +1836,7 @@ static ZMIRValueRef genCall(ZCodegen *ctx, ZNode *node) {
     usize fixedParamCount = ZMIRCountParamTypes(funcType);
     ZMIRTypeRef *fixedParamTypes = NULL;
     if (fixedParamCount > 0) {
-        fixedParamTypes = aalloc(ctx->module->allocator, sizeof(ZMIRTypeRef) * fixedParamCount);
+        fixedParamTypes = aalloc(get_allocator(ctx), sizeof(ZMIRTypeRef) * fixedParamCount);
         ZMIRGetParamTypes(funcType, fixedParamTypes);
     }
 
@@ -3064,7 +3071,7 @@ static ZMIRValueRef genAnonFunc(ZCodegen *ctx, ZNode *node) {
     usize capLen = veclen(node->resolved->func.capabilities);
 
     ZMIRTypeRef *arguments      = aalloc(
-        ctx->module->allocator, sizeof(ZMIRTypeRef) * ((argLen + capLen) ? (argLen + capLen) : 1)
+        get_allocator(ctx), sizeof(ZMIRTypeRef) * ((argLen + capLen) ? (argLen + capLen) : 1)
     );
 
     usize len = 0;
@@ -3444,7 +3451,7 @@ static ZMIRValueRef genForeign(ZCodegen *ctx, ZNode *node) {
     ZMIRTypeRef ret = genType(ctx, node->resolved->func.ret);
     usize argc = veclen(node->resolved->func.args);
 
-    ZMIRTypeRef *paramTypes = aalloc(ctx->module->allocator, sizeof(ZMIRTypeRef) * (argc ? argc : 1));
+    ZMIRTypeRef *paramTypes = aalloc(get_allocator(ctx), sizeof(ZMIRTypeRef) * (argc ? argc : 1));
     usize len = 0;
     for (usize i = 0; i < argc; i++) {
         ZType *at = node->resolved->func.args[i];
@@ -3930,7 +3937,7 @@ static void genMatchStmt(ZCodegen *ctx, ZNode *node) {
     if (!condPtr) return;
     usize armLen            = veclen(node->match.arms);
     ZMIRBasicBlockRef *blocks = aalloc(
-        ctx->module->allocator, sizeof(ZMIRBasicBlockRef) * (armLen+1));
+        get_allocator(ctx), sizeof(ZMIRBasicBlockRef) * (armLen+1));
 
     blocks[0] = ZMIRGetInsertBlock(ctx->builder);
     for (usize i = 1; i <= armLen; i++) blocks[i] = makeblock(ctx, "matcharm");
@@ -3997,7 +4004,7 @@ static void genCapability(ZCodegen *ctx, ZNode *node) {
 
         if (!ref) continue;
         ZMIRCapability *capability = copy(
-            ctx->module->allocator, ZMIRCapability, ((ZMIRCapability){
+            get_allocator(ctx), ZMIRCapability, ((ZMIRCapability){
                 .capability = decl->resolved,
                 .ref = ref
             })
@@ -4062,7 +4069,7 @@ static void addFuncVar(ZCodegen *ctx,
     for (usize i = len; i > 0; i--)
         if (allocations[i - 1]->node == node) return;
 
-    ZMIRStack *item    = aalloc(ctx->module->allocator, sizeof(ZMIRStack));
+    ZMIRStack *item    = aalloc(get_allocator(ctx), sizeof(ZMIRStack));
     *item = (ZMIRStack){
         .stack          = stack,
         .elem           = elem,
@@ -4449,7 +4456,7 @@ static usize addFuncArgs(ZCodegen *ctx,
 
         if (capabilityParams) {
             ZMIRCapability *capability = aalloc(
-                ctx->module->allocator, sizeof(ZMIRCapability)
+                get_allocator(ctx), sizeof(ZMIRCapability)
             );
             capability->capability  = argType;
             capability->ref         = slot;
@@ -4606,7 +4613,7 @@ static void genNamespace(ZCodegen *ctx, ZNode *node) {
 static void genImpl(ZCodegen *ctx, ZNode *root) {
     usize len = veclen(root->impl.funcs);
     ZMIRValueRef *ptrs = aalloc(
-        ctx->module->allocator, sizeof(ZMIRValueRef) * len
+        get_allocator(ctx), sizeof(ZMIRValueRef) * len
     );
     for (usize i = 0; i < len; i++) {
         ptrs[i] = genFunc(ctx, root->impl.funcs[i]);
@@ -4685,7 +4692,8 @@ static void compile(ZCodegen *ctx, ZNode *root) {
         /* Emit each module body at most once per ZMIR module: repeated imports
          * and cyclic imports would otherwise append a second definition to a
          * function that already has one. */
-        if (!hashset_insert(&ctx->seenModuleDefs, root->module.filename)) break;
+        const char *module_name = zfile_name(root->module.file);
+        if (!hashset_insert(&ctx->seenModuleDefs, module_name)) break;
         ZNode **body = moduleBody(root);
         for (usize i = 0; i < veclen(body); i++)
             genForwardDecl(ctx, body[i]);
@@ -4706,7 +4714,8 @@ static ZMIRValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
     case NODE_MODULE: {
         /* Follow module.cached for re-imports and guard against cycles, so
          * every reachable declaration lands in ctx->mod exactly once. */
-        if (!hashset_insert(&ctx->seenModuleDecls, node->module.filename)) break;
+        const char *module_name = zfile_name(node->module.file);
+        if (!hashset_insert(&ctx->seenModuleDecls, module_name)) break;
         ZNode **body = moduleBody(node);
         for (usize i = 0; i < veclen(body); i++)
             genForwardDecl(ctx, body[i]);
@@ -4732,7 +4741,7 @@ static ZMIRValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
     case NODE_IMPL: {
         ZNode **funcs = node->impl.funcs;
         ZMIRValueRef *ptrs = aalloc(
-            ctx->module->allocator,
+            get_allocator(ctx),
             sizeof(ZMIRValueRef) * veclen(funcs)
         );
         for (usize i = 0; i < veclen(funcs); i++) {
@@ -4809,29 +4818,38 @@ static ZMIRValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
     return NULL;
 }
 
-static void *compileModule(void *arg) {
-    ZCodegen *ctx = (ZCodegen *)arg;
-    useAllocator(ctx->module->allocator);
+// static void *compileModule(void *arg) {
+//     ZCodegen *ctx = (ZCodegen *)arg;
+//     useAllocator(get_allocator(ctx));
+//     initNativeTypes(ctx);
+//     compile(ctx, ctx->module->module);
+//     return NULL;
+// }
+
+static void compileModule(ZTaskCtx *task_ctx) {
+    ZCodegen *ctx = (ZCodegen *)task_ctx->ctx;
+    ctx->allocator = task_ctx->allocator;
+    ctx->ctx            = ZMIRContextCreate(ctx->state, ctx->allocator);
+    ctx->builder        = ZMIRCreateBuilderInContext(ctx->ctx);
+    ctx->scope          = makescope(ctx, Z_SCOPE_GLOB, NULL);
+    useAllocator(ctx->allocator);
     initNativeTypes(ctx);
-    compile(ctx, ctx->module->module);
-    return NULL;
+    compile(ctx, zfile_root(ctx->module));
 }
 
 ZMIRModuleRef *zgenModules(ZState *state) {
-    usize len           = veclen(state->modules);
-
-    ZCodegen **gens     = NULL;
-    pthread_t *threads  = znalloc(state->allocator, pthread_t, len);
+    vec(ZFile *) files      = ft_files(state->fileTable);
+    usize len               = veclen(files);
+    vec(ZCodegen *) gens    = NULL;
 
     for (usize i = 0; i < len; i++) {
-        ZCodegen *gen = makecodegen(state, state->modules[i]);
-        pthread_create(threads + i, NULL, compileModule, gen);
+        ZCodegen *gen = makecodegen(state, files[i]);
+        pool_submit(state->pool, compileModule, (void *)gen);
         vecpush(gens, gen);
     }
+    pool_wait(state->pool);
 
-    for (usize i = 0; i < len; i++) pthread_join(threads[i], NULL);
-
-    ZMIRModuleRef *modules = NULL;
+    vec(ZMIRModuleRef) modules = NULL;
     for (usize i = 0; i < len; i++) vecpush(modules, gens[i]->mod);
 
     return modules;
