@@ -66,9 +66,10 @@ static void *pool_worker(void *arg) {
 
 ZPool *pool_create(Allocator *allocator, usize max_jobs) {
     ZPool *pool     = aalloc(allocator, sizeof(ZPool));
+    if (max_jobs == 0) max_jobs = thread_count();
     *pool = (ZPool){
         .allocator  = heapAllocator,
-        .max_jobs   = max_jobs == 0 ? (usize)thread_count() : max_jobs
+        .max_jobs   = max_jobs
     };
 
     pthread_mutex_init(&pool->mutex, NULL);
@@ -78,7 +79,7 @@ ZPool *pool_create(Allocator *allocator, usize max_jobs) {
     vecreservewith(pool->threads, pool->max_jobs, allocator);
 
     usize started = 0;
-    for (usize i = 0; i < max_jobs; i++) {
+    for (usize i = 0; i < pool->max_jobs; i++) {
         pool->threads[started] = (ZThread){
             .allocator  = getArenaAllocator(),
             .worker     = started,
@@ -132,4 +133,16 @@ void pool_destroy(ZPool *pool) {
         adestroy(pool->threads[i].allocator);
 
     vecfree(pool->threads);
+}
+
+void pool_allocator_stats(ZPool *pool, usize *used, usize *size) {
+    if (!pool || !used || !size) return;
+
+    for (usize i = 0; i < veclen(pool->threads); i++) {
+        Allocator *allocator = pool->threads[i].allocator;
+        if (!allocator) continue;
+
+        *used += arenaLength(allocator->ctx);
+        *size += arenaSize(allocator->ctx);
+    }
 }

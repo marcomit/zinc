@@ -36,6 +36,8 @@
  */
 
 #include "zsem.h"
+#include "zinc/zfile.h"
+#include "zinc/zpool.h"
 
 static void analyze                 (ZThreadSem *, ZNode *);
 static void analyzeFacet            (ZThreadSem *, ZNode *);
@@ -67,6 +69,8 @@ static void discoverImport(
     ZScope *parentScope     = pub ? parent->global : parent->local;
     ZSymbol **childSymbols   = child->global->symbols;
 
+    if (parentScope == child->global) return;
+
     if (node->module.name) {
         ZSymbol *import = makeRawSymbol(
             parent->allocator,  Z_SYM_IMPORT,
@@ -89,8 +93,10 @@ static void discoverImport(
 /* ================== Global scope discovery ================== */
 
 static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
-    ctx                 = registerModule(ctx->semantic, root);
+    usize file_id = zfile_id(root->module.file);
+    ctx = ctx->semantic->scopes[file_id]->ctx;
     ZScope *saved       = ctx->current;
+    ctx->discovered     = true;
     for (usize i = 0; i < veclen(root->module.root); i++) {
         ZNode *node = root->module.root[i];
 
@@ -126,11 +132,11 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
         }
 
         case NODE_MODULE: {
-            ZThreadSem *import = getRegisteredModule(
-                ctx->semantic, node->module.filename
-            );
+            usize file_id = zfile_id(node->module.file);
+            ZThreadSem *import = ctx->semantic->scopes[file_id]->ctx;
 
-            if (!import) import = discoverGlobalScope(ctx, node);
+            if (!import->discovered)
+                import = discoverGlobalScope(ctx, node);
 
             discoverImport(ctx, import, node, node->module.pub);
             break;
@@ -143,8 +149,8 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
 }
 
 static void resolveGlobalScope(ZSemantic *semantic) {
-    for (usize i = 0; i < veclen(semantic->semantics); i++) {
-        ZThreadSem *ctx = semantic->semantics[i];
+    for (usize i = 0; i < veclen(semantic->scopes); i++) {
+        ZThreadSem *ctx = semantic->scopes[i]->ctx;
         ZNode **nodes   = ctx->root->module.root;
         ZScope *saved   = ctx->current;
 
@@ -353,11 +359,33 @@ static void analyze(ZThreadSem *ctx, ZNode *root) {
     }
 }
 
-static inline void *worker(void *arg) {
-    ZThreadSem *ctx = (ZThreadSem *)arg;
-    useAllocator(ctx->allocator);
+static ZScopeTable *makescopetable(Allocator *allocator,
+                                   ZScope *global,
+                                   ZFile *f) {
+    ZScopeTable *table  = aalloc(allocator, sizeof(ZScopeTable));
+    ZNode *root         = zfile_root(f);
+    table->scope        = makescope(allocator, global, root);
+    table->file         = f;
+    return table;
+}
+
+static void initContext(ZSemantic *semantic, ZScope *globalScope) {
+    Allocator *allocator = semantic->state->allocator;
+    vec(ZFile *) files = ft_files(semantic->state->fileTable);
+
+    for (usize i = 0; i < veclen(files); i++) {
+        ZFile *f = files[i];
+        ZScopeTable *table = makescopetable(allocator, globalScope, f);
+        table->ctx = makethreadsem(semantic, table->scope, zfile_root(f));
+        vecpush(semantic->scopes, table);
+    }
+}
+
+static void pool_worker(ZTaskCtx *task_ctx) {
+    ZThreadSem *ctx = (ZThreadSem *)task_ctx->ctx;
+    ctx->allocator = task_ctx->allocator;
+    useAllocator(task_ctx->allocator);
     analyze(ctx, ctx->root);
-    return NULL;
 }
 
 ZSemantic *zanalyze(ZState *state, ZNode *root) {
@@ -366,25 +394,17 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
 
     ZScope *globalScope     = makescope(state->allocator, NULL, root);
 
-    ZThreadSem *first       = makethreadsem(
-        ctx, globalScope, root, state->allocator
-    );
-    discoverGlobalScope(first, root);
+    initContext(ctx, globalScope);
+
+    discoverGlobalScope(ctx->scopes[0]->ctx, root);
     resolveGlobalScope(ctx);
 
     usize len                   = veclen(ctx->scopes);
-    pthread_t *threads          = znalloc(state->allocator, pthread_t, len);
-    ZScopeTable **scopes        = ctx->scopes;
-    ZThreadSem **semantics      = ctx->semantics;
     for (usize i = 0; i < len; i++) {
-        scopes[i]->ctx = semantics[i];
-        pthread_create(threads + i, NULL, worker, semantics[i]);
+        pool_submit(state->pool, pool_worker, ctx->scopes[i]->ctx);
     }
 
-    for (usize i = 0; i < len; i++) {
-        pthread_join(threads[i], NULL);
-        // if (i != 0) checkUnusedSymbols(scopes[i]->ctx);
-    }
+    pool_wait(state->pool);
 
     // if (!ctx->main) {
     //     zlog(ctx->state, root->tok, Z3059);

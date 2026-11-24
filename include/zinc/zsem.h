@@ -69,7 +69,7 @@ typedef struct ZFuncTable {
 } ZFuncTable;
 
 typedef struct ZScopeTable {
-    ZNode           *module;
+    ZFile           *file;
     ZScope          *scope;
     ZThreadSem      *ctx;
 } ZScopeTable;
@@ -80,21 +80,11 @@ typedef struct {
 } ZInstance;
 
 typedef struct ZSemantic {
-    ZState          *state;
-
-    /* Root node. */
-    ZNode           *root;
-
+    ZState              *state;
     /* cached main function node. */
-    ZSymbol         *main;
-    ZScopeTable     **scopes;
-    // ZSymTable       *table;
-    ZThreadSem      **semantics;
+    ZSymbol             *main;
 
-    /* Atomic integer used to fetch the current module in the thread worker.
-     * The thread worker fetch the index of the module to analyze and increment it.
-     * */
-    atomic_int      currentModule;
+    vec(ZScopeTable *)  scopes;
 } ZSemantic;
 
 struct ZThreadSem {
@@ -117,6 +107,7 @@ struct ZThreadSem {
     ZNode       **exportedFuncs;
 
     u16         loopDepth;
+    bool        discovered;
 };
 
 /* Semantic  -  public entry points. The per-traversal helpers (resolveType,

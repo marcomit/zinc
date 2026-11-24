@@ -1,5 +1,5 @@
 .clangd
-zinc
+# zinc
 .build
 zb
 zb.exe

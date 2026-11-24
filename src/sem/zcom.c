@@ -1,3 +1,4 @@
+#include "zinc/zsem.h"
 #include "zsem.h"
 
 /* ================== Scope / Symbol helpers ================== */
@@ -37,17 +38,18 @@ ZScope *makescope(Allocator *allocator, ZScope *parent, ZNode *node) {
     return self;
 }
 
-ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root, Allocator *allocator) {
-    ZThreadSem *self        = zalloc(ctx->state->allocator, ZThreadSem);
+ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root) {
+    Allocator *a            = ctx->state->allocator;
+    ZThreadSem *self        = zalloc(a, ZThreadSem);
 
-    self->allocator         = allocator;
+    self->allocator         = a;
     self->currentFunc       = NULL;
     self->currentFuncRet    = NULL;
     self->loopDepth         = 0;
     self->semantic          = ctx;
     self->state             = ctx->state;
     self->global            = current;
-    self->local             = makescope(allocator, current, root);
+    self->local             = makescope(a, current, root);
     self->current           = self->local;
     self->root              = root;
     self->funcs             = NULL;
@@ -66,11 +68,8 @@ ZSymbol *makesymbol(Allocator *allocator, ZSymType kind) {
 
 ZSemantic *makesemantic(ZState *state, ZNode *root) {
     ZSemantic *self         = zalloc(state->allocator, ZSemantic);
-    self->root              = root;
     self->state             = state;
     self->scopes            = NULL;
-    self->semantics         = NULL;
-    // self->table             = makesymtable(allocator.ctx);
     return self;
 }
 
@@ -586,44 +585,39 @@ ZCapability *putCapability(ZThreadSem *ctx, ZNode *var) {
     return capability;
 }
 
-ZThreadSem *getRegisteredModule(ZSemantic *ctx, char *module) {
-    for (usize i = 0; i < veclen(ctx->scopes); i++) {
-        if (strcmp(ctx->scopes[i]->module->module.filename, module) == 0) {
-            return ctx->scopes[i]->ctx;
-        }
-    }
-    return NULL;
-}
+// ZThreadSem *getRegisteredModule(ZSemantic *ctx, char *module) {
+//     for (usize i = 0; i < veclen(ctx->scopes); i++) {
+//         if (strcmp(ctx->scopes[i]->module->module.filename, module) == 0) {
+//             return ctx->scopes[i]->ctx;
+//         }
+//     }
+//     return NULL;
+// }
 
-ZThreadSem *registerModule(ZSemantic *ctx, ZNode *module) {
-    Allocator *allocator = ctx->state->allocator;
-    for (usize i = 0; i < veclen(ctx->scopes); i++) {
-        if (ctx->scopes[i]->module == module) {
-            ctx->semantics[i]->current = ctx->semantics[i]->local;
-            return ctx->semantics[i];
-        }
-    }
-
-    /* Parent the module scope to the lexically enclosing scope (the importer),
-     * so a module can resolve names from the scope that pulled it in. */
-    ZScopeTable *table  = zalloc(allocator, ZScopeTable);
-    table->module       = module;
-    table->scope        = makescope(allocator, NULL, module);
-
-    ZModuleAllocator *m = zalloc(allocator, ZModuleAllocator);
-    m->module           = module;
-    m->allocator        = getArenaAllocator();
-
-    vecpush(ctx->state->modules, m);
-    vecpush(ctx->scopes, table);
-
-    ZThreadSem *threadCtx = makethreadsem(
-        ctx, table->scope, module, m->allocator
-    );
-    table->ctx = threadCtx;
-    vecpush(ctx->semantics, threadCtx);
-    return threadCtx;
-}
+// ZThreadSem *registerModule(ZSemantic *ctx, ZFile *f) {
+//     Allocator *allocator = ctx->state->allocator;
+//     for (usize i = 0; i < veclen(ctx->scopes); i++) {
+//         if (ctx->scopes[i]->module == module) {
+//             ctx->semantics[i]->current = ctx->semantics[i]->local;
+//             return ctx->semantics[i];
+//         }
+//     }
+//
+//     /* Parent the module scope to the lexically enclosing scope (the importer),
+//      * so a module can resolve names from the scope that pulled it in. */
+//     ZScopeTable *table  = zalloc(allocator, ZScopeTable);
+//     table->module       = module;
+//     table->scope        = makescope(allocator, NULL, module);
+//
+//     vecpush(ctx->scopes, table);
+//
+//     ZThreadSem *threadCtx = makethreadsem(
+//         ctx, table->scope, module, m->allocator
+//     );
+//     table->ctx = threadCtx;
+//     vecpush(ctx->semantics, threadCtx);
+//     return threadCtx;
+// }
 
 static void warnUnused(ZThreadSem *ctx, ZSymbol *symbol) {
     if (!symbol) return;

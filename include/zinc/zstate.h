@@ -150,11 +150,6 @@ typedef struct {
     const ZLogLevel level;
 } ZDiagnostic;
 
-typedef struct {
-    ZNode       *module;
-    Allocator   *allocator;
-} ZModuleAllocator;
-
 struct ZState {
     Allocator       *allocator;
     ZFileTable      *fileTable;
@@ -185,17 +180,6 @@ struct ZState {
     /* Triple used for codegen. */
     char            *resolvedTriple;
 #endif
-
-    ZNode           *root;
-
-    /* Each module carries its own arena allocator for thread-safety. */
-    ZModuleAllocator **modules;
-
-    /* Every module is parsed exactly once; every later import reuses the parsed
-     * body from here. Shared across the per-file parser instances (each file
-     * gets its own ZParser), so a re-import from any file resolves its cached
-     * body regardless of which file first parsed it. */
-    struct ZParserModule **cachedModules;
 
 #if Z_COMPILER
     /* Indicates the start time of the current phase to calculate the diagnostics. */

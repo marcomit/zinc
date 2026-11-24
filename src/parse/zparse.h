@@ -58,11 +58,6 @@ typedef struct ZMacroParser {
     usize             currentIndex;
 } ZMacroParser;
 
-typedef struct ZParserModule {
-    char    *name;
-    ZNode   **node;
-} ZParserModule;
-
 typedef struct ZParserSnapshot {
     ZTokenStream    *stream;
     usize           streamIndex;
@@ -173,7 +168,6 @@ static inline void sinchronize(ZParser *parser, ZTokenType opening, ZTokenType c
 
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
-ZNode *zparse                       (ZState *, ZFile *, ZToken **);
 ZType *parseType                    (ZParser *);
 ZNode *parseExpr                    (ZParser *);
 ZNode *parseStmt                    (ZParser *);
