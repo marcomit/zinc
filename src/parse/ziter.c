@@ -171,22 +171,23 @@ bool isValidToken(ZParser *parser, ZTokenType *validTokens, size_t len) {
     return false;
 }
 
-ZParserSnapshot *store(ZParser *parser) {
-    ZParserSnapshot *self = zalloc(parser->allocator, ZParserSnapshot);
-    (*self) = (ZParserSnapshot){
+ZParserSnapshot store(ZParser *parser) {
+    // ZParserSnapshot *self = zalloc(parser->allocator, ZParserSnapshot);
+    // (*self) = (ZParserSnapshot){
+    return (ZParserSnapshot){
         .stream         = parser->source,
         .streamIndex    = parser->source->current,
         .tokenIndex     = parser->tokenIndex,
         .last           = parser->last
     };
-    return self;
+    // return self;
 }
 
-void undo(ZParser *parser, ZParserSnapshot *snap) {
-    parser->source          = snap->stream;
-    parser->source->current = snap->streamIndex;
-    parser->tokenIndex      = snap->tokenIndex;
-    parser->last            = snap->last;
+void undo(ZParser *parser, ZParserSnapshot snap) {
+    parser->source          = snap.stream;     // snap->stream;
+    parser->source->current = snap.streamIndex;// snap->streamIndex;
+    parser->tokenIndex      = snap.tokenIndex; // snap->tokenIndex;
+    parser->last            = snap.last;       // snap->last;
 }
 
 

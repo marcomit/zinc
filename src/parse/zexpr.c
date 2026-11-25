@@ -270,7 +270,7 @@ static ZNode *parseExtractValue(ZParser *parser, ZNode *previous) {
 }
 
 static ZNode *parsePostfixOper(ZParser *parser, ZNode *previous) {
-    ZParserSnapshot *snap = store(parser);
+    ZParserSnapshot snap = store(parser);
     ZNode *res = NULL;
 
     ZToken *tok = peek(parser);
