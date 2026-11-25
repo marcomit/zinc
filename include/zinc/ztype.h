@@ -119,11 +119,6 @@ struct ZType {
 
         ZType *typeType;
     };
-
-    /* Future implementation:
-     * Constant values for now are not checked in the semantic analyzer.
-     * So you can assign a value to a constant variable. */
-    bool constant;
 };
 
 ZType *maketype(Allocator *, ZTypeKind);

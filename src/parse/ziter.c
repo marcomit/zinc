@@ -12,14 +12,6 @@ ZParser *makeparser(Allocator *allocator, ZState *state, ZFile *file) {
     return self;
 }
 
-ZNode *makenode(Allocator *allocator, ZNodeType type) {
-    ZNode *self = zalloc(allocator, ZNode);
-    *self = (ZNode){ 0 };
-    self->type = type;
-
-    return self;
-}
-
 ZInterpolation *makeinterpolation(Allocator *allocator, ZInterpolationType type, void *ptr) {
     ZInterpolation *self    = zalloc(allocator, ZInterpolation);
     self->expr              = ptr;
@@ -52,13 +44,6 @@ ZNode *setspanfrom(ZParser *parser, ZNode *node, ZNode *left) {
     (void)left;
     return node;
 #endif
-}
-
-ZType *maketype(Allocator *allocator, ZTypeKind kind) {
-    ZType *self = zalloc(allocator, ZType);
-    *self = (ZType){ 0 };
-    self->kind = kind;
-    return self;
 }
 
 ZType *makePrimitiveType(Allocator *allocator, ZTokenType type) {
@@ -186,22 +171,23 @@ bool isValidToken(ZParser *parser, ZTokenType *validTokens, size_t len) {
     return false;
 }
 
-ZParserSnapshot *store(ZParser *parser) {
-    ZParserSnapshot *self = zalloc(parser->allocator, ZParserSnapshot);
-    (*self) = (ZParserSnapshot){
+ZParserSnapshot store(ZParser *parser) {
+    // ZParserSnapshot *self = zalloc(parser->allocator, ZParserSnapshot);
+    // (*self) = (ZParserSnapshot){
+    return (ZParserSnapshot){
         .stream         = parser->source,
         .streamIndex    = parser->source->current,
         .tokenIndex     = parser->tokenIndex,
         .last           = parser->last
     };
-    return self;
+    // return self;
 }
 
-void undo(ZParser *parser, ZParserSnapshot *snap) {
-    parser->source          = snap->stream;
-    parser->source->current = snap->streamIndex;
-    parser->tokenIndex      = snap->tokenIndex;
-    parser->last            = snap->last;
+void undo(ZParser *parser, ZParserSnapshot snap) {
+    parser->source          = snap.stream;     // snap->stream;
+    parser->source->current = snap.streamIndex;// snap->streamIndex;
+    parser->tokenIndex      = snap.tokenIndex; // snap->tokenIndex;
+    parser->last            = snap.last;       // snap->last;
 }
 
 

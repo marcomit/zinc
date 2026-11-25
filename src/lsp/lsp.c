@@ -101,9 +101,12 @@ int main(void) {
     log_open();
     log_fmt("START", "zinc-lsp started");
 
-    LspContext ctx = { 0 };
     Allocator *allocator = getArenaAllocator();
-    ctx.allocator = allocator;
+    LspContext *ctx = copy(allocator, ((LspContext){
+        .allocator  = allocator,
+        .state      = makestate()
+    }));
+    ctx->state->pool = pool_create(allocator, 0);
 
     for (;;) {
         size_t len = 0;
@@ -111,14 +114,16 @@ int main(void) {
         if (!body) break;
 
         log_msg("RECV", body, len);
-        ctx.root = JsonDecode(allocator, body);
-        LspResponse *result = handle_message(&ctx);
+        ctx->root = JsonDecode(allocator, body);
+        LspResponse *result = handle_message(ctx);
 
         if (result) lsp_send(result->response);
-        JsonFree(allocator, ctx.root);
+        JsonFree(allocator, ctx->root);
     }
 
-    free(ctx.allocator);
+    pool_destroy(ctx->state->pool);
+    freestate(ctx->state);
+    adestroy(ctx->allocator);
 
     return 0;
 }

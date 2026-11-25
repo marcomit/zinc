@@ -122,8 +122,8 @@ ZToken *consume(ZParser *);
 bool match(ZParser *, ZTokenType);
 ZNode *setspan(ZParser *, ZNode *, ZToken *);
 ZNode *setspanfrom(ZParser *, ZNode *, ZNode *);
-ZParserSnapshot *store(ZParser *);
-void undo(ZParser *, ZParserSnapshot *);
+ZParserSnapshot store(ZParser *);
+void undo(ZParser *, ZParserSnapshot);
 void pushErrorCheckpoint(ZParser *);
 void commitErrors(ZParser *);
 void rollbackErrors(ZParser *);
@@ -155,7 +155,7 @@ static inline void sinchronize(ZParser *parser, ZTokenType opening, ZTokenType c
     }
 
 #define tryParse(p, func) ({                                                    \
-    ZParserSnapshot *saved = store(p);                                          \
+    ZParserSnapshot saved = store(p);                                          \
     pushErrorCheckpoint(p);                                                     \
     let res = (func);                                                           \
     if (!res) {                                                                 \

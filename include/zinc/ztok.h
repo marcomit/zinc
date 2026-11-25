@@ -4,6 +4,7 @@
 #include "base.h"
 #include "zmem.h"
 #include "zforward.h"
+#include "zconfig.h"
 
 typedef enum {
 

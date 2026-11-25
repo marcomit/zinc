@@ -1534,9 +1534,9 @@ static ZType *resolveTypeStatic(
 }
 
 #if Z_LSP
-static ZThreadSem *findLocalSemantic(ZSemantic *ctx, ZNode *module) {
+static ZThreadSem *findLocalSemantic(ZSemantic *ctx, ZFile *module_file) {
     for (usize i = 0; i < veclen(ctx->scopes); i++)
-        if (ctx->scopes[i]->module == module)
+        if (ctx->scopes[zfile_id(module_file)]->file == module_file)
             return ctx->scopes[i]->ctx;
     return NULL;
 }
@@ -1679,12 +1679,12 @@ static void listInstance(ZThreadSem *ctx, ZType *type, ZMemberFn fn, void *ud) {
 }
 
 void zforEachMember(ZSemantic *ctx,
-                    ZNode *module,
+                    ZFile *file,
                     ZNode *member,
                     ZMemberFn fn,
                     void *ud) {
-    if (!ctx || !module || !member || member->type != NODE_MEMBER) return;
-    ZThreadSem *sem = findLocalSemantic(ctx, module);
+    if (!ctx || !file || !member || member->type != NODE_MEMBER) return;
+    ZThreadSem *sem = findLocalSemantic(ctx, file);
     if (!sem) return;
 
     ZNode *obj = member->memberAccess.object;
