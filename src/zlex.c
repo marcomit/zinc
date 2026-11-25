@@ -10,15 +10,10 @@
 #define FNV_OFFSET 2166136261u
 #define FNV_PRIME    16777619u
 
-#define HASHMAP_TOK_LEN 256
-#define HASHMAP_TOK_MASK (HASHMAP_TOK_LEN - 1)
-
 typedef struct {
-    ZState *state;
-
-    ZFile *file;
-    /* Pointer to the entire file */
-    char *program;
+    Allocator   *allocator;
+    ZState      *state;
+    ZFile       *file;
 
     /* Pointer to the current text */
     char *current;
@@ -38,16 +33,6 @@ typedef struct {
     /* Track the depth of {} brackets, used for string interpolation. */
     i64 depth;
 } ZLexer;
-
-typedef struct {
-    const char *keyword;
-    ZTokenType type;
-} KeywordEntry;
-
-/* hashmap with fixed size.
- * The fixed size is not a problem because the entries are limited
- * to the number of symbols (defined in ztok.def). */
-static KeywordEntry keywordEntries[HASHMAP_TOK_LEN];
 
 u16 ZTokenMask[] = {
 #define DEF(name, n, masks) [name] = (u16)masks,
@@ -94,49 +79,10 @@ u32 hashStr(const char *buff, size_t len) {
     return hash;
 }
 
-static KeywordEntry keywords[] = {
-    #define DEF(id, str, _) { str, id },
-
-    #define TOK_FLOWS
-    #define TOK_TYPES
-
-    #include "ztok.def"
-
-    #undef TOK_TYPES
-    #undef TOK_FLOWS
-
-    #undef DEF
-};
-
-static void initKeywords() {
-    static bool initialized = false;
-    if (initialized) return;
-    initialized = true;
-    usize len = sizeof(keywords) / sizeof(keywords[0]);
-    for (size_t i = 0; i < len; i++) {
-        const char *name = keywords[i].keyword;
-        u32 hash = hashStr(name, strlen(name)) & HASHMAP_TOK_MASK;
-
-        while (keywordEntries[hash].keyword != NULL) {
-            hash = (hash + 1) & HASHMAP_TOK_MASK;
-        }
-        keywordEntries[hash].keyword = keywords[i].keyword;
-        keywordEntries[hash].type = keywords[i].type;
-    }
-}
-
-ZTokenType findKeyword(const char *ident, size_t len) {
-    u32 hash = hashStr(ident, len) & HASHMAP_TOK_MASK;
-
-    while (keywordEntries[hash].keyword != NULL) {
-        if (strlen(keywordEntries[hash].keyword) == len &&
-                memcmp(keywordEntries[hash].keyword, ident, len) == 0) {
-            return keywordEntries[hash].type;
-        }
-        hash = (hash + 1) & HASHMAP_TOK_MASK;
-    }
-
-    return TOK_IDENT;
+ZTokenType findKeyword(ZState *state, const char *ident, size_t len) {
+    zsv sv = zsv_from(ident, len);
+    ZTokenType *t = mapget(state->keywords, sv);
+    return t ? *t : TOK_IDENT;
 }
 
 ZToken *maketoken(Allocator *allocator, ZTokenType type, char *start, char *end) {
@@ -316,7 +262,7 @@ static ZToken **scanInterpolatedString(ZLexer *l) {
     i64 baseDepth = l->depth;
 
     ZToken *startInterp = maketoken(
-        l->state->allocator, TOK_STR_START, l->current, l->current+1
+        l->allocator, TOK_STR_START, l->current, l->current+1
     );
     next(l);
     l->depth++;
@@ -337,7 +283,7 @@ static ZToken **scanInterpolatedString(ZLexer *l) {
 }
 
 static ZToken *_scanString(ZLexer *l, const char *begin, const char *end, bool nl_check) {
-    Allocator *a = l->state->allocator;
+    Allocator *a = l->allocator;
     usize blen = strlen(begin), elen = strlen(end);
     bool interpolated = *l->current == '#';
     if (interpolated) next(l);
@@ -446,12 +392,12 @@ static ZToken *scanRune(ZLexer *l) {
     src++;
 
     l->current = src;
-    return makeRune(l->state->allocator, cp, start, src);
+    return makeRune(l->allocator, cp, start, src);
 }
 
 /*TODO: Replace the else-if chain with the trie. */
 static ZToken *scanSymbol(ZLexer *l) {
-    Allocator *a = l->state->allocator;
+    Allocator *a = l->allocator;
     ZToken *sym = NULL;
     if (false) { /* Empty if statement only for macro definition. */ }
     #define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) {         \
@@ -496,7 +442,7 @@ static ZToken *scanHexNumber(ZLexer *l) {
     unsigned long long value = strtoull(start, NULL, 16);
     if (errno == ERANGE) zlog(l->state, lastToken(l), Z1005, start);
 
-    return makeinteger(l->state->allocator, (i64)value, start, l->current);
+    return makeinteger(l->allocator, (i64)value, start, l->current);
 }
 
 static ZToken *scanBinNumber(ZLexer *l) {
@@ -504,7 +450,7 @@ static ZToken *scanBinNumber(ZLexer *l) {
     next(l); next(l);
     char *start = l->current;
 
-    Allocator *a = l->state->allocator;
+    Allocator *a = l->allocator;
     while (*l->current == '0' || *l->current == '1') next(l);
     if (start == l->current) {
         ZToken *tok = maketoken(a, TOK_INT_LIT, start, l->current);
@@ -561,14 +507,14 @@ static ZToken *scanNumber(ZLexer *l) {
         errno = 0;
         double value = strtod(start, NULL);
         if (errno == ERANGE) zlog(l->state, lastToken(l), Z1007, start);
-        return makefloat(l->state->allocator, value, start, l->current);
+        return makefloat(l->allocator, value, start, l->current);
     }
 
     errno = 0;
     long long value = strtoll(start, NULL, 10);
     if (errno == ERANGE) zlog(l->state, lastToken(l), Z1005, start);
 
-    return makeinteger(l->state->allocator, value, start, l->current);
+    return makeinteger(l->allocator, value, start, l->current);
 }
 
 static ZToken *scanLiteral(ZLexer *l) {
@@ -578,15 +524,15 @@ static ZToken *scanLiteral(ZLexer *l) {
     while (isalnum(*l->current) || *l->current == '_') next(l);
 
     size_t len = l->current - start;
-    ZTokenType type = findKeyword(start, len);
+    ZTokenType type = findKeyword(l->state, start, len);
 
     if (type == TOK_IDENT) {
-        return makeident(l->state->allocator, zstrndup(l->state->allocator, start, len), start, l->current);
+        return makeident(l->allocator, zstrndup(l->allocator, start, len), start, l->current);
     }
 
     // Also set str field for keywords so getMacroByName can compare them
-    ZToken *tok = maketoken(l->state->allocator, type, start, l->current);
-    tok->str = zstrndup(l->state->allocator, start, len);
+    ZToken *tok = maketoken(l->allocator, type, start, l->current);
+    tok->str = zstrndup(l->allocator, start, len);
     return tok;
 }
 
@@ -626,20 +572,21 @@ static void skipMultilineComments(ZLexer *l) {
 #endif
 
 #if Z_LSP
-    addToken(l, maketoken(l->state->allocator, TOK_COMMENT, start, end));
+    addToken(l, maketoken(l->allocator, TOK_COMMENT, start, end));
 #endif
 
     next(l); next(l);
 }
 
-ZLexer *makelexer(ZState *state, ZFile *file) {
-    ZLexer *self = zalloc(state->allocator, ZLexer);
+ZLexer *makelexer(Allocator *allocator, ZState *state, ZFile *file) {
+    ZLexer *self = zalloc(allocator, ZLexer);
     char *program = zfile_content(file);
+
+    self->allocator     = allocator;
     self->row           = 1;
     self->col           = 0;
     self->tokens        = NULL;
     self->file          = file;
-    self->program       = program;
     self->current       = program;
     self->line          = program;
     self->state         = state;
@@ -689,11 +636,9 @@ static bool emitNextToken(ZLexer *l, ZToken **curr) {
     return true;
 }
 
-static ZToken **scanFile(ZState *state, ZFile *f) {
-    ZLexer *l = makelexer(state, f);
+static ZToken **scanFile(Allocator *allocator, ZState *state, ZFile *f) {
+    ZLexer *l = makelexer(allocator, state, f);
     ZToken *curr;
-
-    initKeywords();
 
     while (emitNextToken(l, &curr)) {
         if (!curr) {
@@ -707,12 +652,12 @@ static ZToken **scanFile(ZState *state, ZFile *f) {
     return l->tokens;
 }
 
-ZToken **ztokenizeSource(ZState *state, char *source) {
+ZToken **ztokenizeSource(Allocator *allocator, ZState *state, char *source) {
     state->currentPhase = Z_PHASE_LEXICAL;
-    ZFile *f = zfile_create(state->allocator, NULL, source);
-    return scanFile(state, f);
+    ZFile *f = zfile_create(allocator, NULL, source);
+    return scanFile(allocator, state, f);
 }
 
-ZToken **ztokenize(ZState *state, ZFile *f) {
-    return scanFile(state, f);
+ZToken **ztokenize(Allocator *allocator, ZState *state, ZFile *f) {
+    return scanFile(allocator, state, f);
 }

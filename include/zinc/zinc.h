@@ -32,6 +32,6 @@
 #include "zlsp.h"
 #endif
 
-ZNode *zparse(ZState *, ZFile *);
+void zparse(ZState *, ZFile *);
 
 #endif // ZINC_H

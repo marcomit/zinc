@@ -84,85 +84,6 @@ static char *getHomePath(Allocator *allocator) {
 
 #endif
 
-char *stoken(ZToken *token) {
-    if (!token) return "(null)";
-    switch(token->type) {
-    case TOK_STR_START: return "{";
-    case TOK_STR_END:   return "}";
-    case TOK_STREAM: {
-        char *buff = NULL;
-        for (usize i = 0; i < veclen(token->stream); i++) {
-            char *s = stoken(token->stream[i]);
-            vecunion(buff, s, strlen(s));
-        }
-        return buff;
-    }
-    case TOK_STR_LIT:
-    case TOK_IDENT:     return token->str;
-
-    #if Z_LSP
-    case TOK_COMMENT:
-    #endif
-    case TOK_INT_LIT:
-    case TOK_RUNE_LIT:
-    case TOK_FLOAT_LIT: return zstrndup(arenaAllocator, token->start, token->end - token->start);
-    #define DEF(id, str, _) case id: return str;
-
-    #define TOK_FLOWS
-    #define TOK_TYPES
-    #define TOK_SYMBOLS
-
-    #include "ztok.def"
-
-    #undef TOK_SYMBOLS
-    #undef TOK_TYPES
-    #undef TOK_FLOWS
-
-    #undef DEF
-
-
-    default:
-        break;
-    }
-
-    return "(not found)";
-}
-
-char *tokname(ZTokenType type) {
-
-    switch (type) {
-#define DEF(id, str, _) case id: return str;
-
-    #define TOK_FLOWS
-    #define TOK_TYPES
-    #define TOK_SYMBOLS
-
-    #include "ztok.def"
-
-    #undef TOK_SYMBOLS
-    #undef TOK_TYPES
-    #undef TOK_FLOWS
-
-    #undef DEF
-        default: return NULL;
-    }
-}
-
-void printToken(ZToken *token) {
-    char *tok = stoken(token);
-    printf("%s", tok);
-}
-
-
-void printTokens(ZToken **tokens) {
-    printf("==== Tokens: %zu ====\n", veclen(tokens));
-    for (usize i = 0; i < veclen(tokens); i++) {
-        if (tokens[i]->newlineBefore) printf("\n");
-        else printf(" ");
-        printToken(tokens[i]);
-    }
-    printf("\n==== End tokens ====\n");
-}
 
 static void _stype(ZType *type, char **buff) {
     if (!type) {
@@ -915,6 +836,36 @@ void printScope(ZScope *scope) {
 }
 extern ZNode *LangItems[Z_LANG_COUNT];
 
+typedef struct {
+    const char *key;
+    ZTokenType type;
+} KeywordEntry;
+
+static const KeywordEntry Keywords[] = {
+    #define DEF(id, str, _) { str, id },
+
+    #define TOK_FLOWS
+    #define TOK_TYPES
+
+    #include "ztok.def"
+
+    #undef TOK_TYPES
+    #undef TOK_FLOWS
+
+    #undef DEF
+    { NULL, 0 }
+};
+
+static void init_keywords(ZState *state) {
+    mapinitzsv(state->keywords, state->allocator);
+    const KeywordEntry *entry = Keywords;
+    while (entry->key) {
+        zsv sv = zsv_from(entry->key, strlen(entry->key));
+        mapput(state->keywords, sv, entry->type);
+        entry++;
+    }
+}
+
 /* Everything a compilation allocates lives in its own arena (plus one arena per
  * module, see ZModuleAllocator), so freestate releases it all at once. */
 ZState *makestate() {
@@ -929,7 +880,8 @@ ZState *makestate() {
     self->homePath              = getHomePath(allocator);
     self->canAdvance            = true;
     self->allocator             = allocator;
-    self->fileTable             = ft_create(allocator);
+    self->fileTable             = ft_create();
+    init_keywords(self);
 
 #if Z_COMPILER
     self->cli.emit              = Z_EMIT_EXE;
@@ -956,22 +908,6 @@ void freestate(ZState *state) {
     afree(heapAllocator, state);
 }
 
-char *readfile(Allocator *a, char *filename) {
-    FILE *fd = fopen(filename, "rb");
-
-    if (!fd) return NULL;
-
-    fseek(fd, 0, SEEK_END);
-    i64 flen = ftell(fd);
-    fseek(fd, 0, SEEK_SET);
-    char *buff = aalloc(a, flen + 1);
-    fread(buff, flen, 1, fd);
-
-    buff[flen] = 0;
-    fclose(fd);
-    return buff;
-}
-
 /* Format a printf-style message into a freshly allocated, NUL-terminated
  * string. Does not consume `args` destructively beyond a single pass. */
 static char *vformat(Allocator *a, const char *fmt, va_list args) {
@@ -984,6 +920,14 @@ static char *vformat(Allocator *a, const char *fmt, va_list args) {
     char *out = aalloc(a, (size_t)len + 1);
     if (out) vsnprintf(out, (size_t)len + 1, fmt, args);
     return out;
+}
+
+static _Thread_local ZLog ***logSink = NULL;
+
+ZLog ***setLogSink(ZLog ***sink) {
+    ZLog ***prev = logSink;
+    logSink = sink;
+    return prev;
 }
 
 ZLog *vmakelog( ZState *state,
@@ -1008,7 +952,8 @@ ZLog *vmakelog( ZState *state,
 
     log->message = vformat(state->allocator, fmt, args);
     log->phase = state->currentPhase;
-    vecpush(state->logs, log);
+    if (logSink) vecpush(*logSink, log);
+    else vecpush(state->logs, log);
 
     return log;
 }
@@ -1065,6 +1010,14 @@ ZLog *_log(ZState *state, ZToken *tok, ZDiagCode code,
     return log;
 }
 
+void flushLogs(ZState *state, ZLog **logs) {
+    if (veclen(logs) == 0) return;
+    pthread_mutex_lock(&logLock);
+    for (usize i = 0; i < veclen(logs); i++)
+        vecpushwith(state->logs, logs[i], state->allocator);
+    pthread_mutex_unlock(&logLock);
+}
+
 ZLog *emitHint(ZLog *log, const char *fmt, ...) {
     if (!log) return log;
     pthread_mutex_lock(&logLock);
@@ -1109,24 +1062,24 @@ static bool isAbsolutePath(const char *path) {
     return path[0] && path[1] == ':' && (path[2] == '/' || path[2] == '\\');
 }
 
-static char *joinPath(ZState *state, const char *dir, const char *module, const char *suffix) {
+static char *joinPath(Allocator *a, ZState *state, const char *dir, const char *module, const char *suffix) {
     usize len = strlen(dir) + 1 + strlen(module) + strlen(suffix) + 1;
-    char *out = znalloc(state->allocator, char, len);
+    char *out = znalloc(a, char, len);
     if (*dir)   snprintf(out, len, "%s%c%s%s", dir, sep, module, suffix);
     else        snprintf(out, len, "%s%s", module, suffix);
     return out;
 }
 
-static char *packagesDir(ZState *state) {
-    return joinPath(state, state->homePath ? state->homePath : "", ".zinc", "/packages");
+static char *packagesDir(Allocator *a, ZState *state) {
+    return joinPath(a, state, state->homePath ? state->homePath : "", ".zinc", "/packages");
 }
 
 /* Tries <dir>/<module>/lib.zn, then <dir>/<module>.zn. */
-static char *resolveIn(ZState *state, const char *dir, const char *module) {
-    char *path = joinPath(state, dir, module, "/" ENTRY_IMPORT_FILE ".zn");
+static char *resolveIn(Allocator *a, ZState *state, const char *dir, const char *module) {
+    char *path = joinPath(a, state, dir, module, "/" ENTRY_IMPORT_FILE ".zn");
     if (fileExists(path)) return path;
 
-    path = joinPath(state, dir, module, ".zn");
+    path = joinPath(a, state, dir, module, ".zn");
     if (fileExists(path)) return path;
     return NULL;
 }
@@ -1138,18 +1091,22 @@ static char *resolveIn(ZState *state, const char *dir, const char *module) {
  *   3. ~/.zinc/packages/<module>/lib.zn or ~/.zinc/packages/<module>.zn
  * It returns null if none of them exists.
  * */
-char *resolveImport(ZState *state, char *filename, const char *module) {
-    if (isAbsolutePath(module)) return resolveIn(state, "", module);
+char *resolveImport(Allocator *a, ZState *state, char *filename, const char *module) {
+    if (isAbsolutePath(module)) return resolveIn(a, state, "", module);
 
     char *dir = ".";
     if (filename) {
-        dir = dirname(zstrdup(state->allocator, filename));
+        dir = zstrdup(a, filename);
+        char *slash = strrchr(dir, sep);
+        if (!slash) dir = ".";
+        else if (slash == dir) slash[1] = 0;
+        else slash[0] = 0;
     }
 
-    char *path = resolveIn(state, dir, module);
+    char *path = resolveIn(a, state, dir, module);
     if (path) return path;
 
-    return resolveIn(state, packagesDir(state), module);
+    return resolveIn(a, state, packagesDir(a, state), module);
 }
 
 static void printLineHighlight(ZState *state, ZToken *tok, const char *color) {

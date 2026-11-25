@@ -74,6 +74,7 @@ typedef struct ZParser {
 
     /* Used to track temporary errors and find a valid path. */
     usize           *errstack;
+    ZLog            **logs;
 
     ZMacroParser    macroParser;
 
@@ -168,6 +169,7 @@ static inline void sinchronize(ZParser *parser, ZTokenType opening, ZTokenType c
 
 typedef ZNode *(*ZParseFunc)(ZParser *);
 
+void parseFile                      (Allocator *, ZState *, ZFile *);
 ZType *parseType                    (ZParser *);
 ZNode *parseExpr                    (ZParser *);
 ZNode *parseStmt                    (ZParser *);
@@ -218,7 +220,7 @@ ZNode *parseField(ZParser *);
 ZNode **parseGenericList(ZParser *, ZTokenType, ZTokenType, ZParseFunc, bool);
 ZNode **parseCapabilityList(ZParser *);
 
-ZParser             *makeparser             (ZState *, ZToken **);
+ZParser             *makeparser             (Allocator *, ZState *, ZFile *);
 ZVarDestructPattern *makeVarDestructPattern (Allocator *, int);
 ZVarDestructPattern *makeDestructIdent      (Allocator *, ZToken *);
 ZType               **parseTypeList         (ZParser *, ZTokenType, ZTokenType);

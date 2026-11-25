@@ -162,7 +162,7 @@ static void initState(ZState *state) {
         state->cli.output = base;
     }
 
-    state->entryFile = ft_insert(state->allocator, state->fileTable, filename);
+    state->entryFile = ft_insert(state->allocator, state->fileTable, filename, NULL);
 }
 
 static ZErrorCode pipeline(ZState *state) {
@@ -178,12 +178,15 @@ static ZErrorCode pipeline(ZState *state) {
     if (!initTargetMachine(state)) return Z_CODEGEN_ERROR;
     initPrimitiveTypes(state);
 
-    ZNode *root = zparse(state, state->entryFile);
+    zparse(state, state->entryFile);
 
     if (!canAdvance(state)) return Z_SYNTAX_ERROR;
-    zanalyze(state, root);
+    zanalyze(state);
 
-    if (state->cli.dumpAst) printNode(root, 0);
+    if (state->cli.dumpAst) {
+        ZNode *root = zfile_root(state->entryFile);
+        printNode(root, 0);
+    }
 
     if (!canAdvance(state)) return Z_SEMANTIC_ERROR;
 
@@ -199,7 +202,7 @@ static ZErrorCode pipeline(ZState *state) {
             elapsed, format);
     }
 
-    zcompile(state, root, state->cli.output);
+    zcompile(state, state->cli.output);
 
     if (!canAdvance(state)) return Z_CODEGEN_ERROR;
 
@@ -333,7 +336,6 @@ bool loadOptions(ZState *state, const ZCliCommand *cmd, int argc, char **argv) {
         case OPT_SKIP_LLVM_VALIDATION:  SET_FLAG(state->cli.skipLLVMValidation, "Skip llvm validation");    break;
         case OPT_NOSTDLIB:              SET_FLAG(state->cli.nostdlib,           "No libc");                 break;
         case OPT_DUMP_AST:              SET_FLAG(state->cli.dumpAst,            "Dump ast");                break;
-        case OPT_DUMP_TOKENS:           SET_FLAG(state->cli.dumpTokens,         "Dump tokens");             break;
         case OPT_NOINJECT:              SET_FLAG(state->cli.noInject,           "No inject");               break;
         case OPT_NOCOLOR:               SET_FLAG(state->cli.noColor,            "No color");                break;
         case OPT_XLINKER:               vecpush(state->cli.extraArgs, zstrdup(state->allocator, optarg));   break;

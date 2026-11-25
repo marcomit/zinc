@@ -1,11 +1,14 @@
+#include "zinc/ztok.h"
 #include "zparse.h"
 
-ZParser *makeparser(ZState *state, ZToken **tokens) {
-    ZParser *self                       = zalloc(state->allocator, ZParser);
-    *self                               = (ZParser){ 0 };
-    self->source                        = maketokstream(state->allocator, tokens, NULL);
-    self->state                         = state;
-    self->allocator                     = state->allocator;
+ZParser *makeparser(Allocator *allocator, ZState *state, ZFile *file) {
+    ZParser *self                       = zalloc(allocator, ZParser);
+    *self                               = (ZParser){
+        .state      = state,
+        .allocator  = allocator,
+        .source     = NULL, // maketokstream(allocator, tokens, NULL),
+        .file       = file,
+    };
     return self;
 }
 
@@ -156,7 +159,7 @@ bool match(ZParser *parser, ZTokenType type) {
 }
 
 void pushErrorCheckpoint(ZParser *parser) {
-    usize errlen = veclen(parser->state->logs);
+    usize errlen = veclen(parser->logs);
     vecpush(parser->errstack, errlen);
     parser->depth++;
 }
@@ -171,7 +174,7 @@ void commitErrors(ZParser *parser) {
 void rollbackErrors(ZParser *parser) {
     if (parser->depth > 0) {
         usize checkpoint = vecpop(parser->errstack);
-        while (veclen(parser->state->logs) > checkpoint) vecpop(parser->state->logs);
+        while (veclen(parser->logs) > checkpoint) vecpop(parser->logs);
         parser->depth--;
     }
 }

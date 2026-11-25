@@ -402,45 +402,30 @@ static ZNode *parseConst(ZParser *parser, bool public) {
     return var;
 }
 
-static ZNode **getCachedModule(ZParser *parser, char *filename) {
-    ZFile *f = ft_get(parser->state->fileTable, filename);
-    if (!f) return NULL;
-
-    ZNode *root = zfile_root(f);
-    return root ? root->module.root : NULL;
-}
-
 static ZNode *getModuleByName(
     ZParser *parser, char *module, ZToken *tok, bool public) {
     char *from = tok ? tok->filename : (char *)zfile_name(parser->file);
-    char *filename = resolveImport(parser->state, from, module);
+    char *filename = resolveImport(parser->allocator, parser->state, from, module);
     if (!filename) {
         zlog(parser->state, tok, Z203C, module);
         return NULL;
     }
 
-    ZFile *f                    = ft_get(parser->state->fileTable, filename);
-    ZNode *node                 = makenode(parser->allocator, NODE_MODULE);
-    if (f) {
-        node->module.name       = NULL;
-        node->module.root       = NULL;
-        node->module.cached     = getCachedModule(parser, filename);
-        node->module.pub        = public;
-        node->module.file       = f;
-        return node;
-    }
+    bool created = false;
+    ZFile *f                    = ft_insert(
+        parser->allocator, parser->state->fileTable, filename, &created
+    );
 
-    f = ft_insert(parser->allocator, parser->state->fileTable, filename);
     if (!f) {
         zlog(parser->state, tok, Z1009, filename, strerror(errno));
         return NULL;
     }
-    node = zparse(parser->state, f);
-    node->module.pub = public;
 
-    zfile_set_root(f, node);
-    node->module.cached = node->module.root;
+    if (created) parseFile(parser->allocator, parser->state, f);
 
+    ZNode *node         = makenode(parser->allocator, NODE_MODULE);
+    node->module.file   = f;
+    node->module.pub    = public;
     return node;
 }
 
@@ -873,30 +858,40 @@ ZNode *parse(ZParser *parser) {
     return res;
 }
 
-static ZNode *parseFile(ZState *state, ZFile *file) {
-    // if (ft_get(state->fileTable, zfile_name(file)))
-    //     return NULL;
+static void pool_worker(ZTaskCtx *task_ctx) {
+    ZParser *parser     = (ZParser *)task_ctx->ctx;
+    parser->allocator   = task_ctx->allocator;
+    useAllocator(task_ctx->allocator);
+    ZLog ***prevSink    = setLogSink(&parser->logs);
 
-    ZToken **tokens = ztokenize(state, file);
-    if (!canAdvance(state)) return NULL;
+    ZToken **tokens     = ztokenize(
+        parser->allocator, parser->state, parser->file
+    );
+    parser->source = maketokstream(parser->allocator, tokens, NULL);
 
-    if (!tokens) return NULL;
-    if (state->cli.dumpTokens) printTokens(tokens);
+    ZNode *root = NULL;
+    if (tokens) {
+        root = parseModule(parser);
+        if (canPeek(parser))
+            zlog(parser->state, peek(parser), Z203B, stoken(peek(parser)));
+    } else {
+        root = makenode(parser->allocator, NODE_MODULE);
+        root->module.file = parser->file;
+    }
 
+    zfile_set_root(parser->file, root);
 
-    ZParser *parser = makeparser(state, tokens);
-    parser->file = file;
-    ZNode *root = parseModule(parser);
-
-    if (canPeek(parser))
-        zlog(state, peek(parser), Z203B, stoken(peek(parser)));
-
-    return root;
+    setLogSink(prevSink);
+    flushLogs(parser->state, parser->logs);
 }
 
-ZNode *zparse(ZState *state, ZFile *file) {
+void parseFile(Allocator *a, ZState *state, ZFile *file) {
+    ZParser *parser     = makeparser(a, state, file);
+    pool_submit(state->pool, pool_worker, parser);
+}
+
+void zparse(ZState *state, ZFile *file) {
     state->currentPhase = Z_PHASE_SYNTAX;
-    ZNode *root = parseFile(state, file);
-    zfile_set_root(file, root);
-    return root;
+    parseFile(state->allocator, state, file);
+    pool_wait(state->pool);
 }

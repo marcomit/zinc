@@ -66,7 +66,7 @@ ZSymbol *makesymbol(Allocator *allocator, ZSymType kind) {
     return self;
 }
 
-ZSemantic *makesemantic(ZState *state, ZNode *root) {
+ZSemantic *makesemantic(ZState *state) {
     ZSemantic *self         = zalloc(state->allocator, ZSemantic);
     self->state             = state;
     self->scopes            = NULL;

@@ -6,7 +6,7 @@
 #include "znode.h"
 #include "zstate.h"
 
-void zcompile(ZState *, ZNode *, const char *);
+void zcompile(ZState *, const char *);
 usize typeSize(ZState *, ZType *);
 void validate(ZState *, ZNode *);
 bool initTargetMachine(ZState *);

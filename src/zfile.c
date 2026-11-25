@@ -3,7 +3,7 @@
 #include "zmem.h"
 #include "zstr.h"
 
-typedef ZMap(zsv, zstr) ZKeywordMap;
+#define ANON_FILE 0x21092005
 
 #define LOCK(ft) pthread_mutex_lock(&(ft)->mutex)
 #define UNLOCK(ft) pthread_mutex_unlock(&(ft)->mutex)
@@ -12,7 +12,6 @@ struct ZFile {
     Allocator   *allocator;
     const char  *filename;
     zstr        content;
-    ZKeywordMap words;
     ZNode       *root;
     u32         id;
 };
@@ -30,9 +29,7 @@ ZFile *zfile_create(Allocator *a, const char *filename, zstr content) {
         .allocator  = a,
         .filename   = filename,
         .content    = content,
-        .words      = NULL
     };
-    mapinitzsv(f->words, a);
     return f;
 }
 
@@ -53,21 +50,6 @@ ZNode *zfile_root(ZFile *file) {
 
 Allocator *zfile_allocator(ZFile *file) {
     return file ? file->allocator : NULL;
-}
-
-zstr zfile_get_keyword(ZFile *file, const char *word, usize len) {
-    zstr *val = mapget(file->words, zsv_new(word, len));
-    return val ? *val : NULL;
-}
-
-zstr zfile_insert_keyword(ZFile *file, const char *word, usize len) {
-    zstr *found = mapget(file->words, zsv_new(word, len));
-    if (found) return *found;
-
-    zstr s = NULL;
-    zs_catn(&s, word, len);
-    mapput(file->words, zsv_new(s, len), s);
-    return s;
 }
 
 ZFileTable *ft_create() {
@@ -109,10 +91,11 @@ void zfile_set_root(ZFile *file, ZNode *root) {
     if (file) file->root = root;
 }
 
-ZFile *ft_insert(Allocator *a, ZFileTable *ft, const char *filename) {
+ZFile *ft_insert(Allocator *a, ZFileTable *ft, const char *filename, bool *created) {
     LOCK(ft);
     ZFile *res = NULL;
     usize *index = mapget(ft->file_map, ZSV(filename));
+    bool c = false;
     if (index) {
         res = ft->files[*index];
         goto end;
@@ -127,8 +110,10 @@ ZFile *ft_insert(Allocator *a, ZFileTable *ft, const char *filename) {
     f->id = veclen(ft->files) - 1;
     mapput(ft->file_map, ZSV(f->filename), f->id);
     res = ft->files[f->id];
+    c = true;
 
 end:
+    if (created) *created = c;
     UNLOCK(ft);
     return res;
 }
@@ -141,12 +126,7 @@ zstr zfile_str(ZFile *f, u32 offset, u32 len) {
     return s;
 }
 
-// zstr zfile_tok(ZFile *f, ZToken *t) {
-//     return zfile_str(f, t->offset, t->len);
-// }
-
 void zfile_destroy(ZFile *file) {
-    mapfree(file->words);
     zs_free(file->content);
     afree(file->allocator, file);
 }
