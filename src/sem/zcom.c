@@ -4,17 +4,11 @@
 /* ================== Scope / Symbol helpers ================== */
 
 ZNode *makeNodeThread(ZThreadSem *ctx, ZNodeType type) {
-    ZNode *node = zalloc(ctx->allocator, ZNode);
-    *node = (ZNode){ 0 };
-    node->type = type;
-    return node;
+    return makenode(ctx->allocator, type);
 }
 
 ZType *makeTypeThread(ZThreadSem *ctx, ZTypeKind kind) {
-    ZType *type = zalloc(ctx->allocator, ZType);
-    *type = (ZType){ 0 };
-    type->kind = kind;
-    return type;
+    return maketype(ctx->allocator, kind);
 }
 
 ZToken *makeTokenThread(ZThreadSem *ctx, ZTokenType type, char *start) {
@@ -34,27 +28,28 @@ ZScope *makescope(Allocator *allocator, ZScope *parent, ZNode *node) {
     self->seen          = NULL;
     self->capabilities  = NULL;
 
-
     return self;
 }
 
 ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root) {
     Allocator *a            = ctx->state->allocator;
     ZThreadSem *self        = zalloc(a, ZThreadSem);
-
-    self->allocator         = a;
-    self->currentFunc       = NULL;
-    self->currentFuncRet    = NULL;
-    self->loopDepth         = 0;
-    self->semantic          = ctx;
-    self->state             = ctx->state;
-    self->global            = current;
-    self->local             = makescope(a, current, root);
-    self->current           = self->local;
-    self->root              = root;
-    self->funcs             = NULL;
-    self->exportedFuncs     = NULL;
-    self->discovered        = false;
+    ZScope *local           = makescope(a, current, root);
+    *self = (ZThreadSem){
+        .allocator      = a,
+        .currentFunc    = NULL,
+        .currentFuncRet = NULL,
+        .loopDepth      = 0,
+        .semantic       = ctx,
+        .state          = ctx->state,
+        .global         = current,
+        .local          = local,
+        .current        = local,
+        .root           = root,
+        .funcs          = NULL,
+        .exportedFuncs  = NULL,
+        .discovered     = false
+    };
 
     return self;
 }
@@ -73,7 +68,6 @@ ZSemantic *makesemantic(ZState *state) {
     self->scopes            = NULL;
     return self;
 }
-
 
 void putSymbol(ZThreadSem *ctx, ZSymbol *symbol) {
     ZScope *scope = symbol->isPublic ? ctx->global : ctx->current;
@@ -1051,8 +1045,6 @@ i32 sumTypeIndexOf(ZType *sum, ZType *concrete) {
     return -1;
 }
 
-
-
 /*
  * Returns true if `type` embeds `root` by value (not through a pointer),
  * which would make the struct infinitely large. `seen` is a visited-struct
@@ -1123,8 +1115,8 @@ static ZCapabilityCast lookupScopedCapability(ZThreadSem *ctx, ZType *required) 
     return c;
 }
 
-ZCapabilityCast *analyzeCapabilities(ZThreadSem *ctx, ZToken *start, ZType **capabilities) {
-    ZCapabilityCast *capabilityRefs = NULL;
+vec(ZCapabilityCast) analyzeCapabilities(ZThreadSem *ctx, ZToken *start, ZType **capabilities) {
+    vec(ZCapabilityCast) capabilityRefs = NULL;
     for (usize i = 0; i < veclen(capabilities); i++) {
         ZType *old = capabilities[i];
         capabilities[i] = resolveTypeRef(ctx, old);

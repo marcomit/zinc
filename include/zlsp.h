@@ -25,19 +25,16 @@ typedef struct {
 } LspHandler;
 
 typedef struct {
-    const char  *uri;
-    const char  *src;
-    ZNode       *root;
-    ZToken      **tokens;
-    Allocator   *allocator;
-    ZSemantic   *semantic;
+    ZFile           *file;
+    ZSemantic       *semantic;
+    vec(ZToken *)   tokens;
 } LspModule;
 
 struct LspContext {
-    Json        *root;
-    LspModule   **modules;
-    Allocator   *allocator;
-    ZState      *state;
+    Json                *root;
+    vec(LspModule *)    *modules;
+    Allocator           *allocator;
+    ZState              *state;
 };
 
 struct LspResponse {
@@ -88,7 +85,7 @@ typedef void (*ZMemberFn)(
     void *ud);
 
 void zforEachMember(ZSemantic *ctx,
-                    ZNode *module,
+                    ZFile *file,
                     ZNode *member,
                     ZMemberFn fn,
                     void *ud);

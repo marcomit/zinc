@@ -15,7 +15,7 @@ typedef struct {
 // u32 imm;
 
 ZVMInstr *instr(ZLower *ctx, ZVMOp op, u16 dst, u16 a, u16 b, u32 imm) {
-    ZVMInstr *self = copy(ctx->allocator, ZVMInstr, ((ZVMInstr){
+    ZVMInstr *self = copy(ctx->allocator, ((ZVMInstr){
         .op = (u16)op,
         .pc = ctx->pc++,
         .dst = dst,

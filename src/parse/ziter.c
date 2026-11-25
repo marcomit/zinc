@@ -12,14 +12,6 @@ ZParser *makeparser(Allocator *allocator, ZState *state, ZFile *file) {
     return self;
 }
 
-ZNode *makenode(Allocator *allocator, ZNodeType type) {
-    ZNode *self = zalloc(allocator, ZNode);
-    *self = (ZNode){ 0 };
-    self->type = type;
-
-    return self;
-}
-
 ZInterpolation *makeinterpolation(Allocator *allocator, ZInterpolationType type, void *ptr) {
     ZInterpolation *self    = zalloc(allocator, ZInterpolation);
     self->expr              = ptr;
@@ -52,13 +44,6 @@ ZNode *setspanfrom(ZParser *parser, ZNode *node, ZNode *left) {
     (void)left;
     return node;
 #endif
-}
-
-ZType *maketype(Allocator *allocator, ZTypeKind kind) {
-    ZType *self = zalloc(allocator, ZType);
-    *self = (ZType){ 0 };
-    self->kind = kind;
-    return self;
 }
 
 ZType *makePrimitiveType(Allocator *allocator, ZTokenType type) {

@@ -20,12 +20,12 @@
     *__tmp = (T){ .allocator = a, __VA_ARGS__ };                                \
     __tmp;                                                                      \
 })
-#define copy(a, T, obj) ({                                                      \
-    T *__tmp = zalloc(a, T);                                                    \
-    memcpy(__tmp, &(obj), sizeof(T));                                           \
-    __tmp;                                                                      \
-})
 
+#define copy(a, obj) ({                                 \
+    __typeof__(obj) *__tmp = zalloc(a, __typeof__(obj));\
+    memcpy(__tmp, &(obj), sizeof *__tmp);               \
+    __tmp;                                              \
+})
 
 typedef struct Allocator {
 	void *(*alloc)(void *, usize);

@@ -113,52 +113,43 @@ LspResponse *handle_message(LspContext *ctx) {
 }
 
 inline int get_module(LspContext *ctx, const char *uri) {
-    LspModule **modules = ctx->modules;
-    for (usize i = 0; i < veclen(modules); i++)
-        if (strcmp(modules[i]->uri, uri) == 0)
-            return (int)i;
-    return -1;
+    ZFile *f = ft_get(ctx->state->fileTable, uri);
+    if (!f) return -1;
+    return (int)zfile_id(f);
 }
 
 inline void put_module(LspContext *ctx, LspModule *mod) {
-    int cached = get_module(ctx, mod->uri);
+    bool created = false;
+    ZFile *f = ft_insert(ctx->allocator, ctx->state->allocator, mod->file)
+    int cached = get_module(ctx, zfile_name(mod->file));
     if (cached != -1) {
         *ctx->modules[cached] = *mod;
     } else {
-        mod = copy(ctx->allocator, LspModule, *mod);
+        mod = copy(ctx->allocator, *mod);
         vecpushwith(ctx->modules, mod, ctx->allocator);
     }
 }
 
 void lsp_analyze(LspContext *ctx, const char *uri, char *text, int version) {
-    ZState *state   = makestate();
-    Allocator *prev = useAllocator(state->allocator);
-    uri     = zstrdup(state->allocator, (char *)uri);
-    text    = zstrdup(state->allocator, text);
+    uri     = zstrdup(ctx->allocator, (char *)uri);
+    text    = zstrdup(ctx->allocator, text);
     char *path = strncmp(uri, "file://", 7) == 0 ? (char *)uri + 7 : (char *)uri;
-    visit(state, path);
-    initPrimitiveTypes(state);
 
-    ZToken **tokens = ztokenizeSource(state, text);
-    ZNode *root     = zparse(state, tokens);
-    ZSemantic *sem  = NULL;
-    if (canAdvance(state)) {
-        sem = zanalyze(state, root);
-    }
+    ctx->state->entryFile = ft_insert(
+        ctx->allocator, ctx->state->fileTable, path, NULL
+    );
+
+    zparse(ctx->state, ctx->state->entryFile);
+
+    if (canAdvance(ctx->state)) zanalyze(ctx->state);
 
     put_module(ctx, &(LspModule){
-        .allocator  = state->allocator,
-        .uri        = zstrdup(state->allocator, (char *)uri),
-        .src        = zstrdup(state->allocator, text),
-        .root       = root,
-        .tokens     = tokens,
-        .semantic   = sem
+        .file       = ctx->state->entryFile,
+        .semantic   = NULL,
+        .tokens     = NULL
     });
 
-    freestate(ctx->state);
-    ctx->state = state;
     publish_diagnostics(ctx, uri, version);
-    useAllocator(prev);
 }
 
 typedef struct {
@@ -200,28 +191,28 @@ static ZVisitorState visit_position(ZNode *node, ZClientData data) {
 
 ZScope *scope_from_position(LspModule *mod, LspPosition pos) {
     ZPositionLookup res = {
-        .pos = pos, .path = NULL, .scope = NULL, mod->allocator
+        .pos = pos, .path = NULL, .scope = NULL, .allocator = zfile_allocator(mod->file)
     };
     ZVisitor v = {
         .visit = visit_position,
         .clientData = &res
     };
 
-    visitNode(&v, mod->root);
+    visitNode(&v, zfile_root(mod->file));
 
     return res.scope;
 }
 
 ZNode *node_from_position(LspModule *mod, LspPosition pos) {
     ZPositionLookup res = {
-        .pos = pos, .path = NULL, .scope = NULL, .allocator = mod->allocator
+        .pos = pos, .path = NULL, .scope = NULL, .allocator = zfile_allocator(mod->file)
     };
     ZVisitor v = {
         .visit = visit_position,
         .clientData = &res
     };
 
-    visitNode(&v, mod->root);
+    visitNode(&v, zfile_root(mod->file));
 
     return veclen(res.path) ? veclast(res.path) : NULL;
 }
@@ -280,21 +271,21 @@ ZNode *member_from_position(LspModule *mod, LspPosition pos) {
         .clientData = &res
     };
 
-    visitNode(&v, mod->root);
+    visitNode(&v, zfile_root(mod->file));
 
     return res.member;
 }
 
 LspPositionContext get_position_context(LspModule *mod, LspPosition pos) {
     ZPositionLookup res = {
-        .pos = pos, .path = NULL, .scope = NULL, .allocator = mod->allocator
+        .pos = pos, .path = NULL, .scope = NULL, .allocator = zfile_allocator(mod->file)
     };
     ZVisitor v = {
         .visit = visit_position,
         .clientData = &res
     };
 
-    visitNode(&v, mod->root);
+    visitNode(&v, zfile_root(mod->file));
 
     ZSymbol *symbol = NULL;
     if (res.scope && veclen(res.path) > 0) {
@@ -411,7 +402,7 @@ static bool token_touches(ZToken *tok, LspPosition pos) {
 
 
 static const char *line_prefix(LspModule *mod, LspPosition pos, usize *len) {
-    const char *s = mod->src;
+    const char *s = zfile_content(mod->file);
     if (!s) return NULL;
 
     for (int line = 0; line < pos.line; line++) {
@@ -439,14 +430,15 @@ static bool in_line_comment(const char *line, usize len) {
 
 static ZNode **path_from_position(LspModule *mod, LspPosition pos, ZScope **scope) {
     ZPositionLookup res = {
-        .pos = pos, .path = NULL, .scope = NULL, .allocator = mod->allocator
+        .pos = pos, .path = NULL, .scope = NULL,
+        .allocator = zfile_allocator(mod->file)
     };
     ZVisitor v = {
         .visit = visit_position,
         .clientData = &res
     };
 
-    visitNode(&v, mod->root);
+    visitNode(&v, zfile_root(mod->file));
 
     *scope = res.scope;
     return res.path;
@@ -462,7 +454,7 @@ static ZScope *module_scope(LspModule *mod) {
     ZSemantic *sem = mod->semantic;
     if (!sem) return NULL;
     for (usize i = 0; i < veclen(sem->scopes); i++)
-        if (sem->scopes[i]->module == mod->root)
+        if (sem->scopes[i]->file == mod->file)
             return sem->scopes[i]->ctx->global;
     return NULL;
 }
@@ -576,7 +568,13 @@ LspCompletionItem *get_completions(LspContext *ctx, LspModule *module, LspComple
         break;
     case LSP_COMPLETION_MEMBER:
     case LSP_COMPLETION_STATIC:
-        zforEachMember(module->semantic, module->root, cc.target, add_item, &items);
+        zforEachMember(
+            module->semantic,
+            module->file,
+            cc.target,
+            add_item,
+            &items
+        );
         break;
     }
     return items;
@@ -612,7 +610,7 @@ Json *lsp_get_definition(LspModule *mod, LspPositionContext p) {
 
     if (!source) return NULL;
 
-    Allocator *a = mod->allocator;
+    Allocator *a = zfile_allocator(mod->file);
     Json *response = JsonMap(a, NULL);
     JsonSet(a, response, "uri", JsonStringFmt(a, "file://%s", source->filename));
     JsonSet(a, response, "range", range_from_token(a, source));

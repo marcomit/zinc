@@ -45,7 +45,7 @@ static ZVMStackRef makestack(Allocator *a) {
     buffer = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     #endif
     if (!buffer) return NULL;
-    return copy(a, ZVMStack, ((ZVMStack){
+    return copy(a, ((ZVMStack){
         .buffer = buffer,
         .size   = DEFAULT_STACK_SIZE,
         .sp     = 0
@@ -61,7 +61,7 @@ void ZVMReset(ZVMRef vm) {
 }
 
 ZVMRef ZVMInit(Allocator *a, ZState *state, ZMIRModuleRef *modules) {
-    return copy(a, ZVirtualMachine, ((ZVirtualMachine){
+    return copy(a, ((ZVirtualMachine){
         .modules    = modules,
         .stack      = makestack(a)
     }));

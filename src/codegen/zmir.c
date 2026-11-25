@@ -2,7 +2,7 @@
 #include "zmem.h"
 
 #define CHECK_KIND(t, k) ((t) && (t)->kind == (k))
-#define ZMIRValueNew(a, ...) copy(a, ZMIRValue, ((ZMIRValue) { __VA_ARGS__ }))
+#define ZMIRValueNew(a, ...) copy(a, ((ZMIRValue) { __VA_ARGS__ }))
 
 /* ==================Externs          ============*/
 
@@ -24,13 +24,13 @@ extern ZNode *LangItems[Z_LANG_COUNT];
 /* ==================Context          ============*/
 
 ZMIRContextRef ZMIRContextCreate(ZState *state, Allocator *a) {
-    return copy(a, ZMIRContext, ((ZMIRContext){ .state = state, .allocator = a}));
+    return copy(a, ((ZMIRContext){ .state = state, .allocator = a}));
 }
 
 /* ==================Modules          ============*/
 
 ZMIRModuleRef ZMIRModuleCreateWithNameInContext(const char *name, ZMIRContextRef ctx) {
-    return copy(ctx->allocator, ZMIRModule, ((ZMIRModule){
+    return copy(ctx->allocator, ((ZMIRModule){
         .ctx    = ctx,
         .name   = name,
         .decls  = NULL,
@@ -48,7 +48,7 @@ static const char *dupname(Allocator *a, const char *name) {
 /* ==================Types            ============*/
 
 static inline ZMIRTypeRef ZMIRTypeInContext(ZMIRContextRef ctx, ZMIRTypeKind kind) {
-    return copy(ctx->allocator, ZMIRType, ((ZMIRType){ .kind = kind }));
+    return copy(ctx->allocator, ((ZMIRType){ .kind = kind }));
 }
 
 ZMIRTypeRef ZMIRIntTypeInContext(ZMIRContextRef ctx, usize width) {
@@ -73,14 +73,14 @@ ZMIRTypeRef ZMIRStructTypeInContext (ZMIRContextRef ctx, ZMIRTypeRef *fields, us
     if (len) memcpy(strctFields, fields, sizeof(ZMIRTypeRef) * len);
     vecsetlen(strctFields, len);
 
-    return copy(ctx->allocator, ZMIRType, ((ZMIRType) {
+    return copy(ctx->allocator, ((ZMIRType) {
         .kind = ZMIRStructTypeKind,
         .strct = { strctFields, packed }
     }));
 }
 
 ZMIRTypeRef ZMIRStructCreateNamed   (ZMIRContextRef ctx, const char *name) {
-    return copy(ctx->allocator, ZMIRType, ((ZMIRType){
+    return copy(ctx->allocator, ((ZMIRType){
         .kind   = ZMIRStructTypeKind,
         .name   = dupname(ctx->allocator, name),
         .strct  = { NULL, false }
@@ -100,7 +100,7 @@ void ZMIRStructSetBody(ZMIRTypeRef structType, ZMIRTypeRef *fields, usize len, b
 }
 
 static ZMIRTypeRef arrayType(Allocator *a, ZMIRTypeRef elem, usize len) {
-    return copy(a, ZMIRType, ((ZMIRType){
+    return copy(a, ((ZMIRType){
         .kind   = ZMIRArrayTypeKind,
         .array  = { elem, len }
     }));
@@ -113,7 +113,7 @@ ZMIRTypeRef ZMIRArrayTypeInContext  (ZMIRContextRef ctx, ZMIRTypeRef elem, usize
 [[deprecated("Use ZMIRPointerTypeInContext instead")]]
 ZMIRTypeRef ZMIRPointerType         (ZMIRTypeRef type, usize as) {
     (void)type; (void)as;
-    return copy(arenaAllocator, ZMIRType, ((ZMIRType){ .kind = ZMIRPointerTypeKind }));
+    return copy(arenaAllocator, ((ZMIRType){ .kind = ZMIRPointerTypeKind }));
 }
 
 [[deprecated("Use ZMIRArrayTypeInContext instead")]]
@@ -131,7 +131,7 @@ ZMIRTypeRef ZMIRFunctionType        (ZMIRTypeRef ret, ZMIRTypeRef *args, usize l
     vecreserve(fargs, len);
     if (len) memcpy(fargs, args, sizeof(ZMIRTypeRef) * len);
     vecsetlen(fargs, len);
-    return copy(arenaAllocator, ZMIRType, ((ZMIRType){
+    return copy(arenaAllocator, ((ZMIRType){
         .kind = ZMIRFunctionTypeKind,
         .func = { ret, fargs, vararg }
     }));
@@ -566,7 +566,7 @@ ZMIRValueRef ZMIRGetParam(ZMIRValueRef fn, usize index) {
 
 ZMIRBasicBlockRef ZMIRAppendBasicBlockInContext(ZMIRContextRef ctx, ZMIRValueRef fn, const char *name) {
     if (!CHECK_KIND(fn, ZMIRFunctionValueKind)) return NULL;
-    ZMIRBasicBlockRef block = copy(ctx->allocator, ZMIRBasicBlock, ((ZMIRBasicBlock){
+    ZMIRBasicBlockRef block = copy(ctx->allocator, ((ZMIRBasicBlock){
         .name   = dupname(ctx->allocator, name),
         .parent = fn,
     }));
@@ -610,7 +610,7 @@ ZMIRBasicBlockRef ZMIRGetInsertBlock(ZMIRBuilderRef b) {
 
 static ZMIRValueRef instr(ZMIRBuilderRef b, ZMIROpcode op, ZMIRTypeRef type, const char *name) {
     Allocator *a = b->ctx->allocator;
-    ZMIRValueRef v = copy(a, ZMIRValue, ((ZMIRValue){
+    ZMIRValueRef v = copy(a, ((ZMIRValue){
         .kind   = ZMIRInstructionValueKind,
         .type   = type,
         .name   = name && *name ? dupname(a, name) : NULL,
@@ -621,7 +621,7 @@ static ZMIRValueRef instr(ZMIRBuilderRef b, ZMIROpcode op, ZMIRTypeRef type, con
 }
 
 ZMIRBuilderRef ZMIRCreateBuilderInContext(ZMIRContextRef ctx) {
-    return copy(ctx->allocator, ZMIRBuilder, ((ZMIRBuilder){ .ctx = ctx }));
+    return copy(ctx->allocator, ((ZMIRBuilder){ .ctx = ctx }));
 }
 
 /* The module the builder is inserting into, through the current function. */

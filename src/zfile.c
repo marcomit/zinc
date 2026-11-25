@@ -9,11 +9,12 @@
 #define UNLOCK(ft) pthread_mutex_unlock(&(ft)->mutex)
 
 struct ZFile {
-    Allocator   *allocator;
-    const char  *filename;
-    zstr        content;
-    ZNode       *root;
-    u32         id;
+    Allocator       *allocator;
+    const char      *filename;
+    zstr            content;
+    ZNode           *root;
+    // pthread_mutex_t lock;
+    u32             id;
 };
 
 struct ZFileTable {
@@ -30,6 +31,7 @@ ZFile *zfile_create(Allocator *a, const char *filename, zstr content) {
         .filename   = filename,
         .content    = content,
     };
+    // pthread_mutex_init(&f->lock, NULL);
     return f;
 }
 
@@ -52,8 +54,12 @@ Allocator *zfile_allocator(ZFile *file) {
     return file ? file->allocator : NULL;
 }
 
+void zfile_set_root(ZFile *file, ZNode *root) {
+    if (file) file->root = root;
+}
+
 ZFileTable *ft_create() {
-    ZFileTable *self = copy(heapAllocator, ZFileTable, ((ZFileTable){
+    ZFileTable *self = copy(heapAllocator, ((ZFileTable){
         .allocator = heapAllocator,
         .files = NULL
     }));
@@ -87,28 +93,30 @@ ZFile *ft_get(ZFileTable *ft, const char *filename) {
     return f;
 }
 
-void zfile_set_root(ZFile *file, ZNode *root) {
-    if (file) file->root = root;
-}
-
 ZFile *ft_insert(Allocator *a, ZFileTable *ft, const char *filename, bool *created) {
     LOCK(ft);
-    ZFile *res = NULL;
-    usize *index = mapget(ft->file_map, ZSV(filename));
+    ZFile *res          = NULL;
+    usize *index        = NULL;
+    if (filename) index = mapget(ft->file_map, ZSV(filename));
     bool c = false;
     if (index) {
         res = ft->files[*index];
         goto end;
     }
 
-    zstr file_content = ft_readfile(ft->allocator, filename);
-    if (!file_content) goto end;
+    zstr file_content = NULL;
+    if (filename) {
+        file_content = ft_readfile(ft->allocator, filename);
+        if (!file_content) goto end;
+    }
 
     ZFile *f = zfile_create(a, filename, file_content);
 
     vecpush(ft->files, f);
     f->id = veclen(ft->files) - 1;
-    mapput(ft->file_map, ZSV(f->filename), f->id);
+
+    if (filename) mapput(ft->file_map, ZSV(f->filename), f->id);
+
     res = ft->files[f->id];
     c = true;
 
@@ -120,6 +128,13 @@ end:
 
 vec(ZFile *) ft_files(ZFileTable *ft) { return ft->files; }
 
+void ft_set_overlay(ZFileTable *ft, const char *path, const char *new_content) {
+    ZFile *f = ft_get(ft, path);
+    if (!f) return;
+    LOCK(ft);
+    UNLOCK(ft);
+}
+
 zstr zfile_str(ZFile *f, u32 offset, u32 len) {
     zstr s = zs_with(f->allocator);
     zs_catn(&s, f->content + offset, len);
@@ -129,6 +144,7 @@ zstr zfile_str(ZFile *f, u32 offset, u32 len) {
 void zfile_destroy(ZFile *file) {
     zs_free(file->content);
     afree(file->allocator, file);
+    // pthread_mutex_destroy(&file->lock);
 }
 
 void ft_destroy(ZFileTable *ft) {

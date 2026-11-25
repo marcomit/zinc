@@ -4008,7 +4008,7 @@ static void genCapability(ZCodegen *ctx, ZNode *node) {
 
         if (!ref) continue;
         ZMIRCapability *capability = copy(
-            get_allocator(ctx), ZMIRCapability, ((ZMIRCapability){
+            get_allocator(ctx), ((ZMIRCapability){
                 .capability = decl->resolved,
                 .ref = ref
             })
@@ -4419,6 +4419,7 @@ static void genFuncVars(ZCodegen *ctx, ZNode *node) {
             if (interp->type == Z_INTERP_EXPR)
                 genFuncVars(ctx, interp->expr);
         }
+        break;
     case NODE_UNWRAP:
         genFuncVars(ctx, node->unwrap.base);
         genFuncVars(ctx, node->unwrap.orExpr);
