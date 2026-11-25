@@ -54,6 +54,7 @@ ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root) {
     self->root              = root;
     self->funcs             = NULL;
     self->exportedFuncs     = NULL;
+    self->discovered        = false;
 
     return self;
 }
