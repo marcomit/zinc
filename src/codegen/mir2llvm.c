@@ -727,8 +727,7 @@ static int linkExecutable(ZState *state, LLVMModuleRef mod, const char *output) 
     return ret;
 }
 
-void zcompile(ZState *state, ZNode *root, const char *output) {
-    (void)root;
+void zcompile(ZState *state, const char *output) {
 
     if (state->cli.verbose) timer_start(&state->phaseTime);
     ZMIRModuleRef *modules = zgenModules(state);

@@ -38,6 +38,7 @@ static inline int thread_count() {
 static void *pool_worker(void *arg) {
     ZThread *t = arg;
     ZPool *pool = t->pool;
+    if (!t->allocator) t->allocator = getArenaAllocator();
     for (;;) {
         pthread_mutex_lock(&pool->mutex);
 
@@ -81,7 +82,7 @@ ZPool *pool_create(Allocator *allocator, usize max_jobs) {
     usize started = 0;
     for (usize i = 0; i < pool->max_jobs; i++) {
         pool->threads[started] = (ZThread){
-            .allocator  = getArenaAllocator(),
+            .allocator  = NULL,
             .worker     = started,
             .pool       = pool
         };
@@ -130,7 +131,8 @@ void pool_destroy(ZPool *pool) {
     vecfree(pool->tasks);
 
     for (usize i = 0; i < veclen(pool->threads); i++)
-        adestroy(pool->threads[i].allocator);
+        if (pool->threads[i].allocator)
+            adestroy(pool->threads[i].allocator);
 
     vecfree(pool->threads);
 }

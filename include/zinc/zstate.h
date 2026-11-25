@@ -121,7 +121,6 @@ typedef struct {
     bool            skipLLVMValidation;
     bool            verbose;
     bool            dumpAst;
-    bool            dumpTokens;
 
     bool            nostdlib;
 
@@ -150,6 +149,7 @@ typedef struct {
     const ZLogLevel level;
 } ZDiagnostic;
 
+typedef ZMap(zsv, ZTokenType) ZKeywordMap;
 struct ZState {
     Allocator       *allocator;
     ZFileTable      *fileTable;
@@ -161,6 +161,7 @@ struct ZState {
     ZPhase          currentPhase;
     char            *currentPath;
     char            *homePath;
+    ZKeywordMap     keywords;
 
     bool            canAdvance;
 
@@ -209,7 +210,7 @@ char *zstrndup(Allocator *, char *, usize);
 char *mangler(char *[]);
 char *manglerA(char *[]);
 
-char *resolveImport(ZState *, char *, const char *);
+char *resolveImport(Allocator *, ZState *, char *, const char *);
 // bool visit(ZState *, char *);
 // void undoVisit(ZState *);
 
@@ -224,6 +225,8 @@ void _debug  (ZState *, ZToken *, const char *, int, const char *, ...);
 #define debug(state, tok, ...)   _debug  (state, tok, __FILE__, __LINE__, __VA_ARGS__)
 
 ZLog *_log(ZState *, ZToken *, ZDiagCode, const char *, int, ...);
+ZLog ***setLogSink(ZLog ***);
+void flushLogs(ZState *, ZLog **);
 ZLog *emitHint  (ZLog *, const char *, ...);
 ZLog *emitNote  (ZLog *, ZToken *, const char *, ...);
 

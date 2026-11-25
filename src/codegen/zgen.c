@@ -3384,6 +3384,10 @@ ZMIRValueRef genExpr(ZCodegen *ctx, ZNode *node) {
             res = genFacetMember(ctx, node);
             break;
         }
+        // if (node->memberAccess.func ||
+        //     (node->memberAccess.sym && node->memberAccess.sym->node)) {
+        //     return genLValue(ctx, node);
+        // }
     case NODE_INTERPOLATION:
     case NODE_SUBSCRIPT:
     case NODE_TUPLE_LIT:
@@ -4475,7 +4479,7 @@ static void genFuncAttrs(ZCodegen *ctx, ZNode *f, ZMIRValueRef func) {
     if (strcmp(f->funcDef.mangled, "main") == 0 || export) {
         ZMIRSetLinkage(func, ZMIRExternalLinkage);
     } else {
-        ZMIRSetLinkage(func, ZMIRLinkOnceODRLinkage);
+        ZMIRSetLinkage(func, ZMIRWeakODRLinkage);
     }
 
     ZAnnotation *inl = query(annotations, "inline");
@@ -4600,8 +4604,8 @@ static ZMIRValueRef genForwardDecl(ZCodegen *, ZNode *);
  * through module.cached. Codegen must follow cached so functions declared in a
  * module that this file only re-imports still get emitted into ctx->mod. */
 static inline ZNode **moduleBody(ZNode *node) {
-    return veclen(node->module.root) > 0 ? node->module.root
-                                         : node->module.cached;
+    ZNode *root = zfile_root(node->module.file);
+    return root ? root->module.root : NULL;
 }
 
 static void genNamespace(ZCodegen *ctx, ZNode *node) {
@@ -4674,6 +4678,27 @@ static void genFacetVtable(ZCodegen *ctx, ZNode *root, ZMIRValueRef *ptrs) {
     }
 }
 
+static void genImportedGlobals(ZCodegen *ctx, ZNode *node) {
+    switch (node->type) {
+    case NODE_VAR_DECL:
+        genGlobalVar(ctx, node);
+        break;
+    case NODE_NAMESPACE:
+        for (usize i = 0; i < veclen(node->block); i++)
+            genImportedGlobals(ctx, node->block[i]);
+        break;
+    case NODE_MODULE: {
+        const char *module_name = zfile_name(node->module.file);
+        if (!hashset_insert(&ctx->seenModuleDefs, module_name)) break;
+        ZNode **body = moduleBody(node);
+        for (usize i = 0; i < veclen(body); i++)
+            genImportedGlobals(ctx, body[i]);
+        break;
+    }
+    default: break;
+    }
+}
+
 static void compile(ZCodegen *ctx, ZNode *root) {
     beginModule(ctx, root);
     genForwardDecl(ctx, root);
@@ -4692,6 +4717,10 @@ static void compile(ZCodegen *ctx, ZNode *root) {
         /* Emit each module body at most once per ZMIR module: repeated imports
          * and cyclic imports would otherwise append a second definition to a
          * function that already has one. */
+        if (root->module.file != ctx->module) {
+            genImportedGlobals(ctx, root);
+            break;
+        }
         const char *module_name = zfile_name(root->module.file);
         if (!hashset_insert(&ctx->seenModuleDefs, module_name)) break;
         ZNode **body = moduleBody(root);
@@ -4763,7 +4792,7 @@ static ZMIRValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
             putZMIRValueRef(ctx, name, global);
             return global;
         }
-        return NULL;
+        return genForeign(ctx, node);
     }
     case NODE_FUNC: {
         ZAnnotation *export = annArg(query(node->funcDef.annotations, "export"), 0);

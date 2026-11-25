@@ -24,7 +24,7 @@ ZFile *zfile_get_from_tok(ZFileTable *, ZToken *);
 const char *zfilename_from_tok(ZFileTable *, ZToken *);
 
 ZFileTable *ft_create();
-ZFile *ft_insert(Allocator *, ZFileTable *, const char *);
+ZFile *ft_insert(Allocator *, ZFileTable *, const char *, bool *);
 ZFile *ft_get(ZFileTable *, const char *);
 vec(ZFile *) ft_files(ZFileTable *);
 void ft_destroy(ZFileTable *ft);

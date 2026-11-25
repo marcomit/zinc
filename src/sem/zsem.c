@@ -136,7 +136,7 @@ static ZThreadSem *discoverGlobalScope(ZThreadSem *ctx, ZNode *root) {
             ZThreadSem *import = ctx->semantic->scopes[file_id]->ctx;
 
             if (!import->discovered)
-                import = discoverGlobalScope(ctx, node);
+                import = discoverGlobalScope(ctx, zfile_root(node->module.file));
 
             discoverImport(ctx, import, node, node->module.pub);
             break;
@@ -388,15 +388,15 @@ static void pool_worker(ZTaskCtx *task_ctx) {
     analyze(ctx, ctx->root);
 }
 
-ZSemantic *zanalyze(ZState *state, ZNode *root) {
+void zanalyze(ZState *state) {
     state->currentPhase = Z_PHASE_SEMANTIC;
-    ZSemantic *ctx = makesemantic(state, root);
+    ZSemantic *ctx = makesemantic(state);
 
-    ZScope *globalScope     = makescope(state->allocator, NULL, root);
-
+    ZScope *globalScope     = makescope(state->allocator, NULL, NULL);
     initContext(ctx, globalScope);
 
-    discoverGlobalScope(ctx->scopes[0]->ctx, root);
+    ZScopeTable *entry = ctx->scopes[zfile_id(state->entryFile)];
+    discoverGlobalScope(entry->ctx, zfile_root(entry->file));
     resolveGlobalScope(ctx);
 
     usize len                   = veclen(ctx->scopes);
@@ -409,6 +409,4 @@ ZSemantic *zanalyze(ZState *state, ZNode *root) {
     // if (!ctx->main) {
     //     zlog(ctx->state, root->tok, Z3059);
     // }
-
-    return ctx;
 }

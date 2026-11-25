@@ -58,7 +58,7 @@ ZSymbol *makeRawSymbol(Allocator *allocator, ZSymType kind, ZToken *name, ZType 
 ZToken *makeTokenThread(ZThreadSem *ctx, ZTokenType type, char *start);
 ZType *makeTypeThread(ZThreadSem *ctx, ZTypeKind kind);
 ZScope *makescope(Allocator *allocator, ZScope *parent, ZNode *node);
-ZSemantic *makesemantic(ZState *state, ZNode *root);
+ZSemantic *makesemantic(ZState *state);
 ZSymbol *makesymbol(Allocator *allocator, ZSymType kind);
 ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root);
 ZCapability *putCapability(ZThreadSem *ctx, ZNode *var);

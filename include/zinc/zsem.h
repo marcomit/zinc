@@ -113,7 +113,7 @@ struct ZThreadSem {
 /* Semantic  -  public entry points. The per-traversal helpers (resolveType,
  * resolve, typesCompatible) now take the internal ZThreadSem and stay private
  * to zsem.c. */
-ZSemantic *zanalyze(ZState *, ZNode *);
+void zanalyze(ZState *);
 
 void printSymbol(ZSymbol *);
 char *ssymbol(Allocator *, ZSymbol *);

@@ -54,6 +54,7 @@ ZThreadSem *makethreadsem(ZSemantic *ctx, ZScope *current, ZNode *root) {
     self->root              = root;
     self->funcs             = NULL;
     self->exportedFuncs     = NULL;
+    self->discovered        = false;
 
     return self;
 }
@@ -66,7 +67,7 @@ ZSymbol *makesymbol(Allocator *allocator, ZSymType kind) {
     return self;
 }
 
-ZSemantic *makesemantic(ZState *state, ZNode *root) {
+ZSemantic *makesemantic(ZState *state) {
     ZSemantic *self         = zalloc(state->allocator, ZSemantic);
     self->state             = state;
     self->scopes            = NULL;
