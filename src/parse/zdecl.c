@@ -105,7 +105,7 @@ static ZNode *parseImpl(ZParser *parser, ZAnnotation **implAnnotations, bool pub
             mangled = manglerM(type, f->funcDef.name);
 
         } else {
-            mangled = mangler((char *[]) {
+            mangled = mangler((const char *[]) {
                 typeNameTok->str,
                 f->funcDef.name->str,
                 NULL
@@ -307,8 +307,8 @@ ZNode *parseFuncDecl(ZParser *parser,
         vecpush(func->func.capabilities, capabilities[i]->field.type);
 
     char *mangled = strcmp(name->str, "main") == 0 ? name->str :
-        mangler((char *[]){
-            name->filename,
+        mangler((const char *[]){
+            tokfilename(parser->state, name),
             name->str,
             NULL
         });
@@ -404,7 +404,7 @@ static ZNode *parseConst(ZParser *parser, bool public) {
 
 static ZNode *getModuleByName(
     ZParser *parser, char *module, ZToken *tok, bool public) {
-    char *from = tok ? tok->filename : (char *)zfile_name(parser->file);
+    char *from = tok ? (char *)tokfilename(parser->state, tok) : (char *)zfile_name(parser->file);
     char *filename = resolveImport(parser->allocator, parser->state, from, module);
     if (!filename) {
         zlog(parser->state, tok, Z203C, module);
@@ -632,7 +632,8 @@ static ZNode *parseFieldOptName(ZParser *parser) {
     } else {
         ZToken *tok = peek(parser);
         if (!tok) return NULL;
-        ident = makeident(parser->allocator, "_", tok->start, tok->end);
+        u32 file_id = zfile_id(parser->file);
+        ident = makeident(parser->allocator, "_", file_id, 0);
     }
 
     ZType *type = tryParse(parser, parseType(parser));
@@ -867,6 +868,13 @@ static void pool_worker(ZTaskCtx *task_ctx) {
     ZToken **tokens     = ztokenize(
         parser->allocator, parser->state, parser->file
     );
+    zfile_set_tokens(parser->file, tokens);
+#if Z_LSP
+    ZToken **code = NULL;
+    for (usize i = 0; i < veclen(tokens); i++)
+        if (tokens[i]->type != TOK_COMMENT) vecpush(code, tokens[i]);
+    tokens = code;
+#endif
     parser->source = maketokstream(parser->allocator, tokens, NULL);
 
     ZNode *root = NULL;

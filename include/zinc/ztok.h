@@ -5,6 +5,7 @@
 #include "zmem.h"
 #include "zforward.h"
 #include "zconfig.h"
+#include "zstr.h"
 
 typedef enum {
 
@@ -28,45 +29,23 @@ typedef enum {
 typedef struct ZToken ZToken;
 
 struct ZToken {
-    ZTokenType  type;
-    union {
-        char    *str;
-        i64     integer;
-        f64     floating;
-        bool    boolean;
-        ZToken  **stream;
-    };
-
-    /* The index in the FileTable, stored in the ZState object. */
-    // u32         fileId;
-    //
-    // u32         srcOffset;
-    // u32         srcLineOffset;
-    //
-    // u32         startOffset;
-    // u32         len;
-
-    char        *filename;
-    char        *sourcePtr;
-    char        *sourceLinePtr;
-    char        *start;
-    char        *end;
-    usize       row;
-    usize       col;
-    bool        newlineBefore;
+    union { char *str; i64 integer; f64 floating; bool boolean; ZToken **stream; };
+    u32 file_id, offset, len, row, col;
+    u8  type;
+    bool newlineBefore;
 };
 
 typedef struct ZTokenStream {
     ZToken **list;
     usize current;
-    usize end; // Cached vector length
+    usize end;
     struct ZTokenStream *prev;
 } ZTokenStream;
 
 ZToken **ztokenize(Allocator *, ZState *, ZFile *);
 ZToken **ztokenizeSource(Allocator *, ZState *, char *);
-ZToken *maketoken(Allocator *, ZTokenType, char *, char *);
-ZToken *makeident(Allocator *, char *, char *, char *);
+ZToken *maketoken(Allocator *, ZTokenType, u32 file_id, u32 offset, u32 len);
+ZToken *makeident(Allocator *, char *content, u32 file_id, u32 offset);
 ZTokenStream *maketokstream(Allocator *, ZToken **, ZTokenStream *);
 bool tokeneq(ZToken *, ZToken *);
 bool tokmask(ZToken *, u16);
@@ -76,6 +55,12 @@ u32 hashtoken(ZToken *);
 
 char *stoken(ZToken *);
 char *tokname(ZTokenType);
+ZFile *tokfile(ZState *, ZToken *);
+const char *tokfilename(ZState *, ZToken *);
+const char *toksource(ZState *, ZToken *);
+const char *tokline(ZState *, ZToken *);
+zsv toksv(ZState *, ZToken *);
+u32 tokcol(ZToken *);
 void printToken(ZToken *);
 void printTokens(ZToken **);
 

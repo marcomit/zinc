@@ -198,6 +198,8 @@ struct ZState {
 
 #define ENTRY_IMPORT_FILE "lib"
 
+extern ZState *zActiveState;
+
 ZState *makestate();
 void freestate(ZState *);
 bool canAdvance(ZState *);
@@ -207,8 +209,8 @@ char *readfile(Allocator *, char *);
 char *zstrdup(Allocator *, char *);
 char *zstrndup(Allocator *, char *, usize);
 
-char *mangler(char *[]);
-char *manglerA(char *[]);
+char *mangler(const char *[]);
+char *manglerA(const char *[]);
 
 char *resolveImport(Allocator *, ZState *, char *, const char *);
 // bool visit(ZState *, char *);

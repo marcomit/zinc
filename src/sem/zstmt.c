@@ -495,11 +495,11 @@ static void analyzeForIn(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         ZNode *call             = makeNodeThread(ctx, NODE_CALL);
         ZNode *iterAddr         = makeNodeThread(ctx, NODE_UNARY);
         iterAddr->unary.operand = curr->forin.iter;
-        iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, tok->start);
+        iterAddr->unary.operat  = makeTokenThread(ctx, TOK_REF, tok);
 
         ZNode *iterCall                     = makeNodeThread(ctx, NODE_MEMBER);
         iterCall->memberAccess.object       = iterAddr;
-        iterCall->memberAccess.field        = makeTokenThread(ctx, TOK_IDENT, tok->start);
+        iterCall->memberAccess.field        = makeTokenThread(ctx, TOK_IDENT, tok);
         iterCall->memberAccess.field->str   = "next";
         iterCall->memberAccess.mangled      = funcRef->funcDef.mangled;
 

@@ -48,7 +48,7 @@ ZNode *setspanfrom(ZParser *parser, ZNode *node, ZNode *left) {
 
 ZType *makePrimitiveType(Allocator *allocator, ZTokenType type) {
     ZType *self = maketype(allocator, Z_TYPE_PRIMITIVE);
-    self->primitive.token = maketoken(allocator, type, NULL, NULL);
+    self->primitive.token = maketoken(allocator, type, ANON_FILE_ID, 0, 0);
     return self;
 }
 

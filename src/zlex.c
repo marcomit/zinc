@@ -25,7 +25,7 @@ typedef struct {
     char *line;
 
     /* Current position of the text */
-    usize row, col;
+    u32 row, col;
 
     /* Track if newline was seen since last token */
     bool sawNewline;
@@ -58,6 +58,15 @@ inline bool tokmask(ZToken *tok, u16 mask) {
     return ZTokenMask[tok->type] & mask;
 }
 
+ZToken *tok_new(ZLexer *l, ZTokenType type, char *start, char *end) {
+    return copy(l->allocator, ((ZToken){
+        .type       = type,
+        .file_id    = zfile_id(l->file),
+        .offset     = (u32)(start - zfile_content(l->file)),
+        .len        = (u32)(end - start)
+    }));
+}
+
 ZTokenStream *maketokstream(Allocator *allocator, ZToken **tokens, ZTokenStream *prev) {
     ZTokenStream *self = zalloc(allocator, ZTokenStream);
     self->list = tokens;
@@ -85,35 +94,47 @@ ZTokenType findKeyword(ZState *state, const char *ident, size_t len) {
     return t ? *t : TOK_IDENT;
 }
 
-ZToken *maketoken(Allocator *allocator, ZTokenType type, char *start, char *end) {
-    ZToken *self    = zalloc(allocator, ZToken);
-    *self           = (ZToken){ 0 };
-    self->type      = type;
-    self->start     = start;
-    self->end       = end;
-    return self;
+ZToken *maketoken(Allocator *allocator,
+                  ZTokenType type,
+                  u32 file_id,
+                  u32 offset,
+                  u32 len) {
+    return copy(allocator, ((ZToken){
+        .type = type,
+        .file_id = file_id,
+        .offset = offset,
+        .len = len
+    }));
 }
 
-ZToken *makeident(Allocator *allocator, char *name, char *start, char *end) {
-    ZToken *self = maketoken(allocator, TOK_IDENT, start, end);
+ZToken *makeident(Allocator *allocator, char *name, u32 file_id, u32 offset) {
+    ZToken *self = maketoken(allocator, TOK_IDENT, file_id, offset, strlen(name));
     self->str = name;
     return self;
 }
 
-static ZToken *makeinteger(Allocator *allocator, i64 value, char *start, char *end) {
-    ZToken *self = maketoken(allocator, TOK_INT_LIT, start, end);
+static ZToken *makeinteger(Allocator *allocator,
+                           i64 value,
+                           u32 file_id,
+                           u32 offset,
+                           u32 len) {
+    ZToken *self = maketoken(allocator, TOK_INT_LIT, file_id, offset, len);
     self->integer = value;
     return self;
 }
 
-static ZToken *makefloat(Allocator *allocator, double value, char *start, char *end) {
-    ZToken *self = maketoken(allocator, TOK_FLOAT_LIT, start, end);
+static ZToken *makefloat(Allocator *allocator, double value, u32 file_id, u32 offset, u32 len) {
+    ZToken *self = maketoken(allocator, TOK_FLOAT_LIT, file_id, offset, len);
     self->floating = value;
     return self;
 }
 
-static ZToken *makestring(Allocator *allocator, char *str, char *start, char *end) {
-    ZToken *self = maketoken(allocator, TOK_STR_LIT, start, end);
+static ZToken *makestring(Allocator *allocator,
+                          char *str,
+                          u32 file_id,
+                          u32 offset,
+                          u32 len) {
+    ZToken *self = maketoken(allocator, TOK_STR_LIT, file_id, offset, len);
     self->str = str;
     return self;
 }
@@ -132,7 +153,7 @@ bool tokeneq(ZToken *a, ZToken *b) {
 static inline void setSourceLoc(ZLexer *l, ZToken *tok) {
     tok->col = l->col;
     tok->row = l->row;
-    tok->filename = (char *)zfile_name(l->file);
+    tok->file_id = zfile_id(l->file);
 }
 
 static inline void addToken(ZLexer *l, ZToken *token) {
@@ -261,8 +282,8 @@ static ZToken **scanInterpolatedString(ZLexer *l) {
     ZToken **list = NULL;
     i64 baseDepth = l->depth;
 
-    ZToken *startInterp = maketoken(
-        l->allocator, TOK_STR_START, l->current, l->current+1
+    ZToken *startInterp = tok_new(
+        l, TOK_STR_START, l->current, l->current+1
     );
     next(l);
     l->depth++;
@@ -314,7 +335,11 @@ static ZToken *_scanString(ZLexer *l, const char *begin, const char *end, bool n
             cp = scanEscapeChar(l, &src.current);
         } else if (interpolated && *src.current == '{') {
             vecpush(buff, '\0');
-            ZToken *lit = makestring(a, zstrdup(a, buff), start, l->current);
+            ZToken *lit = makestring(
+                a, zstrdup(a, buff), zfile_id(l->file),
+                (u32)(start - zfile_content(l->file)),
+                (u32)(src.current - start)
+            );
             setSourceLoc(l, lit);
             vecpush(list, lit);
             l->col += src.col;
@@ -334,24 +359,30 @@ static ZToken *_scanString(ZLexer *l, const char *begin, const char *end, bool n
         for (usize i = 0; i < elen; i++) next(&src);
     }
     else {
-        ZToken *tok = maketoken(a, TOK_STR_LIT, start - 1, l->current);
+        ZToken *tok = tok_new(l, TOK_STR_LIT, start - 1, l->current);
         tok->row    = l->row;
         tok->col    = l->col;
-        tok->filename  = (char *)zfile_name(l->file);
-        tok->sourcePtr = start - 1;
-        tok->sourceLinePtr = l->line;
         zlog(l->state, tok, Z1003);
         return NULL;
     }
     vecpush(buff, '\0');
     *l = src;
 
-    ZToken *lit = makestring(a, buff, start, l->current);
+    char *litStart = start - blen - (interpolated ? 1 : 0);
+    ZToken *lit = makestring(
+        a, buff, zfile_id(l->file),
+        (u32)(litStart - zfile_content(l->file)),
+        (u32)(l->current - litStart)
+    );
     if (interpolated) {
         // Push the last literal
         if (veclen(buff) > 1) vecpush(list, lit);
 
-        ZToken *stream = maketoken(a, TOK_STREAM, start - 1, l->current);
+        ZToken *stream = maketoken(
+            a, TOK_STREAM, zfile_id(l->file),
+            (start - 1) - zfile_content(l->file),
+            l->current - (start - 1)
+        );
         stream->stream = list;
         return stream;
     } else return lit;
@@ -367,8 +398,12 @@ static inline ZToken *scanMultiLineString(ZLexer *l) {
     return _scanString(l, "\"\"\"", "\"\"\"", false);
 }
 
-static ZToken *makeRune(Allocator *a, u32 codepoint, char *start, char *end) {
-    ZToken *self = maketoken(a, TOK_RUNE_LIT, start, end);
+static ZToken *makeRune(ZLexer *l, u32 codepoint, char *start, char *end) {
+    ZToken *self = maketoken(
+        l->allocator, TOK_RUNE_LIT, zfile_id(l->file),
+        (u32)(start - zfile_content(l->file)),
+        (u32)(end - start)
+    );
     self->integer = (i64)codepoint;
     return self;
 }
@@ -392,16 +427,18 @@ static ZToken *scanRune(ZLexer *l) {
     src++;
 
     l->current = src;
-    return makeRune(l->allocator, cp, start, src);
+    return makeRune(l, cp, start, src);
 }
 
 /*TODO: Replace the else-if chain with the trie. */
 static ZToken *scanSymbol(ZLexer *l) {
     Allocator *a = l->allocator;
     ZToken *sym = NULL;
+    u32 offset = (u32)(l->current - zfile_content(l->file));
+    u32 file_id = zfile_id(l->file);
     if (false) { /* Empty if statement only for macro definition. */ }
     #define DEF(id, s, _) else if(!strncmp(s, l->current, strlen(s))) {         \
-        ZToken *tok = maketoken(a, id, l->current, l->current + strlen(s));     \
+        ZToken *tok = maketoken(a, id, file_id, offset, (u32)strlen(s));        \
         skip(l, strlen(s));                                                     \
         tok->str = s;                                                           \
         sym = tok;                                                              \
@@ -420,8 +457,6 @@ static ZToken *scanSymbol(ZLexer *l) {
 
     if (!sym) {
         zlog(l->state, lastToken(l), Z1004);
-        ZToken *tok = maketoken(a, 0, l->current, l->current);
-        tok->str = "";
         return NULL;
     }
 
@@ -442,7 +477,11 @@ static ZToken *scanHexNumber(ZLexer *l) {
     unsigned long long value = strtoull(start, NULL, 16);
     if (errno == ERANGE) zlog(l->state, lastToken(l), Z1005, start);
 
-    return makeinteger(l->allocator, (i64)value, start, l->current);
+    char *lit   = start - 2;
+    u32 len     = (u32)(l->current - lit);
+    u32 file_id = zfile_id(l->file);
+    u32 offset  = (u32)(lit - zfile_content(l->file));
+    return makeinteger(l->allocator, (i64)value, file_id, offset, len);
 }
 
 static ZToken *scanBinNumber(ZLexer *l) {
@@ -453,12 +492,13 @@ static ZToken *scanBinNumber(ZLexer *l) {
     Allocator *a = l->allocator;
     while (*l->current == '0' || *l->current == '1') next(l);
     if (start == l->current) {
-        ZToken *tok = maketoken(a, TOK_INT_LIT, start, l->current);
-        tok->filename = (char *)zfile_name(l->file);
+        u32 offset      = (u32)(start - 2 - zfile_content(l->file));
+        u32 len         = (u32)(l->current - (start - 2));
+        ZToken *tok     = maketoken(
+            a, TOK_INT_LIT, zfile_id(l->file), offset, len
+        );
         tok->row = l->row;
         tok->col = l->col;
-        tok->sourceLinePtr = l->line;
-        tok->sourcePtr = l->current;
         error(
             l->state, tok,
             "Invalid binary literal"
@@ -469,7 +509,12 @@ static ZToken *scanBinNumber(ZLexer *l) {
     unsigned long long value = strtoull(start, NULL, 2);
     if (errno == ERANGE) zlog(l->state, lastToken(l), Z1005, start);
 
-    return makeinteger(a, (i64)value, start, l->current);
+    return makeinteger(
+        a, (i64)value,
+        zfile_id(l->file),
+        (u32)(start - 2 - zfile_content(l->file)),
+        (u32)(l->current - (start - 2))
+    );
 }
 
 static ZToken *scanNumber(ZLexer *l) {
@@ -507,14 +552,23 @@ static ZToken *scanNumber(ZLexer *l) {
         errno = 0;
         double value = strtod(start, NULL);
         if (errno == ERANGE) zlog(l->state, lastToken(l), Z1007, start);
-        return makefloat(l->allocator, value, start, l->current);
+
+        return makefloat(
+            l->allocator, value, zfile_id(l->file),
+            (u32)(start - zfile_content(l->file)),
+            (u32)(l->current - start)
+        );
     }
 
     errno = 0;
     long long value = strtoll(start, NULL, 10);
     if (errno == ERANGE) zlog(l->state, lastToken(l), Z1005, start);
 
-    return makeinteger(l->allocator, value, start, l->current);
+    return makeinteger(
+        l->allocator, value, zfile_id(l->file),
+        (u32)(start - zfile_content(l->file)),
+        (u32)(l->current - start)
+    );
 }
 
 static ZToken *scanLiteral(ZLexer *l) {
@@ -527,11 +581,19 @@ static ZToken *scanLiteral(ZLexer *l) {
     ZTokenType type = findKeyword(l->state, start, len);
 
     if (type == TOK_IDENT) {
-        return makeident(l->allocator, zstrndup(l->allocator, start, len), start, l->current);
+        return makeident(
+            l->allocator, zstrndup(l->allocator, start, len),
+            zfile_id(l->file), start - zfile_content(l->file)
+        );
     }
 
     // Also set str field for keywords so getMacroByName can compare them
-    ZToken *tok = maketoken(l->allocator, type, start, l->current);
+    ZToken *tok = maketoken(
+        l->allocator, type, zfile_id(l->file),
+        (u32)(start - zfile_content(l->file)),
+        (u32)(l->current - start)
+    );
+
     tok->str = zstrndup(l->allocator, start, len);
     return tok;
 }
@@ -572,7 +634,10 @@ static void skipMultilineComments(ZLexer *l) {
 #endif
 
 #if Z_LSP
-    addToken(l, maketoken(l->allocator, TOK_COMMENT, start, end));
+    addToken(l, maketoken(
+        l->allocator, TOK_COMMENT, zfile_id(l->file),
+        (u32)(start - zfile_content(l->file)), (u32)(end - start)
+    ));
 #endif
 
     next(l); next(l);
@@ -606,9 +671,6 @@ static bool emitNextToken(ZLexer *l, ZToken **curr) {
 
     if (!*l->current) return false;
 
-    char *sourcePtr = l->current;
-    char *sourceLinePtr = l->line;
-
     char *s = l->current;
     if (*s == '#') s++;
     if (strncmp(s, "\"\"\"", 3) == 0) {
@@ -627,8 +689,6 @@ static bool emitNextToken(ZLexer *l, ZToken **curr) {
     }
 
     if (*curr) {
-        (*curr)->sourceLinePtr = sourceLinePtr;
-        (*curr)->sourcePtr     = sourcePtr;
         (*curr)->newlineBefore = l->sawNewline;
         l->sawNewline       = false;
     }

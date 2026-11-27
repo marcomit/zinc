@@ -216,10 +216,11 @@ LspResponse *lsp_initialize(LspContext *ctx) {
 }
 
 LspResponse *lsp_shutdown(LspContext *ctx) {
-    freestate(ctx->state);
-    ctx->state = NULL;
-    aclose(ctx->allocator);
-    ctx->allocator = NULL;
-
-    return NULL;
+    if (ctx->state) {
+        pool_destroy(ctx->state->pool);
+        freestate(ctx->state);
+        ctx->state = NULL;
+    }
+    ctx->modules = NULL;
+    return lsp_reply(ctx, JsonNull(ctx->allocator));
 }

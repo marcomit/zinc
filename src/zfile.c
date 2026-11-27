@@ -13,6 +13,7 @@ struct ZFile {
     const char      *filename;
     zstr            content;
     ZNode           *root;
+    vec(ZToken *)   tokens;
     // pthread_mutex_t lock;
     u32             id;
 };
@@ -58,6 +59,14 @@ void zfile_set_root(ZFile *file, ZNode *root) {
     if (file) file->root = root;
 }
 
+vec(ZToken *) zfile_tokens(ZFile *file) {
+    return file ? file->tokens : NULL;
+}
+
+void zfile_set_tokens(ZFile *file, vec(ZToken *) tokens) {
+    if (file) file->tokens = tokens;
+}
+
 ZFileTable *ft_create() {
     ZFileTable *self = copy(heapAllocator, ((ZFileTable){
         .allocator = heapAllocator,
@@ -93,7 +102,11 @@ ZFile *ft_get(ZFileTable *ft, const char *filename) {
     return f;
 }
 
-ZFile *ft_insert(Allocator *a, ZFileTable *ft, const char *filename, bool *created) {
+static ZFile *ft_insert_impl(Allocator *a,
+                             ZFileTable *ft,
+                             const char *filename,
+                             const char *source,
+                             bool *created) {
     LOCK(ft);
     ZFile *res          = NULL;
     usize *index        = NULL;
@@ -105,7 +118,10 @@ ZFile *ft_insert(Allocator *a, ZFileTable *ft, const char *filename, bool *creat
     }
 
     zstr file_content = NULL;
-    if (filename) {
+    if (source) {
+        file_content = zs_with(ft->allocator);
+        zs_catn(&file_content, source, strlen(source));
+    } else if (filename) {
         file_content = ft_readfile(ft->allocator, filename);
         if (!file_content) goto end;
     }
@@ -126,14 +142,19 @@ end:
     return res;
 }
 
-vec(ZFile *) ft_files(ZFileTable *ft) { return ft->files; }
-
-void ft_set_overlay(ZFileTable *ft, const char *path, const char *new_content) {
-    ZFile *f = ft_get(ft, path);
-    if (!f) return;
-    LOCK(ft);
-    UNLOCK(ft);
+ZFile *ft_insert(Allocator *a, ZFileTable *ft, const char *filename, bool *created) {
+    return ft_insert_impl(a, ft, filename, NULL, created);
 }
+
+ZFile *ft_insert_source(Allocator *a,
+                        ZFileTable *ft,
+                        const char *filename,
+                        const char *source,
+                        bool *created) {
+    return ft_insert_impl(a, ft, filename, source ? source : "", created);
+}
+
+vec(ZFile *) ft_files(ZFileTable *ft) { return ft->files; }
 
 zstr zfile_str(ZFile *f, u32 offset, u32 len) {
     zstr s = zs_with(f->allocator);
@@ -157,8 +178,11 @@ void ft_destroy(ZFileTable *ft) {
 }
 
 ZFile *zfile_get(ZFileTable *ft, u32 file_id) {
-    if (file_id >= veclen(ft->files)) return NULL;
-    return ft->files[file_id];
+    if (!ft) return NULL;
+    LOCK(ft);
+    ZFile *f = file_id < veclen(ft->files) ? ft->files[file_id] : NULL;
+    UNLOCK(ft);
+    return f;
 }
 
 // ZFile *zfile_get_from_tok(ZFileTable *ft, ZToken *t) {

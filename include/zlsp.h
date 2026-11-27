@@ -30,9 +30,16 @@ typedef struct {
     vec(ZToken *)   tokens;
 } LspModule;
 
+typedef struct {
+    char            *path;
+    char            *text;
+    int             version;
+} LspDocument;
+
 struct LspContext {
     Json                *root;
-    vec(LspModule *)    *modules;
+    vec(LspModule *)    modules;
+    vec(LspDocument)    documents;
     Allocator           *allocator;
     ZState              *state;
 };
@@ -161,6 +168,7 @@ void lsp_send(Json *);
 void lsp_notify(Allocator *, const char *, Json *);
 
 void lsp_analyze(LspContext *, const char *, char *, int);
+void lsp_drop_document(LspContext *, const char *);
 
 LspResponse *lsp_initialize     (LspContext *);
 LspResponse *lsp_shutdown       (LspContext *);
@@ -174,7 +182,6 @@ LspResponse *lsp_hover          (LspContext *);
 void publish_diagnostics(LspContext *, const char *, int);
 
 int  get_module(LspContext *, const char *);
-void put_module(LspContext *, LspModule *);
 
 ZNode *node_from_position               (LspModule *, LspPosition);
 ZToken *token_from_position             (LspModule *, LspPosition);

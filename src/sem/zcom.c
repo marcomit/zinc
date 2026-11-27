@@ -11,11 +11,11 @@ ZType *makeTypeThread(ZThreadSem *ctx, ZTypeKind kind) {
     return maketype(ctx->allocator, kind);
 }
 
-ZToken *makeTokenThread(ZThreadSem *ctx, ZTokenType type, char *start) {
+ZToken *makeTokenThread(ZThreadSem *ctx, ZTokenType type, ZToken *at) {
     ZToken *tok = zalloc(ctx->allocator, ZToken);
-    *tok = (ZToken){ 0 };
+    *tok = at ? *at : (ZToken){ .file_id = ANON_FILE_ID };
     tok->type = type;
-    tok->start = start;
+    tok->str = NULL;
     return tok;
 }
 
