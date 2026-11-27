@@ -4,6 +4,10 @@
 #include "zmem.h"
 #include "zstr.h"
 #include "ztok.h"
+#include <stdint.h>
+
+#define ANON_FILE_ID    UINT32_MAX
+// #define ANON_FILE_NAME  ((const char *)0x21092005)
 
 typedef struct ZFileTable ZFileTable;
 typedef struct ZFile ZFile;
@@ -14,6 +18,8 @@ u32 zfile_id(ZFile *);
 const char *zfile_name(ZFile *);
 ZNode *zfile_root(ZFile *);
 void zfile_set_root(ZFile *, ZNode *);
+vec(ZToken *) zfile_tokens(ZFile *);
+void zfile_set_tokens(ZFile *, vec(ZToken *));
 Allocator *zfile_allocator(ZFile *);
 
 zstr zfile_str(ZFile *, u32 offset, u32 len);
@@ -25,6 +31,7 @@ const char *zfilename_from_tok(ZFileTable *, ZToken *);
 
 ZFileTable *ft_create();
 ZFile *ft_insert(Allocator *, ZFileTable *, const char *, bool *);
+ZFile *ft_insert_source(Allocator *, ZFileTable *, const char *, const char *, bool *);
 ZFile *ft_get(ZFileTable *, const char *);
 vec(ZFile *) ft_files(ZFileTable *);
 void ft_destroy(ZFileTable *ft);

@@ -11,8 +11,8 @@ Json *range_from_token(Allocator *a, ZToken *tok) {
     Json *range = JsonMap(a, NULL);
 
     int line    = tok ? (int)tok->row - 1 : 0;
-    int col     = tok ? (int)(tok->start - tok->sourceLinePtr) : 0;
-    int row     = tok ? (int)(tok->end - tok->start) : 0;
+    int col     = tok ? (int)tok->col - (int)tok->len : 0;
+    int row     = tok ? (int)tok->len : 0;
 
     JsonSet(a, start,  "line",         JsonNumber(a, line));
     JsonSet(a, start,  "character",    JsonNumber(a, col));
@@ -85,11 +85,18 @@ LspResponse *lsp_change_document(LspContext *ctx) {
     return NULL;
 }
 
+LspResponse *lsp_close_document(LspContext *ctx) {
+    char *uri = JsonAsString(JsonGetFmt(ctx->root, "params.textDocument.uri"));
+    if (uri) lsp_drop_document(ctx, uri);
+    return NULL;
+}
+
 static LspHandler Handlers[] = {
     { "initialize",                 lsp_initialize          },
     { "shutdown",                   lsp_shutdown            },
     { "textDocument/didOpen",       lsp_open_document       },
     { "textDocument/didChange",     lsp_change_document     },
+    { "textDocument/didClose",      lsp_close_document      },
     { "textDocument/completion",    lsp_completion          },
     { "textDocument/definition",    lsp_definition          },
     { "textDocument/hover",         lsp_hover               },
@@ -112,44 +119,94 @@ LspResponse *handle_message(LspContext *ctx) {
     return NULL;
 }
 
-inline int get_module(LspContext *ctx, const char *uri) {
-    ZFile *f = ft_get(ctx->state->fileTable, uri);
-    if (!f) return -1;
-    return (int)zfile_id(f);
+static const char *uri_path(const char *uri) {
+    return strncmp(uri, "file://", 7) == 0 ? uri + 7 : uri;
 }
 
-inline void put_module(LspContext *ctx, LspModule *mod) {
-    bool created = false;
-    ZFile *f = ft_insert(ctx->allocator, ctx->state->allocator, mod->file)
-    int cached = get_module(ctx, zfile_name(mod->file));
-    if (cached != -1) {
-        *ctx->modules[cached] = *mod;
-    } else {
-        mod = copy(ctx->allocator, *mod);
-        vecpushwith(ctx->modules, mod, ctx->allocator);
+static LspDocument *find_document(LspContext *ctx, const char *path) {
+    for (usize i = 0; i < veclen(ctx->documents); i++)
+        if (strcmp(ctx->documents[i].path, path) == 0)
+            return &ctx->documents[i];
+    return NULL;
+}
+
+static void store_document(LspContext *ctx, const char *path, char *text, int version) {
+    LspDocument *doc = find_document(ctx, path);
+    if (doc) {
+        afree(heapAllocator, doc->text);
+        doc->text       = zstrdup(heapAllocator, text);
+        doc->version    = version;
+        return;
     }
+    LspDocument d = {
+        .path       = zstrdup(heapAllocator, (char *)path),
+        .text       = zstrdup(heapAllocator, text),
+        .version    = version
+    };
+    vecpushwith(ctx->documents, d, heapAllocator);
+}
+
+void lsp_drop_document(LspContext *ctx, const char *uri) {
+    const char *path = uri_path(uri);
+    LspDocument *doc = find_document(ctx, path);
+    if (!doc) return;
+    afree(heapAllocator, doc->path);
+    afree(heapAllocator, doc->text);
+    *doc = veclast(ctx->documents);
+    vecpop(ctx->documents);
+}
+
+int get_module(LspContext *ctx, const char *uri) {
+    const char *path = uri_path(uri);
+    for (int pass = 0; pass < 2; pass++) {
+        ZFile *f = ctx->state ? ft_get(ctx->state->fileTable, path) : NULL;
+        for (usize i = 0; f && i < veclen(ctx->modules); i++)
+            if (ctx->modules[i]->file == f) return (int)i;
+
+        LspDocument *doc = find_document(ctx, path);
+        if (pass || !doc) break;
+        lsp_analyze(ctx, uri, doc->text, doc->version);
+    }
+    return -1;
 }
 
 void lsp_analyze(LspContext *ctx, const char *uri, char *text, int version) {
-    uri     = zstrdup(ctx->allocator, (char *)uri);
-    text    = zstrdup(ctx->allocator, text);
-    char *path = strncmp(uri, "file://", 7) == 0 ? (char *)uri + 7 : (char *)uri;
+    const char *path = uri_path(uri);
+    store_document(ctx, path, text, version);
 
-    ctx->state->entryFile = ft_insert(
-        ctx->allocator, ctx->state->fileTable, path, NULL
+    ZState *prev        = ctx->state;
+    if (!prev) return;
+    ZState *state       = makestate();
+    if (!state) return;
+    state->pool         = prev->pool;
+
+    Allocator *prevA    = useAllocator(state->allocator);
+    initPrimitiveTypes(state);
+
+    state->entryFile = ft_insert_source(
+        state->allocator, state->fileTable, path, text, NULL
     );
 
-    zparse(ctx->state, ctx->state->entryFile);
+    zparse(state, state->entryFile);
 
-    if (canAdvance(ctx->state)) zanalyze(ctx->state);
+    ZSemantic *sem = canAdvance(state) ? zanalyze(state) : NULL;
 
-    put_module(ctx, &(LspModule){
-        .file       = ctx->state->entryFile,
-        .semantic   = NULL,
-        .tokens     = NULL
-    });
+    ctx->modules        = NULL;
+    vec(ZFile *) files  = ft_files(state->fileTable);
+    for (usize i = 0; i < veclen(files); i++) {
+        LspModule *mod = copy(state->allocator, ((LspModule){
+            .file       = files[i],
+            .semantic   = sem,
+            .tokens     = zfile_tokens(files[i])
+        }));
+        vecpushwith(ctx->modules, mod, state->allocator);
+    }
 
+    ctx->state = state;
     publish_diagnostics(ctx, uri, version);
+
+    useAllocator(prevA);
+    freestate(prev);
 }
 
 typedef struct {
@@ -163,7 +220,7 @@ static inline int compare_token_position(ZToken *tok, LspPosition pos) {
     int line = (int)tok->row - 1;
     if (line != pos.line) return line - pos.line;
 
-    usize len = tok->end - tok->start;
+    usize len = tok->len;
     usize end = tok->col;
 
     if (end <= (usize)pos.character) return -1;
@@ -252,9 +309,9 @@ static ZVisitorState visit_member(ZNode *node, ZClientData data) {
     if (node->type != NODE_MEMBER) return Z_CONTINUE;
 
     ZToken *field = node->memberAccess.field;
-    if (!field || !field->start || !field->end) return Z_CONTINUE;
+    if (!field || field->file_id == ANON_FILE_ID) return Z_CONTINUE;
 
-    int len = (int)(field->end - field->start);
+    int len = (int)field->len;
     int end = (int)field->col;
     if ((int)field->row - 1 == res->pos.line &&
         end - len <= res->pos.character && res->pos.character <= end) {
@@ -396,7 +453,7 @@ static void list_import_paths(LspCompletionItem **items, char *prefix) {
 static bool token_touches(ZToken *tok, LspPosition pos) {
     if (!tok || (int)tok->row - 1 != pos.line) return false;
     int end     = (int)tok->col;
-    int start   = end - (int)(tok->end - tok->start);
+    int start   = end - (int)tok->len;
     return start <= pos.character && pos.character <= end;
 }
 
@@ -612,7 +669,7 @@ Json *lsp_get_definition(LspModule *mod, LspPositionContext p) {
 
     Allocator *a = zfile_allocator(mod->file);
     Json *response = JsonMap(a, NULL);
-    JsonSet(a, response, "uri", JsonStringFmt(a, "file://%s", source->filename));
+    JsonSet(a, response, "uri", JsonStringFmt(a, "file://%s", tokfilename(zActiveState, source)));
     JsonSet(a, response, "range", range_from_token(a, source));
     return response;
 }

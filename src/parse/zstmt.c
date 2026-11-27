@@ -517,13 +517,10 @@ ZNode *parseLoops(ZParser *parser) {
     if (checkAhead(parser, TOK_LBRACKET, 1) ||
         checkAhead(parser, TOK_DO, 1)       ) {
         Allocator *allocator    = parser->allocator;
-        ZNode *cond             = makenode(allocator, NODE_LITERAL);
-        cond->tok               = maketoken(allocator, TOK_TRUE, NULL, NULL);
-        cond->literalTok        = cond->tok;
         ZNode *node             = makenode(allocator, NODE_WHILE);
         node->tok               = consume(parser);
         node->whileStmt.branch  = parseBlockOrInline(parser, true);
-        node->whileStmt.cond    = cond;
+        node->whileStmt.cond    = NULL;
 
         return setspan(parser, node, start);
     }

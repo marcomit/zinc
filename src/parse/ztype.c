@@ -391,10 +391,8 @@ static ZNode *parseEnumField(ZParser *parser) {
         zlog(parser->state, peek(parser), Z2018);
         return NULL;
     }
-    ZToken *name = consume(parser);
-
-    ZNode **fields = NULL;
-
+    ZToken *name    = consume(parser);
+    ZNode **fields  = NULL;
 
     ZNode *node                 = makenode(parser->allocator, NODE_ENUM_FIELD);
     node->annotations           = annotations;
@@ -410,7 +408,9 @@ static ZNode *parseEnumField(ZParser *parser) {
     field->field.identifier     = NULL;
 
     ZType *flag                 = maketype(parser->allocator, Z_TYPE_PRIMITIVE);
-    flag->primitive.token       = maketoken(parser->allocator, TOK_U8, NULL, NULL);
+    flag->primitive.token       = maketoken(
+        parser->allocator, TOK_U8, name->file_id, name->offset, name->len
+    );
     field->field.type           = flag;
 
     vecpush(enm->strct.fields, field);

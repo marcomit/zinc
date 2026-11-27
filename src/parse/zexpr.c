@@ -187,8 +187,10 @@ static ZNode *parseMemberAccess(ZParser *parser, ZNode *previous) {
         return previous;
 #else
         member = makeident(
-            parser->allocator, DEFAULT_MEMBER_ACCESS, start->end, start->end
+            parser->allocator, DEFAULT_MEMBER_ACCESS,
+            start->file_id, start->offset + start->len
         );
+        member->len = 0;
         member->row = start->row;
         member->col = start->col;
 #endif
@@ -574,11 +576,12 @@ ZNode *parseUpdate(ZParser *parser) {
     ZNode *rhs = parseUpdateRhs(parser, lhs);
     guard(rhs);
 
-    ZNode *assign        = makenode(parser->allocator, NODE_BINARY);
-    assign->binary.op    = maketoken(parser->allocator, TOK_EQ, NULL, NULL);
-    assign->binary.left  = lhs;
-    assign->binary.right = rhs;
-    assign->tok          = lhs->tok;
+    ZNode *assign           = makenode(parser->allocator, NODE_BINARY);
+    u32 file_id             = zfile_id(parser->file);
+    assign->binary.op       = maketoken(parser->allocator, TOK_EQ, file_id, 0, 0);
+    assign->binary.left     = lhs;
+    assign->binary.right    = rhs;
+    assign->tok             = lhs->tok;
     return setspanfrom(parser, assign, lhs);
 }
 

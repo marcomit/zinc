@@ -667,7 +667,7 @@ void printNode(ZNode *node, u8 depth) {
     printf("\n");
 }
 
-static inline void sanitize(char *source, char **buff) {
+static inline void sanitize(const char *source, char **buff) {
     while (*source) {
         if (isalnum(*source)) {
             vecpush(*buff, *source);
@@ -679,7 +679,7 @@ static inline void sanitize(char *source, char **buff) {
     }
 }
 
-static char *_mangler(char *segments[], const char *prefix) {
+static char *_mangler(const char *segments[], const char *prefix) {
     char *mangled = NULL;
 
     vecunion(mangled, prefix, strlen(prefix));
@@ -696,8 +696,8 @@ static char *_mangler(char *segments[], const char *prefix) {
     return mangled;
 }
 
-char *manglerA(char *segments[]) { return _mangler(segments, MANGLER_ANON_PREFIX); }
-char *mangler(char *segments[]) { return _mangler(segments, MANGLER_DEFAULT_PREFIX); }
+char *manglerA(const char *segments[]) { return _mangler(segments, MANGLER_ANON_PREFIX); }
+char *mangler(const char *segments[]) { return _mangler(segments, MANGLER_DEFAULT_PREFIX); }
 
 /* Encode a ZType into a mangled name buffer.
  * Pointer types get a 'P' prefix; primitives get a length-prefixed name.
@@ -868,6 +868,8 @@ static void init_keywords(ZState *state) {
 
 /* Everything a compilation allocates lives in its own arena (plus one arena per
  * module, see ZModuleAllocator), so freestate releases it all at once. */
+ZState *zActiveState = NULL;
+
 ZState *makestate() {
     memset(LangItems, 0, sizeof(LangItems));
     Allocator *allocator        = getArenaAllocator();
@@ -890,11 +892,13 @@ ZState *makestate() {
     self->cli.mode              = Z_MODE_RELEASE;
 #endif
 
+    zActiveState                = self;
     return self;
 }
 
 void freestate(ZState *state) {
     if (!state) return;
+    if (zActiveState == state) zActiveState = NULL;
 
     /* Don't leave this thread's default pointing at an arena about to be freed. */
     if (vecDefaultAllocator == state->allocator) useAllocator(NULL);
@@ -968,7 +972,7 @@ void name(ZState *state, ZToken *tok, const char *src_file,                     
     va_start(args, fmt);                                                        \
                                                                                 \
     vmakelog(state, level,                                                      \
-        tok ? tok->filename : NULL,                                             \
+        tok ? (char *)tokfilename(state, tok) : NULL,                           \
         tok,                                                                    \
         src_file,                                                               \
         src_line,                                                               \
@@ -998,7 +1002,7 @@ ZLog *_log(ZState *state, ZToken *tok, ZDiagCode code,
     va_list args;
     va_start(args, src_line);
     ZLog *log = vmakelog(state, ZDiagnostics[code].level,
-                         tok ? tok->filename : NULL,
+                         tok ? (char *)tokfilename(state, tok) : NULL,
                          tok, src_file, src_line,
                          ZDiagnostics[code].message, args);
     va_end(args);
@@ -1110,12 +1114,13 @@ char *resolveImport(Allocator *a, ZState *state, char *filename, const char *mod
 }
 
 static void printLineHighlight(ZState *state, ZToken *tok, const char *color) {
-    if (!tok || !tok->start || !tok->sourceLinePtr) return;
-    char *lineStart = tok->sourceLinePtr;
+    if (!tok) return;
+    const char *lineStart = tokline(state, tok);
+    if (!lineStart) return;
 
     char num[32];
 
-    snprintf(num, sizeof(num), "%zu", tok->row);
+    snprintf(num, sizeof(num), "%u", tok->row);
     usize numlen = strlen(num);
 
     u8 padding = 0;
@@ -1132,7 +1137,7 @@ static void printLineHighlight(ZState *state, ZToken *tok, const char *color) {
             putchar(*lineStart);
             lineStart++;
     }
-    lineStart = tok->sourceLinePtr;
+    lineStart = tokline(state, tok);
     putchar('\n');
 
 
@@ -1141,8 +1146,8 @@ static void printLineHighlight(ZState *state, ZToken *tok, const char *color) {
     putchar('|');
     printf("%s", color);
     u32 i = 1;
-
-    while (lineStart++ != tok->start) {
+    zsv tt = toksv(state, tok);
+    while (lineStart++ != tt.ptr) {
         putchar(' ');
         i++;
     }
@@ -1167,7 +1172,7 @@ static void printLog(ZState *state, ZLog *log) {
     }
     printf(":");
 
-    if (log->token) printf("%zu:%zu: ", log->token->row, log->token->col);
+    if (log->token) printf("%u:%u: ", log->token->row, tokcol(log->token));
 
     printf("\n  %s%s%s%s",
         COLOR_BOLD(state),

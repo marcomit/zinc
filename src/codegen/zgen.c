@@ -13,6 +13,7 @@
 #include "zgen.h"
 #include "zinc/zfile.h"
 #include "zinc/zinc.h"
+#include "zinc/ztok.h"
 #include "zmem.h"
 #include "zmir.h"
 
@@ -616,8 +617,8 @@ static ZMIRTypeRef genPrimitiveType(ZCodegen *ctx, ZToken *tok) {
     case TOK_ISIZE:
         return ZMIRIntTypeInContext(ctx->ctx, ctx->state->pointerSize * 8);
     default: {
-        const char *name = mangler((char *[]) {
-            tok->filename,
+        const char *name = mangler((const char *[]) {
+            (char *)tokfilename(ctx->state, tok),
             tok->str,
             NULL
         });
@@ -630,8 +631,8 @@ static ZMIRTypeRef genPrimitiveType(ZCodegen *ctx, ZToken *tok) {
 }
 
 static ZMIRTypeRef genStructType(ZCodegen *ctx, ZType *type, char *enumName) {
-    char *parts[4] = {
-        type->strct.name->filename,
+    const char *parts[4] = {
+        tokfilename(ctx->state, type->strct.name),
         NULL,
         NULL,
         NULL
@@ -683,8 +684,8 @@ static ZMIRTypeRef genStructType(ZCodegen *ctx, ZType *type, char *enumName) {
  */
 static ZMIRTypeRef genEnumType(ZCodegen *ctx, ZType *type) {
     ZToken *tok = type->enm.name;
-    const char *name = mangler((char *[]){
-        tok->filename,
+    const char *name = mangler((const char *[]){
+        (char *)tokfilename(ctx->state, tok),
         tok->str,
         NULL
     });
@@ -712,8 +713,8 @@ static ZMIRTypeRef genEnumType(ZCodegen *ctx, ZType *type) {
 
 static ZMIRTypeRef genFacetDecl(ZCodegen *ctx, ZType *type) {
     ZToken *tok = type->facet.name;
-    const char *name = mangler((char *[]) {
-        tok->filename,
+    const char *name = mangler((const char *[]) {
+        (char *)tokfilename(ctx->state, tok),
         tok->str,
         NULL
     });
@@ -4509,8 +4510,8 @@ static ZMIRValueRef genFunc(ZCodegen *ctx, ZNode *f) {
         f->funcDef.mangled = stoken(annArg(export, 0)->tok);
     }
     if (!f->funcDef.mangled) {
-        f->funcDef.mangled = mangler((char *[]) {
-            f->funcDef.name->filename,
+        f->funcDef.mangled = mangler((const char *[]) {
+            (char *)tokfilename(ctx->state, f->funcDef.name),
             f->funcDef.name->str,
             NULL
         });
@@ -4800,8 +4801,8 @@ static ZMIRValueRef genForwardDecl(ZCodegen *ctx, ZNode *node) {
         if (export) {
             node->funcDef.mangled = stoken(export->tok);
         } else if (!node->funcDef.mangled) {
-            node->funcDef.mangled = mangler((char *[]) {
-                node->funcDef.name->filename,
+            node->funcDef.mangled = mangler((const char *[]) {
+                (char *)tokfilename(ctx->state, node->funcDef.name),
                 node->funcDef.name->str,
                 NULL
             });

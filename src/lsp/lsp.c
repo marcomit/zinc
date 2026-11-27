@@ -121,8 +121,10 @@ int main(void) {
         JsonFree(allocator, ctx->root);
     }
 
-    pool_destroy(ctx->state->pool);
-    freestate(ctx->state);
+    if (ctx->state) {
+        pool_destroy(ctx->state->pool);
+        freestate(ctx->state);
+    }
     adestroy(ctx->allocator);
 
     return 0;

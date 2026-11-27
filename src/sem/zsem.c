@@ -388,7 +388,7 @@ static void pool_worker(ZTaskCtx *task_ctx) {
     analyze(ctx, ctx->root);
 }
 
-void zanalyze(ZState *state) {
+ZSemantic *zanalyze(ZState *state) {
     state->currentPhase = Z_PHASE_SEMANTIC;
     ZSemantic *ctx = makesemantic(state);
 
@@ -405,6 +405,7 @@ void zanalyze(ZState *state) {
     }
 
     pool_wait(state->pool);
+    return ctx;
 
     // if (!ctx->main) {
     //     zlog(ctx->state, root->tok, Z3059);

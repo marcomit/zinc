@@ -686,7 +686,7 @@ static ZType *resolveStructLit(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         return NULL;
     }
 
-    if (structSym && strcmp(structSym->name->filename, curr->tok->filename) != 0) {
+    if (structSym && structSym->name->file_id != curr->tok->file_id) {
         if (query(structSym->node->annotations, "sealed"))
             zlog(ctx->state, curr->tok, Z305C);
     }
@@ -1148,10 +1148,10 @@ static ZType *resolveAnonFunc(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
     ctx->current = ctx->current->parent;
 
     char loc[32];
-    snprintf(loc, sizeof(loc), "%zu_%zu", curr->tok->row, curr->tok->col);
+    snprintf(loc, sizeof(loc), "%u_%u", curr->tok->row, curr->tok->col);
 
-    curr->funcDef.mangled = manglerA((char *[]){
-        curr->tok->filename,
+    curr->funcDef.mangled = manglerA((const char *[]){
+        tokfilename(ctx->state, curr->tok),
         ctx->currentFunc->funcDef.mangled,
         loc,
         NULL
@@ -1458,7 +1458,7 @@ ZType *resolveType(ZThreadSem *ctx, ZNode *curr, ZType *inferred) {
         /* sizeof yields u64. */
         curr->sizeofExpr.type = resolveTypeRef(ctx, curr->sizeofExpr.type);
         result = makeTypeThread(ctx, Z_TYPE_PRIMITIVE);
-        result->primitive.token = makeTokenThread(ctx, TOK_U64, "u64");
+        result->primitive.token = makeTokenThread(ctx, TOK_U64, NULL);
         result->tok             = curr->tok;
         break;
     }

@@ -30,12 +30,13 @@ void emitRuntimeDebugPrint(ZCodegen *ctx, ZToken *tok, const char *message) {
     if (!func) func             = ZMIRAddFunction(ctx->mod, "printf", funcType);
 
     const char *fmt = "%s:%llu:%llu: %s\n";
+    const char *file = tokfilename(ctx->state, tok);
     ZMIRBuildCall2(
         ctx->builder, funcType, func, (ZMIRValueRef[]){
             ZMIRBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
-            ZMIRBuildGlobalString(ctx->builder, tok->filename, label(ctx, "file")),
+            ZMIRBuildGlobalString(ctx->builder, file ? file : "<unknown>", label(ctx, "file")),
             ZMIRConstInt(i64Type, tok->row, 0),
-            ZMIRConstInt(i64Type, tok->col, 0),
+            ZMIRConstInt(i64Type, tokcol(tok), 0),
             ZMIRBuildGlobalString(ctx->builder, message, label(ctx, "msg")),
         }, 5, ""
     );
@@ -49,12 +50,13 @@ void emitRuntimePanic(ZCodegen *ctx, ZToken *tok, ZMIRValueRef msg) {
     if (!func) func             = ZMIRAddFunction(ctx->mod, "printf", funcType);
 
     const char *fmt = "%s:%llu:%llu: %s\n";
+    const char *file = tokfilename(ctx->state, tok);
     ZMIRBuildCall2(
         ctx->builder, funcType, func, (ZMIRValueRef[]){
             ZMIRBuildGlobalString(ctx->builder, fmt, label(ctx, "fmt")),
-            ZMIRBuildGlobalString(ctx->builder, tok->filename, label(ctx, "file")),
+            ZMIRBuildGlobalString(ctx->builder, file ? file : "<unknown>", label(ctx, "file")),
             ZMIRConstInt(i64Type, tok->row, 0),
-            ZMIRConstInt(i64Type, tok->col, 0),
+            ZMIRConstInt(i64Type, tokcol(tok), 0),
             msg,
         }, 5, ""
     );

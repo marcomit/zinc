@@ -55,7 +55,7 @@ bool isVoid(ZType *t);
 bool isZeroable(ZThreadSem *ctx, ZType *type);
 ZNode *makeNodeThread(ZThreadSem *ctx, ZNodeType type);
 ZSymbol *makeRawSymbol(Allocator *allocator, ZSymType kind, ZToken *name, ZType *type, ZNode *node, bool isPublic);
-ZToken *makeTokenThread(ZThreadSem *ctx, ZTokenType type, char *start);
+ZToken *makeTokenThread(ZThreadSem *ctx, ZTokenType type, ZToken *at);
 ZType *makeTypeThread(ZThreadSem *ctx, ZTypeKind kind);
 ZScope *makescope(Allocator *allocator, ZScope *parent, ZNode *node);
 ZSemantic *makesemantic(ZState *state);
